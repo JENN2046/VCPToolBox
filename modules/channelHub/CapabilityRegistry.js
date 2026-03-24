@@ -147,8 +147,14 @@ class CapabilityRegistry {
    * @returns {Object} 能力配置对象
    */
   getDefaultProfile(channel) {
-    if (channel && this.builtinProfiles[channel]) {
-      return { ...this.builtinProfiles[channel] };
+    const channelAliasMap = {
+      qq: 'onebot',
+      feishu: 'lark'
+    };
+
+    const resolvedChannel = channelAliasMap[channel] || channel;
+    if (resolvedChannel && this.builtinProfiles[resolvedChannel]) {
+      return { ...this.builtinProfiles[resolvedChannel] };
     }
     return { ...this.builtinProfiles.default };
   }

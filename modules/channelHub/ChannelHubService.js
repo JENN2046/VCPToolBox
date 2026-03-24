@@ -311,8 +311,8 @@ class ChannelHubService extends EventEmitter {
       for (const job of jobs) {
         try {
           await this.deliveryOutbox.markProcessing(job.jobId);
-          await this.processOutboundJob(job);
-          await this.deliveryOutbox.markSuccess(job.jobId, { success: true });
+          const result = await this.processOutboundJob(job);
+          await this.deliveryOutbox.markSuccess(job.jobId, result || { success: true });
         } catch (error) {
           this.logger.error('[ChannelHub] Outbound job failed:', error);
           await this.deliveryOutbox.markFailed(job.jobId, error);
@@ -428,6 +428,22 @@ class ChannelHubService extends EventEmitter {
         adapterId,
         channel: envelope.channel,
         payload: normalizedReply,
+        session: {
+          bindingKey: sessionBinding.bindingKey,
+          externalSessionKey: sessionBinding.externalSessionKey || envelope.session?.externalSessionKey || sessionBinding.bindingKey,
+          conversationId: sessionBinding.conversationId || envelope.client?.conversationId || null,
+          conversationType: sessionBinding.conversationType || envelope.client?.conversationType || null,
+          userId: sessionBinding.userId || envelope.sender?.userId || null
+        },
+        target: {
+          agentId: routeDecision.agentId || null,
+          topicId: routeDecision.topicId || null
+        },
+        metadata: {
+          traceId,
+          requestId: envelope.requestId || envelope.eventId,
+          sourceMessageId: envelope.client?.messageId || null
+        },
         priority: Constants.PRIORITY.NORMAL
       });
       
@@ -528,6 +544,118 @@ class ChannelHubService extends EventEmitter {
   /**
    * 判断是否为B1格式事件
    */
+  async processOutboundJob(job) {
+    const startTime = Date.now();
+    const traceId = this.auditLogger.generateTraceId();
+
+    try {
+      this.metricsCollector.incrementCounter('outbound_jobs_total', 1, { adapterId: job.adapterId });
+
+      const adapterConfig = await this.adapterRegistry.getAdapter(job.adapterId);
+      if (!adapterConfig) {
+        throw new Errors.AdapterNotFoundError(`Adapter not found: ${job.adapterId}`);
+      }
+
+      const adapterInstance = this.adapterRegistry.getAdapterInstance(job.adapterId);
+      if (!adapterInstance) {
+        throw new Errors.DeliveryError(`Adapter runtime instance not found: ${job.adapterId}`, {
+          code: 'NOT_FOUND',
+          retryable: false,
+          details: { adapterId: job.adapterId }
+        });
+      }
+
+      const capabilities = await this.capabilityRegistry.getProfile(job.adapterId);
+      const deliverySession = await this._resolveDeliverySession(job);
+      const deliverableReply = JSON.parse(JSON.stringify(job.payload || {}));
+
+      if (Array.isArray(deliverableReply.messages)) {
+        for (const msg of deliverableReply.messages) {
+          if (!Array.isArray(msg.content)) continue;
+
+          msg.content = msg.content.map((part) => {
+            const result = this.capabilityDowngrader.downgradePart(part, job.channel, capabilities);
+            return result.part;
+          });
+        }
+      }
+
+      this.auditLogger.logOutboundDelivery(traceId, job, 'PROCESSING');
+      this.metricsCollector.recordOutboundMessage(job.adapterId, job.channel, {
+        parts: deliverableReply.messages?.length || 0
+      });
+
+      const deliveryResult = await this._deliverViaAdapterInstance(adapterInstance, {
+        traceId,
+        job,
+        adapterConfig,
+        reply: deliverableReply,
+        session: deliverySession,
+        capabilities
+      });
+
+      const duration = Date.now() - startTime;
+      this.auditLogger.logOutboundDelivery(traceId, job, 'DELIVERED', {
+        success: true,
+        duration,
+        result: deliveryResult || null
+      });
+      this.metricsCollector.incrementCounter('outbound_jobs_success', 1, { adapterId: job.adapterId });
+
+      return deliveryResult || { success: true, deliveredAt: new Date().toISOString() };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.auditLogger.logOutboundDelivery(traceId, job, 'FAILED', {
+        success: false,
+        error: error.message,
+        duration
+      });
+      this.metricsCollector.incrementCounter('outbound_jobs_error', 1, { adapterId: job.adapterId });
+      throw error;
+    }
+  }
+
+  async _resolveDeliverySession(job) {
+    if (job.session?.bindingKey && this.sessionBindingStore?.get) {
+      const persisted = await this.sessionBindingStore.get(job.session.bindingKey);
+      if (persisted) {
+        return {
+          ...persisted,
+          ...job.session
+        };
+      }
+    }
+
+    return job.session || null;
+  }
+
+  async _deliverViaAdapterInstance(adapterInstance, payload) {
+    const candidateMethods = ['sendBySession', 'deliver', 'sendReply', 'sendMessage'];
+
+    for (const methodName of candidateMethods) {
+      if (typeof adapterInstance?.[methodName] !== 'function') {
+        continue;
+      }
+
+      if (adapterInstance[methodName].length >= 2) {
+        return adapterInstance[methodName](payload.session, payload.reply, payload);
+      }
+
+      return adapterInstance[methodName](payload);
+    }
+
+    throw new Errors.DeliveryError('Adapter instance does not implement a supported outbound method', {
+      code: 'NOT_FOUND',
+      retryable: false,
+      details: {
+        supportedMethods: candidateMethods,
+        availableMethods: Object.keys(adapterInstance || {}).filter(
+          (key) => typeof adapterInstance[key] === 'function'
+        )
+      }
+    });
+  }
+
   _isB1Format(event) {
     // B1 格式特征：没有 version 字段，有 platform/payload 或直接有 agentId + messages
     return event && !event.version && (

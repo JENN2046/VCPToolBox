@@ -291,7 +291,7 @@ async function replaceOtherVariables(text, model, role, context) {
                             promptValue = fileContent;
                         } else {
                             // 递归解析文件内容中的变量
-                            promptValue = await replaceOtherVariables(fileContent, model, role, context);
+                            promptValue = await resolveAllVariables(fileContent, model, role, context);
                         }
                     }
                     replacementText = promptValue;
@@ -316,7 +316,7 @@ async function replaceOtherVariables(text, model, role, context) {
                         if (fileContent.startsWith('[变量文件') || fileContent.startsWith('[处理变量文件')) {
                             processedText = processedText.replaceAll(placeholder, fileContent);
                         } else {
-                            const resolvedContent = await replaceOtherVariables(fileContent, model, role, context);
+                            const resolvedContent = await resolveAllVariables(fileContent, model, role, context);
                             processedText = processedText.replaceAll(placeholder, resolvedContent);
                         }
                     } else {

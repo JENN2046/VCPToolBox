@@ -53,6 +53,7 @@ class AdapterRegistry {
     
     // 内存缓存
     this._cache = new Map();
+    this._instances = new Map();
     this._initialized = false;
   }
 
@@ -227,8 +228,34 @@ class AdapterRegistry {
     }
 
     this._cache.delete(adapterId);
+    this._instances.delete(adapterId);
     await this._persist();
     this.logger.log('[AdapterRegistry] Unregistered adapter:', adapterId);
+  }
+
+  registerAdapterInstance(adapterId, instance) {
+    if (!adapterId) {
+      throw new Error('adapterId is required');
+    }
+    if (!instance || typeof instance !== 'object') {
+      throw new Error(`Adapter instance for ${adapterId} must be an object`);
+    }
+
+    this._instances.set(adapterId, instance);
+    this.logger.log('[AdapterRegistry] Registered runtime instance:', adapterId);
+    return instance;
+  }
+
+  unregisterAdapterInstance(adapterId) {
+    if (!adapterId) {
+      return false;
+    }
+
+    const removed = this._instances.delete(adapterId);
+    if (removed) {
+      this.logger.log('[AdapterRegistry] Unregistered runtime instance:', adapterId);
+    }
+    return removed;
   }
 
   /**
@@ -263,8 +290,11 @@ class AdapterRegistry {
    * 当前尚未接入真实实例注册，先返回 null 供管理面板兼容使用
    * @returns {null}
    */
-  getAdapterInstance() {
-    return null;
+  getAdapterInstance(adapterId) {
+    if (!adapterId) {
+      return null;
+    }
+    return this._instances.get(adapterId) || null;
   }
 
   /**
