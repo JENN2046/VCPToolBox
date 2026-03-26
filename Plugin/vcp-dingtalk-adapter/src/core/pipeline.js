@@ -106,8 +106,8 @@ export function createMessagePipeline({
   vcpClient,
   dingSender,
   logger = console,
-  defaultAgentName = 'Nova',
-  defaultAgentDisplayName = process.env.VCP_AGENT_DISPLAY_NAME || 'Coffee',
+  defaultAgentName = '_Agent_1774369366544_1774369366543',
+  defaultAgentDisplayName = process.env.VCP_AGENT_DISPLAY_NAME || '动力猛兽',
 }) {
   const sessions = new Map();
 

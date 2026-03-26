@@ -1,8 +1,8 @@
 {
-  "AIMemoModel": "gemini-2.5-flash-lite",
+  "AIMemoModel": "Qwen3.5-Plus",
   "AIMemoBatch": 5,
-  "AIMemoUrl": "http://localhost:6005/",
-  "AIMemoApi": "sk-xxx",
+  "AIMemoUrl": "http://127.0.0.1:3000",
+  "AIMemoApi": "sk-n3BkdiwYMBFYmnvTqUVlDnPlvamuJl017HYsJAzi3eHjhg7M",
   "AIMemoMaxTokensPerBatch": 60000,
   "AIMemoPrompt": "AIMemoPromptX.txt"
 }

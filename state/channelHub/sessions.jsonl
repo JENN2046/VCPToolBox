@@ -11,3 +11,4 @@
 {"bindingKey":"test:session:123","channel":"qq","agentId":"Nova","timestamp":1774330157683,"_timestamp":1774330157683}
 {"bindingKey":"test:session:123","channel":"qq","agentId":"Nova","timestamp":1774330491506,"_timestamp":1774330491506}
 {"bindingKey":"test:session:123","channel":"qq","agentId":"Nova","timestamp":1774330549309,"_timestamp":1774330549309}
+{"adapterId":"dingtalk-adapter-01","externalSessionKey":"dingtalk:group:cid6lTc7YRSAt6075RdPeRcvw==:115404121726588334","conversationId":"topics\\default","agentId":"_Agent_1774369366544_1774369366543","bindingKey":"dingtalk-adapter-01:dingtalk:group:cid6lTc7YRSAt6075RdPeRcvw==:115404121726588334","isActive":true,"createdAt":1774372739351,"updatedAt":1774372739351,"deleted":false,"_timestamp":1774372739351}

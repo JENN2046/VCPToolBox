@@ -58,7 +58,7 @@ async function main() {
   assertEnv('DING_APP_KEY');
   assertEnv('DING_APP_SECRET');
 
-  const bridgeUrl = process.env.VCP_CHANNEL_BRIDGE_URL || 'http://127.0.0.1:6010/internal/channel-ingest';
+  const bridgeUrl = process.env.VCP_CHANNEL_BRIDGE_URL || 'http://127.0.0.1:6005/internal/channel-ingest';
 
   const agentId = process.env.VCP_AGENT_NAME || 'Nova';
   const agentDisplayName = process.env.VCP_AGENT_DISPLAY_NAME || 'Coffee';
