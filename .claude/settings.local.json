@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"a:\\\\VCP\\\\VCPToolBox\\\\Agent\" /s)",
+      "Bash(node --check modules/channelHub/ChannelHubService.js)",
+      "Bash(node --check Plugin/vcp-dingtalk-adapter/src/adapter/contract.js)",
+      "Bash(node --check Plugin/vcp-wecom-adapter/src/adapter/contract.js)",
+      "Bash(node --check Plugin/vcp-onebot-adapter/src/adapter/contract.js)"
+    ]
+  }
+}

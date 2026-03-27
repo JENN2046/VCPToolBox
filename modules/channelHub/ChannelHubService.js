@@ -337,10 +337,10 @@ class ChannelHubService extends EventEmitter {
   }
   
   // ==================== 入站处理主流程 ====================
-  
+
   /**
    * 处理入站事件 - 主入口
-   * 
+   *
    * @param {string} adapterId - 适配器ID
    * @param {Object} rawEvent - 原始事件数据（B1 或 B2 格式）
    * @param {Object} context - 请求上下文
@@ -352,18 +352,24 @@ class ChannelHubService extends EventEmitter {
   async handleInboundEvent(adapterId, rawEvent, context = {}) {
     const startTime = Date.now();
     const traceId = context.traceId || this.auditLogger.generateTraceId();
-    
+
     try {
       // 记录入站事件
       this.metricsCollector.recordEventReceived(adapterId, rawEvent.channel || 'unknown');
-      
+
       // 1. B1 兼容翻译（如果需要）
       let envelope = rawEvent;
       if (this._isB1Format(rawEvent)) {
         envelope = this.b1CompatTranslator.translateRequest(rawEvent, context.headers || {});
       }
-      
-      // 2. Schema 校验与归一化
+
+      // 2. 使用 AdapterContract 解码（如果可用）
+      envelope = await this._decodeInboundWithAdapter(adapterId, envelope, context);
+
+      // 3. 验证适配器签名（如果可用）
+      await this._verifyAdapterSignature(adapterId, envelope, context);
+
+      // 4. Schema 校验与归一化
       const validation = this.eventSchemaValidator.validateAndNormalize(envelope);
       if (!validation.valid) {
         throw new Errors.EventValidationError(
@@ -372,34 +378,34 @@ class ChannelHubService extends EventEmitter {
         );
       }
       envelope = validation.envelope;
-      
-      // 3. 事件去重
+
+      // 5. 事件去重
       const dedupResult = await this.eventDeduplicator.checkAndMark(envelope);
       if (dedupResult.isDuplicate) {
         this.logger.log(`[ChannelHub] Duplicate event detected: ${envelope.eventId}`);
         this.metricsCollector.incrementCounter('events_deduplicated', 1, { adapterId });
         return { status: 'duplicate', eventId: envelope.eventId };
       }
-      
-      // 4. 消息归一化
+
+      // 6. 消息归一化
       const normalizedMessages = this.messageNormalizer.normalizeMessages(envelope);
       envelope.payload.messages = normalizedMessages;
-      
-      // 5. 解析/创建会话绑定
+
+      // 7. 解析/创建会话绑定
       const sessionBinding = await this.sessionBindingStore.resolveBinding(envelope);
-      
-      // 6. 解析/创建身份映射
+
+      // 8. 解析/创建身份映射
       const identityMapping = await this.identityMappingStore.findOrCreateIdentity({
         platform: envelope.channel,
         platformUserId: envelope.sender?.userId || 'unknown',
         displayName: envelope.sender?.nick || 'User',
         metadata: { adapterId }
       });
-      
-      // 7. Agent 路由决策
+
+      // 9. Agent 路由决策
       const routeDecision = await this.agentRoutingPolicy.resolveRoute(envelope, sessionBinding);
-      
-      // 8. 审计：记录入站事件
+
+      // 10. 审计：记录入站事件
       this.auditLogger.logInboundEvent(envelope, traceId, {
         adapterId,
         routeDecision: {
@@ -408,22 +414,22 @@ class ChannelHubService extends EventEmitter {
           reason: routeDecision.routeReason
         }
       });
-      
-      // 9. 调用 Runtime
+
+      // 11. 调用 Runtime
       const runtimeResponse = await this.runtimeGateway.invoke(envelope, routeDecision);
-      
-      // 10. 归一化回复
+
+      // 12. 归一化回复
       const normalizedReply = this.replyNormalizer.normalize(runtimeResponse, {
         requestId: envelope.requestId || envelope.eventId,
         agentId: routeDecision.agentId,
         sessionKey: sessionBinding.bindingKey,
         resolvedTopicId: routeDecision.topicId
       });
-      
-      // 11. 更新会话活跃时间
+
+      // 13. 更新会话活跃时间
       await this.sessionBindingStore.touchSession(sessionBinding.bindingKey);
-      
-      // 12. 投递到出站队列
+
+      // 14. 投递到出站队列
       const jobId = await this.deliveryOutbox.enqueue({
         adapterId,
         channel: envelope.channel,
@@ -478,71 +484,11 @@ class ChannelHubService extends EventEmitter {
   }
   
   // ==================== 出站处理主流程 ====================
-  
+
   /**
    * 处理出站任务
    * @param {Object} job - 出站任务
-   * @returns {Promise<void>}
-   */
-  async processOutboundJob(job) {
-    const startTime = Date.now();
-    const traceId = this.auditLogger.generateTraceId();
-    
-    try {
-      this.metricsCollector.incrementCounter('outbound_jobs_total', 1, { adapterId: job.adapterId });
-      
-      // 1. 获取适配器
-      const adapter = await this.adapterRegistry.getAdapter(job.adapterId);
-      if (!adapter) {
-        throw new Errors.AdapterNotFoundError(`Adapter not found: ${job.adapterId}`);
-      }
-      
-      // 2. 获取平台能力
-      const capabilities = await this.capabilityRegistry.getProfile(job.adapterId);
-      
-      // 3. 能力降级（如果需要）
-      // 注意：当前 CapabilityDowngrader 期望 reply.parts，但我们用 messages[].content[]
-      // 这里做一层适配
-      let deliverableReply = job.payload;
-      if (deliverableReply.messages && Array.isArray(deliverableReply.messages)) {
-        for (const msg of deliverableReply.messages) {
-          if (msg.content && Array.isArray(msg.content)) {
-            msg.content = msg.content.map(part => {
-              const result = this.capabilityDowngrader.downgradePart(
-                part, job.channel, capabilities
-              );
-              return result.part;
-            });
-          }
-        }
-      }
-      
-      // 4. 记录出站投递
-      this.auditLogger.logOutboundDelivery(traceId, job, 'PROCESSING');
-      this.metricsCollector.recordOutboundMessage(job.adapterId, job.channel, {
-        parts: deliverableReply.messages?.length || 0
-      });
-      
-      // 5. 标记成功（实际投递由适配器完成，此处先标记）
-      const duration = Date.now() - startTime;
-      this.auditLogger.logOutboundDelivery(traceId, job, 'DELIVERED', { success: true });
-      this.metricsCollector.incrementCounter('outbound_jobs_success', 1, { adapterId: job.adapterId });
-      
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.auditLogger.logOutboundDelivery(traceId, job, 'FAILED', { 
-        success: false, error: error.message 
-      });
-      this.metricsCollector.incrementCounter('outbound_jobs_error', 1, { adapterId: job.adapterId });
-      
-      throw error;
-    }
-  }
-  
-  // ==================== 辅助方法 ====================
-  
-  /**
-   * 判断是否为B1格式事件
+   * @returns {Promise<Object>}
    */
   async processOutboundJob(job) {
     const startTime = Date.now();
@@ -558,11 +504,16 @@ class ChannelHubService extends EventEmitter {
 
       const adapterInstance = this.adapterRegistry.getAdapterInstance(job.adapterId);
       if (!adapterInstance) {
-        throw new Errors.DeliveryError(`Adapter runtime instance not found: ${job.adapterId}`, {
-          code: 'NOT_FOUND',
-          retryable: false,
-          details: { adapterId: job.adapterId }
-        });
+        // 尝试从 AdapterContract 动态创建实例
+        this.logger.log(`[ChannelHub] Adapter instance not found, attempting to create from contract: ${job.adapterId}`);
+        adapterInstance = await this._createAdapterInstanceFromContract(adapterConfig);
+        if (!adapterInstance) {
+          throw new Errors.DeliveryError(`Adapter runtime instance not found and could not be created: ${job.adapterId}`, {
+            code: 'NOT_FOUND',
+            retryable: false,
+            details: { adapterId: job.adapterId }
+          });
+        }
       }
 
       const capabilities = await this.capabilityRegistry.getProfile(job.adapterId);
@@ -656,12 +607,166 @@ class ChannelHubService extends EventEmitter {
     });
   }
 
+  /**
+   * 从 AdapterContract 动态创建适配器实例
+   * @param {Object} adapterConfig - 适配器配置
+   * @returns {Promise<Object|null>} AdapterContract 实例或 null
+   */
+  async _createAdapterInstanceFromContract(adapterConfig) {
+    if (!adapterConfig?.adapterId || !adapterConfig?.channel) {
+      return null;
+    }
+
+    const { adapterId, channel } = adapterConfig;
+
+    try {
+      let adapterModulePath;
+      let adapterExportName;
+
+      // 根据 channel 确定适配器路径和导出名称
+      switch (channel) {
+        case 'dingtalk':
+          adapterModulePath = '../Plugin/vcp-dingtalk-adapter/src/adapter/contract.js';
+          adapterExportName = 'DingTalkAdapter';
+          break;
+        case 'wework':
+          adapterModulePath = '../Plugin/vcp-wecom-adapter/src/adapter/contract.js';
+          adapterExportName = 'WecomAdapter';
+          break;
+        case 'qq':
+        case 'onebot':
+          adapterModulePath = '../Plugin/vcp-onebot-adapter/src/adapter/contract.js';
+          adapterExportName = 'OneBotAdapter';
+          break;
+        default:
+          return null;
+      }
+
+      // 使用动态 import 加载适配器模块
+      // 注意：Node.js require 不支持动态路径，使用 import() 需要绝对路径
+      const moduleUrl = new URL(adapterModulePath, `file://${process.cwd()}/`).href;
+      const module = await import(moduleUrl);
+
+      const AdapterClass = module[adapterExportName] || module.default?.[adapterExportName];
+      if (!AdapterClass) {
+        this.logger.warn(`[ChannelHub] Adapter class ${adapterExportName} not found in ${adapterModulePath}`);
+        return null;
+      }
+
+      // 创建实例
+      const adapterInstance = new AdapterClass({
+        metadata: {
+          id: adapterId,
+          channel,
+          displayName: adapterConfig.displayName || `${channel}-adapter`,
+          transportMode: adapterConfig.transportMode || 'http_webhook',
+          sessionGrammar: adapterConfig.sessionGrammar || `${channel}:{conversationType}:{conversationId}`,
+          capabilities: adapterConfig.capabilities || {}
+        },
+        options: {
+          logger: this.logger,
+          ...adapterConfig.options
+        }
+      });
+
+      // 初始化适配器
+      await adapterInstance.initialize();
+
+      // 注册到适配器注册中心
+      this.adapterRegistry.registerAdapterInstance(adapterId, adapterInstance);
+
+      this.logger.log(`[ChannelHub] Created adapter instance for ${adapterId} (${channel})`);
+      return adapterInstance;
+    } catch (error) {
+      this.logger.error(`[ChannelHub] Failed to create adapter instance for ${adapterId}:`, error);
+      return null;
+    }
+  }
+
   _isB1Format(event) {
     // B1 格式特征：没有 version 字段，有 platform/payload 或直接有 agentId + messages
     return event && !event.version && (
       (event.platform && event.payload) ||
       (event.agentId && event.messages)
     );
+  }
+
+  /**
+   * 使用 AdapterContract 解码入站事件
+   * @param {string} adapterId - 适配器ID
+   * @param {Object} envelope - 事件信封
+   * @param {Object} context - 请求上下文
+   * @returns {Promise<Object>} 解码后的事件信封
+   */
+  async _decodeInboundWithAdapter(adapterId, envelope, context = {}) {
+    // 如果已经是 B2 格式（有 version 字段），跳过 AdapterContract 解码
+    if (envelope.version) {
+      return envelope;
+    }
+
+    try {
+      const adapterConfig = await this.adapterRegistry.getAdapter(adapterId);
+      if (!adapterConfig) {
+        this.logger.warn(`[ChannelHub] Adapter not found: ${adapterId}, skipping decodeInbound`);
+        return envelope;
+      }
+
+      const adapterInstance = this.adapterRegistry.getAdapterInstance(adapterId);
+      if (!adapterInstance) {
+        // 尝试动态创建实例
+        this.logger.log(`[ChannelHub] Adapter instance not found, attempting to create for decode: ${adapterId}`);
+        const createdInstance = await this._createAdapterInstanceFromContract(adapterConfig);
+        if (createdInstance) {
+          // 使用新创建的实例解码
+          return await createdInstance.decodeInbound(envelope, context);
+        }
+        this.logger.warn(`[ChannelHub] Could not create adapter instance for decode: ${adapterId}`);
+        return envelope;
+      }
+
+      // 使用现有实例解码
+      return await adapterInstance.decodeInbound(envelope, context);
+    } catch (error) {
+      this.logger.error(`[ChannelHub] decodeInbound failed for ${adapterId}:`, error);
+      // 解码失败时返回原始 envelope，让后续流程处理
+      return envelope;
+    }
+  }
+
+  /**
+   * 验证适配器签名
+   * @param {string} adapterId - 适配器ID
+   * @param {Object} envelope - 事件信封
+   * @param {Object} context - 请求上下文
+   * @returns {Promise<void>}
+   */
+  async _verifyAdapterSignature(adapterId, envelope, context = {}) {
+    try {
+      const adapterInstance = this.adapterRegistry.getAdapterInstance(adapterId);
+      if (!adapterInstance?.verifySignature) {
+        // 适配器未加载或不支持签名验证，跳过
+        return;
+      }
+
+      // 构建 requestContext 用于签名验证
+      const requestContext = {
+        headers: context.headers || {},
+        query: context.query || {},
+        rawBody: context.rawBody || null,
+        sourceIp: context.sourceIp || null
+      };
+
+      const result = await adapterInstance.verifySignature(requestContext);
+      if (!result.valid) {
+        this.logger.warn(`[ChannelHub] Signature validation failed for ${adapterId}: ${result.reason}`);
+        // 签名验证失败，但不阻断流程（由业务层决定）
+      } else {
+        this.logger.debug(`[ChannelHub] Signature validation passed for ${adapterId}`);
+      }
+    } catch (error) {
+      this.logger.error(`[ChannelHub] verifySignature failed for ${adapterId}:`, error);
+      // 签名验证异常不影响主流程
+    }
   }
   
   /**
