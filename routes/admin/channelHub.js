@@ -260,7 +260,11 @@ router.post('/adapters', async (req, res) => {
       status: adapterConfig.status || 'inactive'
     });
     
-    return ok(res, adapter, 'Adapter created successfully', 201);
+    return ok(res, adapter, 'Adapter created successfully', 201, {
+      hints: [
+        'B1 compatibility is frozen. New adapters should use B2 endpoint: /internal/channel-hub/events'
+      ]
+    });
   } catch (error) {
     return fail(res, error, 400);
   }

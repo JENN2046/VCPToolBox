@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "timeoutMinutes": 5,
   "approveAll": false,
+  "timeoutMinutes": 60,
   "approvalList": [
     "SciCalculator",
     "PowerShellExecutor"

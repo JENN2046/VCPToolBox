@@ -75,7 +75,7 @@ class AdapterAuthManager {
    * @param {string} [sourceIp] - 来源 IP
    * @returns {Promise<{authenticated: boolean, adapterId?: string, error?: string}>}
    */
-  async authenticate(headers, sourceIp = null) {
+  async authenticate(headers, sourceIp = null, adapterIdHint = null) {
     // TODO: 实现认证逻辑
     // 1. 从 headers 中提取 adapterId 和签名
     // 2. 查询 adapter 配置
@@ -83,17 +83,17 @@ class AdapterAuthManager {
     // 4. 验证 IP 白名单
     // 5. 检查 adapter 是否启用
     
-    const adapterId = headers['x-channel-adapter-id'];
-    const signature = headers['x-channel-signature'];
-    const timestamp = headers['x-channel-request-timestamp'];
-    const bridgeKey = headers['x-channel-bridge-key'];
-    const authorization = headers['authorization'];
+    const normalizedHeaders = headers || {};
+    const adapterId = normalizedHeaders['x-channel-adapter-id'] || adapterIdHint || null;
+    const bridgeKey = normalizedHeaders['x-channel-bridge-key'];
+    const authorization = normalizedHeaders['authorization'];
+    const authMode = this._getAuthMode();
     
     // B1 兼容模式：使用全局 Key
     if (!adapterId && this.globalKey) {
       const isGlobalAuth = this._validateGlobalKey(bridgeKey, authorization);
       if (isGlobalAuth) {
-        return { authenticated: true, adapterId: 'legacy-b1' };
+        return { authenticated: true, adapterId: 'legacy-b1', mode: authMode };
       }
     }
     
@@ -102,31 +102,145 @@ class AdapterAuthManager {
       const adapter = await this.adapterRegistry.getAdapter(adapterId);
       
       if (!adapter) {
-        return { authenticated: false, error: 'Adapter not found' };
+        return {
+          authenticated: false,
+          error: 'Adapter not found',
+          reasonCode: 'ADAPTER_NOT_FOUND',
+          mode: authMode
+        };
       }
       
-      if (!adapter.enabled) {
-        return { authenticated: false, error: 'Adapter is disabled' };
+      if (!this._isAdapterEnabled(adapter)) {
+        return {
+          authenticated: false,
+          error: 'Adapter is disabled',
+          reasonCode: 'ADAPTER_DISABLED',
+          mode: authMode
+        };
       }
       
       // 验证密钥
       const keyValid = await this._validateAdapterKey(adapter, bridgeKey, authorization);
       if (!keyValid) {
-        return { authenticated: false, error: 'Invalid adapter key' };
+        return this._handleObservedFailure(
+          authMode,
+          adapterId,
+          'Invalid adapter key',
+          'INVALID_ADAPTER_KEY'
+        );
       }
       
       // 验证 IP 白名单
-      if (sourceIp && adapter.ipWhitelist && adapter.ipWhitelist.length > 0) {
-        const ipValid = this._validateIpWhitelist(sourceIp, adapter.ipWhitelist);
+      const ipWhitelist = this._getAdapterIpWhitelist(adapter);
+      if (sourceIp && ipWhitelist.length > 0) {
+        const ipValid = this._validateIpWhitelist(sourceIp, ipWhitelist);
         if (!ipValid) {
-          return { authenticated: false, error: 'IP not in whitelist' };
+          return this._handleObservedFailure(
+            authMode,
+            adapterId,
+            'IP not in whitelist',
+            'IP_NOT_IN_WHITELIST'
+          );
         }
       }
       
-      return { authenticated: true, adapterId };
+      return { authenticated: true, adapterId, mode: authMode };
     }
     
-    return { authenticated: false, error: 'Missing authentication' };
+    return this._handleObservedFailure(authMode, adapterId, 'Missing authentication', 'MISSING_AUTH');
+  }
+
+  _getAuthMode() {
+    const mode = (this.config.CHANNEL_HUB_AUTH_MODE || process.env.CHANNEL_HUB_AUTH_MODE || 'observe')
+      .toLowerCase()
+      .trim();
+    return mode === 'enforce' ? 'enforce' : 'observe';
+  }
+
+  _handleObservedFailure(authMode, adapterId, error, reasonCode) {
+    if (authMode === 'enforce') {
+      return { authenticated: false, adapterId, error, reasonCode, mode: authMode };
+    }
+
+    return {
+      authenticated: true,
+      adapterId,
+      mode: authMode,
+      observed: true,
+      observation: {
+        type: 'AUTH_OBSERVED_FAIL',
+        reasonCode,
+        message: error,
+        adapterId: adapterId || 'unknown',
+        observedAt: new Date().toISOString()
+      }
+    };
+  }
+
+  _isAdapterEnabled(adapter) {
+    if (!adapter || typeof adapter !== 'object') return false;
+
+    if (typeof adapter.status === 'string') {
+      return adapter.status.toLowerCase() === 'active';
+    }
+
+    if (typeof adapter.enabled === 'boolean') {
+      return adapter.enabled;
+    }
+
+    return true;
+  }
+
+  _getAdapterIpWhitelist(adapter) {
+    if (Array.isArray(adapter?.ipWhitelist)) {
+      return adapter.ipWhitelist;
+    }
+    if (Array.isArray(adapter?.authConfig?.ipWhitelist)) {
+      return adapter.authConfig.ipWhitelist;
+    }
+    if (Array.isArray(adapter?.config?.ipWhitelist)) {
+      return adapter.config.ipWhitelist;
+    }
+    return [];
+  }
+
+  _getAdapterSecrets(adapter) {
+    const candidateKeys = [
+      adapter?.secret,
+      adapter?.config?.bridgeKey,
+      adapter?.config?.adapterKey,
+      adapter?.authConfig?.secret,
+      adapter?.bridgeKey
+    ];
+
+    const unique = new Set();
+    for (const value of candidateKeys) {
+      if (typeof value === 'string' && value.trim()) {
+        unique.add(value.trim());
+      }
+    }
+    return [...unique];
+  }
+
+  async _isKeyValidV2(adapter, key) {
+    const now = Date.now();
+    const candidates = this._getAdapterSecrets(adapter);
+    if (candidates.includes(key)) {
+      if (adapter.secretExpiresAt && now > adapter.secretExpiresAt) {
+        return false;
+      }
+      return true;
+    }
+
+    if (adapter.transitionSecrets && Array.isArray(adapter.transitionSecrets)) {
+      for (const ts of adapter.transitionSecrets) {
+        if (ts.secret === key && ts.expiresAt > now) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -297,11 +411,12 @@ class AdapterAuthManager {
     const adapter = await this.adapterRegistry.getAdapter(adapterId);
     if (!adapter) return false;
     
-    if (!adapter.ipWhitelist || adapter.ipWhitelist.length === 0) {
+    const ipWhitelist = this._getAdapterIpWhitelist(adapter);
+    if (ipWhitelist.length === 0) {
       return true; // 未配置白名单则允许所有
     }
     
-    return this._validateIpWhitelist(sourceIp, adapter.ipWhitelist);
+    return this._validateIpWhitelist(sourceIp, ipWhitelist);
   }
 
   /**
@@ -343,7 +458,7 @@ class AdapterAuthManager {
     }
 
     // 使用扩展验证方法（支持当前密钥和过渡密钥）
-    return await this._isKeyValid(adapter, keyToValidate);
+    return await this._isKeyValidV2(adapter, keyToValidate);
   }
 
   /**

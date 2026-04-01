@@ -1,208 +1,328 @@
-import { config } from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import dns from 'dns';
+/**
+ * VCP DingTalk Adapter - Entry Point (New Architecture)
+ * 
+ * Based on AdapterContract standard interface
+ * Supports VCP Channel Hub B2 Protocol
+ */
 
-// 使用公共 DNS 绕过本地 DNS 污染（本地 DNS 将钉钉 WebSocket 域名解析到内网地址导致 ENOTFOUND）
-// 支持通过环境变量 DNS_SERVERS 自定义，格式：逗号分隔的 IP 地址列表
-const defaultDnsServers = ['8.8.8.8', '8.8.4.4', '223.5.5.5', '223.6.6.6'];
-const dnsServersEnv = process.env.DNS_SERVERS;
-const dnsServers = dnsServersEnv
-  ? dnsServersEnv.split(',').map(s => s.trim()).filter(Boolean)
-  : defaultDnsServers;
-dns.setServers(dnsServers);
+import dotenv from 'dotenv';
+dotenv.config();
 
-// 显式加载插件目录下的 .env 文件
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-config({ path: join(__dirname, '..', '.env') });
-
-import { startStreamReceiver } from './adapters/dingtalk/streamReceiver.js';
-import { createDingSender } from './adapters/dingtalk/sender.js';
+import { DingTalkAdapter, createDingTalkAdapter } from './adapter/contract.js';
 import { createVcpClient } from './adapters/vcp/client.js';
-import { createMessagePipeline } from './core/pipeline.js';
 
-function createLogger(level = 'info') {
-  const levels = ['debug', 'info', 'warn', 'error'];
-  const current = levels.indexOf(level);
-
-  const enabled = (target) => levels.indexOf(target) >= current;
-
-  return {
-    debug(...args) {
-      if (enabled('debug')) console.debug('[DEBUG]', ...args);
-    },
-    info(...args) {
-      if (enabled('info')) console.info('[INFO]', ...args);
-    },
-    warn(...args) {
-      if (enabled('warn')) console.warn('[WARN]', ...args);
-    },
-    error(...args) {
-      if (enabled('error')) console.error('[ERROR]', ...args);
-    },
-  };
-}
-
-function assertEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env: ${name}`);
-  }
-  return value;
-}
+const logger = {
+  info: (...args) => console.log('[INFO]', ...args),
+  warn: (...args) => console.warn('[WARN]', ...args),
+  error: (...args) => console.error('[ERROR]', ...args),
+  debug: (...args) => {
+    if (process.env.LOG_LEVEL === 'debug') {
+      console.debug('[DEBUG]', ...args);
+    }
+  },
+};
 
 async function main() {
-  const logger = createLogger(process.env.LOG_LEVEL || 'info');
+  logger.info('='.repeat(60));
+  logger.info('🚀 VCP DingTalk Adapter (New Architecture) Starting...');
+  logger.info('='.repeat(60));
 
-  assertEnv('DING_APP_KEY');
-  assertEnv('DING_APP_SECRET');
-
-  const bridgeUrl = process.env.VCP_CHANNEL_BRIDGE_URL || 'http://127.0.0.1:6005/internal/channel-ingest';
-
-  const agentId = process.env.VCP_AGENT_NAME || 'Nova';
-  const agentDisplayName = process.env.VCP_AGENT_DISPLAY_NAME || 'Coffee';
-
-  const vcpClient = createVcpClient({
-    bridgeUrl,
-    bridgeKey: process.env.VCP_CHANNEL_BRIDGE_KEY || '',
-    useBridge: String(process.env.VCP_USE_CHANNEL_BRIDGE || 'true').toLowerCase() !== 'false',
-
-    baseUrl: process.env.VCP_BASE_URL || 'http://127.0.0.1:6005',
-    chatPath: process.env.VCP_CHAT_PATH || '/v1/chat/completions',
-    apiKey: process.env.VCP_API_KEY || '',
-    model: process.env.VCP_MODEL || agentId,
-    defaultAgentName: agentId,
-    defaultAgentDisplayName: agentDisplayName,
-    timeoutMs: Number(process.env.VCP_TIMEOUT_MS || 120000),
-    logger,
-  });
-
-  const dingSender = createDingSender({
-    logger,
+  // ==================== 配置加载 ====================
+  const config = {
+    // 钉钉配置
     appKey: process.env.DING_APP_KEY,
     appSecret: process.env.DING_APP_SECRET,
+    
+    // VCP Channel Hub 配置
+    useBridge: process.env.VCP_USE_CHANNEL_BRIDGE === 'true',
+    bridgeUrl: process.env.VCP_CHANNEL_BRIDGE_URL,
+    bridgeKey: process.env.VCP_CHANNEL_BRIDGE_KEY,
+    bridgeVersion: process.env.VCP_CHANNEL_HUB_VERSION || 'b2',
+    adapterId: process.env.VCP_ADAPTER_ID || 'dingtalk-adapter-01',
+    
+    // Agent 配置
+    agentName: process.env.VCP_AGENT_NAME,
+    agentDisplayName: process.env.VCP_AGENT_DISPLAY_NAME,
+    
+    // 回退配置
+    baseUrl: process.env.VCP_BASE_URL,
+    apiKey: process.env.VCP_API_KEY,
+    model: process.env.VCP_MODEL || 'Nova',
+    timeoutMs: parseInt(process.env.VCP_TIMEOUT_MS || '120000', 10),
+  };
+
+  // 验证必要配置
+  if (!config.appKey || !config.appSecret) {
+    throw new Error('Missing DING_APP_KEY or DING_APP_SECRET');
+  }
+
+  logger.info('📋 Configuration loaded:', {
+    adapterId: config.adapterId,
+    bridgeVersion: config.bridgeVersion,
+    agentName: config.agentName,
+    useBridge: config.useBridge,
   });
 
-  const onMessage = createMessagePipeline({
-    vcpClient,
-    dingSender,
+  // ==================== 初始化组件 ====================
+  
+  // 1. 创建 DingTalk 适配器实例
+  const adapter = createDingTalkAdapter({
+    options: {
+      appKey: config.appKey,
+      appSecret: config.appSecret,
+      logger,
+    },
+  });
+
+  // 2. 创建 VCP 客户端实例
+  const vcpClient = createVcpClient({
+    useBridge: config.useBridge,
+    bridgeUrl: config.bridgeUrl,
+    bridgeKey: config.bridgeKey,
+    bridgeVersion: config.bridgeVersion,
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    model: config.model,
+    defaultAgentName: config.agentName,
+    defaultAgentDisplayName: config.agentDisplayName,
+    timeoutMs: config.timeoutMs,
     logger,
-    defaultAgentName: agentId,
   });
 
-  const onCardAction = async (event) => {
-    logger.info('[card] callback received');
-    logger.debug(event?.data || event);
+  // 3. 初始化适配器
+  logger.info('🔧 Initializing DingTalk Adapter...');
+  await adapter.initialize();
+  logger.info('✓ DingTalk Adapter initialized successfully');
 
+  // 4. 健康检查
+  const health = await adapter.healthCheck();
+  logger.info('🏥 Health check:', health);
+
+  if (!health.healthy) {
+    logger.warn('⚠️ Adapter health check failed, but continuing...');
+  }
+
+  // ==================== 消息处理回调 ====================
+  
+  /**
+   * 处理钉钉消息 → 转发到 VCP
+   */
+  async function handleDingTalkMessage(rawPayload) {
+    const requestId = rawPayload?.msgId || rawPayload?.messageId || `dt_${Date.now()}`;
+    
     try {
-      // 解析卡片回调数据
-      const data = event?.data || event || {};
-      const content = typeof data.content === 'string' ? JSON.parse(data.content) : data.content || data;
-
-      // 提取关键信息
-      const actionValue = content?.value || {};
-      const action = actionValue.action || '';
-      const selectedValue = actionValue.value || '';
-      const conversationId = actionValue.conversationId || '';
-      const userId = actionValue.userId || '';
-      const robotCode = actionValue.robotCode || '';
-      const chatType = actionValue.chatType || 'single';
-
-      // 只处理 vcp_option 类型的回调
-      if (action !== 'vcp_option' || !selectedValue) {
-        logger.info('[card] ignoring non-vcp_option callback', { action, selectedValue });
-        return;
-      }
-
-      logger.info('[card] user selected option', {
-        selectedValue,
-        conversationId,
-        userId,
-        chatType,
+      logger.info('📨 Received DingTalk message:', {
+        requestId,
+        msgtype: rawPayload?.msgtype,
+        conversationId: rawPayload?.data?.conversationId,
       });
 
-      // 构建会话键
-      const sessionKey = ['dingtalk', chatType, conversationId, userId || 'anonymous'].join(':');
+      // 1. 使用适配器解码入站消息
+      const event = await adapter.decodeInbound(rawPayload, {
+        sourceIp: null,
+        traceId: requestId,
+      });
 
-      // 将用户选择作为消息发送给 VCP
+      logger.info('📦 Decoded event:', {
+        eventId: event.eventId,
+        eventType: event.eventType,
+        sessionKey: event.session?.externalSessionKey,
+        messageCount: event.payload?.messages?.length,
+      });
+
+      // 2. 提取消息内容
+      const userMessage = event.payload.messages[0];
+      const messageContent = userMessage?.content || [];
+
+      // 3. 发送到 VCP Channel Hub
+      logger.info('📤 Sending to VCP Channel Hub...');
       const vcpResponse = await vcpClient.sendMessage({
-        agentName: agentId,
-        agentDisplayName: agentDisplayName,
-        externalSessionKey: sessionKey,
-        message: selectedValue,
+        agentName: config.agentName,
+        agentDisplayName: config.agentDisplayName,
+        externalSessionKey: event.session.externalSessionKey,
+        message: messageContent,
         metadata: {
-          platform: 'dingtalk',
-          conversationId,
-          userId,
-          robotCode,
-          chatType,
-          isCardAction: true,
-          cardAction: 'option_select',
+          ...event.metadata.platformData,
+          conversationId: event.client.conversationId,
+          conversationType: event.client.conversationType,
+          userId: event.sender.userId,
+          senderNick: event.sender.nick,
+          messageId: event.client.messageId,
         },
       });
 
-      // 提取回复并发送
-      const richReply = vcpClient.extractRichReply(vcpResponse);
+      logger.info('📥 VCP response received');
 
-      logger.info('[card] VCP response for card action =>', {
-        textLength: String(richReply?.text || '').length,
-        hasOptions: Array.isArray(richReply?.options) && richReply.options.length > 0,
+      // 4. 提取回复内容
+      const richReply = vcpClient.extractRichReply(vcpResponse);
+      
+      logger.info('💬 Reply content:', {
+        textLength: richReply.text?.length || 0,
+        imageCount: richReply.images?.length || 0,
+        fileCount: richReply.files?.length || 0,
       });
 
-      // 发送回复
-      const hasOptions = Array.isArray(richReply?.options) && richReply.options.length > 0;
-
-      if (hasOptions && typeof dingSender.sendInteractiveCard === 'function') {
-        // 如果有选项，发送新的互动卡片
-        await dingSender.sendInteractiveCard({
-          conversationId,
-          userId,
-          robotCode,
-          sessionWebhook: '', // 卡片回调没有 sessionWebhook
-          sessionWebhookExpiredTime: 0,
-          chatType,
-          title: '请选择',
-          text: richReply.text || '',
-          options: richReply.options,
+      // 5. Bridge 模式下由 ChannelHub DeliveryOutbox 负责出站投递，避免本地重复发送
+      if (config.useBridge) {
+        logger.info('↪ Reply delivery delegated to ChannelHub outbound pipeline', {
+          requestId,
+          status: vcpResponse?.status || 'unknown',
+          jobId: vcpResponse?.jobId || null,
         });
-      } else if (richReply.text) {
-        // 否则发送文本回复
-        await dingSender.replyText({
-          conversationId,
-          userId,
-          robotCode,
-          sessionWebhook: '',
-          sessionWebhookExpiredTime: 0,
-          text: richReply.text,
+      } else if (richReply.text || richReply.images?.length > 0 || richReply.files?.length > 0) {
+        await sendReplyToDingTalk(event, richReply);
+      }
+
+      return { success: true, requestId };
+    } catch (error) {
+      logger.error('❌ Failed to process message:', error);
+      // 发送错误通知
+      await sendErrorNotification(rawPayload, error.message);
+      return { success: false, requestId, error: error.message };
+    }
+  }
+
+  /**
+   * 发送回复到钉钉
+   */
+  async function sendReplyToDingTalk(event, richReply) {
+    try {
+      // 构建标准回复格式
+      const messages = [];
+
+      // 添加文本
+      if (richReply.text) {
+        messages.push({
+          type: 'text',
+          content: richReply.text,
         });
       }
-    } catch (error) {
-      logger.error('[card] failed to process card action', error);
-    }
-  };
 
-  const client = await startStreamReceiver({
-    onMessage,
-    onCardAction,
+      // 添加图片
+      if (richReply.images && richReply.images.length > 0) {
+        for (const img of richReply.images) {
+          messages.push({
+            type: 'image_url',
+            image_url: {
+              url: img.source,
+              fileName: img.fileName || 'image.jpg',
+            },
+          });
+        }
+      }
+
+      // 添加文件
+      if (richReply.files && richReply.files.length > 0) {
+        for (const file of richReply.files) {
+          messages.push({
+            type: 'file',
+            url: file.source,
+            fileName: file.fileName || 'file',
+          });
+        }
+      }
+
+      // 构建会话描述符
+      const sessionDescriptor = {
+        conversationId: event.client.conversationId,
+        conversationType: event.client.conversationType,
+        bindingKey: event.session.bindingKey,
+        externalSessionKey: event.session.externalSessionKey,
+        metadata: event.metadata.platformData,
+      };
+
+      logger.info('📮 Sending reply to DingTalk:', {
+        conversationId: sessionDescriptor.conversationId,
+        conversationType: sessionDescriptor.conversationType,
+        messageCount: messages.length,
+      });
+
+      // 通过适配器发送
+      const sendResult = await adapter.sendBySession(sessionDescriptor, messages, {
+        metadata: event.metadata.platformData,
+      });
+
+      logger.info('✓ Reply sent successfully:', sendResult);
+      return sendResult;
+    } catch (error) {
+      logger.error('❌ Failed to send reply:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 发送错误通知
+   */
+  async function sendErrorNotification(rawPayload, errorMessage) {
+    try {
+      const sessionWebhook = rawPayload?.data?.sessionWebhook;
+
+      if (!sessionWebhook) {
+        logger.warn('⚠️ Cannot send error notification: no sessionWebhook');
+        return;
+      }
+
+      // 使用简单的 sessionWebhook 发送错误消息
+      const errorPayload = {
+        msgtype: 'text',
+        text: {
+          content: `⚠️ 消息处理失败：${errorMessage}`,
+        },
+      };
+
+      await fetch(sessionWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(errorPayload),
+      });
+
+      logger.info('✓ Error notification sent');
+    } catch (error) {
+      logger.error('❌ Failed to send error notification:', error);
+    }
+  }
+
+  // ==================== 启动 Stream 接收器 ====================
+  
+  logger.info('🔌 Starting DingTalk Stream connection...');
+  
+  const { startStreamReceiver } = await import('./adapters/dingtalk/streamReceiver.js');
+  
+  const streamClient = await startStreamReceiver({
+    onMessage: async (message) => {
+      await handleDingTalkMessage(message);
+    },
+    onCardAction: async (action) => {
+      logger.info('🎴 Card action received:', action);
+    },
     logger,
   });
 
-  logger.info('vcp-dingtalk-adapter started');
+  // ==================== 完成启动 ====================
+  
+  logger.info('='.repeat(60));
+  logger.info('✅ VCP DingTalk Adapter is ready!');
+  logger.info('📡 Waiting for DingTalk messages...');
+  logger.info('='.repeat(60));
 
+  // 优雅退出处理
   process.on('SIGINT', async () => {
-    logger.warn('SIGINT received, shutting down...');
-    try {
-      if (typeof client?.close === 'function') {
-        await client.close();
-      }
-    } finally {
-      process.exit(0);
-    }
+    logger.info('👋 Shutting down...');
+    await adapter.shutdown();
+    streamClient.close?.();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    logger.info('👋 Shutting down...');
+    await adapter.shutdown();
+    streamClient.close?.();
+    process.exit(0);
   });
 }
 
+// 启动应用
 main().catch((error) => {
-  console.error('[FATAL]', error);
+  console.error('[FATAL] Adapter failed to start:', error);
   process.exit(1);
 });

@@ -19,7 +19,7 @@
   "properties": {
     "version": {
       "type": "string",
-      "const": "B2",
+      "enum": ["2.0", "B2"],
       "description": "协议版本，固定为B2"
     },
     "eventId": {

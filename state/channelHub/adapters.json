@@ -9,24 +9,24 @@
         "appId": "dingmj164t5osptvlcba",
         "appSecret": "L70BzLfc-_jcJ41lvrCtA8V5UMjwJSoKy4Q95Dg8lOJsAZdNKvtkief6v2OuV2nC",
         "appKey": "dingmj164t5osptvlcba",
-        "bridgeUrl": "http://127.0.0.1:6005/internal/channel-ingest",
+        "bridgeUrl": "http://127.0.0.1:6005/internal/channel-hub/events",
         "useBridge": false,
         "debugRawEvent": true,
         "debugRawResponse": false,
         "debugRichReply": false,
         "bridgeKey": "MCPEyzazglkN1lYqlDQvRfcruOZvTpuySBbmZq",
         "sdkPackage": "dingtalk-stream",
-        "defaultAgentId": "_Agent_1774369366544_1774369366543",
+        "defaultAgentId": "动力猛兽",
         "defaultAgentDisplayName": "动力猛兽",
         "baseUrl": "http://127.0.0.1:6005",
         "chatPath": "/v1/chat/completions",
         "apiKey": "hRUHzybOFm7BxyQo7BnZeL6",
-        "model": "AL-kimi-k2.5",
+        "model": "NV-qwen3.5-397b-a17b",
         "timeoutMs": 120000
       },
-      "status": "inactive",
+      "status": "active",
       "createdAt": "2026-03-23T07:41:30.265Z",
-      "updatedAt": "2026-03-24T17:11:36.479Z",
+      "updatedAt": "2026-03-29T08:07:59.565Z",
       "capabilityProfile": {
         "supportsText": true,
         "supportsMarkdown": false,
@@ -54,7 +54,7 @@
         "corpId": "your_corp_id",
         "agentId": "your_agent_id",
         "callbackUrl": "http://your-domain.com:6090/webhook",
-        "channelHubUrl": "http://127.0.0.1:6010/internal/channel-hub/events",
+        "channelHubUrl": "http://127.0.0.1:6005/internal/channel-hub/events",
         "bridgeKey": "your_adapter_secret"
       },
       "status": "inactive",
@@ -80,5 +80,5 @@
       "priority": 50
     }
   },
-  "lastUpdated": 1774372296479
+  "lastUpdated": 1774771679565
 }

@@ -1,5 +1,160 @@
 {
   "version": "1.0.0",
-  "mappings": {},
-  "lastUpdated": null
+  "mappings": {
+    "identity_mna4avdj_f6fa21679fc3795c": {
+      "id": "identity_mna4avdj_f6fa21679fc3795c",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "115404121726588334",
+      "internalUserId": "user_mna4avdj_fd33290f351b4cdc",
+      "displayName": "梁正杰",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774689491287,
+      "linkedBy": "system",
+      "updatedAt": 1774689491287
+    },
+    "identity_mna4cbxi_588aa5def7ed15a4": {
+      "id": "identity_mna4cbxi_588aa5def7ed15a4",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "probe-user",
+      "internalUserId": "user_mna4cbxh_4927749070f42eab",
+      "displayName": "probe",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774689559398,
+      "linkedBy": "system",
+      "updatedAt": 1774689559398
+    },
+    "identity_mnbjufz3_16649ce32fc94066": {
+      "id": "identity_mnbjufz3_16649ce32fc94066",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "test_user",
+      "internalUserId": "user_mnbjufz3_b076bbd793b551db",
+      "displayName": "User",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774776064863,
+      "linkedBy": "system",
+      "updatedAt": 1774776064863
+    },
+    "identity_mnbkn2ha_fbd28d06c01070f8": {
+      "id": "identity_mnbkn2ha_fbd28d06c01070f8",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "test_user_001",
+      "internalUserId": "user_mnbkn2h9_0284d18ad39f2734",
+      "displayName": "User",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774777400398,
+      "linkedBy": "system",
+      "updatedAt": 1774777400398
+    },
+    "identity_mnbl6q4w_ff929eace2fce1a3": {
+      "id": "identity_mnbl6q4w_ff929eace2fce1a3",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "test_user_002",
+      "internalUserId": "user_mnbl6q4w_869b4a0d6aa0e19e",
+      "displayName": "User",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774778317520,
+      "linkedBy": "system",
+      "updatedAt": 1774778317520
+    },
+    "identity_mnblnnow_dd087cc4a5b54cac": {
+      "id": "identity_mnblnnow_dd087cc4a5b54cac",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "test_user_003",
+      "internalUserId": "user_mnblnnov_db9432eb32128e45",
+      "displayName": "User",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774779107504,
+      "linkedBy": "system",
+      "updatedAt": 1774779107504
+    },
+    "identity_mnbm6jpp_832fb78af86decdd": {
+      "id": "identity_mnbm6jpp_832fb78af86decdd",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "test_user_004",
+      "internalUserId": "user_mnbm6j7u_31a43da089d0b046",
+      "displayName": "User",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774779988813,
+      "linkedBy": "system",
+      "updatedAt": 1774779988813
+    },
+    "identity_mnbmn432_a1f0002f34772653": {
+      "id": "identity_mnbmn432_a1f0002f34772653",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "unknown",
+      "internalUserId": "user_mnbmn3j5_a99bb7e9dd3c88c2",
+      "displayName": "User",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774780761710,
+      "linkedBy": "system",
+      "updatedAt": 1774780761710
+    },
+    "identity_mnboh6si_9adb8af2d1ce2058": {
+      "id": "identity_mnboh6si_9adb8af2d1ce2058",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "process-test-user",
+      "internalUserId": "user_mnboh6si_4cd5db8b64033c45",
+      "displayName": "Process Tester",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774783844514,
+      "linkedBy": "system",
+      "updatedAt": 1774783844514
+    },
+    "identity_mnbok27l_6bf3ecb8e61e8851": {
+      "id": "identity_mnbok27l_6bf3ecb8e61e8851",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "process-test-user-2",
+      "internalUserId": "user_mnbok27l_3cef3a5ac3c1e59f",
+      "displayName": "Process Tester",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774783978545,
+      "linkedBy": "system",
+      "updatedAt": 1774783978545
+    },
+    "identity_mnboln6v_2edce7e78fc345b9": {
+      "id": "identity_mnboln6v_2edce7e78fc345b9",
+      "adapterId": null,
+      "platform": "dingtalk",
+      "platformUserId": "process-test-user-3",
+      "internalUserId": "user_mnboln6v_fae738740319c870",
+      "displayName": "Process Tester",
+      "metadata": {
+        "adapterId": "dingtalk-adapter-01"
+      },
+      "linkedAt": 1774784052391,
+      "linkedBy": "system",
+      "updatedAt": 1774784052391
+    }
+  },
+  "lastUpdated": 1774784052391
 }

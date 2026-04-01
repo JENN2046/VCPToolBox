@@ -15,7 +15,7 @@
  * 参考文档：docs/interaction-middleware/VCP_INTERACTION_MIDDLEWARE_SCHEMA.md 第 7 节
  */
 
-const { AdapterContractError } = require('./errors');
+const { ChannelHubError } = require('./errors');
 
 // ==================== 类型定义 ====================
 
@@ -80,7 +80,7 @@ const { AdapterContractError } = require('./errors');
 
 // ==================== 标准错误 ====================
 
-class AdapterContractError extends AdapterContractError {
+class AdapterContractError extends ChannelHubError {
   constructor(message, options = {}) {
     super(message, {
       code: 'ADAPTER_CONTRACT_ERROR',

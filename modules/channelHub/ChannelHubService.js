@@ -20,6 +20,7 @@
  */
 
 const EventEmitter = require('events');
+const path = require('path');
 
 // 导入所有子模块
 const Constants = require('./constants');
@@ -502,7 +503,7 @@ class ChannelHubService extends EventEmitter {
         throw new Errors.AdapterNotFoundError(`Adapter not found: ${job.adapterId}`);
       }
 
-      const adapterInstance = this.adapterRegistry.getAdapterInstance(job.adapterId);
+      let adapterInstance = this.adapterRegistry.getAdapterInstance(job.adapterId);
       if (!adapterInstance) {
         // 尝试从 AdapterContract 动态创建实例
         this.logger.log(`[ChannelHub] Adapter instance not found, attempting to create from contract: ${job.adapterId}`);
@@ -588,8 +589,13 @@ class ChannelHubService extends EventEmitter {
         continue;
       }
 
+      let outboundPayload = payload.reply;
+      if (methodName === 'sendBySession' && typeof adapterInstance?.encodeOutbound === 'function') {
+        outboundPayload = await adapterInstance.encodeOutbound(payload.reply, payload);
+      }
+
       if (adapterInstance[methodName].length >= 2) {
-        return adapterInstance[methodName](payload.session, payload.reply, payload);
+        return adapterInstance[methodName](payload.session, outboundPayload, payload);
       }
 
       return adapterInstance[methodName](payload);
@@ -626,16 +632,17 @@ class ChannelHubService extends EventEmitter {
       // 根据 channel 确定适配器路径和导出名称
       switch (channel) {
         case 'dingtalk':
-          adapterModulePath = '../Plugin/vcp-dingtalk-adapter/src/adapter/contract.js';
+          adapterModulePath = '../../Plugin/vcp-dingtalk-adapter/src/adapter/contract.js';
           adapterExportName = 'DingTalkAdapter';
           break;
+        case 'wecom':
         case 'wework':
-          adapterModulePath = '../Plugin/vcp-wecom-adapter/src/adapter/contract.js';
+          adapterModulePath = '../../Plugin/vcp-wecom-adapter/src/adapter/contract.js';
           adapterExportName = 'WecomAdapter';
           break;
         case 'qq':
         case 'onebot':
-          adapterModulePath = '../Plugin/vcp-onebot-adapter/src/adapter/contract.js';
+          adapterModulePath = '../../Plugin/vcp-onebot-adapter/src/adapter/contract.js';
           adapterExportName = 'OneBotAdapter';
           break;
         default:
@@ -644,7 +651,8 @@ class ChannelHubService extends EventEmitter {
 
       // 使用动态 import 加载适配器模块
       // 注意：Node.js require 不支持动态路径，使用 import() 需要绝对路径
-      const moduleUrl = new URL(adapterModulePath, `file://${process.cwd()}/`).href;
+      const absoluteModulePath = path.resolve(__dirname, adapterModulePath);
+const moduleUrl = `file://${absoluteModulePath}`;
       const module = await import(moduleUrl);
 
       const AdapterClass = module[adapterExportName] || module.default?.[adapterExportName];
@@ -658,14 +666,15 @@ class ChannelHubService extends EventEmitter {
         metadata: {
           id: adapterId,
           channel,
-          displayName: adapterConfig.displayName || `${channel}-adapter`,
+          displayName: adapterConfig.displayName || adapterConfig.name || `${channel}-adapter`,
           transportMode: adapterConfig.transportMode || 'http_webhook',
           sessionGrammar: adapterConfig.sessionGrammar || `${channel}:{conversationType}:{conversationId}`,
-          capabilities: adapterConfig.capabilities || {}
+          capabilities: adapterConfig.capabilities || adapterConfig.capabilityProfile || {}
         },
         options: {
           logger: this.logger,
-          ...adapterConfig.options
+          ...(adapterConfig.config || {}),
+          ...(adapterConfig.options || {})
         }
       });
 

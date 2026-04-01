@@ -6,8 +6,7 @@
  *
  * Reference: docs/interaction-middleware/VCP_INTERACTION_MIDDLEWARE_SCHEMA.md
  */
-
-import { AdapterContract } from '../../../modules/channelHub/AdapterContract.js';
+import { AdapterContract } from '../../../../modules/channelHub/AdapterContract.js';
 import { createDingAuthClient } from '../adapters/dingtalk/auth.js';
 import { createMediaUploader, isPublicHttpUrl } from '../adapters/dingtalk/mediaUploader.js';
 
@@ -264,8 +263,17 @@ export class DingTalkAdapter extends AdapterContract {
     };
 
     // Build session
+    // [Nova Fix] 将 sessionWebhook, sessionWebhookExpiredTime, robotCode 编码进 externalSessionKey
+    // 格式：dingtalk:{type}:{id}:{base64(json)}
+    const sessionMetadata = JSON.stringify({
+      sessionWebhook: data?.sessionWebhook || null,
+      sessionWebhookExpiredTime: data?.sessionWebhookExpiredTime || 0,
+      robotCode: data?.robotCode || null
+    });
+    const encodedMetadata = Buffer.from(sessionMetadata).toString('base64');
+
     const session = {
-      externalSessionKey: `dingtalk:${conversationType}:${conversationId}`,
+      externalSessionKey: `dingtalk:${conversationType}:${conversationId}:${encodedMetadata}`,
       bindingKey: userId
         ? `dingtalk:${conversationType}:${conversationId}:${userId}`
         : `dingtalk:${conversationType}:${conversationId}`,
@@ -399,10 +407,37 @@ export class DingTalkAdapter extends AdapterContract {
       externalSessionKey
     } = sessionDescriptor;
 
-    // Extract required fields from platform data if available
-    const robotCode = context.metadata?.platformData?.robotCode || null;
-    const sessionWebhook = context.metadata?.platformData?.sessionWebhook || null;
-    const sessionWebhookExpiredTime = context.metadata?.platformData?.sessionWebhookExpiredTime || 0;
+    // [Nova Fix] 从 externalSessionKey 中解码 session 元数据
+    let robotCode = null;
+    let sessionWebhook = null;
+    let sessionWebhookExpiredTime = 0;
+
+    if (externalSessionKey) {
+      const parts = externalSessionKey.split(':');
+      if (parts.length >= 4) {
+        try {
+          // 最后一段是 base64 编码的 JSON
+          const jsonStr = Buffer.from(parts[3], 'base64').toString('utf-8');
+          const meta = JSON.parse(jsonStr);
+          sessionWebhook = meta.sessionWebhook || null;
+          sessionWebhookExpiredTime = meta.sessionWebhookExpiredTime || 0;
+          robotCode = meta.robotCode || null;
+        } catch (e) {
+          this.options.logger.warn('[DingTalkAdapter] Failed to parse session metadata from externalSessionKey', e);
+        }
+      }
+    }
+
+    // Fallback to context.metadata if available (for backward compatibility)
+    if (!sessionWebhook && context.metadata?.platformData?.sessionWebhook) {
+      sessionWebhook = context.metadata.platformData.sessionWebhook;
+    }
+    if (!robotCode && context.metadata?.platformData?.robotCode) {
+      robotCode = context.metadata.platformData.robotCode;
+    }
+    if (!sessionWebhookExpiredTime && context.metadata?.platformData?.sessionWebhookExpiredTime) {
+      sessionWebhookExpiredTime = context.metadata.platformData.sessionWebhookExpiredTime;
+    }
 
     // Get user ID from binding key for single chat
     let userId = null;

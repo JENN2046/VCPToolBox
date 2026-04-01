@@ -895,6 +895,7 @@ const CHANNEL_BRIDGE_RATE_LIMIT_MAX_REQUESTS = 10; // 每秒最多10个请求
 const CHANNEL_BRIDGE_MAX_BODY_SIZE = 1024 * 1024; // 1MB 请求体限制
 const CHANNEL_BRIDGE_MAX_CAPTURE_SIZE = 512 * 1024; // 512KB 响应捕获限制
 const channelBridgeRateLimiter = new Map(); // IP -> { count, windowStart }
+let channelBridgeB1RequestCount = 0;
 
 // 定期清理限流器（每分钟）
 setInterval(() => {
@@ -908,6 +909,13 @@ setInterval(() => {
 
 app.post('/internal/channel-ingest', async (req, res) => {
     try {
+        channelBridgeB1RequestCount += 1;
+        res.setHeader('X-ChannelHub-B1-Compat', 'true');
+        res.setHeader('X-ChannelHub-B1-Status', 'frozen');
+        res.setHeader('X-ChannelHub-B1-Requests', String(channelBridgeB1RequestCount));
+        res.setHeader('X-ChannelHub-B1-Recommended-Endpoint', '/internal/channel-hub/events');
+        res.setHeader('Warning', '299 - "B1 compatibility endpoint is frozen; migrate to /internal/channel-hub/events"');
+
         // ── 0. 限流检查 ───────────────────────────────────────────────────────
         let clientIp = req.ip;
         if (clientIp && clientIp.substr(0, 7) === "::ffff:") {
@@ -1410,6 +1418,8 @@ async function initialize() {
         const channelHubService = new ChannelHubService({
             dataDir: channelHubDataDir,
             runtimeBridge: runtimeGateway,
+            chatCompletionHandler: chatCompletionHandler,
+            pluginManager: pluginManager,
             debugMode: DEBUG_MODE,
             logger: {
                 info:  (...args) => console.log('[ChannelHub]', ...args),

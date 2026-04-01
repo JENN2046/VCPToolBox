@@ -1,5 +1,8 @@
 {
   "version": "1.0.0",
-  "entries": {},
-  "lastCleanup": null
+  "entries": {
+    "dingtalk-adapter-01:dt_1774929738499_ffi2x1": 1774929738506,
+    "dingtalk:cid6lTc7YRSAt6075RdPeRcvw==:dt_1774929738499_ffi2x1": 1774929738506
+  },
+  "lastCleanup": 1774929738508
 }

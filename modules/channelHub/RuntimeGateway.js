@@ -152,11 +152,17 @@ class RuntimeGateway {
       };
     });
 
-    // 构造完整消息列表：系统消息使用 {{agentId}} 占位符
-    const syntheticMessages = [
-      { role: 'system', content: `{{${agentId}}}` },
-      ...userMessages
-    ];
+    // 构造完整消息列表：系统消息使用 agentName（已解析后的名称）
+  // 注意：不要使用 {{agentId}} 占位符格式，因为 agentId 可能是动态生成的 ID（如 _Agent_xxx）
+  // 这些 ID 在 agent_map.json 中不存在，导致占位符无法展开，引发后端错误
+  const systemPrompt = agentId
+    ? `{{${agentId}}}`
+    : 'You are a helpful AI assistant.';
+
+  const syntheticMessages = [
+    { role: 'system', content: systemPrompt },
+    ...userMessages
+  ];
 
     const sessionKey = envelope.session?.externalSessionKey 
       || envelope.session?.bindingKey 
@@ -272,6 +278,12 @@ class RuntimeGateway {
       },
       
       // 结束响应
+      send(payload) {
+        if (payload && typeof payload === 'object' && !Buffer.isBuffer(payload)) {
+          return mockRes.json(payload);
+        }
+        return mockRes.end(payload);
+      },
       end(chunk, encoding, callback) {
         if (chunk && typeof chunk === 'string') {
           if (captured.rawData.length + chunk.length <= maxSize) {

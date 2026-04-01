@@ -384,3 +384,39 @@
 - `Plugin/vcp-onebot-adapter/src/index.js`
 - `Plugin/vcp-onebot-adapter/src/adapters/vcp/channelClient.js`
 - `Plugin/vcp-onebot-adapter/README.md`
+
+---
+
+## 13. Security Modes (Observe / Enforce)
+
+`ChannelHub` supports two runtime modes for auth/signature checks:
+
+- `CHANNEL_HUB_AUTH_MODE=observe|enforce`
+- `CHANNEL_HUB_SIGNATURE_MODE=observe|enforce`
+
+Default mode is `observe`:
+
+- Auth/signature failures are recorded as structured observations.
+- Requests are not blocked unless adapter is missing or explicitly disabled.
+
+`enforce` mode:
+
+- Auth/signature failures return `401`.
+
+`/internal/channel-hub/events` and callback routes use the same observation shape to support migration from observe to enforce.
+
+---
+
+## 14. B1 Compatibility Policy
+
+B1 endpoints are retained for rollback compatibility and frozen for new capability expansion:
+
+- `/internal/channel-ingest`
+- `/internal/channelHub/b1/ingest`
+- `/internal/channelHub/channel-ingest`
+
+Policy:
+
+- No new rich-message capability is added on B1.
+- New adapters should target B2 endpoint: `/internal/channel-hub/events`.
+- B1 responses include compatibility warning headers for migration.

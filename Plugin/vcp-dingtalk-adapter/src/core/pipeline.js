@@ -273,6 +273,14 @@ export function createMessagePipeline({
         },
       });
 
+      if (vcpResponse?.ok === true && vcpResponse?.status === 'duplicate') {
+        logger.info('[pipeline] duplicate control response received, skip replying to user', {
+          requestId: vcpResponse?.requestId || '',
+          eventId: vcpResponse?.eventId || '',
+        });
+        return;
+      }
+
       richReply =
         typeof vcpClient.extractRichReply === 'function'
           ? vcpClient.extractRichReply(vcpResponse)

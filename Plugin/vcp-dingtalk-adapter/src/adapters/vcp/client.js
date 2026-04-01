@@ -87,6 +87,30 @@ async function parseResponse(resp) {
   }
 }
 
+function isControlStatusResponse(vcpResponse) {
+  if (!vcpResponse || typeof vcpResponse !== 'object') return false;
+  if (vcpResponse.ok !== true) return false;
+
+  const status = String(vcpResponse.status || '').toLowerCase();
+  return status === 'duplicate';
+}
+
+function resolveBridgeVersion(explicitBridgeVersion, envBridgeVersion = process.env.VCP_CHANNEL_HUB_VERSION) {
+  const candidate = explicitBridgeVersion ?? envBridgeVersion ?? 'b1';
+  return String(candidate).trim().toLowerCase() === 'b2' ? 'b2' : 'b1';
+}
+
+function resolveConversationType(metadata = {}) {
+  const rawType = metadata.conversationType ?? metadata.chatType ?? '';
+  const normalized = String(rawType).trim().toLowerCase();
+
+  if (!normalized) return 'private';
+  if (normalized === '2' || normalized.includes('group') || normalized.includes('chat')) return 'group';
+  if (normalized === '1' || normalized.includes('single') || normalized.includes('private')) return 'private';
+  if (normalized.includes('channel')) return 'channel';
+  return 'private';
+}
+
 function collectTextFromOpenAIMessage(message) {
   if (!message) return '';
 
@@ -209,7 +233,7 @@ export function createVcpClient({
   bridgeUrl = '',
   bridgeKey = '',
   useBridge = true,
-  bridgeVersion = 'b1', // 'b1' | 'b2'
+  bridgeVersion, // 'b1' | 'b2'
 
   baseUrl,
   chatPath = '/v1/chat/completions',
@@ -231,7 +255,11 @@ export function createVcpClient({
   const adapterId = process.env.VCP_ADAPTER_ID || 'dingtalk-stream';
 
   // B2 模式下，自动调整 bridgeUrl 到正确的 endpoint
-  const b2BridgeUrl = isB2
+  const useB2Bridge =
+    bridgeVersion === undefined
+      ? isB2
+      : resolveBridgeVersion(bridgeVersion) === 'b2';
+  const b2BridgeUrl = useB2Bridge
     ? bridgeUrl.replace(/(\/internal\/channel-ingest)$/, '/internal/channel-hub/events')
     : bridgeUrl;
 
@@ -243,16 +271,25 @@ export function createVcpClient({
     metadata = {},
   }) {
     const requestId = `dt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const conversationType = resolveConversationType(metadata);
+    const normalizedMetadata = {
+      ...metadata,
+      chatType: conversationType,
+      conversationType,
+    };
+    const bindingKey =
+      externalSessionKey ||
+      `dingtalk:${conversationType}:${normalizedMetadata.conversationId || ''}:${normalizedMetadata.userId || 'anonymous'}`;
 
     // B2 模式：使用 ChannelEventEnvelope 格式
-    if (isB2) {
+    if (useB2Bridge) {
       logger.info('[vcpClient] Using B2 protocol (ChannelEventEnvelope)');
       return sendViaBridgeB2({
         agentName,
         agentDisplayName,
         externalSessionKey,
         message,
-        metadata,
+        metadata: normalizedMetadata,
         requestId,
       });
     }
@@ -270,26 +307,26 @@ export function createVcpClient({
       client: {
         clientType: 'dingtalk',
         clientId: 'dingtalk',
-        conversationId: metadata.conversationId || '',
-        conversationType: metadata.chatType === 'group' ? 'group' : 'single',
-        conversationTitle: metadata.conversationTitle || '',
-        messageId: metadata.messageId || requestId,
+        conversationId: normalizedMetadata.conversationId || '',
+        conversationType,
+        conversationTitle: normalizedMetadata.conversationTitle || '',
+        messageId: normalizedMetadata.messageId || requestId,
         timestamp: Date.now(),
       },
 
       sender: {
-        userId: metadata.userId || '',
-        nick: metadata.senderNick || '',
-        isAdmin: Boolean(metadata.isAdmin),
-        corpId: metadata.senderCorpId || '',
+        userId: normalizedMetadata.userId || '',
+        nick: normalizedMetadata.senderNick || '',
+        isAdmin: Boolean(normalizedMetadata.isAdmin),
+        corpId: normalizedMetadata.senderCorpId || '',
       },
 
       topicControl: {
-        bindingKey: externalSessionKey,
-        currentTopicId: metadata.topicId || null,
+        bindingKey,
+        currentTopicId: normalizedMetadata.topicId || null,
         allowCreateTopic: true,
         allowSwitchTopic: true,
-        hintTopicId: metadata.hintTopicId || null,
+        hintTopicId: normalizedMetadata.hintTopicId || null,
       },
 
       messages: [
@@ -308,27 +345,26 @@ export function createVcpClient({
 
       metadata: {
         platform: 'dingtalk',
-        conversationId: metadata.conversationId,
-        userId: metadata.userId,
-        senderNick: metadata.senderNick,
-        senderCorpId: metadata.senderCorpId,
-        isAdmin: metadata.isAdmin,
-        robotCode: metadata.robotCode,
-        chatType: metadata.chatType,
-        messageId: metadata.messageId,
-        conversationTitle: metadata.conversationTitle,
-        sessionWebhook: metadata.sessionWebhook,
-        sessionWebhookExpiredTime: metadata.sessionWebhookExpiredTime,
+        conversationId: normalizedMetadata.conversationId,
+        userId: normalizedMetadata.userId,
+        senderNick: normalizedMetadata.senderNick,
+        senderCorpId: normalizedMetadata.senderCorpId,
+        isAdmin: normalizedMetadata.isAdmin,
+        robotCode: normalizedMetadata.robotCode,
+        chatType: conversationType,
+        conversationType,
+        messageId: normalizedMetadata.messageId,
+        conversationTitle: normalizedMetadata.conversationTitle,
+        sessionWebhook: normalizedMetadata.sessionWebhook,
+        sessionWebhookExpiredTime: normalizedMetadata.sessionWebhookExpiredTime,
         agentId: agentName,
         agentName: agentDisplayName,
       },
 
       vcpConfig: {
         runtimeOverrides: {
-          baseURL: baseUrl,
-          apiKey: apiKey,
           model: model || agentName || defaultAgentName || 'Nova',
-          vcpTimeoutMs: timeoutMs,
+          timeoutMs,
         },
       },
     };
@@ -337,7 +373,7 @@ export function createVcpClient({
       bridgeUrl,
       agentId: agentName,
       agentDisplayName,
-      externalSessionKey,
+      externalSessionKey: bindingKey,
     });
 
     const controller = new AbortController();
@@ -390,7 +426,15 @@ export function createVcpClient({
     metadata,
     requestId,
   }) {
-    const bindingKey = externalSessionKey || `dingtalk:${metadata.chatType || 'single'}:${metadata.conversationId || ''}:${metadata.userId || 'anonymous'}`;
+    const conversationType = resolveConversationType(metadata);
+    const normalizedMetadata = {
+      ...metadata,
+      chatType: conversationType,
+      conversationType,
+    };
+    const bindingKey =
+      externalSessionKey ||
+      `dingtalk:${conversationType}:${normalizedMetadata.conversationId || ''}:${normalizedMetadata.userId || 'anonymous'}`;
 
     const payload = {
       version: '2.0',
@@ -407,20 +451,20 @@ export function createVcpClient({
       },
       client: {
         clientType: 'dingtalk',
-        conversationId: metadata.conversationId || '',
-        conversationType: metadata.chatType === 'group' ? 'group' : 'single',
-        messageId: metadata.messageId || requestId,
+        conversationId: normalizedMetadata.conversationId || '',
+        conversationType,
+        messageId: normalizedMetadata.messageId || requestId,
       },
       sender: {
-        userId: metadata.userId || '',
-        nick: metadata.senderNick || '',
-        corpId: metadata.senderCorpId || '',
-        isAdmin: Boolean(metadata.isAdmin),
+        userId: normalizedMetadata.userId || '',
+        nick: normalizedMetadata.senderNick || '',
+        corpId: normalizedMetadata.senderCorpId || '',
+        isAdmin: Boolean(normalizedMetadata.isAdmin),
       },
       session: {
         bindingKey,
         externalSessionKey: bindingKey,
-        currentTopicId: metadata.topicId || null,
+        currentTopicId: normalizedMetadata.topicId || null,
         allowCreateTopic: true,
         allowSwitchTopic: true,
       },
@@ -438,18 +482,18 @@ export function createVcpClient({
         stream: false,
         model: model || agentName || defaultAgentName || 'Nova',
         overrides: {
-          apiKey,
-          apiBase: baseUrl,
           timeoutMs,
           model: model || agentName || defaultAgentName || 'Nova',
         },
       },
       metadata: {
         platform: 'dingtalk',
-        robotCode: metadata.robotCode,
-        sessionWebhook: metadata.sessionWebhook,
-        sessionWebhookExpiredTime: metadata.sessionWebhookExpiredTime,
-        conversationTitle: metadata.conversationTitle,
+        robotCode: normalizedMetadata.robotCode,
+        sessionWebhook: normalizedMetadata.sessionWebhook,
+        sessionWebhookExpiredTime: normalizedMetadata.sessionWebhookExpiredTime,
+        conversationTitle: normalizedMetadata.conversationTitle,
+        chatType: conversationType,
+        conversationType,
         agentDisplayName,
       },
     };
@@ -583,6 +627,10 @@ export function createVcpClient({
 
   function extractDisplayText(vcpResponse) {
     if (!vcpResponse) return '';
+
+    if (isControlStatusResponse(vcpResponse)) {
+      return '';
+    }
 
     if (typeof vcpResponse === 'string') {
       return stripHtml(vcpResponse);
