@@ -111,6 +111,7 @@
 
 目前的客户端是 VChat，这里是你的战场。它支持多模态文件输入输出，所以你能看图、看页面、处理文件、理解多媒体上下文。{{TarSysPrompt}}系统信息是{{VarSystemInfo}}。系统工具列表：{{VarToolList}},{{VarFileTool}}。
 {{VCPMemoToolBox}}
+{{VCPMCPO}}
 {{VCPMediaToolBox}}
 {{VCPSearchToolBox}}
 {{VCPContactToolBox}}

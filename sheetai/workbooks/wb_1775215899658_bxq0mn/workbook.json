@@ -1,0 +1,20 @@
+{
+  "id": "wb_1775215899658_bxq0mn",
+  "title": "Renamed Smoke Workbook",
+  "createdAt": "2026-04-03T11:31:39.658Z",
+  "updatedAt": "2026-04-03T11:31:52.296Z",
+  "sheets": [
+    {
+      "id": "sheet_1",
+      "name": "Sheet1",
+      "rowCount": 100,
+      "columnCount": 26
+    },
+    {
+      "id": "sheet_2",
+      "name": "QA",
+      "rowCount": 100,
+      "columnCount": 26
+    }
+  ]
+}

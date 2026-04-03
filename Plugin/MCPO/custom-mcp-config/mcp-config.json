@@ -16,5 +16,11 @@
         "DEFAULT_MINIMUM_TOKENS": "12800"
       }
     }
+  },
+  "remoteServers": {
+    "dingtalk-ai-table": {
+      "type": "streamable-http",
+      "url": "https://mcp-gw.dingtalk.com/server/85e2048d2314354c07f2f1612c10a334c591638bc6f4f7690b6254e1b431bac9?key=d4639494f77a5f87950b9f3570c1bea1"
+    }
   }
 }
