@@ -109,7 +109,7 @@ Typical host behavior:
 - Flow:
   1) Build an HTTP(S) CONNECT tunnel to the proxy
   2) Perform TLS handshake to the IMAP server over the tunnel
-  3) Hand off the secure TLSSocket to node-imap
+  3) Hand off the secure connection to ImapFlow
 - Configure with IMAP_PROXY_* variables only if your environment blocks 993
 - If you use a self-signed server certificate, set IMAP_PROXY_TLS_REJECT_UNAUTHORIZED=false
 
