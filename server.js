@@ -1313,6 +1313,9 @@ const adminPanelRoutes = require('./routes/adminPanelRoutes')(
 // 新增：引入 VCP 论坛 API 路由
 const forumApiRoutes = require('./routes/forumApi');
 
+// 新增：引入 SheetAI 路由
+const sheetAIRoutes = require('./routes/sheetAIRoutes')();
+
 // --- End Admin API Router ---
 
 // 新增：异步插件回调路由
