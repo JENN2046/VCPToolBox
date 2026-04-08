@@ -3,6 +3,75 @@ const { StringDecoder } = require('string_decoder');
 const vcpInfoHandler = require('../../vcpInfoHandler.js');
 const roleDivider = require('../roleDivider.js');
 
+/**
+ * 验证 messages 数组中的 tool_calls 和 tool 消息格式是否正确
+ * 从 chatCompletionHandler.js 导出的验证逻辑副本，用于 VCP 循环中的 API 调用验证
+ */
+function validateToolCallsInLoop(messages, debugMode = false) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { valid: true };
+  }
+  
+  const errors = [];
+  const allToolCallIds = new Set();
+  const toolCallIdLocations = new Map();
+  
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls) {
+        if (tc.id) {
+          allToolCallIds.add(tc.id);
+          toolCallIdLocations.set(tc.id, { msgIndex: i, toolCallId: tc.id });
+        }
+      }
+    }
+  }
+  
+  const usedToolCallIds = new Set();
+  
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    
+    if (msg.role === 'tool') {
+      const toolCallId = msg.tool_call_id;
+      
+      if (!toolCallId) {
+        errors.push(`消息[${i}] role: "tool" 缺少必需的 "tool_call_id" 字段`);
+        continue;
+      }
+      
+      if (!allToolCallIds.has(toolCallId)) {
+        errors.push(`消息[${i}] tool 消息的 tool_call_id="${toolCallId}" 在任何 assistant 消息的 tool_calls 中都找不到`);
+        continue;
+      }
+      
+      const location = toolCallIdLocations.get(toolCallId);
+      if (location.msgIndex >= i) {
+        errors.push(`消息[${i}] tool 消息的 tool_call_id="${toolCallId}" 对应的 assistant 消息位于 tool 消息之后`);
+        continue;
+      }
+      
+      if (usedToolCallIds.has(toolCallId)) {
+        errors.push(`消息[${i}] tool 消息的 tool_call_id="${toolCallId}" 已被之前的 tool 消息使用过`);
+        continue;
+      }
+      
+      usedToolCallIds.add(toolCallId);
+    }
+  }
+  
+  const valid = errors.length === 0;
+  
+  if (!valid) {
+    console.error('[ToolCallsValidator Loop] 验证失败:', errors);
+  } else if (debugMode) {
+    console.log('[ToolCallsValidator Loop] 验证通过 ✓');
+  }
+  
+  return { valid, errors };
+}
+
 class StreamHandler {
   constructor(context) {
     this.context = context;
@@ -49,7 +118,7 @@ class StreamHandler {
     let currentAIRawDataForDiary = '';
     let chatLogs = [];
 
-    // 辅助函数：处理 AI 响应流 (优化版：直通转发 + 后台解析 + chunk 空闲超时保护)
+    // 辅助函数：处理 AI 响应流 (优化版：直通转发 + 后台解析)
     const processAIResponseStreamHelper = async (aiResponse, isInitialCall) => {
       return new Promise((resolve, reject) => {
         const decoder = new StringDecoder('utf8');
@@ -58,8 +127,6 @@ class StreamHandler {
         let sseLineBuffer = '';
         let streamAborted = false;
         let keepAliveTimer = null;
-        let chunkIdleTimer = null;
-        const CHUNK_IDLE_TIMEOUT = 90000; // 90 秒无新 chunk 则判定上游流冻结
         let message = { content: '', reasoning_content: '' };
 
         const appendDelta = (delta) => {
@@ -77,44 +144,12 @@ class StreamHandler {
           if (!res.writableEnded && !res.destroyed) {
             try {
               res.write(': vcp-keepalive\n\n');
+              if (DEBUG_MODE) console.log('[Stream KeepAlive] Sent keepalive comment.');
             } catch (e) {
               // Ignore errors
             }
           }
         }, 5000); // 5秒发一次心跳
-
-        // 🌟 新增：chunk 级空闲超时保护
-        // 如果连续 CHUNK_IDLE_TIMEOUT 毫秒未收到任何上游 data chunk，
-        // 则判定上游流已冻结，主动中止并 resolve，防止无限挂起
-        const resetChunkIdleTimer = () => {
-          if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
-          chunkIdleTimer = setTimeout(() => {
-            if (streamAborted) return;
-            console.warn(`[Stream IdleTimeout] No upstream chunk received for ${CHUNK_IDLE_TIMEOUT / 1000}s. Assuming stream stalled. Forcing end.`);
-            streamAborted = true;
-            // 通知前端这次流异常结束
-            if (!res.writableEnded && !res.destroyed) {
-              try {
-                const stallPayload = {
-                  id: `chatcmpl-VCP-stall-${Date.now()}`,
-                  object: 'chat.completion.chunk',
-                  created: Math.floor(Date.now() / 1000),
-                  model: originalBody.model || 'unknown',
-                  choices: [{ index: 0, delta: { content: '\n[上游响应超时，流已中断]' }, finish_reason: 'stop' }],
-                };
-                res.write(`data: ${JSON.stringify(stallPayload)}\n\n`);
-                res.write('data: [DONE]\n\n');
-              } catch (e) { /* ignore */ }
-            }
-            if (aiResponse.body && !aiResponse.body.destroyed) {
-              aiResponse.body.destroy();
-            }
-            if (keepAliveTimer) clearInterval(keepAliveTimer);
-            if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
-            resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
-          }, CHUNK_IDLE_TIMEOUT);
-        };
-        resetChunkIdleTimer(); // 启动首次空闲计时
 
         const abortHandler = () => {
           streamAborted = true;
@@ -130,7 +165,6 @@ class StreamHandler {
 
         aiResponse.body.on('data', chunk => {
           if (streamAborted) return;
-          resetChunkIdleTimer(); // 每收到一个 chunk 就重置空闲计时器
 
           const chunkString = decoder.write(chunk);
           rawResponseDataThisTurn += chunkString;
@@ -174,7 +208,6 @@ class StreamHandler {
 
         aiResponse.body.on('end', () => {
           if (keepAliveTimer) clearInterval(keepAliveTimer);
-          if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           const remainingString = decoder.end();
           if (remainingString) {
             rawResponseDataThisTurn += remainingString;
@@ -208,7 +241,6 @@ class StreamHandler {
 
         aiResponse.body.on('error', streamError => {
           if (keepAliveTimer) clearInterval(keepAliveTimer);
-          if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (streamAborted || streamError.name === 'AbortError' || streamError.type === 'aborted') {
             resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
@@ -320,6 +352,22 @@ class StreamHandler {
               choices: [{ index: 0, delta: { content: '\n' }, finish_reason: null }],
             })}\n\n`);
           } catch (e) { }
+        }
+
+        // 验证消息队列（Archery 错误处理后）
+        if (DEBUG_MODE) {
+          console.log(`[VCP Loop Depth ${recursionDepth}] Messages before API call (Archery error path):`);
+          console.log(JSON.stringify(currentMessagesForLoop.map((m, i) => ({
+            index: i,
+            role: m.role,
+            hasToolCalls: !!(m.tool_calls && m.tool_calls.length > 0),
+            toolCallId: m.tool_call_id,
+            contentPreview: typeof m.content === 'string' ? m.content.substring(0, 100) + '...' : '[non-string content]'
+          })), null, 2));
+        }
+        const validationResultArchery = validateToolCallsInLoop(currentMessagesForLoop, DEBUG_MODE);
+        if (!validationResultArchery.valid) {
+          console.error(`[VCP Loop] ❌ 消息队列验证失败 (Archery error path) at depth ${recursionDepth}:`, validationResultArchery.errors);
         }
 
         const nextAiAPIResponse = await fetchWithRetry(

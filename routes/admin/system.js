@@ -1,40 +1,38 @@
-const express = require('express');
+﻿const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const { exec } = require('child_process');
 const os = require('os');
 const util = require('util');
 const execAsync = util.promisify(exec);
-const pm2 = require('pm2');
 const { getAuthCode } = require('../../modules/captchaDecoder');
 
 module.exports = function(options) {
     const router = express.Router();
     // const { DEBUG_MODE } = options; // Currently unused in this module but available
 
-    // 获取PM2进程列表和资源使用情况
-    router.get('/system-monitor/pm2/processes', (req, res) => {
-        pm2.list((err, list) => {
-            if (err) {
-                console.error('[SystemMonitor] PM2 API Error:', err);
-                return res.status(500).json({ success: false, error: 'Failed to get PM2 processes via API', details: err.message });
-            }
-
-            const processInfo = list.map(proc => ({
-                name: proc.name,
-                pid: proc.pid,
-                status: proc.pm2_env.status,
-                cpu: proc.monit.cpu,
-                memory: proc.monit.memory,
-                uptime: proc.pm2_env.pm_uptime,
-                restarts: proc.pm2_env.restart_time
-            }));
-
-            res.json({ success: true, processes: processInfo });
-        });
+    // 返回当前 VCP 进程快照，避免依赖 PM2
+    router.get('/system-monitor/processes', async (req, res) => {
+        try {
+            res.json({
+                success: true,
+                processes: [{
+                    name: 'vcptoolbox',
+                    pid: process.pid,
+                    status: 'running',
+                    cpu: 0,
+                    memory: process.memoryUsage().rss,
+                    uptime: process.uptime(),
+                    restarts: 0
+                }]
+            });
+        } catch (error) {
+            console.error('[SystemMonitor] Failed to build process snapshot:', error);
+            res.status(500).json({ success: false, error: 'Failed to get process snapshot', details: error.message });
+        }
     });
 
-    // 获取系统整体资源使用情况
+    // 鑾峰彇绯荤粺鏁翠綋璧勬簮浣跨敤鎯呭喌
     router.get('/system-monitor/system/resources', async (req, res) => {
         try {
             const systemInfo = {};
@@ -121,7 +119,7 @@ module.exports = function(options) {
         }
     });
 
-    // 获取 UserAuth 认证码
+    // 鑾峰彇 UserAuth 璁よ瘉鐮?
     router.get('/user-auth-code', async (req, res) => {
         const authCodePath = path.join(__dirname, '..', '..', 'Plugin', 'UserAuth', 'code.bin');
         try {
@@ -133,14 +131,14 @@ module.exports = function(options) {
             }
         } catch (error) {
             if (error.code === 'ENOENT') {
-                res.status(404).json({ success: false, error: '认证码文件未找到。插件可能尚未运行。' });
+                res.status(404).json({ success: false, error: 'User auth code file not found. The plugin may not have run yet.' });
             } else {
-                res.status(500).json({ success: false, error: '读取或解密认证码文件失败。', details: error.message });
+                res.status(500).json({ success: false, error: 'Failed to read or decrypt the auth code file.', details: error.message });
             }
         }
     });
 
-    // 获取天气预报数据
+    // 鑾峰彇澶╂皵棰勬姤鏁版嵁
     router.get('/weather', async (req, res) => {
         const weatherCachePath = path.join(__dirname, '..', '..', 'Plugin', 'WeatherReporter', 'weather_cache.json');
         try {
@@ -148,14 +146,14 @@ module.exports = function(options) {
             res.json(JSON.parse(content));
         } catch (error) {
             if (error.code === 'ENOENT') {
-                res.status(404).json({ success: false, error: '天气缓存文件未找到。' });
+                res.status(404).json({ success: false, error: 'Weather cache file not found.' });
             } else {
-                res.status(500).json({ success: false, error: '读取天气缓存失败。', details: error.message });
+                res.status(500).json({ success: false, error: 'Failed to read the weather cache file.', details: error.message });
             }
         }
     });
 
-    // 获取每日热榜数据
+    // 鑾峰彇姣忔棩鐑鏁版嵁
     router.get('/dailyhot', async (req, res) => {
         const dailyHotPath = path.join(__dirname, '..', '..', 'Plugin', 'DailyHot', 'dailyhot_cache.md');
         try {
@@ -184,12 +182,16 @@ module.exports = function(options) {
             res.json({ success: true, data: newsItems });
         } catch (error) {
             if (error.code === 'ENOENT') {
-                res.status(404).json({ success: false, error: '热榜缓存文件未找到。' });
+                res.status(404).json({ success: false, error: 'Daily hot cache file not found.' });
             } else {
-                res.status(500).json({ success: false, error: '读取热榜缓存失败。', details: error.message });
+                res.status(500).json({ success: false, error: 'Failed to read the daily hot cache file.', details: error.message });
             }
         }
     });
 
     return router;
 };
+
+
+
+

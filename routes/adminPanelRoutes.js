@@ -62,11 +62,13 @@ module.exports = function (DEBUG_MODE, dailyNoteRootPath, pluginManager, getCurr
     mount('/', 'schedules');          // Handles /schedules/*
     mount('/', 'rag');                // Handles /rag-tags, /rag-params, /available-clusters, etc.
     mount('/', 'agentAssistant');     // Handles /agent-assistant/*
-    mount('/', 'forumAssistant');     // Handles /forum-assistant/*
     mount('/', 'toolListEditor');     // Handles /tool-list/*
     mount('/', 'dream');              // Handles /dream-logs/*, /dream-operation/*
     mount('/', 'dailyNotes');         // Wrapper for existing dailyNotesRoutes (Handles /dailynotes/*)
-    mount('/', 'newapiMonitor');      // Handles /newapi-monitor/*
+    mount('/', 'sheetAI'); // Handles /admin_api/sheetai/*
+
+    // 注意: channelHub 和 mediaGateway 路由已在 server.js 中单独挂载
+    // 路径: /admin_api/channelHub, /admin_api/mediaGateway
 
     return adminApiRouter;
 };

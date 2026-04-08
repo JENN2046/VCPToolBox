@@ -436,8 +436,6 @@
                                 class="material-symbols-outlined">description</span>日记知识库管理</a></li>
                     <li><a href="#" data-target="vcp-forum"><span
                                 class="material-symbols-outlined">forum</span>VCP论坛</a></li>
-                    <li><a href="#" data-target="forum-assistant-config"><span
-                                class="material-symbols-outlined">explore</span>任务巡航助手</a></li>
                     <li><a href="#" data-target="image-cache-editor"><span
                                 class="material-symbols-outlined">photo_library</span>多媒体Base64编辑器</a></li>
                     <li><a href="#" data-target="semantic-groups-editor"><span
@@ -472,6 +470,10 @@
                                 class="material-symbols-outlined">terminal</span>服务器日志</a></li>
                     <li><a href="#" data-target="placeholder-viewer"><span
                                 class="material-symbols-outlined">view_list</span>占位符查看器</a></li>
+                    <li><a href="#" data-target="channel-hub"><span
+                                class="material-symbols-outlined">hub</span>ChannelHub渠道中心</a></li>
+                    <li><a href="#" data-target="plugin-installer"><span
+                                class="material-symbols-outlined">extension</span>插件安装器</a></li>
                     <li class="nav-category" id="plugins-category">———— 插 件 管 理 ————</li>
                     <!-- 插件列表将动态生成在这里 -->
                 </ul>
@@ -584,6 +586,32 @@
                 <div class="activity-chart-container">
                     <h3>服务器活跃度</h3>
                     <canvas id="activity-chart-canvas"></canvas>
+                </div>
+            </section>
+
+            <section id="plugin-installer-section" class="config-section">
+                <h2>插件安装器</h2>
+                <p class="description">第一版支持从当前服务器本机路径安装插件 zip，也支持把插件卸载到 <code>Plugin/.trash</code>。这一版暂不自动执行 <code>npm install</code> 或 <code>pip install</code>。</p>
+                <div class="card">
+                    <form id="plugin-installer-form">
+                        <div class="config-item">
+                            <label for="plugin-installer-zip-path">插件 zip 本机路径</label>
+                            <input type="text" id="plugin-installer-zip-path" placeholder="例如：C:\Plugins\MyPlugin.zip 或 /opt/plugins/MyPlugin.zip">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit">安装插件</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card">
+                    <h3>安装结果</h3>
+                    <div id="plugin-installer-summary" style="display: none;"></div>
+                </div>
+                <div class="card">
+                    <h3>可恢复的已卸载插件</h3>
+                    <div id="plugin-trash-list">
+                        <p class="description">正在加载回收站...</p>
+                    </div>
                 </div>
             </section>
 
@@ -1049,59 +1077,6 @@
                 </div>
             </section>
 
-            <!-- Section: Forum Assistant Config -->
-            <section id="forum-assistant-config-section" class="config-section">
-                <h2>任务派发中心</h2>
-                <p class="section-description">统一管理论坛巡航任务、通用提示词任务与一次性任务。提示词模板可直接编辑，论坛类任务保留 <code>{{forum_post_list}}</code> 占位符预读取能力。</p>
-
-                <div class="fa-dashboard-container">
-                    <div id="fa-runtime-status" class="fa-runtime-status">
-                        加载中...
-                    </div>
-
-                    <div class="fa-global-controls card">
-                        <div class="aa-field-group">
-                            <label class="switch-container" style="font-size:1.05em;font-weight:bold;">
-                                <span>全局任务调度开关</span>
-                                <input type="checkbox" id="fa-global-enabled">
-                                <span class="switch-slider"></span>
-                            </label>
-                            <p class="aa-hint">开启后，系统将根据各任务的调度配置自动执行任务。</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fa-quick-add-bar card">
-                    <div class="fa-quick-add-grid">
-                        <div class="aa-field-group">
-                            <label for="fa-new-task-name">新任务名称</label>
-                            <input type="text" id="fa-new-task-name" placeholder="例如：论坛巡航-可可">
-                        </div>
-                        <div class="aa-field-group">
-                            <label for="fa-new-task-type">任务类型</label>
-                            <select id="fa-new-task-type"></select>
-                        </div>
-                        <div class="fa-quick-actions">
-                            <button type="button" id="fa-add-task-button" class="btn-primary">
-                                <span class="material-symbols-outlined">add</span> 添加任务
-                            </button>
-                            <button type="button" id="fa-refresh-button" class="btn-secondary">
-                                <span class="material-symbols-outlined">refresh</span> 刷新状态
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="fa-task-cards-container" class="aa-agent-cards-container"></div>
-
-                <div class="form-actions fa-footer-actions">
-                    <button type="button" id="fa-save-config-button" class="btn-primary">
-                        <span class="material-symbols-outlined">save</span> 保存所有任务配置
-                    </button>
-                    <span id="fa-status" class="status-message"></span>
-                </div>
-            </section>
-
             <!-- Section: Schedule Manager -->
             <section id="schedule-manager-section" class="config-section">
                 <h2>日程管理</h2>
@@ -1177,6 +1152,13 @@
                 <h2>🌙 梦境审批</h2>
                 <p class="description">查看和审批 Agent 在梦境中发起的日记操作。批准后将执行实际的文件操作。</p>
                 <div id="dream-manager-content"></div>
+            </section>
+
+            <!-- Section: ChannelHub -->
+            <section id="channel-hub-section" class="config-section">
+                <h2>ChannelHub 渠道中心</h2>
+                <p class="description">统一多平台接入管理。支持钉钉、企业微信、飞书、QQ、微信公众号等渠道的适配器配置、会话绑定、消息路由和监控。</p>
+                <iframe data-src="channelHub.html" style="width: 100%; height: 170vh; border: none;"></iframe>
             </section>
 
             <style>

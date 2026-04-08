@@ -2,12 +2,10 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '.env') });
 const fs = require('fs');
 const fsp = require('fs').promises;
 const path = require('path');
-const Imap = require('node-imap');
+const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
 const TurndownService = require('turndown');
 const net = require('net');
-const tls = require('tls');
-const { createImapTunnelSocket } = require('./proxy/ImapHttpTunnel');
 const { runPostScripts } = require('./post_run');
 
 // --- Constants ---
@@ -202,18 +200,10 @@ async function preflightCheck() {
             throw new Error('IMAP proxy is enabled, but IMAP_PROXY_URL is not set.');
         }
         try {
-            process.stderr.write(`Preflight: Testing proxy connection to ${host}:${port}...\n`);
-            const tunnelSocket = await createImapTunnelSocket({
-                proxyUrl: proxy.url,
-                targetHost: host,
-                targetPort: port,
-                timeout: proxy.timeout,
-                rejectUnauthorized: proxy.rejectUnauthorized
-            });
-            tunnelSocket.destroy();
-            process.stderr.write('Proxy tunnel preflight check successful.\n');
+            new URL(proxy.url);
+            process.stderr.write(`Proxy URL validated: ${proxy.url}\n`);
         } catch (error) {
-            throw new Error(`Proxy preflight check failed: ${error.message}`);
+            throw new Error(`Proxy validation failed: ${error.message}`);
         }
     } else {
         return new Promise((resolve, reject) => {
@@ -238,154 +228,121 @@ async function preflightCheck() {
 }
 
 async function fetchAndSave() {
-    let imap;
+    const client = new ImapFlow({
+        host: imapConfig.host,
+        port: imapConfig.port,
+        secure: imapConfig.tls || imapConfig.port === 993,
+        servername: imapConfig.host,
+        auth: {
+            user: imapConfig.user,
+            pass: imapConfig.password
+        },
+        proxy: imapConfig.proxy.enabled ? imapConfig.proxy.url : undefined,
+        tls: {
+            rejectUnauthorized: imapConfig.proxy.rejectUnauthorized
+        },
+        logger: false,
+        connectionTimeout: imapConfig.proxy.timeout || 90000
+    });
+
+    let lock;
+
     try {
-        let finalImapConfig = { ...imapConfig };
+        await client.connect();
+        process.stderr.write('IMAP connection ready. Opening INBOX...\n');
+        lock = await client.getMailboxLock('INBOX');
 
-        if (imapConfig.proxy.enabled) {
-            const tunnelSocket = await createImapTunnelSocket({
-                proxyUrl: imapConfig.proxy.url,
-                targetHost: imapConfig.host,
-                targetPort: imapConfig.port,
-                timeout: imapConfig.proxy.timeout,
-                rejectUnauthorized: imapConfig.proxy.rejectUnauthorized
-            });
+        const whitelist = (process.env.WHITELIST || '')
+            .split(',')
+            .map(email => email.trim())
+            .filter(Boolean);
 
-            // Perform TLS handshake ourselves over the tunnel and pass the secure socket to node-imap.
-            // This guarantees all traffic (including TLS) goes through the proxy tunnel.
-            const tlsSocket = tls.connect({
-                socket: tunnelSocket,
-                servername: imapConfig.host,
-                rejectUnauthorized: imapConfig.proxy.rejectUnauthorized
-            });
-
-            await new Promise((resolveTls, rejectTls) => {
-                const onErr = (e) => rejectTls(new Error(`TLS handshake failed: ${e.message}`));
-                const onTimeout = () => rejectTls(new Error(`TLS handshake timed out after ${imapConfig.proxy.timeout}ms`));
-                tlsSocket.once('secureConnect', resolveTls);
-                tlsSocket.once('error', onErr);
-                tlsSocket.setTimeout(imapConfig.proxy.timeout, onTimeout);
-            });
-            tlsSocket.setTimeout(0);
-
-            // Hand off a ready TLS socket; disable node-imap's own tls.
-            finalImapConfig.tls = false;
-            finalImapConfig.socket = tlsSocket;
+        if (!whitelist.length) {
+            process.stderr.write('Whitelist is empty, skipping fetch.\n');
+            return;
         }
 
-        imap = new Imap(finalImapConfig);
+        const timeLimitDays = parseInt(process.env.TIME_LIMIT_DAYS, 10) || 30;
+        const sinceDate = new Date();
+        sinceDate.setDate(sinceDate.getDate() - timeLimitDays);
 
-    } catch (error) {
-        throw new Error(`Failed to create IMAP connection: ${error.message}`);
-    }
+        process.stderr.write(`Search SINCE date: ${sinceDate.toUTCString()}\n`);
 
-    return new Promise((resolve, reject) => {
-        const openInbox = (cb) => imap.openBox('INBOX', true, cb);
-
-        imap.once('ready', () => {
-            process.stderr.write('IMAP connection ready. Opening INBOX...\n');
-            openInbox((err, box) => {
-                if (err) return reject(new Error(`Error opening inbox: ${err.message}`));
-                
-                const whitelist = (process.env.WHITELIST || '').split(',');
-                if (!whitelist[0]) {
-                    process.stderr.write('Whitelist is empty, skipping fetch.\n');
-                    imap.end();
-                    return;
-                }
-
-                const timeLimitDays = parseInt(process.env.TIME_LIMIT_DAYS, 10) || 30;
-                const sinceDate = new Date();
-                sinceDate.setDate(sinceDate.getDate() - timeLimitDays);
-
-                process.stderr.write(`Search SINCE date: ${sinceDate.toUTCString()}\n`);
-                const searchCriteria = [['SINCE', sinceDate]];
-                const trimmedWhitelist = whitelist.map(email => email.trim());
-
-                const searchPromises = trimmedWhitelist.map(sender => 
-                    new Promise((res, rej) => {
-                        imap.search([ ...searchCriteria, ['FROM', sender] ], (e, uids) => e ? rej(e) : res(uids));
-                    })
-                );
-
-                Promise.all(searchPromises).then(async (resultsBySender) => {
-                    resultsBySender.forEach((uids, idx) => {
-                        process.stderr.write(`Sender ${trimmedWhitelist[idx]} -> ${uids.length} matches\n`);
-                    });
-                    const remoteUids = new Set(resultsBySender.flat().map(String));
-                    process.stderr.write(`Found ${remoteUids.size} total emails on server matching criteria.\n`);
-
-                    const localUids = getDownloadedUids();
-                    process.stderr.write(`Found ${localUids.size} emails in local store.\n`);
-
-                    const uidsToDelete = new Set([...localUids].filter(uid => !remoteUids.has(uid)));
-                    const uidsToFetch = new Set([...remoteUids].filter(uid => !localUids.has(uid)));
-
-                    await deleteLocalFilesByUids(uidsToDelete);
-
-                    const uidsToFetchArray = Array.from(uidsToFetch);
-
-                    if (uidsToFetchArray.length === 0) {
-                        process.stderr.write('No new mail to download.\n');
-                        imap.end();
-                        return;
-                    }
-
-                    process.stderr.write(`Found ${uidsToFetchArray.length} new emails to download.\n`);
-
-                    const f = imap.fetch(uidsToFetchArray, { bodies: '', struct: true });
-                    f.on('message', (msg, seqno) => {
-                        let messageData = {};
-                        msg.on('attributes', (attrs) => messageData.uid = attrs.uid);
-                        
-                        let buffer = '';
-                        msg.on('body', (stream) => {
-                            stream.on('data', (chunk) => buffer += chunk.toString('utf8'));
-                            stream.once('end', () => messageData.body = buffer);
-                        });
-
-                        msg.once('end', () => {
-                            if (messageData.uid && messageData.body) {
-                                saveEmail(messageData);
-                            }
-                        });
-                    });
-                    f.once('error', (fetchErr) => reject(new Error(`Fetch error: ${fetchErr.message}`)));
-                    f.once('end', () => {
-                        process.stderr.write('Done fetching all messages!\n');
-                        imap.end();
-                    });
-                }).catch(searchErr => reject(new Error(`Error during parallel search: ${searchErr.message}`)));
-            });
+        const searchPromises = whitelist.map(async sender => {
+            const uids = await client.search({ since: sinceDate, from: sender }, { uid: true });
+            process.stderr.write(`Sender ${sender} -> ${uids.length} matches\n`);
+            return uids;
         });
 
-        function saveEmail({ uid, body }) {
+        const resultsBySender = await Promise.all(searchPromises);
+        const remoteUids = new Set(resultsBySender.flat().map(String));
+        process.stderr.write(`Found ${remoteUids.size} total emails on server matching criteria.\n`);
+
+        const localUids = getDownloadedUids();
+        process.stderr.write(`Found ${localUids.size} emails in local store.\n`);
+
+        const uidsToDelete = new Set([...localUids].filter(uid => !remoteUids.has(uid)));
+        const uidsToFetch = new Set([...remoteUids].filter(uid => !localUids.has(uid)));
+
+        await deleteLocalFilesByUids(uidsToDelete);
+
+        const uidsToFetchArray = Array.from(uidsToFetch);
+        if (uidsToFetchArray.length === 0) {
+            process.stderr.write('No new mail to download.\n');
+            return;
+        }
+
+        process.stderr.write(`Found ${uidsToFetchArray.length} new emails to download.\n`);
+
+        const messages = await client.fetchAll(
+            uidsToFetchArray,
+            { uid: true, envelope: true, source: true },
+            { uid: true }
+        );
+
+        async function saveEmail({ uid, body, envelope }) {
             const storagePath = STORAGE_PATH;
-            const header = Imap.parseHeader(body);
-            let sender = 'unknown';
-            if (header.from && header.from.length > 0) {
-                const fromHeader = header.from[0];
-                const match = fromHeader.match(/<([^>]+)>/);
-                sender = match ? match[1] : fromHeader;
+            let sender = envelope?.from?.[0]?.address || 'unknown';
+
+            if (!sender || sender === 'unknown') {
+                try {
+                    const mail = await simpleParser(body);
+                    sender = mail.from?.value?.[0]?.address || mail.from?.text || 'unknown';
+                } catch (parseError) {
+                    process.stderr.write(`Failed to parse sender for UID ${uid}: ${parseError.message}\n`);
+                }
             }
-            
+
             const senderDir = path.join(storagePath, sender.replace(/[^a-zA-Z0-9.-]/g, '_'));
             if (!fs.existsSync(senderDir)) fs.mkdirSync(senderDir, { recursive: true });
-    
+
             const filename = path.join(senderDir, `${uid}_${Date.now()}.eml`);
             fs.writeFileSync(filename, body);
             addDownloadedUid(uid);
             process.stderr.write(`Saved to ${path.basename(filename)}\n`);
         }
 
-        imap.once('error', (imapErr) => reject(new Error(`IMAP error: ${imapErr.message}`)));
-        imap.once('end', () => {
-            process.stderr.write('IMAP connection ended.\n');
-            resolve();
-        });
+        for (const message of messages) {
+            const source = Buffer.isBuffer(message.source)
+                ? message.source.toString('utf8')
+                : String(message.source || '');
+            if (message.uid && source) {
+                await saveEmail({ uid: message.uid, body: source, envelope: message.envelope });
+            }
+        }
 
-        imap.connect();
-    });
+        process.stderr.write('Done fetching all messages!\n');
+    } finally {
+        if (lock) {
+            lock.release();
+        }
+        try {
+            await client.logout();
+        } catch (logoutError) {
+            client.close();
+        }
+        process.stderr.write('IMAP connection ended.\n');
+    }
 }
 
 async function findMdFiles(dirPath) {

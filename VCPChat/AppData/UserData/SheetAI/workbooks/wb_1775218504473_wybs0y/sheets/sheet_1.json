@@ -1,0 +1,242 @@
+{
+  "id": "sheet_1",
+  "name": "VCP_ToolBoxFold_清单",
+  "cells": {
+    "A1": {
+      "value": "折叠模块 (Box)"
+    },
+    "B1": {
+      "value": "对应占位符"
+    },
+    "C1": {
+      "value": "包含的插件/工具 (无遗漏)"
+    },
+    "D1": {
+      "value": "功能简述"
+    },
+    "A2": {
+      "value": "SearchToolBox"
+    },
+    "B2": {
+      "value": "{{VarSearchToolBox}}"
+    },
+    "C2": {
+      "value": "TavilySearch, UrlFetch, BilibiliFetch, SciCalculator"
+    },
+    "D2": {
+      "value": "广域搜索、网页爬取、B站解析、科学微积分计算"
+    },
+    "A3": {
+      "value": "FileToolBox"
+    },
+    "B3": {
+      "value": "{{VarFileToolBox}}"
+    },
+    "C3": {
+      "value": "FileOperator, LocalSearchController, CreateCanvas"
+    },
+    "D3": {
+      "value": "本地文件读写/搜索、呼出前端协同代码画板"
+    },
+    "A4": {
+      "value": "MediaToolBox"
+    },
+    "B4": {
+      "value": "{{VarMediaToolBox}}"
+    },
+    "C4": {
+      "value": "FluxGen, DoubaoGen, ComfyUIGen, SunoGen, Wan2.1VideoGen, MusicController"
+    },
+    "D4": {
+      "value": "AI绘图(3种)、音乐生成、视频生成、云端点歌台"
+    },
+    "A5": {
+      "value": "MemoToolBox"
+    },
+    "B5": {
+      "value": "{{VarMemoToolBox}}"
+    },
+    "C5": {
+      "value": "DailyNote, DeepMemo, AgentDream"
+    },
+    "D5": {
+      "value": "记忆写入与更新、深度历史回忆、日记梦境管理"
+    },
+    "A6": {
+      "value": "ContactToolBox"
+    },
+    "B6": {
+      "value": "{{VarContactToolBox}}"
+    },
+    "C6": {
+      "value": "AgentAssistant, AgentMessage, Randomness, TarotDivination"
+    },
+    "D6": {
+      "value": "跨Agent通讯、前端通知推送、随机事件与塔罗占卜"
+    },
+    "A9": {
+      "value": "插件/功能名称"
+    },
+    "B9": {
+      "value": "独立占位符"
+    },
+    "C9": {
+      "value": "触发方式 / 核心功能"
+    },
+    "A10": {
+      "value": "前端截图捕捉"
+    },
+    "B10": {
+      "value": "{{VCPScreenShot}}"
+    },
+    "C10": {
+      "value": "静态注入：直接在前端渲染出截图操作面板入口"
+    },
+    "A11": {
+      "value": "日记编辑UI"
+    },
+    "B11": {
+      "value": "{{VCPDailyNoteEditor}}"
+    },
+    "C11": {
+      "value": "静态注入：渲染可视化日记更新与编辑组件"
+    },
+    "A12": {
+      "value": "VCP论坛模块"
+    },
+    "B12": {
+      "value": "{{VCP论坛中尚无帖子。}}"
+    },
+    "C12": {
+      "value": "动态注入：替换为论坛帖子列表并支持发帖回帖"
+    },
+    "A13": {
+      "value": "表情包系统"
+    },
+    "B13": {
+      "value": "{{通用表情包}} / {{Nova表情包}}"
+    },
+    "C13": {
+      "value": "静态注入：注入图床路径与可用的表情包数组清单"
+    },
+    "A14": {
+      "value": "实时环境/天气"
+    },
+    "B14": {
+      "value": "{{【实时空气质量】...}}"
+    },
+    "C14": {
+      "value": "动态注入：由天气插件抓取并替换为当前温湿度与预警"
+    },
+    "A15": {
+      "value": "元思维时间线"
+    },
+    "B15": {
+      "value": "{{VarTimelineNova}}"
+    },
+    "C15": {
+      "value": "系统级：注入该Agent的专属思考链与日记时间线"
+    },
+    "A17": {
+      "value": "系统子域 (Domain)"
+    },
+    "B17": {
+      "value": "代表性插件 / 模块名"
+    },
+    "C17": {
+      "value": "运行模式"
+    },
+    "D17": {
+      "value": "底层静默功能描述"
+    },
+    "A18": {
+      "value": "记忆与认知引擎"
+    },
+    "B18": {
+      "value": "RAGDiaryPlugin, TagMemoWaveEngine, VexusLiteVectorDB, SemanticReranker"
+    },
+    "C18": {
+      "value": "PreProcessor (消息预处理)"
+    },
+    "D18": {
+      "value": "后台静默将文本向量化、检索日记、执行浪潮衰减与残差重排并注入记忆"
+    },
+    "A19": {
+      "value": "网络与跨端桥接"
+    },
+    "B19": {
+      "value": "WebSocketServer, ChromeBridgePlugin, VCPBridgePhase2, FileFetcherServer"
+    },
+    "C19": {
+      "value": "Service (常驻服务)"
+    },
+    "D19": {
+      "value": "监听浏览器扩展投喂、处理抖音下载指令、维持客户端与服务端心跳连接"
+    },
+    "A20": {
+      "value": "核心路由与调度"
+    },
+    "B20": {
+      "value": "MessageProcessor, AgentManager, DynamicFoldEngine, TokenMonitorPlugin"
+    },
+    "C20": {
+      "value": "Core Middleware (核心中间件)"
+    },
+    "D20": {
+      "value": "Agent热切换、计算语义相似度决定ToolBox折叠状态、监控Token执行滑动窗口截断"
+    },
+    "A21": {
+      "value": "视觉渲染与解析"
+    },
+    "B21": {
+      "value": "VCPVisualSynesthesia, CodeBlockExecutor, MarkdownEnhancer, ToolBubbleRenderer"
+    },
+    "C21": {
+      "value": "PostProcessor (UI 渲染拦截)"
+    },
+    "D21": {
+      "value": "将文本转化为HTML气泡、拦截并运行代码块、将工具调用渲染成折叠卡片"
+    },
+    "A22": {
+      "value": "安全与元认知"
+    },
+    "B22": {
+      "value": "CognitiveFirewall, MetaThinkingRouter, EthicsFilterPlugin"
+    },
+    "C22": {
+      "value": "Interceptor (逻辑拦截器)"
+    },
+    "D22": {
+      "value": "执行VCP元思维链、隔离事实与价值轨道、防止Agent幻觉、确保安全基准"
+    },
+    "A24": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "B24": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "C24": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "A25": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "B25": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "C25": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "A26": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "B26": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    },
+    "C26": {
+      "value": "一般情况下，前五个插件足够新手使用，有一些是静默插件，根据语义agent会调用"
+    }
+  },
+  "rowCount": 26,
+  "columnCount": 10
+}

@@ -1,7 +1,7 @@
 // AdminPanel/script.js
 import { apiFetch, showMessage, checkAuthStatus } from './js/utils.js';
 import { parseEnvToList, buildEnvString, createFormGroup, createCommentOrEmptyElement } from './js/config.js';
-import { loadPluginList, loadPluginConfig } from './js/plugins.js';
+import { loadPluginList, loadPluginConfig, initializePluginInstaller } from './js/plugins.js';
 import { initializeDashboard, stopDashboardUpdates } from './js/dashboard.js';
 import { initializeDailyNotesManager } from './js/notes-manager.js';
 import { initializeAgentManager } from './js/agent-manager.js';
@@ -13,7 +13,6 @@ import { initializePreprocessorOrderManager } from './js/preprocessor-manager.js
 import { initializeSemanticGroupsEditor } from './js/semantic-groups-editor.js';
 import { initializeThinkingChainsEditor } from './js/thinking-chains-editor.js';
 import { initializeVCPForum } from './js/forum.js';
-import { initializeForumAssistantConfig } from './js/forum-assistant-config.js';
 import { initializeScheduleManager } from './js/schedule-manager.js';
 import { initializeRAGTuning } from './js/rag-tuning.js';
 import { initializeDreamManager } from './js/dream-manager.js';
@@ -154,9 +153,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     case 'vcp-forum-section':
                         initializeVCPForum();
                         break;
-                    case 'forum-assistant-config-section':
-                        initializeForumAssistantConfig();
-                        break;
                     case 'schedule-manager-section':
                         initializeScheduleManager();
                         break;
@@ -290,6 +286,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     async function loadInitialData() {
         try {
+            initializePluginInstaller();
             await loadBaseConfig();
             await loadPluginList();
             const firstLink = pluginNavList.querySelector('a');

@@ -1,0 +1,14 @@
+{
+  "id": "wb_1775215226590_8rcy2h",
+  "title": "Smoke Test Workbook API",
+  "createdAt": "2026-04-03T11:20:26.590Z",
+  "updatedAt": "2026-04-03T11:20:57.448Z",
+  "sheets": [
+    {
+      "id": "sheet_1",
+      "name": "Sheet1",
+      "rowCount": 100,
+      "columnCount": 26
+    }
+  ]
+}

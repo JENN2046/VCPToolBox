@@ -10,6 +10,14 @@ const express = require('express'); // For plugin API routing
 const chokidar = require('chokidar');
 const { getAuthCode } = require('./modules/captchaDecoder'); // 导入统一的解码函数
 const ToolApprovalManager = require('./modules/toolApprovalManager');
+const {
+  startTask,
+  getStatus,
+  getStatusByTopic,
+  stopTask,
+  injectVcpLogFunctions,
+  injectTopicHooks
+} = require('./modules/clawExecutionAdapter'); // claw-code 执行适配器
 
 const PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const manifestFileName = 'plugin-manifest.json';
@@ -558,6 +566,9 @@ class PluginManager extends EventEmitter {
                     initialConfig.PROJECT_BASE_PATH = this.projectBasePath;
 
                     const dependencies = { vcpLogFunctions: this.getVCPLogFunctions() };
+    // --- 注入 clawExecutionAdapter 日志函数 ---
+    injectVcpLogFunctions(this.getVCPLogFunctions());
+
 
                     // --- 注入 VectorDBManager ---
                     if (manifest.name === 'RAGDiaryPlugin') {

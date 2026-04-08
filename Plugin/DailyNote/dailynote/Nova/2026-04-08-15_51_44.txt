@@ -1,0 +1,9 @@
+[2026-04-08] - Nova
+[15:52] 响应先生需求，启动「代码专家 Agent」架构设计。
+核心输出：
+1. 明确角色定位：专注代码生成、架构设计、调试排错、性能优化。
+2. 制定工作流：需求解析 → 架构设计 → 代码生成 → 静态检查 → 沙箱验证 → 交付。
+3. 输出完整 System Prompt 模板，含安全边界、工具调用协议与输出规范。
+4. 规划工具链：PowerShell/Python执行器、FileOperator、LocalSearch、VSearch、SciCalculator、DailyNote。
+下一步：待先生确认后生成配置文件并注册至 VCP 路由。
+Tag: Agent架构设计, 代码专家, VCP工程化, SystemPrompt模板, 工具链配置, 自动化交付

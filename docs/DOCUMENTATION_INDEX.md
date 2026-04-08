@@ -4,6 +4,22 @@
 **文档版本：** 1.0.0  
 **仓库提交：** d09c49f
 
+### 鏂板璁捐鏂囨。
+
+- [PLUGIN_MARKET_DESIGN.md](./PLUGIN_MARKET_DESIGN.md) - VCPToolBox 鎻掍欢甯傚満妯″潡鐨勫畬鏁存妧鏈璁★紝鍖呮嫭鏋舵瀯銆佹帴鍙ｃ€佹暟鎹粨鏋勩€侀〉闈佷簨鍔℃祦绋嬪拰鍒嗛樁娈垫帹杩涜鍒掋€?
+
+### Plugin Market Docs
+
+- [PLUGIN_MARKET_DESIGN.md](./PLUGIN_MARKET_DESIGN.md) - 插件市场模块完整技术设计
+- [PLUGIN_MARKET_IMPLEMENTATION_PLAN.md](./PLUGIN_MARKET_IMPLEMENTATION_PLAN.md) - 插件市场接口清单、文件清单、页面清单和开发任务拆分表
+- [PLUGIN_MARKET_FILE_TODOS.md](./PLUGIN_MARKET_FILE_TODOS.md) - 插件市场逐文件 TODO 清单，细化到每个文件的导出方法、职责和完成标准
+
+### Channel Middleware Docs
+
+- [CHANNEL_MIDDLEWARE_DESIGN.md](./interaction-middleware/CHANNEL_MIDDLEWARE_DESIGN.md) - VCPToolBox 作为多端接入中间层的能力分析、短板、补强项与目标架构
+- [CHANNEL_MIDDLEWARE_IMPLEMENTATION_PLAN.md](./interaction-middleware/CHANNEL_MIDDLEWARE_IMPLEMENTATION_PLAN.md) - ChannelHub 的实施计划、目标目录、接口、状态模型、分阶段推进与 B1 到 B2 迁移方案
+- [CHANNEL_MIDDLEWARE_FILE_TODOS.md](./interaction-middleware/CHANNEL_MIDDLEWARE_FILE_TODOS.md) - ChannelHub 逐文件 TODO 清单，细化到每个模块、路由、schema 和 AdminPanel 文件的职责、导出方法与完成标准
+
 ---
 
 ## 文档目的
