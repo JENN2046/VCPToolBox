@@ -21,7 +21,7 @@ export function showMessage(message, type = 'info', duration = 3500) {
     const messagePopup = document.getElementById('message-popup');
     if (messagePopup) {
         messagePopup.textContent = message;
-        messagePopup.className = 'message-popup'; // Reset classes
+        messagePopup.className = 'message-popup';
         messagePopup.classList.add(type, 'show');
         setTimeout(() => {
             messagePopup.classList.remove('show');
@@ -70,14 +70,18 @@ export async function apiFetch(url, options = {}, showLoader = true) {
                     console.warn('401 Unauthorized, redirecting to login...');
                     window.location.href = '/AdminPanel/login.html';
                 }
-                return new Promise(() => {}); // 中断后续逻辑
+                return new Promise(() => { }); // 中断后续逻辑
             }
-            
+
+            // 尝试从响应中获取错误信息
             let errorData = { error: `HTTP error ${response.status}`, details: response.statusText };
             try {
                 const jsonError = await response.json();
                 errorData = { ...errorData, ...jsonError };
-            } catch (e) { /* Ignore if response is not JSON */ }
+            } catch (e) {
+                // 响应不是 JSON 格式，使用原始错误信息
+                console.warn('Error response is not JSON, using fallback error message');
+            }
             throw new Error(errorData.message || errorData.error || errorData.details || `HTTP error ${response.status}`);
         }
         const contentType = response.headers.get("content-type");
@@ -88,7 +92,7 @@ export async function apiFetch(url, options = {}, showLoader = true) {
         }
     } catch (error) {
         console.error('API Fetch Error:', error.message, error);
-        showMessage(`操作失败: ${error.message}`, 'error');
+        showMessage(`操作失败：${error.message}`, 'error');
         throw error;
     } finally {
         if (showLoader) showLoading(false);
@@ -109,5 +113,5 @@ export function escapeHTML(str) {
         '"': '&quot;',
         "'": '&#039;'
     };
-    return str.toString().replace(/[&<>"']/g, function(m) { return map[m]; });
+    return str.toString().replace(/[&<>"']/g, function (m) { return map[m]; });
 }

@@ -19,6 +19,12 @@ VCP ChannelHub 的 QQ 机器人适配器，通过 OneBot 11 协议连接 QQ。
 - ✅ B2 协议集成 (ChannelEventEnvelope)
 - ✅ 自动重连
 - ✅ 会话管理
+- ✅ 会话持久化存储
+- ✅ 表情符号映射
+- ✅ 回复消息支持
+- ✅ 健康检查和诊断工具
+- ✅ 主动消息推送（定时任务/事件触发）
+- ✅ Markdown 转消息段支持
 
 ## 快速开始
 
@@ -109,17 +115,17 @@ npm start
 ## 架构
 
 ```
-┌─────────────────┐     WebSocket      ┌──────────────────┐
-│   OneBot 实现    │◄──────────────────►│  OneBot Client   │
-│ (go-cqhttp/     │                    │  (client.js)     │
-│  NapCat/...)    │                    └────────┬─────────┘
-└─────────────────┘                             │
-                                                ▼
-┌─────────────────┐     HTTP/B2        ┌──────────────────┐
-│  VCPToolBox     │◄──────────────────►│  VCP Channel     │
-│  ChannelHub     │                    │  Client          │
-└─────────────────┘                    │  (channelClient.js)│
-                                       └──────────────────┘
+┌─────────────────┐ WebSocket ┌──────────────────┐
+│ OneBot 实现     │◄──────────►│ OneBot Client    │
+│ (go-cqhttp/     │           │ (client.js)      │
+│ NapCat/...)     │           └────────┬─────────┘
+└─────────────────┘                    │
+                                       ▼
+                          ┌─────────────────┐ HTTP/B2 ┌──────────────────┐
+                          │ VCPToolBox      │◄────────┤ VCP Channel      │
+                          │ ChannelHub      │         │ Client           │
+                          └─────────────────┘         │ (channelClient.js)│
+                                                      └──────────────────┘
 ```
 
 ## 消息流程
@@ -144,26 +150,97 @@ npm start
 ```
 Plugin/vcp-onebot-adapter/
 ├── src/
-│   ├── index.js              # 入口
+│   ├── index.js                 # 入口
+│   ├── adapter/
+│   │   └── contract.js          # OneBot 适配器 (AdapterContract 实现)
 │   ├── adapters/
 │   │   ├── onebot/
-│   │   │   └── client.js     # OneBot WebSocket 客户端
+│   │   │   └── client.js        # OneBot WebSocket 客户端
 │   │   └── vcp/
-│   │       └── channelClient.js  # VCP ChannelHub 客户端
+│   │       └── channelClient.js # VCP ChannelHub 客户端
 │   ├── core/
-│   │   └── pipeline.js       # 消息处理管道
+│   │   ├── pipeline.js          # 消息处理管道
+│   │   ├── sessionBinding.js    # 会话绑定持久化
+│   │   └── proactiveSender.js   # 主动消息发送器
 │   └── utils/
-│       └── logger.js         # 日志工具
-├── plugin-manifest.json      # 插件清单
+│       ├── logger.js            # 日志工具
+│       └── markdown.js          # Markdown 转换器
+├── examples/
+│   ├── agent-example.js # AI 代理示例
+│   └── scheduler-example.js # 定时任务示例
+├── scripts/
+│   ├── health-check.js          # 健康检查脚本
+│   └── test-adapter.js          # 适配器测试脚本
+├── test/
+│   └── onebot-adapter.test.js   # 单元测试
+├── plugin-manifest.json         # 插件清单
 ├── package.json
-├── .env.example
+├── .env.example                 # 配置模板
 └── README.md
 ```
 
 ### 运行测试
 
 ```bash
+# 运行单元测试
 npm test
+
+# 运行适配器测试
+node scripts/test-adapter.js
+
+# 运行健康检查
+node scripts/health-check.js
+```
+
+### 高级用法
+
+#### 主动消息推送
+
+```javascript
+import { createProactiveSender } from './src/core/proactiveSender.js';
+
+const sender = createProactiveSender({ onebotClient, logger });
+
+// 发送私聊消息
+await sender.sendPrivateMessage(123456789, '你好！');
+
+// 发送群消息
+await sender.sendGroupMessage(123456, '大家好！');
+
+// @全体成员
+await sender.sendGroupAtAll(123456, '重要通知！');
+
+// 发送图片
+await sender.sendImage('group', 123456, 'http://example.com/image.jpg');
+```
+
+#### Markdown 转消息段
+
+```javascript
+import { parseMarkdown } from './src/utils/markdown.js';
+
+const markdown = `
+# 欢迎
+**你好**，世界！
+- 列表项 1
+- 列表项 2
+`;
+
+const segments = parseMarkdown(markdown);
+// 转换为 OneBot 消息段数组
+```
+
+#### 定时任务
+
+```javascript
+import { createScheduler } from './examples/scheduler-example.js';
+
+const scheduler = createScheduler({ onebotClient, logger });
+
+// 添加每小时执行的任务
+scheduler.addTask('hourly-task', async () => {
+  await sender.sendGroupMessage(123456, '整点报时！');
+}, 3600000); // 1 小时
 ```
 
 ### 调试模式

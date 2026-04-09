@@ -58,8 +58,8 @@ export function createVcpChannelClient({
 
     // 构建 bindingKey
     const bindingKey = isGroup
-      ? `qq:group:${groupId}:${userId}`
-      : `qq:private:${userId}`;
+      ? `onebot:group:${groupId}:${userId}`
+      : `onebot:private:${userId}`;
 
     // 解析消息内容
     const messages = parseOneBotMessage(onebotEvent);
@@ -97,7 +97,7 @@ export function createVcpChannelClient({
       },
       session: {
         bindingKey,
-        externalSessionKey: bindingKey,
+        externalSessionKey: `onebot:${isGroup ? 'group' : 'private'}:${isGroup ? groupId : userId}`,
         currentTopicId: null,
         allowCreateTopic: true,
         allowSwitchTopic: true,

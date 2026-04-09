@@ -1,4 +1,4 @@
-﻿// AdminPanel/js/dashboard.js
+// AdminPanel/js/dashboard.js
 import { apiFetch } from './utils.js';
 import { initializeCalendarWidget } from './schedule-manager.js';
 
@@ -13,7 +13,8 @@ let logoClickCount = 0;
 let logoClickTimer = null;
 
 /**
- * 鍒濆鍖栦华琛ㄧ洏锛岃缃畾鏃跺櫒骞跺姞杞藉垵濮嬫暟鎹€? */
+ * 初始化仪表盘，设置定时器并加载初始数据。
+ */
 export function initializeDashboard() {
     console.log('Initializing Dashboard...');
     if (monitorIntervalId) {
@@ -23,7 +24,6 @@ export function initializeDashboard() {
     updateWeatherData();
     updateDailyHotNews();
     initializeCalendarWidget();
-    
     updateActivityChart().then(() => {
         drawActivityChart();
     });
@@ -34,11 +34,11 @@ export function initializeDashboard() {
         updateDailyHotNews();
         initializeCalendarWidget();
         updateActivityChart().then(() => {
-             drawActivityChart();
+            drawActivityChart();
         });
     }, 5000);
 
-    // 褰╄泲閫昏緫锛氱偣鍑?娆ogo杩涘叆娌夋蹈妯″紡
+    // 彩蛋逻辑：点击 5 次 logo 进入沉浸模式
     const logo = document.getElementById('vcp-logo-main');
     if (logo && !logo.dataset.easterEggInitialized) {
         logo.addEventListener('click', () => {
@@ -64,7 +64,8 @@ export function initializeDashboard() {
 }
 
 /**
- * 杩涘叆澶槼绯绘矇娴歌鏅ā寮? */
+ * 进入太阳系沉浸观景模式
+ */
 function enterImmersiveMode() {
     const bg = document.querySelector('.solar-system-bg');
     if (bg) {
@@ -76,7 +77,8 @@ function enterImmersiveMode() {
 }
 
 /**
- * 閫€鍑烘矇娴告ā寮? */
+ * 退出沉浸模式
+ */
 function exitImmersiveMode() {
     const bg = document.querySelector('.solar-system-bg');
     if (bg) {
@@ -88,7 +90,8 @@ function exitImmersiveMode() {
 }
 
 /**
- * 鍋滄浠〃鐩樼殑鏁版嵁杞銆? */
+ * 停止仪表盘的数据轮询。
+ */
 export function stopDashboardUpdates() {
     if (monitorIntervalId) {
         clearInterval(monitorIntervalId);
@@ -98,7 +101,8 @@ export function stopDashboardUpdates() {
 }
 
 /**
- * 鏇存柊浠〃鐩樹笂鐨勬墍鏈夋暟鎹€? */
+ * 更新仪表盘上的所有数据。
+ */
 async function updateDashboardData() {
     const cpuProgress = document.getElementById('cpu-progress');
     const cpuUsageText = document.getElementById('cpu-usage-text');
@@ -119,15 +123,15 @@ async function updateDashboardData() {
                 return { success: false, code: 'N/A (Error)' };
             })
         ]);
-        
+
         if (userAuthCodeDisplay) {
-            userAuthCodeDisplay.textContent = authCodeData.success ? authCodeData.code : (authCodeData.code || 'N/A (鏈繍琛?');
+            userAuthCodeDisplay.textContent = authCodeData.success ? authCodeData.code : (authCodeData.code || 'N/A (未运行)');
         }
 
         if (cpuProgress && cpuUsageText && cpuInfoText) {
             const cpuUsage = resources.system.cpu.usage.toFixed(1);
             updateProgressCircle(cpuProgress, cpuUsageText, cpuUsage);
-            cpuInfoText.innerHTML = `骞冲彴: ${resources.system.nodeProcess.platform} <br> 鏋舵瀯: ${resources.system.nodeProcess.arch}`;
+            cpuInfoText.innerHTML = `平台：${resources.system.nodeProcess.platform} <br> 架构：${resources.system.nodeProcess.arch}`;
         }
 
         if (memProgress && memUsageText && memInfoText) {
@@ -137,9 +141,9 @@ async function updateDashboardData() {
             const memUsage = memTotal > 0 ? ((memUsed / memTotal) * 100).toFixed(1) : 0;
             const vcpMemUsage = memTotal > 0 ? ((vcpMemUsed / memTotal) * 100).toFixed(1) : 0;
             updateProgressCircle(memProgress, memUsageText, memUsage, vcpMemUsage);
-            memInfoText.innerHTML = `宸茬敤: ${(memUsed / 1024 / 1024 / 1024).toFixed(2)} GB <br> 鎬诲叡: ${(memTotal / 1024 / 1024 / 1024).toFixed(2)} GB`;
+            memInfoText.innerHTML = `已用：${(memUsed / 1024 / 1024 / 1024).toFixed(2)} GB <br> 总共：${(memTotal / 1024 / 1024 / 1024).toFixed(2)} GB`;
         }
-        
+
         if (pm2ProcessList) {
             pm2ProcessList.innerHTML = '';
             if (processes.success && processes.processes.length > 0) {
@@ -154,7 +158,7 @@ async function updateDashboardData() {
                     pm2ProcessList.appendChild(procEl);
                 });
             } else {
-                pm2ProcessList.innerHTML = '<p>娌℃湁姝ｅ湪杩愯鐨?PM2 杩涚▼銆?/p>';
+                pm2ProcessList.innerHTML = '<p>没有正在运行的 PM2 进程。</p>';
             }
         }
 
@@ -165,21 +169,22 @@ async function updateDashboardData() {
             const uptimeMinutes = Math.floor((uptimeSeconds % 3600) / 60);
             nodeInfoList.innerHTML = `
                 <div class="node-info-item"><strong>PID:</strong> ${nodeInfo.pid}</div>
-                <div class="node-info-item"><strong>Node.js 鐗堟湰:</strong> ${nodeInfo.version}</div>
-                <div class="node-info-item"><strong>鍐呭瓨鍗犵敤:</strong> ${(nodeInfo.memory.rss / 1024 / 1024).toFixed(2)} MB</div>
-                <div class="node-info-item"><strong>杩愯鏃堕棿:</strong> ${uptimeHours}h ${uptimeMinutes}m</div>
+                <div class="node-info-item"><strong>Node.js 版本:</strong> ${nodeInfo.version}</div>
+                <div class="node-info-item"><strong>内存占用:</strong> ${(nodeInfo.memory.rss / 1024 / 1024).toFixed(2)} MB</div>
+                <div class="node-info-item"><strong>运行时间:</strong> ${uptimeHours}h ${uptimeMinutes}m</div>
             `;
         }
 
     } catch (error) {
         console.error('Failed to update dashboard data:', error);
-        if (pm2ProcessList) pm2ProcessList.innerHTML = `<p class="error-message">鍔犺浇 PM2 鏁版嵁澶辫触: ${error.message}</p>`;
-        if (nodeInfoList) nodeInfoList.innerHTML = `<p class="error-message">鍔犺浇绯荤粺鏁版嵁澶辫触: ${error.message}</p>`;
+        if (pm2ProcessList) pm2ProcessList.innerHTML = `<p class="error-message">加载 PM2 数据失败：${error.message}</p>`;
+        if (nodeInfoList) nodeInfoList.innerHTML = `<p class="error-message">加载系统数据失败：${error.message}</p>`;
     }
 }
 
 /**
- * 鏇存柊澶╂皵棰勬姤鏁版嵁銆? */
+ * 更新天气预报数据。
+ */
 async function updateWeatherData() {
     const weatherIcon = document.getElementById('weather-icon');
     const weatherTemp = document.getElementById('weather-temp');
@@ -193,8 +198,8 @@ async function updateWeatherData() {
 
     try {
         const data = await apiFetch(`${API_BASE_URL}/weather`, {}, false);
-        
-        // 鏄犲皠澶╂皵鍥炬爣 (浣跨敤 Material Symbols)
+
+        // 映射天气图标 (使用 Material Symbols)
         const iconMap = {
             '100': 'sunny',
             '101': 'cloudy',
@@ -232,7 +237,8 @@ async function updateWeatherData() {
         };
 
         if (data && data.hourly && data.hourly.length > 0) {
-            // 瀵绘壘鏈€鎺ヨ繎褰撳墠鏃堕棿鐨勬暣鐐归鎶?            const now = new Date();
+            // 寻找最接近当前时间的整点预报
+            const now = new Date();
             let current = data.hourly[0];
             let minDiff = Infinity;
 
@@ -249,35 +255,36 @@ async function updateWeatherData() {
             weatherTemp.textContent = current.temp;
             weatherText.textContent = current.text;
             weatherHumidity.textContent = `${current.humidity}%`;
-            weatherWind.textContent = `${current.windDir} ${current.windScale}绾;
+            weatherWind.textContent = `${current.windDir} ${current.windScale}级`;
             weatherPressure.textContent = `${current.pressure} hPa`;
         }
 
         if (data && data.daily && data.daily.length > 0 && weatherForecast) {
             weatherForecast.innerHTML = '';
-            // 鏄剧ず鏈潵 4 澶╃殑棰勬姤 (璺宠繃浠婂ぉ)
+            // 显示未来 4 天的预报 (跳过今天)
             data.daily.slice(1, 5).forEach(day => {
                 const date = new Date(day.fxDate);
                 const dayName = date.toLocaleDateString('zh-CN', { weekday: 'short' });
-                
+
                 const forecastItem = document.createElement('div');
                 forecastItem.className = 'forecast-item';
                 forecastItem.innerHTML = `
                     <span class="forecast-date">${dayName}</span>
                     <span class="material-symbols-outlined forecast-icon">${iconMap[day.iconDay] || iconMap['default']}</span>
-                    <span class="forecast-temp">${day.tempMin}掳/${day.tempMax}掳</span>
+                    <span class="forecast-temp">${day.tempMin}°/${day.tempMax}°</span>
                 `;
                 weatherForecast.appendChild(forecastItem);
             });
         }
     } catch (error) {
         console.error('Failed to update weather data:', error);
-        if (weatherText) weatherText.textContent = '鍔犺浇澶辫触';
+        if (weatherText) weatherText.textContent = '加载失败';
     }
 }
 
 /**
- * 鏇存柊姣忔棩鐑鏁版嵁銆? */
+ * 更新每日热榜数据。
+ */
 async function updateDailyHotNews() {
     const newsScroller = document.getElementById('news-scroller');
     if (!newsScroller) return;
@@ -287,12 +294,13 @@ async function updateDailyHotNews() {
         if (response.success && response.data.length > 0) {
             // Check if content actually changed to avoid restarting animation unnecessarily
             const currentItemCount = newsScroller.querySelectorAll('.news-item').length;
-            if (currentItemCount === response.data.length * 2) return; 
+            if (currentItemCount === response.data.length * 2) return;
 
             newsScroller.innerHTML = '';
-            
-            // 涓轰簡瀹炵幇鏃犵紳婊氬姩锛屾垜浠渶瑕佸鍒朵竴浠芥暟鎹?            const allItems = [...response.data, ...response.data];
-            
+
+            // 为了实现无缝滚动，我们需要复制一份数据
+            const allItems = [...response.data, ...response.data];
+
             allItems.forEach(item => {
                 const itemEl = document.createElement('a');
                 itemEl.className = 'news-item';
@@ -305,26 +313,29 @@ async function updateDailyHotNews() {
                 newsScroller.appendChild(itemEl);
             });
 
-            // 璁＄畻鍔ㄧ敾鏃堕暱锛氭瘡涓潯鐩害 4 绉?            const duration = response.data.length * 4;
+            // 计算动画时长：每个条目约 4 秒
+            const duration = response.data.length * 4;
             newsScroller.style.animation = `scroll-news ${duration}s linear infinite`;
         } else {
-            newsScroller.innerHTML = '<p style="text-align: center; padding: 20px; opacity: 0.6;">鏆傛棤鐑鏁版嵁銆?/p>';
+            newsScroller.innerHTML = '<p style="text-align: center; padding: 20px; opacity: 0.6;">暂无热榜数据。</p>';
         }
     } catch (error) {
         console.error('Failed to update daily hot news:', error);
-        newsScroller.innerHTML = `<p class="error-message">鍔犺浇鐑澶辫触: ${error.message}</p>`;
+        newsScroller.innerHTML = `<p class="error-message">加载热榜失败：${error.message}</p>`;
     }
 }
 
 /**
- * 鏇存柊鍦嗗舰杩涘害鏉°€? * @param {HTMLElement} circleElement - SVG 鍏冪礌
- * @param {HTMLElement} textElement - 鏄剧ず鐧惧垎姣旂殑鏂囨湰鍏冪礌
- * @param {number} percentage - 鐧惧垎姣? */
+ * 更新圆形进度条。
+ * @param {HTMLElement} circleElement - SVG 元素
+ * @param {HTMLElement} textElement - 显示百分比的文本元素
+ * @param {number} percentage - 百分比
+ */
 function updateProgressCircle(circleElement, textElement, percentage, secondaryPercentage = null) {
     const radius = 54;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (percentage / 100) * circumference;
-    
+
     const progressBar = circleElement.querySelector('.progress-bar');
     if (progressBar) {
         progressBar.style.strokeDashoffset = offset;
@@ -344,7 +355,8 @@ function updateProgressCircle(circleElement, textElement, percentage, secondaryP
 }
 
 /**
- * 浠庢湇鍔″櫒鏃ュ織鏇存柊娲诲姩鍥捐〃鐨勬暟鎹€? */
+ * 从服务器日志更新活动图表的数据。
+ */
 async function updateActivityChart() {
     const activityChartCanvas = document.getElementById('activity-chart-canvas');
     if (!activityChartCanvas) return;
@@ -352,7 +364,7 @@ async function updateActivityChart() {
     try {
         const logData = await apiFetch(`${API_BASE_URL}/server-log`, {}, false);
         const logLines = logData.content.split('\n');
-        
+
         let newLogsCount = 0;
         let latestTimeInThisBatch = null;
 
@@ -372,11 +384,11 @@ async function updateActivityChart() {
                 }
             }
         }
-        
+
         if (latestTimeInThisBatch) {
             lastLogCheckTime = latestTimeInThisBatch;
         }
-        
+
         activityDataPoints.push(newLogsCount);
         if (activityDataPoints.length > 60) {
             activityDataPoints.shift();
@@ -392,10 +404,12 @@ async function updateActivityChart() {
 }
 
 /**
- * 缁樺埗鏈嶅姟鍣ㄦ椿鍔ㄥ浘琛ㄣ€? */
+ * 绘制服务器活动图表。
+ */
 function drawActivityChart() {
     const activityChartCanvas = document.getElementById('activity-chart-canvas');
     if (!activityChartCanvas) return;
+
     const canvas = activityChartCanvas;
     const ctx = canvas.getContext('2d');
     const width = canvas.offsetWidth;
@@ -407,7 +421,7 @@ function drawActivityChart() {
     const lineColor = theme === 'dark' ? 'rgba(138, 180, 248, 0.8)' : 'rgba(26, 115, 232, 0.8)';
     const fillColor = theme === 'dark' ? 'rgba(138, 180, 248, 0.15)' : 'rgba(26, 115, 232, 0.15)';
     const gridColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-    
+
     const maxCount = Math.max(5, ...activityDataPoints);
     const padding = 10;
 
@@ -426,7 +440,7 @@ function drawActivityChart() {
 
     // Draw the line and area fill
     ctx.beginPath();
-    
+
     const points = activityDataPoints.map((d, i) => {
         const x = (i / (activityDataPoints.length - 1)) * (width - padding * 2) + padding;
         const y = height - (d / maxCount) * (height - padding * 2) - padding;
@@ -439,7 +453,7 @@ function drawActivityChart() {
             ctx.lineTo(points[i].x, points[i].y);
         }
     }
-    
+
     ctx.strokeStyle = lineColor;
     ctx.lineWidth = 2;
     ctx.stroke();

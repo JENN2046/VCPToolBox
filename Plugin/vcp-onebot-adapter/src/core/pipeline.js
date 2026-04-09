@@ -1,11 +1,11 @@
 /**
  * OneBot 消息处理管道
- * 
+ *
  * 处理 OneBot 事件 -> 转换为 B2 Envelope -> 发送到 ChannelHub -> 接收回复 -> 发送回 QQ
  */
 
 // 会话 TTL 配置
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24小时
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 小时
 const SESSION_MAX_SIZE = 10000; // 最大会话数
 
 // QQ 消息长度限制
@@ -19,6 +19,7 @@ const QQ_MAX_MESSAGE_LENGTH = 4500;
  * @param {Object} options.logger - 日志器
  * @param {string} options.defaultAgentName - 默认 Agent 名称
  * @param {string} options.defaultAgentDisplayName - 默认 Agent 显示名称
+ * @param {boolean} options.enableSessionPersistence - 启用会话持久化
  */
 export function createMessagePipeline({
   vcpClient,
@@ -26,8 +27,23 @@ export function createMessagePipeline({
   logger = console,
   defaultAgentName = 'Nova',
   defaultAgentDisplayName = 'Nova',
+  enableSessionPersistence = true, // 启用会话持久化
 }) {
   const sessions = new Map();
+
+  // 可选：SessionBindingStore 集成
+  let sessionBindingEnhancer = null;
+
+  if (enableSessionPersistence) {
+    import('./sessionBinding.js').then((mod) => {
+      sessionBindingEnhancer = mod.createSessionBindingEnhancer({ logger, debugMode: false });
+      sessionBindingEnhancer.initialize().catch((err) => {
+        logger.error('[pipeline] Failed to initialize session binding:', err);
+      });
+    }).catch((err) => {
+      logger.error('[pipeline] Failed to load session binding module:', err);
+    });
+  }
 
   /**
    * 清理过期会话
@@ -69,9 +85,9 @@ export function createMessagePipeline({
   function buildSessionKey(event) {
     const isGroup = event.message_type === 'group';
     if (isGroup) {
-      return `qq:group:${event.group_id}:${event.user_id}`;
+      return `onebot:group:${event.group_id}`;
     }
-    return `qq:private:${event.user_id}`;
+    return `onebot:private:${event.user_id}`;
   }
 
   /**
@@ -159,6 +175,16 @@ export function createMessagePipeline({
     const isGroup = event.message_type === 'group';
 
     try {
+      // 持久化会话绑定（如果启用了 SessionBindingStore）
+      if (sessionBindingEnhancer) {
+        try {
+          const bindingKey = buildSessionKey(event);
+          await sessionBindingEnhancer.touchSession(bindingKey);
+        } catch (err) {
+          logger.debug('[pipeline] Failed to persist session:', err);
+        }
+      }
+
       // 发送到 ChannelHub
       const reply = await vcpClient.processAndSend(event, {
         agentId: session.agentName,
@@ -233,7 +259,7 @@ export function createMessagePipeline({
         if (file.url) {
           segments.push({
             type: 'text',
-            data: { text: `\n📎 文件: ${file.fileName || file.url}` },
+            data: { text: `\n📎 文件：${file.fileName || file.url}` },
           });
         }
       }

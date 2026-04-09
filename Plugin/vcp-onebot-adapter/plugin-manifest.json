@@ -61,17 +61,24 @@
       "platform": "qq",
       "protocol": "onebot",
       "supportsB2": true,
+      "transportMode": "forward_ws",
+      "sessionGrammar": "onebot:{conversationType}:{conversationId}",
       "capabilities": {
         "supportsText": true,
         "supportsImage": true,
         "supportsFile": false,
         "supportsAudio": true,
         "supportsCard": false,
-        "supportsActionCallback": false,
+        "supportsAction": false,
+        "supportsQuoteReply": true,
+        "supportsForwardMessage": true,
+        "supportsStreaming": false,
+        "supportsGroupChat": true,
+        "supportsPrivateChat": true,
         "supportsThread": false,
-        "supportsMention": true,
         "supportsProactivePush": true,
-        "maxMessageLength": 5000,
+        "maxMessageLength": 4500,
+        "maxMediaSize": 25000000,
         "mediaUploadMode": "url"
       }
     }

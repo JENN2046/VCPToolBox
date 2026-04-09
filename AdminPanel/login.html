@@ -54,7 +54,7 @@
             left: -50%;
             width: 200%;
             height: 200%;
-            background: 
+            background:
                 radial-gradient(circle at 20% 80%, rgba(88, 166, 255, 0.1) 0%, transparent 50%),
                 radial-gradient(circle at 80% 20%, rgba(136, 87, 255, 0.1) 0%, transparent 50%),
                 radial-gradient(circle at 40% 40%, rgba(63, 185, 80, 0.05) 0%, transparent 40%);
@@ -291,7 +291,7 @@
             }
 
             .background-animation::before {
-                background: 
+                background:
                     radial-gradient(circle at 20% 80%, rgba(88, 166, 255, 0.15) 0%, transparent 50%),
                     radial-gradient(circle at 80% 20%, rgba(136, 87, 255, 0.15) 0%, transparent 50%);
             }
@@ -299,166 +299,165 @@
     </style>
 </head>
 <body>
-    <div class="background-animation"></div>
-    
-    <div class="login-container">
-        <div class="login-card">
-            <div class="logo-section">
-                <img src="VCPLogo2.png" alt="VCP Logo" onerror="this.style.display='none'">
-                <p>控制中心管理面板</p>
+<div class="background-animation"></div>
+
+<div class="login-container">
+    <div class="login-card">
+        <div class="logo-section">
+            <img src="VCPLogo2.png" alt="VCP Logo" onerror="this.style.display='none'">
+            <p>控制中心管理面板</p>
+        </div>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <div class="input-wrapper">
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        placeholder="请输入用户名"
+                        autocomplete="username"
+                        required
+                    >
+                    <span class="icon">👤</span>
+                </div>
             </div>
 
-            <form id="login-form">
-                <div class="form-group">
-                    <label for="username">用户名</label>
-                    <div class="input-wrapper">
-                        <input 
-                            type="text" 
-                            id="username" 
-                            name="username" 
-                            placeholder="请输入用户名"
-                            autocomplete="username"
-                            required
-                        >
-                        <span class="icon">👤</span>
-                    </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <div class="input-wrapper">
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="请输入密码"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <span class="icon">🔒</span>
+                    <button type="button" class="password-toggle" onclick="togglePassword()">
+                        <span id="toggle-icon">👁</span>
+                    </button>
                 </div>
+            </div>
 
-                <div class="form-group">
-                    <label for="password">密码</label>
-                    <div class="input-wrapper">
-                        <input 
-                            type="password" 
-                            id="password" 
-                            name="password" 
-                            placeholder="请输入密码"
-                            autocomplete="current-password"
-                            required
-                        >
-                        <span class="icon">🔒</span>
-                        <button type="button" class="password-toggle" onclick="togglePassword()">
-                            <span id="toggle-icon">👁</span>
-                        </button>
-                    </div>
-                </div>
+            <button type="submit" class="login-button" id="login-btn">
+                <span class="spinner"></span>
+                <span class="btn-text">登 录</span>
+            </button>
 
-                <button type="submit" class="login-button" id="login-btn">
-                    <span class="spinner"></span>
-                    <span class="btn-text">登 录</span>
-                </button>
+            <div class="message" id="message"></div>
+        </form>
 
-                <div class="message" id="message"></div>
-            </form>
-
-            <p class="footer-text">
-                安全连接 · 仅限授权管理员访问
-            </p>
-        </div>
+        <p class="footer-text">
+            安全连接 · 仅限授权管理员访问
+        </p>
     </div>
+</div>
 
-    <script>
-        const form = document.getElementById('login-form');
-        const loginBtn = document.getElementById('login-btn');
-        const messageEl = document.getElementById('message');
+<script>
+    const form = document.getElementById('login-form');
+    const loginBtn = document.getElementById('login-btn');
+    const messageEl = document.getElementById('message');
 
-        function togglePassword() {
-            const passwordInput = document.getElementById('password');
-            const toggleIcon = document.getElementById('toggle-icon');
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                toggleIcon.textContent = '🙈';
-            } else {
-                passwordInput.type = 'password';
-                toggleIcon.textContent = '👁';
-            }
+    function togglePassword() {
+        const passwordInput = document.getElementById('password');
+        const toggleIcon = document.getElementById('toggle-icon');
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            toggleIcon.textContent = '🙈';
+        } else {
+            passwordInput.type = 'password';
+            toggleIcon.textContent = '👁';
+        }
+    }
+
+    function showMessage(text, type) {
+        messageEl.textContent = text;
+        messageEl.className = `message ${type}`;
+    }
+
+    function hideMessage() {
+        messageEl.className = 'message';
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideMessage();
+
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (!username || !password) {
+            showMessage('请输入用户名和密码', 'error');
+            return;
         }
 
-        function showMessage(text, type) {
-            messageEl.textContent = text;
-            messageEl.className = `message ${type}`;
-        }
+        loginBtn.classList.add('loading');
+        loginBtn.disabled = true;
 
-        function hideMessage() {
-            messageEl.className = 'message';
-        }
+        try {
+            // 构造 Basic Auth 头
+            const credentials = btoa(`${username}:${password}`);
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            hideMessage();
+            // 发送验证请求
+            const response = await fetch('/admin_api/verify-login', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Basic ${credentials}`,
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin'
+            });
 
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
-
-            if (!username || !password) {
-                showMessage('请输入用户名和密码', 'error');
-                return;
-            }
-
-            loginBtn.classList.add('loading');
-            loginBtn.disabled = true;
-
-            try {
-                // 构造 Basic Auth 头
-                const credentials = btoa(`${username}:${password}`);
-                
-                // 发送验证请求
-                const response = await fetch('/admin_api/verify-login', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Basic ${credentials}`,
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'same-origin' // ← 重要：确保 Cookie 被接收和发送
-                });
-
-                if (response.ok) {
-                    showMessage('登录成功，正在跳转...', 'success');
-                    
-                    // 浏览器会自动缓存这个 Basic Auth 凭据
-                    // 短暂延迟后跳转到主页面
-                    setTimeout(() => {
-                        window.location.href = '/AdminPanel/index.html';
-                    }, 500);
-                } else if (response.status === 429) {
-                    const data = await response.json();
-                    showMessage(data.message || '登录尝试过于频繁，请稍后再试', 'error');
-                } else {
-                    showMessage('用户名或密码错误', 'error');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                showMessage('连接服务器失败，请检查网络', 'error');
-            } finally {
-                loginBtn.classList.remove('loading');
-                loginBtn.disabled = false;
-            }
-        });
-
-        // 如果已经登录，直接跳转
-        async function checkExistingAuth() {
-            try {
-                const response = await fetch('/admin_api/verify-login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin' // ← 重要：携带现有 Cookie
-                });
-                if (response.ok) {
+            if (response.ok) {
+                showMessage('登录成功，正在跳转...', 'success');
+                // 短暂延迟后跳转到主页面
+                setTimeout(() => {
                     window.location.href = '/AdminPanel/index.html';
-                }
-            } catch (e) {
-                // 忽略错误，显示登录页面
+                }, 500);
+            } else if (response.status === 429) {
+                const data = await response.json();
+                showMessage(data.message || '登录尝试过于频繁，请稍后再试', 'error');
+            } else {
+                showMessage('用户名或密码错误', 'error');
             }
+        } catch (error) {
+            console.error('Login error:', error);
+            showMessage('连接服务器失败，请检查网络', 'error');
+        } finally {
+            loginBtn.classList.remove('loading');
+            loginBtn.disabled = false;
         }
-        
-        // 页面加载时检查
-        checkExistingAuth();
+    });
 
-        // Enter 键提交
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !loginBtn.disabled) {
-                form.dispatchEvent(new Event('submit'));
+    // 如果已经登录，直接跳转
+    async function checkExistingAuth() {
+        try {
+            const response = await fetch('/admin_api/verify-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin'
+            });
+            if (response.ok) {
+                window.location.href = '/AdminPanel/index.html';
             }
-        });
-    </script>
+        } catch (e) {
+            // 忽略错误，显示登录页面
+            console.warn('Existing auth check failed:', e);
+        }
+    }
+
+    // 页面加载时检查
+    checkExistingAuth();
+
+    // Enter 键提交
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !loginBtn.disabled) {
+            form.dispatchEvent(new Event('submit'));
+        }
+    });
+</script>
 </body>
 </html>

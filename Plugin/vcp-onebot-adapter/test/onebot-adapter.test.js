@@ -60,7 +60,7 @@ describe('VCP ChannelHub Client', () => {
       assert.strictEqual(envelope.client.conversationId, 'private_987654321');
       assert.strictEqual(envelope.sender.userId, '987654321');
       assert.strictEqual(envelope.sender.nick, '测试用户');
-      assert.strictEqual(envelope.session.bindingKey, 'qq:private:987654321');
+      assert.strictEqual(envelope.session.bindingKey, 'onebot:private:987654321');
       assert.strictEqual(envelope.payload.messages.length, 1);
       assert.strictEqual(envelope.payload.messages[0].role, 'user');
       assert.strictEqual(envelope.payload.messages[0].content[0].type, 'text');
@@ -95,7 +95,7 @@ describe('VCP ChannelHub Client', () => {
       assert.strictEqual(envelope.client.conversationId, 'group_111111111');
       assert.strictEqual(envelope.sender.isAdmin, true);
       assert.strictEqual(envelope.sender.role, 'admin');
-      assert.strictEqual(envelope.session.bindingKey, 'qq:group:111111111:987654321');
+      assert.strictEqual(envelope.session.bindingKey, 'onebot:group:111111111:987654321');
     });
 
     it('should convert image message to envelope', () => {

@@ -38,27 +38,10 @@ function formatTrashTimestamp(value) {
     return date.toLocaleString('zh-CN', { hour12: false });
 }
 
-async function restoreTrashedPluginLegacy(trashedFolderName) {
-    return restoreTrashedPlugin(trashedFolderName);
-    if (!confirm(`确定要恢复插件 "${displayName}" 吗？恢复后会重新加载插件列表。`)) {
-        return;
-    }
-
-    const result = await apiFetch(`${API_BASE_URL}/plugins/trash/${encodeURIComponent(trashedFolderName)}/restore`, {
-        method: 'POST',
-        body: JSON.stringify({})
-    });
-
-    showMessage(result?.message || '插件已恢复。', 'success', 5000);
-    await loadPluginList();
-    await loadPluginTrashList();
-
-    const restoredLink = document.querySelector(`a[data-plugin-name="${result?.pluginName || ''}"]`);
-    if (restoredLink) {
-        restoredLink.click();
-    }
-}
-
+/**
+ * 恢复被删除的插件。
+ * @param {string} trashedFolderName - 回收站中的文件夹名称
+ */
 async function restoreTrashedPlugin(trashedFolderName) {
     const result = await apiFetch(`${API_BASE_URL}/plugins/trash/${encodeURIComponent(trashedFolderName)}/restore`, {
         method: 'POST',
@@ -97,7 +80,7 @@ async function loadPluginTrashList() {
 
             const meta = document.createElement('p');
             meta.className = 'description';
-            meta.textContent = `原目录: ${plugin.originalFolderName || '-'} | 删除时间: ${formatTrashTimestamp(plugin.removedAt)}${plugin.version ? ` | 版本: ${plugin.version}` : ''}`;
+            meta.textContent = `原目录：${plugin.originalFolderName || '-'} | 删除时间：${formatTrashTimestamp(plugin.removedAt)}${plugin.version ? ` | 版本：${plugin.version}` : ''}`;
             item.appendChild(meta);
 
             const actions = document.createElement('div');
@@ -125,7 +108,7 @@ async function loadPluginTrashList() {
         });
     } catch (error) {
         console.error('Failed to load trashed plugins:', error);
-        trashList.innerHTML = `<p class="error-message">加载回收站失败: ${error.message}</p>`;
+        trashList.innerHTML = `<p class="error-message">加载回收站失败：${error.message}</p>`;
     }
 }
 
@@ -181,7 +164,7 @@ export async function loadPluginList() {
 
     try {
         const plugins = await apiFetch(`${API_BASE_URL}/plugins`);
-        
+
         // Clear existing dynamic items
         pluginNavList.querySelectorAll('li.dynamic-plugin-nav-item').forEach(item => item.remove());
         configDetailsContainer.querySelectorAll('section.dynamic-plugin-section').forEach(sec => sec.remove());
@@ -220,7 +203,7 @@ export async function loadPluginList() {
         });
 
     } catch (error) {
-        pluginNavList.innerHTML += `<li><p class="error-message">加载插件列表失败: ${error.message}</p></li>`;
+        pluginNavList.innerHTML += `<li><p class="error-message">加载插件列表失败：${error.message}</p></li>`;
     }
 }
 
@@ -238,7 +221,7 @@ function createPluginNavItem(plugin) {
     const displayName = plugin.manifest.displayName || originalName;
     let nameHtml = displayName;
     if (plugin.isDistributed) {
-        nameHtml += ` <span class="plugin-type-icon" title="分布式插件 (来自: ${plugin.serverId || '未知'})">☁️</span>`;
+        nameHtml += ` <span class="plugin-type-icon" title="分布式插件 (来自：${plugin.serverId || '未知'})">☁️</span>`;
     }
     nameHtml += `<br><span class="plugin-original-name">(${originalName})</span>`;
     a.innerHTML = nameHtml;
@@ -257,19 +240,19 @@ function createPluginConfigSection(plugin, container) {
     const pluginSection = document.createElement('section');
     pluginSection.id = `plugin-${plugin.manifest.name}-config-section`;
     pluginSection.classList.add('config-section', 'dynamic-plugin-section');
-    
+
     const originalName = plugin.manifest.name;
     const displayName = plugin.manifest.displayName || originalName;
-    
+
     let descriptionHtml = plugin.manifest.description || '暂无描述';
-    if (plugin.manifest.version) descriptionHtml += ` (版本: ${plugin.manifest.version})`;
-    if (plugin.isDistributed) descriptionHtml += ` (来自节点: ${plugin.serverId || '未知'})`;
+    if (plugin.manifest.version) descriptionHtml += ` (版本：${plugin.manifest.version})`;
+    if (plugin.isDistributed) descriptionHtml += ` (来自节点：${plugin.serverId || '未知'})`;
     if (!plugin.enabled) descriptionHtml += ' <span class="plugin-disabled-badge">(已禁用)</span>';
 
     let titleHtml = `${displayName} <span class="plugin-original-name">(${originalName})</span> 配置`;
     if (!plugin.enabled) titleHtml += ' <span class="plugin-disabled-badge-title">(已禁用)</span>';
     if (plugin.isDistributed) titleHtml += ' <span class="plugin-type-icon" title="分布式插件">☁️</span>';
-    
+
     pluginSection.innerHTML = `<h2>${titleHtml}</h2><p class="plugin-meta">${descriptionHtml}</p>`;
 
     const pluginControlsDiv = document.createElement('div');
@@ -308,10 +291,10 @@ function createPluginConfigSection(plugin, container) {
             loadPluginList();
             loadPluginConfig(plugin.manifest.name);
         } catch (error) {
-             console.error(`Failed to toggle plugin ${plugin.manifest.name}:`, error);
-             toggleButton.disabled = false;
-             toggleButton.textContent = currentEnabledState ? '禁用插件' : '启用插件';
-             toggleButton.classList.toggle('disabled-state', !currentEnabledState);
+            console.error(`Failed to toggle plugin ${plugin.manifest.name}:`, error);
+            toggleButton.disabled = false;
+            toggleButton.textContent = currentEnabledState ? '禁用插件' : '启用插件';
+            toggleButton.classList.toggle('disabled-state', !currentEnabledState);
         }
     });
 
@@ -382,7 +365,7 @@ export async function loadPluginConfig(pluginName) {
         if (!pluginData) {
             throw new Error(`Plugin data for ${pluginName} not found.`);
         }
-        
+
         const manifest = pluginData.manifest;
         const configEnvContent = pluginData.configEnvContent || "";
         originalPluginConfigs[pluginName] = parseEnvToList(configEnvContent);
@@ -401,14 +384,14 @@ export async function loadPluginConfig(pluginName) {
             const entry = originalPluginConfigs[pluginName].find(e => e.key === key && !e.isCommentOrEmpty);
             const value = entry ? entry.value : (manifest.defaults?.[key] ?? '');
             const isMultiline = entry ? entry.isMultilineQuoted : (String(value).includes('\n'));
-            
-            let descriptionHtml = manifest.configSchemaDescriptions?.[key] || `Schema 定义: ${key}`;
+
+            let descriptionHtml = manifest.configSchemaDescriptions?.[key] || `Schema 定义：${key}`;
             if (entry) {
                 descriptionHtml += ` <span class="defined-in">(当前在插件 .env 中定义)</span>`;
             } else if (manifest.defaults?.[key] !== undefined) {
                 descriptionHtml += ` <span class="defined-in">(使用插件清单默认值)</span>`;
             } else {
-                 descriptionHtml += ` <span class="defined-in">(未设置，将继承全局或为空)</span>`;
+                descriptionHtml += ` <span class="defined-in">(未设置，将继承全局或为空)</span>`;
             }
 
             const formGroup = createFormGroup(key, value, expectedType, descriptionHtml, true, pluginName, false, isMultiline);
@@ -421,7 +404,7 @@ export async function loadPluginConfig(pluginName) {
                 customFieldsContainer.appendChild(createCommentOrEmptyElement(entry.value, `${pluginName}-comment-${index}`));
             } else if (presentInEnv.has(entry.key)) {
                 hasCustomFields = true;
-                const descriptionHtml = `自定义配置项: ${entry.key} <span class="defined-in">(当前在插件 .env 中定义)</span>`;
+                const descriptionHtml = `自定义配置项：${entry.key} <span class="defined-in">(当前在插件 .env 中定义)</span>`;
                 const formGroup = createFormGroup(entry.key, entry.value, 'string', descriptionHtml, true, pluginName, true, entry.isMultilineQuoted);
                 customFieldsContainer.appendChild(formGroup);
             }
@@ -471,7 +454,7 @@ export async function loadPluginConfig(pluginName) {
         }
 
     } catch (error) {
-        form.innerHTML = `<p class="error-message">加载插件 ${pluginName} 配置失败: ${error.message}</p>`;
+        form.innerHTML = `<p class="error-message">加载插件 ${pluginName} 配置失败：${error.message}</p>`;
     }
 }
 
@@ -483,7 +466,7 @@ async function handlePluginFormSubmit(event) {
     event.preventDefault();
     const form = event.target;
     const pluginName = form.id.match(/plugin-(.*?)-config-form/)[1];
-    
+
     const currentPluginEntries = originalPluginConfigs[pluginName] || [];
     const newConfigString = buildEnvStringForPlugin(form, currentPluginEntries, pluginName);
 
@@ -513,9 +496,9 @@ function addCustomConfigFieldToPluginForm(form, pluginName, containerToAddTo) {
         return;
     }
 
-    const descriptionHtml = `自定义配置项: ${normalizedKey} <span class="defined-in">(新添加)</span>`;
+    const descriptionHtml = `自定义配置项：${normalizedKey} <span class="defined-in">(新添加)</span>`;
     const formGroup = createFormGroup(normalizedKey, '', 'string', descriptionHtml, true, pluginName, true, false);
-    
+
     if (!originalPluginConfigs[pluginName]) {
         originalPluginConfigs[pluginName] = [];
     }
@@ -550,7 +533,7 @@ function createInvocationCommandsEditor(pluginName, commands) {
         commandItem.className = 'command-item';
         commandItem.dataset.commandIdentifier = commandIdentifier;
 
-        commandItem.innerHTML = `<h4>命令: ${commandIdentifier}</h4>`;
+        commandItem.innerHTML = `<h4>命令：${commandIdentifier}</h4>`;
 
         const cmdFormGroup = document.createElement('div');
         cmdFormGroup.className = 'form-group';
@@ -567,14 +550,14 @@ function createInvocationCommandsEditor(pluginName, commands) {
         descTextarea.rows = Math.max(5, (cmd.description || '').split('\n').length + 2);
         descTextarea.value = cmd.description || '';
         cmdFormGroup.appendChild(descTextarea);
-        
+
         const cmdActionsDiv = document.createElement('div');
         cmdActionsDiv.className = 'form-actions';
 
         const saveCmdDescButton = document.createElement('button');
         saveCmdDescButton.type = 'button';
         saveCmdDescButton.textContent = '保存此指令描述';
-        
+
         const cmdStatusP = document.createElement('p');
         cmdStatusP.className = 'status command-status';
 
@@ -605,9 +588,9 @@ async function saveInvocationCommandDescription(pluginName, commandIdentifier, t
     const apiUrl = `${API_BASE_URL}/plugins/${pluginName}/commands/${commandIdentifier}/description`;
 
     if (!pluginName || !commandIdentifier) {
-        const errorMsg = `保存描述失败: 插件名称或命令标识符为空。`;
+        const errorMsg = `保存描述失败：插件名称或命令标识符为空。`;
         showMessage(errorMsg, 'error');
-        statusElement.textContent = '保存失败: 内部错误';
+        statusElement.textContent = '保存失败：内部错误';
         statusElement.className = 'status command-status error';
         return;
     }
@@ -621,7 +604,7 @@ async function saveInvocationCommandDescription(pluginName, commandIdentifier, t
         statusElement.textContent = '描述已保存!';
         statusElement.className = 'status command-status success';
     } catch (error) {
-        statusElement.textContent = `保存失败: ${error.message}`;
+        statusElement.textContent = `保存失败：${error.message}`;
         statusElement.className = 'status command-status error';
     }
 }

@@ -1,18 +1,22 @@
 /**
- * OneBot Adapter Implementation of VCP AdapterContract
+ * OneBot 适配器实现 VCP 适配器合约
  *
- * This adapter implements the standard AdapterContract interface for OneBot (QQ) integration.
- * It uses the OneBot 11 WebSocket protocol via go-cqhttp, NapCat, LLOneBot, etc.
+ * 实现 VCP AdapterContract 标准接口，用于 OneBot (QQ) 集成
+ * 使用 OneBot 11 WebSocket 协议，通过 go-cqhttp、NapCat、LLOneBot 等实现
  *
- * Reference: docs/interaction-middleware/VCP_INTERACTION_MIDDLEWARE_SCHEMA.md
- * OneBot 11 Protocol: https://github.com/botuniverse/onebot-11
+ * 参考文档：docs/interaction-middleware/VCP_INTERACTION_MIDDLEWARE_SCHEMA.md
+ * OneBot 11 协议：https://github.com/botuniverse/onebot-11
  */
 
-import { AdapterContract } from '../../../../modules/channelHub/AdapterContract.js';
 import { createOneBotClient } from '../adapters/onebot/client.js';
 import WebSocket from 'ws';
 
-// Capability profile for OneBot adapter
+// 动态导入 AdapterContract（运行时路径解析）
+const { AdapterContract } = await import(
+  new URL('../../../../modules/channelHub/AdapterContract.js', import.meta.url)
+);
+
+// OneBot 适配器的能力配置
 const ONEBOT_CAPABILITIES = {
   supportsText: true,
   supportsMarkdown: false,
@@ -33,25 +37,49 @@ const ONEBOT_CAPABILITIES = {
   maxMediaSize: 50 * 1024 * 1024 // 50MB
 };
 
+// QQ 表情 ID 映射表 (OneBot face id -> emoji)
+const FACE_EMOJI_MAP = {
+  '1': '😄', '2': '😃', '3': '😁', '4': '😂', '5': '😅',
+  '6': '😆', '7': '😇', '8': '😉', '9': '😊', '10': '😋',
+  '11': '😌', '12': '😍', '13': '😘', '14': '😙', '15': '😚',
+  '16': '😜', '17': '😝', '18': '😛', '19': '😳', '20': '😠',
+  '21': '😡', '22': '😔', '23': '😕', '24': '😒', '25': '😞',
+  '26': '😟', '27': '😢', '28': '😣', '29': '😖', '30': '😪',
+  '31': '😫', '32': '😨', '33': '😰', '34': '😱', '35': '😷',
+  '36': '😵', '41': '😶', '42': '😏', '43': '😑', '44': '😒',
+  '45': '😓', '46': '😔', '47': '😕', '48': '😖', '49': '😗',
+  '50': '😘', '51': '😙', '52': '😚', '53': '😛', '54': '😜',
+  '55': '😝', '56': '😞', '57': '😟', '58': '😠', '59': '😡',
+  '60': '😢', '61': '😣', '62': '😤', '63': '😥', '64': '😦',
+  '65': '😧', '66': '😨', '67': '😩', '68': '😪', '69': '😫',
+  '70': '😬', '71': '😭', '72': '😮', '73': '😯', '74': '😰',
+  '75': '😱', '76': '😲', '77': '😳', '78': '😴', '79': '😵',
+  '80': '😶', '81': '😷', '82': '😸', '83': '😹', '84': '😺',
+  '85': '😻', '86': '😼', '87': '😽', '88': '😾', '89': '😿',
+  '90': '🙀', '91': '🙁', '92': '🙂', '93': '🙃', '94': '🙄',
+  '95': '🙅', '96': '🙆', '97': '🙇', '98': '🙈', '99': '🙉',
+  '100': '🙊', '101': '🙋', '102': '🙌', '103': '🙍', '104': '🙎'
+};
+
 /**
- * OneBot Adapter implementing AdapterContract
+ * OneBot 适配器实现 AdapterContract
  */
 export class OneBotAdapter extends AdapterContract {
   /**
-   * @param {Object} config - Adapter configuration
-   * @param {Object} config.metadata - Adapter metadata
-   * @param {Object} config.options - Adapter options
-   * @param {string} config.options.wsUrl - WebSocket URL (e.g., ws://127.0.0.1:3001)
-   * @param {string} config.options.accessToken - Access token for WebSocket auth
-   * @param {Object} config.options.logger - Logger instance
+   * @param {Object} config - 适配器配置
+   * @param {Object} config.metadata - 适配器元数据
+   * @param {Object} config.options - 适配器选项
+   * @param {string} config.options.wsUrl - WebSocket URL (例如 ws://127.0.0.1:3001)
+   * @param {string} config.options.accessToken - WebSocket 认证令牌
+   * @param {Object} config.options.logger - 日志器实例
    */
   constructor(config = {}) {
     const metadata = config.metadata || {
       id: 'onebot-websocket',
       channel: 'qq',
-      displayName: 'OneBot Adapter',
+      displayName: 'OneBot 适配器',
       transportMode: 'forward_ws',
-      sessionGrammar: 'qq:{conversationType}:{conversationId}',
+      sessionGrammar: 'onebot:{conversationType}:{conversationId}',
       capabilities: ONEBOT_CAPABILITIES
     };
 
@@ -74,51 +102,51 @@ export class OneBotAdapter extends AdapterContract {
     this._selfId = null;
     this._connectionState = 'disconnected';
 
-    // Bind event handlers
+    // 绑定事件处理器
     this.client.on('connect', ({ selfId }) => {
       this._selfId = selfId;
       this._connectionState = 'connected';
-      this.options.logger.info('[OneBotAdapter] Connected, self_id:', selfId);
+      this.options.logger.info('[OneBotAdapter] 已连接，self_id:', selfId);
     });
 
     this.client.on('close', (code, reason) => {
       this._connectionState = 'disconnected';
-      this.options.logger.warn('[OneBotAdapter] WebSocket closed:', { code, reason });
+      this.options.logger.warn('[OneBotAdapter] WebSocket 关闭:', { code, reason });
     });
 
     this.client.on('error', (error) => {
       this._connectionState = 'error';
-      this.options.logger.error('[OneBotAdapter] WebSocket error:', error);
+      this.options.logger.error('[OneBotAdapter] WebSocket 错误:', error);
     });
   }
 
   /**
-   * Initialize the adapter
+   * 初始化适配器
    */
   async initialize() {
     if (this._initialized) return;
 
-    this.options.logger.info('[OneBotAdapter] Initializing...');
+    this.options.logger.info('[OneBotAdapter] 初始化中...');
 
-    // Validate required config
+    // 验证必要配置
     if (!this.options.wsUrl) {
-      throw new Error('ONEBOT_WS_URL is required');
+      throw new Error('ONEBOT_WS_URL 是必需的');
     }
 
-    // Connect to OneBot
+    // 连接到 OneBot
     try {
       await this.client.connect();
       this._initialized = true;
       this._connectionState = 'connected';
-      this.options.logger.info('[OneBotAdapter] Initialized successfully');
+      this.options.logger.info('[OneBotAdapter] 初始化成功');
     } catch (error) {
-      this.options.logger.error('[OneBotAdapter] Connection failed:', error);
+      this.options.logger.error('[OneBotAdapter] 连接失败:', error);
       throw error;
     }
   }
 
   /**
-   * Shutdown the adapter
+   * 关闭适配器
    */
   async shutdown() {
     if (!this._initialized) return;
@@ -127,14 +155,14 @@ export class OneBotAdapter extends AdapterContract {
     try {
       await this.client.disconnect();
     } catch (error) {
-      this.options.logger.error('[OneBotAdapter] Disconnect error:', error);
+      this.options.logger.error('[OneBotAdapter] 断开连接错误:', error);
     }
     this._connectionState = 'disconnected';
-    this.options.logger.info('[OneBotAdapter] Shutdown complete');
+    this.options.logger.info('[OneBotAdapter] 已关闭');
   }
 
   /**
-   * Health check
+   * 健康检查
    */
   async healthCheck() {
     return {
@@ -147,25 +175,25 @@ export class OneBotAdapter extends AdapterContract {
     };
   }
 
-  // ==================== Authentication ====================
+  // ==================== 认证 ====================
 
   /**
-   * Adapter-level authentication
+   * 适配器级认证
    */
   async authenticate(requestContext = {}) {
-    // OneBot uses access_token in WebSocket header for auth
-    // Check if token is valid by attempting an API call
+    // OneBot 使用 WebSocket 头部的 access_token 进行认证
+    // 尝试通过 API 调用来检查 token 是否有效
     if (!this.options.accessToken) {
-      // No token configured, skip auth
+      // 未配置 token，跳过认证
       return { authenticated: true, adapterId: this._metadata.id };
     }
 
-    // Check if client is connected
+    // 检查客户端是否已连接
     if (!this.client.isConnected) {
       return {
         authenticated: false,
         adapterId: this._metadata.id,
-        error: 'Not connected to OneBot'
+        error: '未连接到 OneBot'
       };
     }
 
@@ -173,28 +201,28 @@ export class OneBotAdapter extends AdapterContract {
   }
 
   /**
-   * Verify OneBot signature ( Hook md5 signature )
+   * 验证 OneBot 签名（Hook md5 签名）
    */
   async verifySignature(requestContext = {}) {
     const { headers, rawBody } = requestContext;
 
-    // OneBot 11 can use X-OneBot-Auth header or md5 signature
+    // OneBot 11 可以使用 X-OneBot-Auth 头部或 md5 签名
     const authHeader = headers?.['x-onebot-auth'];
     const signature = headers?.['x-signature'];
 
     if (!authHeader && !signature) {
-      // No auth signature present
+      // 无认证签名
       return { valid: true };
     }
 
-    // Validate access token if provided
+    // 验证 access token
     if (authHeader) {
       if (authHeader !== this.options.accessToken) {
-        return { valid: false, reason: 'Invalid auth token' };
+        return { valid: false, reason: '认证 token 无效' };
       }
     }
 
-    // Validate md5 signature if provided
+    // 验证 md5 签名
     if (signature) {
       const crypto = await import('crypto');
       const secret = process.env.ONEBOT_SECRET || this._metadata.authConfig?.secret;
@@ -206,7 +234,7 @@ export class OneBotAdapter extends AdapterContract {
           .digest('hex');
 
         if (computedSignature !== signature) {
-          return { valid: false, reason: 'Signature mismatch' };
+          return { valid: false, reason: '签名不匹配' };
         }
       }
     }
@@ -214,29 +242,29 @@ export class OneBotAdapter extends AdapterContract {
     return { valid: true };
   }
 
-  // ==================== Inbound Decoding ====================
+  // ==================== 入站解码 ====================
 
   /**
-   * Decode inbound raw payload to standard Event
+   * 将入站原始负载解码为标准 Event
    */
   async decodeInbound(rawPayload, context = {}) {
     this.recordInbound();
 
     if (!rawPayload) {
-      throw new Error('Empty payload');
+      throw new Error('空负载');
     }
 
-    // OneBot 11 message structure
+    // OneBot 11 消息结构
     const postType = rawPayload.post_type || '';
     const subType = rawPayload.sub_type || '';
-    const message_type = rawPayload.message_type || '';
+    const messageType = rawPayload.message_type || '';
     const message = rawPayload.message || '';
     const rawMessage = rawPayload.raw_message || '';
     const sender = rawPayload.sender || {};
-    const time = parseInt(rawPayload.time || 0) * 1000; // Convert to ms
+    const time = parseInt(rawPayload.time || 0) * 1000; // 转换为毫秒
 
-    // Build sender
-    const senderNick = sender.card || sender.nickname || 'User';
+    // 构建发送者信息
+    const senderNick = sender.card || sender.nickname || '用户';
     const senderId = String(rawPayload.user_id || 'unknown');
 
     const senderInfo = {
@@ -249,19 +277,19 @@ export class OneBotAdapter extends AdapterContract {
       organizationId: null
     };
 
-    // Determine conversation type and ID
+    // 确定会话类型和 ID
     let conversationType = 'private';
     let conversationId = null;
 
-    if (message_type === 'group') {
+    if (messageType === 'group') {
       conversationType = 'group';
       conversationId = String(rawPayload.group_id);
-    } else if (message_type === 'private') {
+    } else if (messageType === 'private') {
       conversationType = 'private';
       conversationId = senderId;
     }
 
-    // Build client
+    // 构建客户端信息
     const clientId = String(rawPayload.self_id || 'onebot');
 
     const client = {
@@ -274,30 +302,30 @@ export class OneBotAdapter extends AdapterContract {
       timestamp: time || Date.now()
     };
 
-    // Build session
+    // 构建会话
     const session = {
-      externalSessionKey: `qq:${conversationType}:${conversationId}`,
+      externalSessionKey: `onebot:${conversationType}:${conversationId}`,
       bindingKey: conversationType === 'private'
-        ? `qq:${conversationType}:${conversationId}:${senderId}`
-        : `qq:${conversationType}:${conversationId}`,
+        ? `onebot:${conversationType}:${conversationId}:${senderId}`
+        : `onebot:${conversationType}:${conversationId}:${senderId}`,
       currentTopicId: null,
       allowCreateTopic: true,
       allowSwitchTopic: true
     };
 
-    // Build payload messages from message sequence
+    // 构建负载消息
     const payload = {
       messages: []
     };
 
-    // Parse OneBot CQ code format
+    // 解析 OneBot CQ 代码格式
     const content = this._parseMessageContent(message);
     payload.messages.push({
       role: 'user',
       content
     });
 
-    // Build event
+    // 构建事件
     const event = {
       version: '2.0',
       eventId: String(rawPayload.message_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`),
@@ -311,7 +339,7 @@ export class OneBotAdapter extends AdapterContract {
       client,
       session,
       payload,
-      target: null, // Will be resolved by routing layer
+      target: null, // 由路由层解析
       runtime: {
         stream: false,
         model: null,
@@ -334,10 +362,10 @@ export class OneBotAdapter extends AdapterContract {
     return event;
   }
 
-  // ==================== Outbound Encoding ====================
+  // ==================== 出站编码 ====================
 
   /**
-   * Encode standard NormalizedReply to platform-specific messages
+   * 将标准 NormalizedReply 编码为平台特定消息
    */
   async encodeOutbound(reply, context = {}) {
     this.recordOutbound(reply.messages?.length || 1);
@@ -353,36 +381,36 @@ export class OneBotAdapter extends AdapterContract {
       }
     }
 
-    // If messages were downgraded (empty), provide fallback
+    // 如果消息被降级（空），提供回退
     if (messages.length === 0) {
       messages.push({
         type: 'text',
-        content: '[Message payload empty after capability downgrades]'
+        content: '[消息负载在能力降级后为空]'
       });
     }
 
     return messages;
   }
 
-  // ==================== Message Sending ====================
+  // ==================== 消息发送 ====================
 
   /**
-   * Send messages by session descriptor
+   * 通过会话描述符发送消息
    */
   async sendBySession(sessionDescriptor, platformMessages, context = {}) {
     this.recordOutbound(platformMessages.length);
 
     if (!platformMessages || platformMessages.length === 0) {
-      throw new Error('No messages to send');
+      throw new Error('没有要发送的消息');
     }
 
     if (!this._initialized) {
-      throw new Error('Adapter not initialized');
+      throw new Error('适配器未初始化');
     }
 
     const { conversationId, conversationType } = sessionDescriptor;
 
-    // Send each platform message as a separate API call
+    // 发送每个平台消息作为单独的 API 调用
     const results = [];
     for (const msg of platformMessages) {
       const result = await this._sendPlatformMessage(conversationId, conversationType, msg);
@@ -397,19 +425,19 @@ export class OneBotAdapter extends AdapterContract {
   }
 
   /**
-   * Send proactive message (notification)
+   * 发送主动消息（通知）
    */
   async sendProactiveMessage(sessionDescriptor, message) {
     this.assertSupports('supportsProactivePush');
 
     if (!this._initialized) {
-      throw new Error('Adapter not initialized');
+      throw new Error('适配器未初始化');
     }
 
     const { conversationType, conversationId } = sessionDescriptor;
     const text = typeof message === 'string' ? message : JSON.stringify(message);
 
-    // Parse text into message segments
+    // 解析文本为消息段
     const messageSegments = this._parseTextToSegments(text);
 
     try {
@@ -429,15 +457,15 @@ export class OneBotAdapter extends AdapterContract {
         };
       }
     } catch (error) {
-      this.options.logger.error('[OneBotAdapter] proactive message failed:', error);
+      this.options.logger.error('[OneBotAdapter] 主动消息失败:', error);
       throw error;
     }
   }
 
-  // ==================== Platform-Specific Helpers ====================
+  // ==================== 平台特定助手 ====================
 
   /**
-   * Send platform message to destination
+   * 发送平台消息到目标
    */
   async _sendPlatformMessage(conversationId, conversationType, platformMessage) {
     if (platformMessage.type === 'text') {
@@ -457,11 +485,11 @@ export class OneBotAdapter extends AdapterContract {
       const messageSegments = [];
       const imageUrl = platformMessage.url;
 
-      // Check if URL is local (use CQ code format)
+      // 检查 URL 是否为本地（使用 CQ 代码格式）
       if (imageUrl && !imageUrl.startsWith('http')) {
         messageSegments.push({ type: 'image', data: { file: imageUrl } });
       } else {
-        // For HTTP URLs, use the URL directly
+        // 对于 HTTP URL，直接使用
         messageSegments.push({ type: 'image', data: { url: imageUrl } });
       }
 
@@ -478,11 +506,11 @@ export class OneBotAdapter extends AdapterContract {
       };
     }
 
-    throw new Error(`Unsupported message type: ${platformMessage.type}`);
+    throw new Error(`不支持的消息类型：${platformMessage.type}`);
   }
 
   /**
-   * Encode content part to platform message
+   * 将内容部分编码为平台消息
    */
   async _encodeContentPart(part, context) {
     switch (part.type) {
@@ -501,18 +529,18 @@ export class OneBotAdapter extends AdapterContract {
         };
 
       default:
-        // Unsupported type - will be downgraded
+        // 不支持的类型 - 将被降级
         return null;
     }
   }
 
   /**
-   * Parse OneBot CQ code format to content array
+   * 解析 OneBot CQ 代码格式为内容数组
    */
   _parseMessageContent(message) {
     const content = [];
 
-    // Handle plain text
+    // 处理纯文本
     if (typeof message === 'string') {
       content.push({
         type: 'text',
@@ -521,7 +549,7 @@ export class OneBotAdapter extends AdapterContract {
       return content;
     }
 
-    // Handle message array (OneBot 11 standard format)
+    // 处理消息数组（OneBot 11 标准格式）
     if (Array.isArray(message)) {
       for (const segment of message) {
         if (segment.type === 'text') {
@@ -537,9 +565,12 @@ export class OneBotAdapter extends AdapterContract {
             }
           });
         } else if (segment.type === 'face') {
+          // QQ 表情 - 使用 emoji 映射
+          const faceId = segment.data?.id || segment.data?.qq || '0';
+          const emoji = FACE_EMOJI_MAP[faceId] || '🙂';
           content.push({
             type: 'text',
-            text: `[Face: ${segment.data?.id || segment.data?.qq}]`
+            text: emoji
           });
         } else if (segment.type === 'at') {
           const atText = segment.data?.qq === 'all' ? '@全体成员' : `@${segment.data?.qq}`;
@@ -548,9 +579,10 @@ export class OneBotAdapter extends AdapterContract {
             text: atText
           });
         } else if (segment.type === 'reply') {
+          // 回复消息 - 添加引用标记
           content.push({
             type: 'text',
-            text: `[Reply to message ${segment.data?.id}] `
+            text: `[回复] `
           });
         } else if (segment.type === 'video') {
           content.push({
@@ -568,8 +600,20 @@ export class OneBotAdapter extends AdapterContract {
             fileName: segment.data?.file || null,
             url: segment.data?.url || null
           });
+        } else if (segment.type === 'forward') {
+          // 转发消息
+          content.push({
+            type: 'text',
+            text: '[转发消息]'
+          });
+        } else if (segment.type === 'json' || segment.type === 'xml') {
+          // 结构化消息
+          content.push({
+            type: 'text',
+            text: `[${segment.type === 'json' ? 'JSON 卡片' : 'XML 卡片'}]`
+          });
         } else {
-          // Unknown segment type, add as text
+          // 未知类型，添加为文本
           content.push({
             type: 'text',
             text: JSON.stringify(segment)
@@ -582,29 +626,29 @@ export class OneBotAdapter extends AdapterContract {
   }
 
   /**
-   * Decode CQ code from text
+   * 解码文本中的 CQ 代码
    */
   _decodeCqCode(text) {
     if (!text) return '';
 
-    // Replace CQ code with readable text
-    // [CQ:image,file=xxx] -> [Image]
-    // [CQ:face,id=123] -> [Face: 123]
+    // 替换 CQ 代码为可读文本
+    // [CQ:image,file=xxx] -> [图片]
+    // [CQ:face,id=123] -> [表情]
     return text.replace(/\[CQ:(\w+)[^\]]*\]/g, (match, type) => {
       switch (type) {
         case 'image':
-          return '[Image]';
+          return '[图片]';
         case 'face':
           const faceId = match.match(/id=([^,\]]+)/);
-          return faceId ? `[Face: ${faceId[1]}]` : '[Face]';
+          return faceId ? FACE_EMOJI_MAP[faceId[1]] || '[表情]' : '[表情]';
         case 'video':
-          return '[Video]';
+          return '[视频]';
         case 'record':
-          return '[Audio]';
+          return '[语音]';
         case 'at':
-          return '[At]';
+          return '[提及]';
         case 'reply':
-          return '[Reply]';
+          return '[回复]';
         default:
           return `[${type.toUpperCase()}]`;
       }
@@ -612,14 +656,14 @@ export class OneBotAdapter extends AdapterContract {
   }
 
   /**
-   * Parse text to message segments
+   * 解析文本为消息段
    */
   _parseTextToSegments(text) {
     const segments = [];
     const lines = String(text).split('\n');
 
     for (const line of lines) {
-      // Handle URLs - convert to image if it looks like an image URL
+      // 处理 URL - 如果看起来像图片 URL 则转换为图片
       if (this._looksLikeImageUrl(line)) {
         segments.push({ type: 'image', data: { url: line.trim() } });
       } else {
@@ -631,17 +675,17 @@ export class OneBotAdapter extends AdapterContract {
   }
 
   /**
-   * Check if string looks like an image URL
+   * 检查字符串是否像图片 URL
    */
   _looksLikeImageUrl(str) {
     const trimmed = String(str).trim();
     const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
     return imageExtensions.some(ext => trimmed.toLowerCase().endsWith(ext)) ||
-           trimmed.includes('http') && (trimmed.includes('png') || trimmed.includes('jpg'));
+      trimmed.includes('http') && (trimmed.includes('png') || trimmed.includes('jpg'));
   }
 
   /**
-   * Normalize conversation type
+   * 标准化会话类型
    */
   _normalizeConversationType(type) {
     if (!type) return 'private';
@@ -653,7 +697,7 @@ export class OneBotAdapter extends AdapterContract {
   }
 
   /**
-   * IP matching for CIDR
+   * IP 匹配 CIDR
    */
   _ipMatchCIDR(ip, cidr) {
     try {
@@ -673,7 +717,7 @@ export class OneBotAdapter extends AdapterContract {
   }
 
   /**
-   * Convert IP to number
+   * 将 IP 转换为数字
    */
   _ipToNumber(ip) {
     const parts = ip.split('.');
@@ -687,7 +731,7 @@ export class OneBotAdapter extends AdapterContract {
   }
 }
 
-// Create adapter factory function
+// 创建适配器工厂函数
 export function createOneBotAdapter(config = {}) {
   return new OneBotAdapter(config);
 }
