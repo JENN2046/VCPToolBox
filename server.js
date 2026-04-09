@@ -1,8 +1,7 @@
 // server.js
 const express = require('express');
-const path = require('path');
-const { loadEnvCascade } = require('./envLoader');
-loadEnvCascade(path.join(__dirname, 'config.env'));
+const dotenv = require('dotenv');
+dotenv.config({ path: 'config.env' });
 const schedule = require('node-schedule');
 const lunarCalendar = require('chinese-lunar-calendar');
 const dayjs = require('dayjs');
@@ -13,6 +12,7 @@ dayjs.extend(timezone);
 
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'Asia/Shanghai';
 const fs = require('fs').promises; // fs.promises for async operations
+const path = require('path');
 const { Writable } = require('stream');
 const fsSync = require('fs'); // Renamed to fsSync for clarity with fs.promises
 
@@ -115,11 +115,6 @@ const webSocketServer = require('./WebSocketServer.js'); // 新增 WebSocketServ
 const FileFetcherServer = require('./FileFetcherServer.js'); // 引入新的 FileFetcherServer 模块
 const vcpInfoHandler = require('./vcpInfoHandler.js'); // 引入新的 VCP 信息处理器
 const basicAuth = require('basic-auth');
-
-// ChannelHub 模块导入
-const { ChannelHubService } = require('./modules/channelHub/ChannelHubService');
-const channelHubAdminRoutes = require('./routes/admin/channelHub');
-const channelHubInternalRoutes = require('./routes/internal/channelHub');
 const cors = require('cors'); // 引入 cors 模块
 
 const BLACKLIST_FILE = path.join(__dirname, 'ip_blacklist.json');
@@ -400,6 +395,17 @@ const adminAuth = (req, res, next) => {
         // 验证登录的端点也需要特殊处理（允许无凭据时返回401而不是重定向）
         const isVerifyEndpoint = req.path === '/admin_api/verify-login';
 
+        // ========== 新增：只读仪表板接口白名单（不计入登录失败次数）==========
+        const readOnlyDashboardPaths = [
+            '/admin_api/system-monitor',
+            '/admin_api/newapi-monitor',
+            '/admin_api/server-log',
+            '/admin_api/user-auth-code',
+            '/admin_api/weather'
+        ];
+        const isReadOnlyPath = readOnlyDashboardPaths.some(path => req.path.startsWith(path));
+        // ========== 新增结束 ==========
+
         if (publicPaths.includes(req.path)) {
             return next(); // 直接放行登录页面相关资源
         }
@@ -425,9 +431,9 @@ const adminAuth = (req, res, next) => {
             return; // 停止进一步处理
         }
 
-        // 2. 检查IP是否被临时封禁
+        // 2. 检查IP是否被临时封禁（仅对非只读接口生效）
         const blockInfo = tempBlocks.get(clientIp);
-        if (blockInfo && Date.now() < blockInfo.expires) {
+        if (blockInfo && Date.now() < blockInfo.expires && !isReadOnlyPath) {
             console.warn(`[AdminAuth] Blocked login attempt from IP: ${clientIp}. Block expires at ${new Date(blockInfo.expires).toLocaleString()}.`);
             const timeLeft = Math.ceil((blockInfo.expires - Date.now()) / 1000 / 60);
             res.setHeader('Retry-After', Math.ceil((blockInfo.expires - Date.now()) / 1000)); // In seconds
@@ -468,8 +474,8 @@ const adminAuth = (req, res, next) => {
 
         // 4. 验证凭据
         if (!credentials || credentials.name !== ADMIN_USERNAME || credentials.pass !== ADMIN_PASSWORD) {
-            // 认证失败，处理登录尝试计数
-            if (clientIp) {
+            // 认证失败，处理登录尝试计数（仅对非只读接口计数）
+            if (clientIp && !isReadOnlyPath) {
                 const now = Date.now();
                 let attemptInfo = loginAttempts.get(clientIp) || { count: 0, firstAttempt: now };
 
@@ -523,8 +529,16 @@ const adminAuth = (req, res, next) => {
 // This MUST come before serving static files to protect the panel itself.
 app.use(adminAuth);
 
-// Serve Admin Panel static files only after successful authentication.
-app.use('/AdminPanel', express.static(path.join(__dirname, 'AdminPanel')));
+// 🌟 AdminPanel 独立进程解耦：主进程不再直接提供 AdminPanel 页面
+// 访问主端口的 /AdminPanel 会被重定向到 PORT+1 的独立后台进程
+const ADMIN_PORT = parseInt(port) + 1;
+app.use('/AdminPanel', (req, res) => {
+    // 构建重定向 URL，保留原始路径和查询参数
+    const host = req.hostname;
+    const protocol = req.protocol;
+    const originalPath = req.originalUrl;
+    res.redirect(302, `${protocol}://${host}:${ADMIN_PORT}${originalPath}`);
+});
 
 
 // Image server logic is now handled by the ImageServer plugin.
@@ -550,11 +564,6 @@ app.use((req, res, next) => {
 
     // Skip bearer token check for plugin callbacks
     if (req.path.startsWith('/plugin-callback')) {
-        return next();
-    }
-
-    // Skip bearer token check for internal endpoints (they have their own auth)
-    if (req.path.startsWith('/internal/')) {
         return next();
     }
 
@@ -886,226 +895,6 @@ app.post('/v1/chatvcp/completions', async (req, res) => {
     }
 });
 
-// ChannelBridge B1 端点：供外部 Channel Adapter（如钉钉、企微）直接调用，
-// 携带 agentId 与多轮消息，走完整 VCP 工具链后返回纯文本 JSON 响应。
-
-// 限流配置
-const CHANNEL_BRIDGE_RATE_LIMIT_WINDOW_MS = 1000; // 1秒窗口
-const CHANNEL_BRIDGE_RATE_LIMIT_MAX_REQUESTS = 10; // 每秒最多10个请求
-const CHANNEL_BRIDGE_MAX_BODY_SIZE = 1024 * 1024; // 1MB 请求体限制
-const CHANNEL_BRIDGE_MAX_CAPTURE_SIZE = 512 * 1024; // 512KB 响应捕获限制
-const channelBridgeRateLimiter = new Map(); // IP -> { count, windowStart }
-let channelBridgeB1RequestCount = 0;
-
-// 定期清理限流器（每分钟）
-setInterval(() => {
-    const now = Date.now();
-    for (const [ip, data] of channelBridgeRateLimiter.entries()) {
-        if (now - data.windowStart > 60000) {
-            channelBridgeRateLimiter.delete(ip);
-        }
-    }
-}, 60000).unref();
-
-app.post('/internal/channel-ingest', async (req, res) => {
-    try {
-        channelBridgeB1RequestCount += 1;
-        res.setHeader('X-ChannelHub-B1-Compat', 'true');
-        res.setHeader('X-ChannelHub-B1-Status', 'frozen');
-        res.setHeader('X-ChannelHub-B1-Requests', String(channelBridgeB1RequestCount));
-        res.setHeader('X-ChannelHub-B1-Recommended-Endpoint', '/internal/channel-hub/events');
-        res.setHeader('Warning', '299 - "B1 compatibility endpoint is frozen; migrate to /internal/channel-hub/events"');
-
-        // ── 0. 限流检查 ───────────────────────────────────────────────────────
-        let clientIp = req.ip;
-        if (clientIp && clientIp.substr(0, 7) === "::ffff:") {
-            clientIp = clientIp.substr(7);
-        }
-        
-        const now = Date.now();
-        const rateInfo = channelBridgeRateLimiter.get(clientIp) || { count: 0, windowStart: now };
-        
-        // 如果窗口过期，重置计数
-        if (now - rateInfo.windowStart > CHANNEL_BRIDGE_RATE_LIMIT_WINDOW_MS) {
-            rateInfo.count = 0;
-            rateInfo.windowStart = now;
-        }
-        
-        rateInfo.count++;
-        channelBridgeRateLimiter.set(clientIp, rateInfo);
-        
-        if (rateInfo.count > CHANNEL_BRIDGE_RATE_LIMIT_MAX_REQUESTS) {
-            console.warn(`[ChannelBridge] Rate limit exceeded for IP: ${clientIp}`);
-            return res.status(429).json({ error: 'Too Many Requests', retryAfter: 1 });
-        }
-
-        // ── 1. 鉴权 ──────────────────────────────────────────────────────────
-        const authHeader = req.headers['authorization'] || '';
-        const bridgeKey = req.headers['x-channel-bridge-key'] || '';
-        const bridgeServerKey = process.env.Key || '';
-        const isAuthed = authHeader === `Bearer ${bridgeServerKey}` || bridgeKey === bridgeServerKey;
-        if (!isAuthed) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        // ── 2. 解析 payload（带大小限制）─────────────────────────────────────
-        const body = req.body;
-        
-        // 检查请求体大小
-        const bodySize = JSON.stringify(body).length;
-        if (bodySize > CHANNEL_BRIDGE_MAX_BODY_SIZE) {
-            console.warn(`[ChannelBridge] Request body too large: ${bodySize} bytes from IP: ${clientIp}`);
-            return res.status(413).json({ error: 'Payload Too Large', maxSize: CHANNEL_BRIDGE_MAX_BODY_SIZE });
-        }
-        if (!body || typeof body !== 'object') {
-            return res.status(400).json({ error: 'Request body must be JSON.' });
-        }
-
-        const agentId   = body.agentId || body.agent_id || '';
-        const model     = (body.vcpConfig && body.vcpConfig.runtimeOverrides && body.vcpConfig.runtimeOverrides.model)
-                          || process.env.API_Model || 'gpt-4o';
-        const apiKey    = (body.vcpConfig && body.vcpConfig.runtimeOverrides && body.vcpConfig.runtimeOverrides.apiKey)
-                          || process.env.API_KEY || '';
-        const apiBase   = (body.vcpConfig && body.vcpConfig.runtimeOverrides && body.vcpConfig.runtimeOverrides.baseURL)
-                          || process.env.API_URL || '';
-        const messages  = Array.isArray(body.messages) ? body.messages : [];
-        const sessionKey = (body.topicControl && body.topicControl.bindingKey) || body.sessionKey || null;
-
-        if (!agentId) {
-            return res.status(400).json({ error: 'Missing required field: agentId' });
-        }
-
-        // 构造完整消息列表：系统消息使用 {{agentId}} 占位符，由 messageProcessor 展开
-        const syntheticMessages = [
-            { role: 'system', content: `{{${agentId}}}` },
-            ...messages
-        ];
-
-        // ── 3. 构造代理请求 ───────────────────────────────────────────────────
-        // 伪造一个 Express req/res 对，让 chatCompletionHandler 正常工作
-        const fakeBody = {
-            model,
-            messages: syntheticMessages,
-            stream: false,
-            // 透传 sessionKey 供 RAG / 上下文隔离使用
-            ...(sessionKey ? { externalSessionKey: sessionKey } : {}),
-            // 运行时覆盖参数（chatCompletionHandler 会优先读取这些值）
-            ...(apiKey ? { apiKeyOverride: apiKey } : {}),
-            ...(apiBase ? { apiBaseOverride: apiBase } : {}),
-        };
-
-        // 覆盖 req 字段（chatCompletionHandler 读取 req.body）
-        const origBody    = req.body;
-        const origHeaders = req.headers;
-        req.body    = fakeBody;
-        // 保持原始 headers 不变，覆盖参数已通过 fakeBody 传递
-
-        // ── 4. 用 Writable 拦截 chatCompletionHandler 的输出 ──────────────────
-        let capturedData = '';
-        const origWrite  = res.write.bind(res);
-        const origEnd    = res.end.bind(res);
-        const origStatus = res.status.bind(res);
-        const origJson   = res.json.bind(res);
-        const origSet    = res.set ? res.set.bind(res) : () => {};
-        const origHeader = res.header ? res.header.bind(res) : () => {};
-        const origType   = res.type ? res.type.bind(res) : () => {};
-        let bridgeStatusCode = 200;
-        let bridgeFinished   = false;
-
-        res.status = (code) => { bridgeStatusCode = code; return res; };
-        res.set    = () => res;
-        res.header = () => res;
-        res.type   = () => res;
-        res.setHeader = () => {};
-        res.write  = (chunk) => { if (chunk) capturedData += chunk.toString(); return true; };
-        res.json   = (obj)   => {
-            capturedData += JSON.stringify(obj);
-            bridgeFinished = true;
-            return res;
-        };
-        res.end    = (chunk) => {
-            if (chunk) capturedData += chunk.toString();
-            bridgeFinished = true;
-        };
-
-        // ── 5. 执行处理 ───────────────────────────────────────────────────────
-        try {
-            await chatCompletionHandler.handle(req, res, false);
-        } finally {
-            // 恢复原始 req/res 方法
-            req.body    = origBody;
-            req.headers = origHeaders;
-            res.write   = origWrite;
-            res.end     = origEnd;
-            res.status  = origStatus;
-            res.json    = origJson;
-            res.set     = origSet;
-            res.header  = origHeader;
-            res.type    = origType;
-        }
-
-        // ── 6. 解析捕获的输出，提取 AI 回复文本 ──────────────────────────────
-        let replyText = '';
-        const rawOutput = capturedData.trim();
-
-        // 尝试解析 SSE 流
-        if (rawOutput.includes('data: ')) {
-            for (const line of rawOutput.split('\n')) {
-                const trimmed = line.trim();
-                if (!trimmed.startsWith('data: ')) continue;
-                const jsonStr = trimmed.slice(6).trim();
-                if (jsonStr === '[DONE]') continue;
-                try {
-                    const parsed = JSON.parse(jsonStr);
-                    replyText += parsed.choices?.[0]?.delta?.content
-                               || parsed.choices?.[0]?.message?.content
-                               || '';
-                } catch (_) { /* ignore malformed SSE lines */ }
-            }
-        }
-
-        // 尝试解析普通 JSON（非流）
-        if (!replyText) {
-            try {
-                const parsed = JSON.parse(rawOutput);
-                // 兼容错误响应直接透传
-                if (parsed.error) {
-                    return res.status(bridgeStatusCode || 502).json({ error: parsed.error });
-                }
-                replyText = parsed.choices?.[0]?.message?.content
-                          || parsed.choices?.[0]?.delta?.content
-                          || '';
-            } catch (_) {
-                // 不是 JSON，直接使用原始输出
-                replyText = rawOutput;
-            }
-        }
-
-        if (DEBUG_MODE) {
-            console.log(`[ChannelBridge] agentId=${agentId} reply length=${replyText.length}`);
-        }
-
-        // ── 7. 返回结构化响应给 Channel Adapter ──────────────────────────────
-        return res.status(200).json({
-            reply: {
-                text:    replyText,
-                content: replyText,
-            },
-            meta: {
-                agentId,
-                model,
-                sessionKey: sessionKey || null,
-            }
-        });
-
-    } catch (e) {
-        console.error('[ChannelBridge] Fatal error in /internal/channel-ingest:', e);
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'Internal Server Error', details: e.message });
-        }
-    }
-});
-
 // 新增：人类直接调用工具的端点
 app.post('/v1/human/tool', async (req, res) => {
     try {
@@ -1307,14 +1096,18 @@ const adminPanelRoutes = require('./routes/adminPanelRoutes')(
     knowledgeBaseManager, // Pass the knowledgeBaseManager instance
     AGENT_DIR, // Pass the Agent directory path
     cachedEmojiLists,
-    TVS_DIR // Pass the TVStxt directory path
+    TVS_DIR, // Pass the TVStxt directory path
+    (code = 1) => {
+        console.log(`[Server] Restart triggered from admin API (exit code: ${code}).`);
+        gracefulShutdown(code).catch(err => {
+            console.error('[Server] Fatal error during graceful restart:', err);
+            process.exit(code);
+        });
+    }
 );
 
 // 新增：引入 VCP 论坛 API 路由
 const forumApiRoutes = require('./routes/forumApi');
-
-// 新增：引入 SheetAI 路由
-const sheetAIRoutes = require('./routes/sheetAIRoutes')();
 
 // --- End Admin API Router ---
 
@@ -1400,59 +1193,6 @@ async function initialize() {
     // 挂载 VCP 论坛 API 路由
     app.use('/admin_api/forum', forumApiRoutes);
     console.log('服务类插件初始化完成，管理面板 API 路由和 VCP 论坛 API 路由已挂载。');
-
-    // --- 新增：ChannelHub 初始化 ---
-    console.log('开始初始化 ChannelHub 服务...');
-    try {
-        // 1. 创建 RuntimeGateway（runtimeBridge：对接 chatCompletionHandler）
-        const RuntimeGatewayClass = require('./modules/channelHub/RuntimeGateway');
-        const runtimeGateway = new RuntimeGatewayClass({
-            chatCompletionHandler,
-            pluginManager,
-            config: {
-                defaultTimeout: parseInt(process.env.CHANNEL_HUB_TIMEOUT) || 60000,
-                maxRetries: 3
-            },
-            debugMode: DEBUG_MODE
-        });
-
-        // 2. 创建 ChannelHubService（注入 runtimeBridge 和 dataDir）
-        const channelHubDataDir = path.join(__dirname, 'state', 'channelHub');
-        const channelHubService = new ChannelHubService({
-            dataDir: channelHubDataDir,
-            runtimeBridge: runtimeGateway,
-            chatCompletionHandler: chatCompletionHandler,
-            pluginManager: pluginManager,
-            debugMode: DEBUG_MODE,
-            logger: {
-                info:  (...args) => console.log('[ChannelHub]', ...args),
-                warn:  (...args) => console.warn('[ChannelHub]', ...args),
-                error: (...args) => console.error('[ChannelHub]', ...args),
-                debug: DEBUG_MODE ? (...args) => console.log('[ChannelHub:DEBUG]', ...args) : () => {}
-            }
-        });
-
-        // 3. 初始化（内部会自动初始化所有子模块）
-        await channelHubService.initialize();
-        console.log('ChannelHub 服务初始化完成。');
-
-        // 4. 初始化路由（只需注入 channelHubService，子模块从 service 拿）
-        channelHubAdminRoutes.initialize(channelHubService);
-        channelHubInternalRoutes.initialize({ channelHubService });
-
-        // 5. 挂载路由
-        app.use('/admin_api/channelHub', channelHubAdminRoutes.router);
-        app.use('/internal/channelHub', channelHubInternalRoutes.router);
-        app.use('/internal/channel-hub', channelHubInternalRoutes.router);
-        app.use('/internal', channelHubInternalRoutes.router);
-        console.log('ChannelHub 路由已挂载: /admin_api/channelHub, /internal/channelHub');
-
-    } catch (channelHubError) {
-        console.error('[Server] ChannelHub 初始化失败:', channelHubError.message);
-        console.error('[Server] ChannelHub 错误堆栈:', channelHubError.stack);
-        // 不阻止服务器启动，ChannelHub 功能降级不可用
-    }
-    // --- ChannelHub 初始化结束 ---
 
     // --- 新增：通用依赖注入 ---
     // 在所有服务都初始化完毕后，再执行依赖注入，确保 VCPLog 等服务已准备就绪。
@@ -1594,7 +1334,7 @@ startServer().catch(err => {
 });
 
 
-async function gracefulShutdown() {
+async function gracefulShutdown(exitCode = 0) {
     console.log('Initiating graceful shutdown...');
 
     if (taskScheduler) {
@@ -1609,6 +1349,10 @@ async function gracefulShutdown() {
         await pluginManager.shutdownAllPlugins();
     }
 
+    if (knowledgeBaseManager) {
+        await knowledgeBaseManager.shutdown();
+    }
+
     const serverLogWriteStream = logger.getLogWriteStream();
     if (serverLogWriteStream) {
         logger.originalConsoleLog('[Server] Closing server log file stream...');
@@ -1621,8 +1365,8 @@ async function gracefulShutdown() {
         await logClosePromise;
     }
 
-    console.log('Graceful shutdown complete. Exiting.');
-    process.exit(0);
+    console.log(`Graceful shutdown complete. Exiting with code ${exitCode}.`);
+    process.exit(exitCode);
 }
 
 process.on('SIGINT', gracefulShutdown);

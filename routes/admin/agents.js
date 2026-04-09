@@ -4,10 +4,24 @@ const path = require('path');
 
 module.exports = function(options) {
     const router = express.Router();
-    const { agentDirPath } = options;
+    const { agentDirPath, DEBUG_MODE } = options;
     const AGENT_FILES_DIR = agentDirPath;
     const AGENT_MAP_FILE = path.join(__dirname, '..', '..', 'agent_map.json');
     const CURRENT_AGENT_FILE = path.join(__dirname, '..', '..', 'current_agent.json');
+
+    // 确保 agentManager 单例在当前进程中已正确配置
+    // 在独立 adminServer 进程中，agentManager.initialize() 不会被主服务调用，
+    // 因此需要在此处设置目录并触发文件扫描
+    const agentManager = require('../../modules/agentManager');
+    const _agentScanReady = (async () => {
+        try {
+            agentManager.setAgentDir(AGENT_FILES_DIR);
+            agentManager.debugMode = !!DEBUG_MODE;
+            await agentManager.scanAgentFiles();
+        } catch (err) {
+            console.error('[routes/admin/agents] Failed to initialize agentManager scan:', err.message);
+        }
+    })();
 
     // GET agent map
     router.get('/agents/map', async (req, res) => {
@@ -37,7 +51,7 @@ module.exports = function(options) {
     // GET list of agent files
     router.get('/agents', async (req, res) => {
         try {
-            const agentManager = require('../../modules/agentManager');
+            await _agentScanReady; // 确保初始扫描已完成
             const agentFilesData = agentManager.getAllAgentFiles();
             res.json(agentFilesData);
         } catch (error) {
@@ -63,7 +77,6 @@ module.exports = function(options) {
         try {
             await fs.mkdir(targetDir, { recursive: true });
             await fs.writeFile(filePath, '', { flag: 'wx' });
-            const agentManager = require('../../modules/agentManager');
             await agentManager.scanAgentFiles();
             res.json({ message: `File '${finalFileName}' created successfully.` });
         } catch (error) {

@@ -240,7 +240,11 @@ const localOptions = {
     vectorDBManager: null,      // vectordb-status 会返回 503，由代理路径覆盖
     agentDirPath: AGENT_DIR,
     cachedEmojiLists: new Map(),
-    tvsDirPath: TVS_DIR
+    tvsDirPath: TVS_DIR,
+    triggerRestart: (code = 1) => {
+        console.log(`[AdminServer] Restarting admin process (exit code: ${code})...`);
+        setTimeout(() => process.exit(code), 500);
+    }
 };
 
 for (const moduleName of localModules) {
@@ -271,7 +275,8 @@ app.post('/admin_api/server/restart', async (req, res) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': req.headers.authorization || ''
+                    'Authorization': req.headers.authorization || '',
+                    'Cookie': req.headers.cookie || ''
                 },
                 timeout: 5000
             },
@@ -377,7 +382,8 @@ app.post('/admin_api/config/main/reload-notify', async (req, res) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': req.headers.authorization || ''
+                    'Authorization': req.headers.authorization || '',
+                    'Cookie': req.headers.cookie || ''
                 },
                 timeout: 10000
             },
