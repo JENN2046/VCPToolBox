@@ -69,7 +69,7 @@ module.exports = function (DEBUG_MODE, dailyNoteRootPath, pluginManager, getCurr
     mount('/', 'toolListEditor');     // Handles /tool-list/*
     mount('/', 'dream');              // Handles /dream-logs/*, /dream-operation/*
     mount('/', 'dailyNotes');         // Wrapper for existing dailyNotesRoutes (Handles /dailynotes/*)
-    mount('/', 'sheetAI'); // Handles /admin_api/sheetai/*
+    mount('/sheetai', 'sheetAI'); // Handles /admin_api/sheetai/*
 
     // 注意: channelHub 和 mediaGateway 路由已在 server.js 中单独挂载
     // 路径: /admin_api/channelHub, /admin_api/mediaGateway
