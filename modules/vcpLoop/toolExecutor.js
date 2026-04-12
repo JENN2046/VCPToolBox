@@ -184,7 +184,7 @@ class ToolExecutor {
    * 执行单个工具调用
    * @returns {Promise<{success: boolean, content: Array, error?: string, raw?: any}>}
    */
-  async execute(toolCall, clientIp, contextMessages = []) {
+  async execute(toolCall, clientIp, contextMessages = [], executionContext = null) {
     const { name, args, river, vref } = toolCall;
 
     // === river 上下文注入 ===
@@ -323,6 +323,11 @@ class ToolExecutor {
     }
 
     // 检查插件是否存在
+    const policyResult = this._enforceCodexMemoryPolicy(name, args, executionContext);
+    if (!policyResult.allowed) {
+      return this._createErrorResult(name, policyResult.message);
+    }
+
     if (!this.pluginManager.getPlugin(name)) {
       return this._createErrorResult(name, `未找到名为 "${name}" 的插件`);
     }
@@ -330,7 +335,7 @@ class ToolExecutor {
     // 执行插件
     try {
       if (this.debugMode) console.log(`[ToolExecutor] Calling processToolCall for ${name} with args keys: ${Object.keys(args).join(', ')}`);
-      const result = await this.pluginManager.processToolCall(name, args, clientIp);
+      const result = await this.pluginManager.processToolCall(name, args, clientIp, this._normalizeExecutionContext(executionContext));
       return this._processResult(name, result);
     } catch (error) {
       return this._createErrorResult(name, `执行错误: ${error.message}`);
@@ -340,10 +345,51 @@ class ToolExecutor {
   /**
    * 批量执行工具调用
    */
-  async executeAll(toolCalls, clientIp, contextMessages = []) {
+  async executeAll(toolCalls, clientIp, contextMessages = [], executionContext = null) {
     return Promise.all(
-      toolCalls.map(tc => this.execute(tc, clientIp, contextMessages))
+      toolCalls.map(tc => this.execute(tc, clientIp, contextMessages, executionContext))
     );
+  }
+
+  _normalizeExecutionContext(executionContext) {
+    return {
+      agentAlias: executionContext?.agentAlias || null,
+      agentId: executionContext?.agentId || null,
+      requestSource: executionContext?.requestSource || 'unknown'
+    };
+  }
+
+  _getPrimaryMaidArg(args = {}) {
+    const candidates = [args.maid, args.maidName, args.agent_name];
+    return candidates.find(value => typeof value === 'string' && value.trim())?.trim() || '';
+  }
+
+  _isDreamJournalWrite(toolName, args = {}) {
+    if (toolName !== 'DailyNote' && toolName !== 'DailyNoteWrite') {
+      return false;
+    }
+
+    return /^\[[^\]]+\u7684\u68A6\]/u.test(this._getPrimaryMaidArg(args));
+  }
+
+  _enforceCodexMemoryPolicy(toolName, args = {}, executionContext = null) {
+    const context = this._normalizeExecutionContext(executionContext);
+    if (context.agentAlias !== 'Codex') {
+      return { allowed: true };
+    }
+
+    if (toolName !== 'DailyNote' && toolName !== 'DailyNoteWrite') {
+      return { allowed: true };
+    }
+
+    if (this._isDreamJournalWrite(toolName, args)) {
+      return { allowed: true };
+    }
+
+    return {
+      allowed: false,
+      message: 'Codex 鐨勬櫘閫氳蹇嗗啓鍏ュ繀椤婚€氳繃 CodexMemoryBridge.record锛涙ⅵ鏃ヨ鍐欏叆闄ゅ銆?'
+    };
   }
 
   _processResult(toolName, result) {

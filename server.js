@@ -129,6 +129,7 @@ const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15分钟的窗口
 const TEMP_BLOCK_DURATION = 30 * 60 * 1000; // 封禁30分钟
 
 const ChatCompletionHandler = require('./modules/chatCompletionHandler.js');
+const { ChannelHubService } = require('./modules/channelHub/ChannelHubService');
 
 const activeRequests = new Map(); // 新增：用于存储活动中的请求，以便中止
 
@@ -1108,6 +1109,9 @@ const adminPanelRoutes = require('./routes/adminPanelRoutes')(
 
 // 新增：引入 VCP 论坛 API 路由
 const forumApiRoutes = require('./routes/forumApi');
+// 引入 ChannelHub 路由
+const channelHubAdminRoutes = require('./routes/admin/channelHub');
+const channelHubInternalRoutes = require('./routes/internal/channelHub');
 
 // --- End Admin API Router ---
 
@@ -1192,7 +1196,10 @@ async function initialize() {
     app.use('/admin_api', adminPanelRoutes);
     // 挂载 VCP 论坛 API 路由
     app.use('/admin_api/forum', forumApiRoutes);
-    console.log('服务类插件初始化完成，管理面板 API 路由和 VCP 论坛 API 路由已挂载。');
+    // 挂载 ChannelHub 路由
+    app.use('/admin_api/channelHub', channelHubAdminRoutes.router);
+    app.use('/internal/channelHub', channelHubInternalRoutes.router);
+    console.log('服务类插件初始化完成，管理面板 API 路由、VCP 论坛 API 路由和 ChannelHub 路由已挂载。');
 
     // --- 新增：通用依赖注入 ---
     // 在所有服务都初始化完毕后，再执行依赖注入，确保 VCPLog 等服务已准备就绪。
@@ -1303,6 +1310,27 @@ async function startServer() {
 
     // 🌟 关键修复：在监听端口前完成所有初始化
     await initialize(); // This loads plugins and initializes services
+
+    // --- 新增：初始化 ChannelHub ---
+    console.log('[Server] 正在初始化 ChannelHub...');
+    const channelHub = new ChannelHubService({
+        config: {
+            baseDir: process.env.CHANNELHUB_BASE_DIR || './state/channelHub',
+            debugMode: DEBUG_MODE,
+            // 这里可以继续扩展 config.env 中的其他参数
+        },
+        logger: console,
+        chatCompletionHandler: chatCompletionHandler,
+        pluginManager: pluginManager
+    });
+    await channelHub.initialize();
+    app.set('channelHub', channelHub);
+
+    // 注入路由依赖
+    channelHubAdminRoutes.initialize(channelHub);
+    channelHubInternalRoutes.initialize({ channelHubService: channelHub });
+
+    console.log('[Server] ChannelHub 初始化完成并已挂载依赖。');
 
     // 🌟 核心网络优化：100% 确保首请求的 node-fetch ESM 模块热启动，消除冷启动导致的延迟和上游挂断风险
     console.log('[Server] 正在预热 node-fetch ESM 模块...');

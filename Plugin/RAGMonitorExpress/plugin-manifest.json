@@ -1,0 +1,16 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "RAGMonitorExpress",
+  "version": "1.0.0",
+  "displayName": "RAG 实时速递监控",
+  "description": "常驻后台，实时监控 RAG 日志并推送到桌面端。",
+  "author": "Nova",
+  "pluginType": "static",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node rag_express.js"
+  },
+  "communication": {
+    "protocol": "stdio"
+  }
+}

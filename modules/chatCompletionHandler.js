@@ -101,6 +101,60 @@ function formatToolResult(result) {
   return String(result);
 }
 
+function getMessageTextContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+      .map(part => part.text)
+      .join('\n');
+  }
+  return '';
+}
+
+function extractAgentAliasFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  const patterns = [
+    /Agent:\s*\{\{\s*([^}\s:]+)\s*\}\}/i,
+    /\{\{\s*(?:agent:)?([^}\s:]+)\s*\}\}/i,
+    /Agent:\s*([A-Za-z0-9_\-\u4e00-\u9fff]+)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
+function extractAgentAliasFromMessages(messages = []) {
+  if (!Array.isArray(messages)) return null;
+
+  for (const message of messages) {
+    if (message?.role !== 'system') continue;
+    const alias = extractAgentAliasFromText(getMessageTextContent(message?.content));
+    if (alias) return alias;
+  }
+
+  return null;
+}
+
+function buildExecutionContextFromRequest(body = {}) {
+  const topLevelAlias = extractAgentAliasFromText(body.originalSystemPrompt)
+    || extractAgentAliasFromText(body.systemPrompt)
+    || extractAgentAliasFromText(body.presetSystemPrompt);
+
+  return {
+    agentAlias: extractAgentAliasFromMessages(body.messages) || topLevelAlias,
+    agentId: body._routeAgentId || null,
+    requestSource: body._channelHubRequest ? 'channelhub' : 'vcpchat'
+  };
+}
+
 async function getRealAuthCode(debugMode = false) {
   try {
     const authCodePath = path.join(__dirname, '..', 'Plugin', 'UserAuth', 'code.bin');
@@ -420,6 +474,11 @@ class ChatCompletionHandler {
             }
           }
         }
+      }
+
+      const executionContext = buildExecutionContextFromRequest(originalBody);
+      if (DEBUG_MODE) {
+        console.log('[Server] Execution context resolved:', executionContext);
       }
 
       await writeDebugLog('LogInput', originalBody);
@@ -744,6 +803,7 @@ class ChatCompletionHandler {
         abortController,
         originalBody,
         clientIp,
+        executionContext,
         forceShowVCP,
         _refreshRagBlocksIfNeeded,
         fetchWithRetry,
