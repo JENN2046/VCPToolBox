@@ -685,11 +685,24 @@ class PluginManager extends EventEmitter {
         };
     }
 
-    async processToolCall(toolName, toolArgs, requestIp = null) {
+    async processToolCall(toolName, toolArgs, requestIp = null, executionContext = null) {
         const plugin = this.plugins.get(toolName);
         if (!plugin) {
             throw new Error(`[PluginManager] Plugin "${toolName}" not found for tool call.`);
         }
+        const normalizedExecutionContext = (executionContext && typeof executionContext === 'object')
+            ? {
+                agentAlias: typeof executionContext.agentAlias === 'string' && executionContext.agentAlias.trim()
+                    ? executionContext.agentAlias.trim()
+                    : null,
+                agentId: typeof executionContext.agentId === 'string' && executionContext.agentId.trim()
+                    ? executionContext.agentId.trim()
+                    : null,
+                requestSource: typeof executionContext.requestSource === 'string' && executionContext.requestSource.trim()
+                    ? executionContext.requestSource.trim()
+                    : 'unknown'
+            }
+            : null;
 
         // Helper function to generate a timestamp string
         const _getFormattedLocalTimestamp = () => {
@@ -846,7 +859,7 @@ class PluginManager extends EventEmitter {
                 const logParam = executionParam ? (executionParam.length > 100 ? executionParam.substring(0, 100) + '...' : executionParam) : null;
                 if (this.debugMode) console.log(`[PluginManager] Calling local executePlugin for: ${toolName} with prepared param:`, logParam);
 
-                const pluginOutput = await this.executePlugin(toolName, executionParam, requestIp); // Returns {status, result/error}
+                const pluginOutput = await this.executePlugin(toolName, executionParam, requestIp, normalizedExecutionContext); // Returns {status, result/error}
 
                 if (pluginOutput.status === "success") {
                     if (typeof pluginOutput.result === 'string') {
@@ -896,7 +909,7 @@ class PluginManager extends EventEmitter {
         }
     }
 
-    async executePlugin(pluginName, inputData, requestIp = null) {
+    async executePlugin(pluginName, inputData, requestIp = null, executionContext = null) {
         const plugin = this.plugins.get(pluginName);
         if (!plugin) {
             // This case should ideally be caught by processToolCall before calling executePlugin
@@ -950,6 +963,28 @@ class PluginManager extends EventEmitter {
         const fileServerKey = this.getResolvedPluginConfigValue('ImageServer', 'File_Key');
         if (fileServerKey) {
             additionalEnv.IMAGESERVER_FILE_KEY = fileServerKey;
+        }
+        if (executionContext && typeof executionContext === 'object') {
+            const normalizedExecutionContext = {
+                agentAlias: typeof executionContext.agentAlias === 'string' && executionContext.agentAlias.trim()
+                    ? executionContext.agentAlias.trim()
+                    : null,
+                agentId: typeof executionContext.agentId === 'string' && executionContext.agentId.trim()
+                    ? executionContext.agentId.trim()
+                    : null,
+                requestSource: typeof executionContext.requestSource === 'string' && executionContext.requestSource.trim()
+                    ? executionContext.requestSource.trim()
+                    : 'unknown'
+            };
+
+            additionalEnv.VCP_EXECUTION_CONTEXT = JSON.stringify(normalizedExecutionContext);
+            additionalEnv.VCP_REQUEST_SOURCE = normalizedExecutionContext.requestSource;
+            if (normalizedExecutionContext.agentAlias) {
+                additionalEnv.VCP_AGENT_ALIAS = normalizedExecutionContext.agentAlias;
+            }
+            if (normalizedExecutionContext.agentId) {
+                additionalEnv.VCP_AGENT_ID = normalizedExecutionContext.agentId;
+            }
         }
 
         // Pass CALLBACK_BASE_URL and PLUGIN_NAME to asynchronous plugins
