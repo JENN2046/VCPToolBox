@@ -10,6 +10,26 @@
     "tagWeightRange": [0.05, 0.45],
     "tagTruncationBase": 0.6,
     "tagTruncationRange": [0.5, 0.9],
+    "codexAdaptiveRecall": {
+      "enabled": true,
+      "targetHitRate": 0.35,
+      "minWritesBeforeAdjust": 2,
+      "lowScoreThreshold": 0.72,
+      "cacheTtlMs": 60000,
+      "profileWindow": 500,
+      "profileBytes": 1048576,
+      "maxThresholdDrop": 0.08,
+      "maxTagWeightBoost": 0.12,
+      "maxKBoost": 2,
+      "maxTruncationBoost": 0.12,
+      "thresholdDropScale": 0.18,
+      "tagWeightBoostScale": 0.24,
+      "truncationBoostScale": 0.18,
+      "scoreThresholdScale": 0.08,
+      "scoreTagWeightScale": 0.12,
+      "scoreTruncationScale": 0.08,
+      "kBoostStep": 0.12
+    },
     "timeDecay": {
       "halfLifeDays": 30,
       "minScore": 0.5

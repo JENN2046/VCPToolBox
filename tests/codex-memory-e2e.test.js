@@ -72,6 +72,7 @@ test('ToolExecutor should pass executionContext through PluginManager into Codex
         assert.equal(withContextResult.raw.decision, 'accepted');
         assert.equal(withContextResult.raw.agentAlias, 'Codex');
         assert.equal(withContextResult.raw.requestSource, 'node-test');
+        assert.match(withContextResult.raw.memoryId, /^codex-process-/);
         assert.ok(withContextResult.raw.filePath, 'accepted result should include filePath');
         await fs.access(withContextResult.raw.filePath);
     } finally {

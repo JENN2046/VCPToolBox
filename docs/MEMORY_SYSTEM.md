@@ -41,6 +41,23 @@ VCP 记忆系统是一个基于向量语义检索的 RAG (Retrieval-Augmented Ge
 | Embedding | 兼容 OpenAI API 格式 | 支持 Gemini、OpenAI 等模型 |
 | 文件监听 | chokidar | 实时索引更新 |
 
+### 1.25 VCP Agent Memory Loop
+
+下面这张图描述的是 VCP 记忆系统的闭环：入口治理、日记落盘、向量化索引、召回增强、再回到当前推理。
+
+```mermaid
+flowchart LR
+    A["Codex / Agent 对话"] --> B["CodexMemoryBridge\n入口治理"]
+    B --> C["DailyNote /\nDailyNoteWrite\n结构化落盘"]
+    C --> D["Embedding + SQLite +\nVexusIndex\n向量化与索引"]
+    D --> E["KnowledgeBaseManager\n总调度"]
+    E --> F["RAGDiaryPlugin +\nTagMemo\n召回 / 标签增强\n/ 去重 / 重排"]
+    F --> G["当前推理与回答"]
+
+    H["AgentDream 梦通道"] -. "独立通道" .-> C
+    G --> A
+```
+
 ### 1.3 架构总览
 
 ```

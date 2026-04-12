@@ -57,9 +57,12 @@ test('CodexMemoryBridge should reject without context and accept with Codex cont
         assert.equal(accepted.decision, 'accepted');
         assert.equal(accepted.agentAlias, 'Codex');
         assert.equal(accepted.requestSource, 'node-test');
+        assert.match(accepted.memoryId, /^codex-process-/);
         assert.ok(accepted.filePath, 'accepted response should include filePath');
         assert.match(accepted.filePath, /dailynote[\\/]Codex[\\/]/);
         await fs.access(accepted.filePath);
+        const writtenContent = await fs.readFile(accepted.filePath, 'utf8');
+        assert.match(writtenContent, new RegExp(`Memory-ID: ${accepted.memoryId}`));
 
         const auditLogPath = path.join(tempBasePath, 'logs', 'codex-memory-bridge.jsonl');
         const auditRaw = await fs.readFile(auditLogPath, 'utf8');
@@ -69,7 +72,12 @@ test('CodexMemoryBridge should reject without context and accept with Codex cont
             .map(line => JSON.parse(line));
 
         assert.ok(auditEntries.some(entry => entry.decision === 'rejected'));
-        assert.ok(auditEntries.some(entry => entry.decision === 'accepted' && entry.agentAlias === 'Codex'));
+        assert.ok(auditEntries.some(entry =>
+            entry.decision === 'accepted' &&
+            entry.agentAlias === 'Codex' &&
+            entry.memoryId === accepted.memoryId &&
+            entry.title === 'test checkpoint'
+        ));
     } finally {
         if (previousPlugin) {
             pluginManager.plugins.set('CodexMemoryBridge', previousPlugin);
@@ -80,4 +88,3 @@ test('CodexMemoryBridge should reject without context and accept with Codex cont
         await fs.rm(tempBasePath, { recursive: true, force: true });
     }
 });
-

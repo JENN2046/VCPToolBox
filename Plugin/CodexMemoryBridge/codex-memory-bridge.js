@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 const { writeDiary } = require('../DailyNoteWrite/writer-core');
 
 const DEBUG_MODE = (process.env.DebugMode || 'false').toLowerCase() === 'true';
@@ -35,6 +36,14 @@ function getDateString() {
     return `${year}-${month}-${day}`;
 }
 
+function generateMemoryId(target) {
+    const prefix = target === 'knowledge' ? 'knowledge' : 'process';
+    const randomPart = typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '')
+        : crypto.randomBytes(12).toString('hex');
+    return `codex-${prefix}-${randomPart}`;
+}
+
 function getExecutionContext(payload) {
     const envContext = normalizeString(process.env.VCP_EXECUTION_CONTEXT);
     if (envContext) {
@@ -62,6 +71,8 @@ function buildRejectedResult(reason, executionContext, target = null) {
         decision: 'rejected',
         targetDiary: null,
         reason,
+        title: null,
+        memoryId: null,
         filePath: null,
         agentAlias: executionContext.agentAlias || null,
         agentId: executionContext.agentId || null,
@@ -89,6 +100,7 @@ function validateProcessEntry(title, content) {
 function buildDiaryPayload(payload) {
     const lines = [
         `标题：${payload.title}`,
+        `Memory-ID: ${payload.memoryId}`,
         `记录类型：${payload.target === 'knowledge' ? '知识' : '过程'}`,
         `已验证：${payload.validated ? '是' : '否'}`,
         `可复用：${payload.reusable ? '是' : '否'}`,
@@ -150,9 +162,10 @@ async function handleRecord(payload) {
         }
     }
 
+    const memoryId = generateMemoryId(target);
     const targetDiary = target === 'knowledge' ? 'Codex的知识' : 'Codex';
     const maidName = target === 'knowledge' ? '[Codex的知识]Codex' : '[Codex]Codex';
-    const diaryContent = buildDiaryPayload({ target, title, content, evidence, tags, validated, reusable });
+    const diaryContent = buildDiaryPayload({ target, title, memoryId, content, evidence, tags, validated, reusable });
     const writeResult = await writeDiary(maidName, getDateString(), diaryContent, title);
 
     return {
@@ -160,6 +173,8 @@ async function handleRecord(payload) {
         decision: 'accepted',
         targetDiary,
         reason: `已写入 ${targetDiary}。`,
+        title,
+        memoryId,
         filePath: writeResult.filePath,
         agentAlias: executionContext.agentAlias,
         agentId: executionContext.agentId || null,
@@ -193,6 +208,8 @@ async function main() {
                 agentId: result.agentId || null,
                 decision: result.decision,
                 target: result.target || null,
+                title: result.title || null,
+                memoryId: result.memoryId || null,
                 reason: result.reason,
                 filePath: result.filePath || null
             });

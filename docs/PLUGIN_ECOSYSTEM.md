@@ -811,6 +811,8 @@ async shutdownAllPlugins() {
 
 **适用插件类型**：`synchronous`、`asynchronous`、`static`
 
+`PluginManager.processToolCall()` 现在会把 `executionContext` 继续传给 `executePlugin()`，因此像 `CodexMemoryBridge` 这类需要识别调用者身份的同步插件，可以通过 `VCP_EXECUTION_CONTEXT`、`VCP_AGENT_ALIAS` 等环境变量拿到上下文。
+
 **执行流程**：
 ```
 ┌──────────┐    stdin     ┌──────────────┐    stdout    ┌──────────┐
@@ -821,12 +823,18 @@ async shutdownAllPlugins() {
 
 **代码实现**：
 ```javascript
-async executePlugin(pluginName, inputData, requestIp = null) {
+async executePlugin(pluginName, inputData, requestIp = null, executionContext = null) {
     const plugin = this.plugins.get(pluginName);
     const pluginConfig = this._getPluginConfig(plugin);
     
     // 构建环境变量
     const envForProcess = { ...process.env, ...pluginConfig };
+    if (executionContext) {
+        envForProcess.VCP_EXECUTION_CONTEXT = JSON.stringify(executionContext);
+        envForProcess.VCP_AGENT_ALIAS = executionContext.agentAlias || '';
+        envForProcess.VCP_AGENT_ID = executionContext.agentId || '';
+        envForProcess.VCP_REQUEST_SOURCE = executionContext.requestSource || 'unknown';
+    }
     
     // spawn 子进程
     const [command, ...args] = plugin.entryPoint.command.split(' ');
@@ -1223,6 +1231,8 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
 |--------|------|------|
 | DailyNote | synchronous | 日记统一管理 |
 | DailyNoteWrite | synchronous | 日记写入 |
+| CodexMemoryBridge | synchronous | Codex 专用记忆写入桥 |
+| CodexMemoryBridge | synchronous | Codex 专用记忆写入桥 |
 | DailyNoteGet | static | 日记内容获取 |
 | DailyNotePanel | service | 日记面板 |
 | RAGDiaryPlugin | messagePreprocessor | RAG 记忆检索 |

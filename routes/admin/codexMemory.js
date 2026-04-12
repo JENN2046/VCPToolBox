@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
+const { getCodexAdaptiveProfile } = require('../../modules/codexMemoryAdaptive');
 
 const DEFAULT_AUDIT_WINDOW = 500;
 const DEFAULT_LIST_LIMIT = 10;
@@ -80,6 +81,43 @@ async function listRecentDiaryFiles(dirPath, limit = DEFAULT_LIST_LIMIT) {
         .slice(0, limit);
 }
 
+function pickLaterTimestamp(current, candidate) {
+    if (!candidate) return current;
+    if (!current) return candidate;
+
+    const currentTime = new Date(current).getTime();
+    const candidateTime = new Date(candidate).getTime();
+    if (Number.isNaN(currentTime)) return candidate;
+    if (Number.isNaN(candidateTime)) return current;
+    return candidateTime > currentTime ? candidate : current;
+}
+
+function normalizeFileKey(filePath) {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+        return null;
+    }
+
+    const normalized = filePath.replace(/\\/g, '/');
+    const parts = normalized.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+        return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+    }
+
+    return normalized;
+}
+
+function buildRecordLabel(entry) {
+    if (typeof entry.title === 'string' && entry.title.trim()) {
+        return entry.title.trim();
+    }
+
+    if (typeof entry.filePath === 'string' && entry.filePath.trim()) {
+        return path.basename(entry.filePath.trim());
+    }
+
+    return '未命名记忆';
+}
+
 function summarizeReasons(entries) {
     const buckets = new Map();
     for (const entry of entries) {
@@ -94,7 +132,7 @@ function summarizeReasons(entries) {
         .sort((a, b) => b.count - a.count);
 }
 
-function buildSummary(entries) {
+function buildWriteSummary(entries) {
     const summary = {
         sampleSize: entries.length,
         accepted: 0,
@@ -117,19 +155,64 @@ function buildSummary(entries) {
 
         if (decision === 'accepted') {
             summary.accepted += 1;
-            if (!summary.latestAcceptedAt) summary.latestAcceptedAt = timestamp;
+            summary.latestAcceptedAt = pickLaterTimestamp(summary.latestAcceptedAt, timestamp);
             if (target === 'process') summary.processAccepted += 1;
             if (target === 'knowledge') summary.knowledgeAccepted += 1;
         }
 
         if (decision === 'rejected') {
             summary.rejected += 1;
-            if (!summary.latestRejectedAt) summary.latestRejectedAt = timestamp;
+            summary.latestRejectedAt = pickLaterTimestamp(summary.latestRejectedAt, timestamp);
             if (target === 'process') summary.processRejected += 1;
             if (target === 'knowledge') summary.knowledgeRejected += 1;
             if (reason.includes('必须改用 CodexMemoryBridge')) summary.blockedDirectWrites += 1;
             if (reason.includes('敏感')) summary.sensitiveRejected += 1;
         }
+    }
+
+    return summary;
+}
+
+function buildRecallSummary(entries) {
+    const summary = {
+        sampleSize: entries.length,
+        totalHits: 0,
+        processHits: 0,
+        knowledgeHits: 0,
+        snippetHits: 0,
+        fullTextHits: 0,
+        directHits: 0,
+        cacheHits: 0,
+        latestHitAt: null,
+        latestProcessHitAt: null,
+        latestKnowledgeHitAt: null
+    };
+
+    for (const entry of entries) {
+        const target = entry.target;
+        const recallType = entry.recallType;
+        const timestamp = typeof entry.timestamp === 'string' ? entry.timestamp : null;
+
+        summary.totalHits += 1;
+        summary.latestHitAt = pickLaterTimestamp(summary.latestHitAt, timestamp);
+
+        if (entry.fromCache) {
+            summary.cacheHits += 1;
+        }
+
+        if (target === 'process') {
+            summary.processHits += 1;
+            summary.latestProcessHitAt = pickLaterTimestamp(summary.latestProcessHitAt, timestamp);
+        }
+
+        if (target === 'knowledge') {
+            summary.knowledgeHits += 1;
+            summary.latestKnowledgeHitAt = pickLaterTimestamp(summary.latestKnowledgeHitAt, timestamp);
+        }
+
+        if (recallType === 'snippet') summary.snippetHits += 1;
+        if (recallType === 'full_text') summary.fullTextHits += 1;
+        if (recallType === 'direct') summary.directHits += 1;
     }
 
     return summary;
@@ -143,6 +226,8 @@ function normalizeAuditEntries(entries, limit) {
             timestamp: entry.timestamp || null,
             decision: entry.decision || 'unknown',
             target: entry.target || null,
+            title: entry.title || null,
+            memoryId: entry.memoryId || null,
             reason: entry.reason || '',
             filePath: entry.filePath || null,
             agentAlias: entry.agentAlias || null,
@@ -150,11 +235,142 @@ function normalizeAuditEntries(entries, limit) {
         }));
 }
 
+function normalizeRecallEntries(entries, limit) {
+    return [...entries]
+        .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
+        .slice(0, limit)
+        .map(entry => ({
+            timestamp: entry.timestamp || null,
+            dbName: entry.dbName || null,
+            target: entry.target || null,
+            recallType: entry.recallType || 'unknown',
+            resultCount: Number.isFinite(entry.resultCount) ? entry.resultCount : 0,
+            topScore: Number.isFinite(entry.topScore) ? entry.topScore : null,
+            topMemoryId: entry.topMemoryId || null,
+            topMatchedTags: Array.isArray(entry.topMatchedTags) ? entry.topMatchedTags : [],
+            matchedTags: Array.isArray(entry.matchedTags) ? entry.matchedTags : [],
+            coreTags: Array.isArray(entry.coreTags) ? entry.coreTags : [],
+            topSourceFile: entry.topSourceFile || null,
+            memoryIds: Array.isArray(entry.memoryIds) ? entry.memoryIds : [],
+            fromCache: !!entry.fromCache,
+            sourceKinds: Array.isArray(entry.sourceKinds) ? entry.sourceKinds : []
+        }));
+}
+
+function buildMemoryLinks(writeEntries, recallEntries, limit = DEFAULT_LIST_LIMIT) {
+    const records = new Map();
+    const aliasToRecordKey = new Map();
+
+    for (const entry of writeEntries) {
+        if (entry.decision !== 'accepted') continue;
+        const memoryId = typeof entry.memoryId === 'string' && entry.memoryId.trim() ? entry.memoryId.trim() : null;
+        const fileKey = normalizeFileKey(entry.filePath);
+        const recordKey = memoryId ? `id:${memoryId}` : (fileKey ? `path:${fileKey}` : null);
+        if (!recordKey) continue;
+
+        if (!records.has(recordKey)) {
+            records.set(recordKey, {
+                memoryId,
+                title: buildRecordLabel(entry),
+                target: entry.target || null,
+                filePath: entry.filePath || null,
+                writtenAt: entry.timestamp || null,
+                recallCount: 0,
+                cacheRecallCount: 0,
+                lastRecallAt: null,
+                lastTopScore: null
+            });
+        }
+
+        if (memoryId) {
+            aliasToRecordKey.set(`id:${memoryId}`, recordKey);
+        }
+        if (fileKey) {
+            aliasToRecordKey.set(`path:${fileKey}`, recordKey);
+        }
+    }
+
+    for (const entry of recallEntries) {
+        const aliases = new Set();
+
+        if (typeof entry.topMemoryId === 'string' && entry.topMemoryId.trim()) {
+            aliases.add(`id:${entry.topMemoryId.trim()}`);
+        }
+
+        if (Array.isArray(entry.memoryIds)) {
+            for (const memoryId of entry.memoryIds) {
+                if (typeof memoryId === 'string' && memoryId.trim()) {
+                    aliases.add(`id:${memoryId.trim()}`);
+                }
+            }
+        }
+
+        if (typeof entry.topSourceFile === 'string' && entry.topSourceFile.trim()) {
+            aliases.add(`path:${normalizeFileKey(entry.topSourceFile)}`);
+        }
+
+        if (Array.isArray(entry.sourceFiles)) {
+            for (const sourceFile of entry.sourceFiles) {
+                const fileKey = normalizeFileKey(sourceFile);
+                if (fileKey) aliases.add(`path:${fileKey}`);
+            }
+        }
+
+        const recordKeys = new Set(
+            [...aliases]
+                .map(alias => aliasToRecordKey.get(alias))
+                .filter(Boolean)
+        );
+
+        for (const recordKey of recordKeys) {
+            const record = records.get(recordKey);
+            if (!record) continue;
+
+            record.recallCount += 1;
+            if (entry.fromCache) {
+                record.cacheRecallCount += 1;
+            }
+            record.lastRecallAt = pickLaterTimestamp(record.lastRecallAt, entry.timestamp || null);
+            if (typeof entry.topScore === 'number' && !Number.isNaN(entry.topScore)) {
+                record.lastTopScore = entry.topScore;
+            }
+        }
+    }
+
+    return [...records.values()]
+        .sort((a, b) => {
+            if ((b.recallCount || 0) !== (a.recallCount || 0)) {
+                return (b.recallCount || 0) - (a.recallCount || 0);
+            }
+            return new Date(b.lastRecallAt || 0).getTime() - new Date(a.lastRecallAt || 0).getTime();
+        })
+        .slice(0, limit);
+}
+
+function buildRecallStatus(summary) {
+    if (!summary || summary.totalHits === 0) {
+        return {
+            available: true,
+            status: 'enabled',
+            message: '召回审计已启用，当前窗口暂无 Codex 记忆命中。'
+        };
+    }
+
+    return {
+        available: true,
+        status: 'active',
+        message: `召回审计已启用，当前窗口记录到 ${summary.totalHits} 次 Codex 记忆命中。`
+    };
+}
+
 module.exports = function (options) {
     const router = express.Router();
-    const { dailyNoteRootPath } = options;
-    const projectBasePath = path.join(__dirname, '..', '..');
+    const { dailyNoteRootPath, projectBasePath: injectedProjectBasePath } = options;
+    const projectBasePath = injectedProjectBasePath
+        ? path.resolve(injectedProjectBasePath)
+        : path.join(__dirname, '..', '..');
     const auditLogPath = path.join(projectBasePath, 'logs', 'codex-memory-bridge.jsonl');
+    const recallLogPath = path.join(projectBasePath, 'logs', 'codex-memory-recall.jsonl');
     const processDiaryPath = path.join(dailyNoteRootPath, 'Codex');
     const knowledgeDiaryPath = path.join(dailyNoteRootPath, 'Codex的知识');
 
@@ -163,25 +379,33 @@ module.exports = function (options) {
             const auditWindow = toInt(req.query.auditWindow, DEFAULT_AUDIT_WINDOW, 10, 2000);
             const listLimit = toInt(req.query.limit, DEFAULT_LIST_LIMIT, 1, 50);
             const auditEntries = await readRecentJsonlEntries(auditLogPath, auditWindow);
+            const recallEntries = await readRecentJsonlEntries(recallLogPath, auditWindow);
             const normalizedEntries = normalizeAuditEntries(auditEntries, listLimit);
+            const normalizedRecallEntries = normalizeRecallEntries(recallEntries, listLimit);
+            const recallSummary = buildRecallSummary(recallEntries);
+            const memoryLinks = buildMemoryLinks(auditEntries, recallEntries, listLimit);
+            const adaptive = await getCodexAdaptiveProfile({ projectBasePath });
 
             res.json({
                 paths: {
                     auditLogPath,
+                    recallLogPath,
                     processDiaryPath,
                     knowledgeDiaryPath
                 },
-                summary: buildSummary(normalizedEntries),
+                summary: buildWriteSummary(auditEntries),
                 recentAudit: normalizedEntries,
-                rejectionReasons: summarizeReasons(normalizedEntries.filter(entry => entry.decision === 'rejected')).slice(0, 8),
+                rejectionReasons: summarizeReasons(auditEntries.filter(entry => entry.decision === 'rejected')).slice(0, 8),
                 recentFiles: {
                     process: await listRecentDiaryFiles(processDiaryPath, listLimit),
                     knowledge: await listRecentDiaryFiles(knowledgeDiaryPath, listLimit)
                 },
+                memoryLinks,
+                adaptive,
                 recall: {
-                    available: false,
-                    status: 'unavailable',
-                    message: '当前版本未对 Codex 召回命中单独做审计记录。'
+                    ...buildRecallStatus(recallSummary),
+                    summary: recallSummary,
+                    recent: normalizedRecallEntries
                 }
             });
         } catch (error) {

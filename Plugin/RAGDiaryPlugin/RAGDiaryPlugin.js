@@ -16,6 +16,7 @@ const ContextVectorManager = require('./ContextVectorManager.js');
 const FoldingStore = require('./FoldingStore.js'); // 🌟 V2折叠：SQLite 迷你数据库
 const CacheManager = require('./CacheManager.js'); // 🌟 新增：统一缓存管理器
 const { chunkText } = require('../../TextChunker.js');
+const { getCodexAdaptiveProfile } = require('../../modules/codexMemoryAdaptive');
 
 
 const dayjs = require('dayjs');
@@ -28,6 +29,11 @@ const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'Asia/Shanghai';
 // 从 DailyNoteGet 插件借鉴的常量和路径逻辑
 const projectBasePath = process.env.PROJECT_BASE_PATH;
 const dailyNoteRootPath = process.env.KNOWLEDGEBASE_ROOT_PATH || (projectBasePath ? path.join(projectBasePath, 'dailynote') : path.join(__dirname, '..', '..', 'dailynote'));
+const logsRootPath = projectBasePath ? path.join(projectBasePath, 'logs') : path.join(__dirname, '..', '..', 'logs');
+const CODEX_RECALL_DIARY_TARGETS = new Map([
+    ['Codex', 'process'],
+    ['Codex的知识', 'knowledge']
+]);
 
 const GLOBAL_SIMILARITY_THRESHOLD = 0.6; // 全局默认余弦相似度阈值
 
@@ -60,6 +66,8 @@ class RAGDiaryPlugin {
 
         // 🌟 V2折叠：FoldingStore 迷你数据库
         this.foldingStore = null;
+        this.codexRecallAuditLogPath = path.join(logsRootPath, 'codex-memory-recall.jsonl');
+        this.codexAdaptiveCache = { loadedAt: 0, profile: null };
     }
 
     async loadConfig() {
@@ -193,10 +201,12 @@ class RAGDiaryPlugin {
         try {
             const data = await fs.readFile(paramsPath, 'utf-8');
             this.ragParams = JSON.parse(data);
+            this.codexAdaptiveCache.loadedAt = 0;
             console.log('[RAGDiaryPlugin] ✅ RAG 热调控参数已加载');
         } catch (e) {
             console.error('[RAGDiaryPlugin] ❌ 加载 rag_params.json 失败:', e.message);
             this.ragParams = { RAGDiaryPlugin: {} };
+            this.codexAdaptiveCache.loadedAt = 0;
         }
     }
 
@@ -1531,13 +1541,23 @@ class RAGDiaryPlugin {
             // ✅ 尝试从缓存获取
             const cachedResult = this._getCachedResult(cacheKey);
             if (cachedResult) {
+                if (cachedResult.codexRecallAudit) {
+                    await this._recordCodexRecallAudit(cachedResult.codexRecallAudit, { fromCache: true });
+                }
                 processingPromises.push(Promise.resolve({ placeholder, content: cachedResult.content }));
                 continue; // ⭐ 跳过后续的阈值判断和内容读取
             }
 
             processingPromises.push((async () => {
                 const diaryConfig = this.ragConfig[dbName] || {};
-                const localThreshold = diaryConfig.threshold || GLOBAL_SIMILARITY_THRESHOLD;
+                const adaptiveTuning = await this._getCodexAdaptiveTuning(dbName);
+                const localThreshold = Math.max(
+                    0.35,
+                    Math.min(
+                        0.95,
+                        (diaryConfig.threshold || GLOBAL_SIMILARITY_THRESHOLD) + (adaptiveTuning?.thresholdDelta || 0)
+                    )
+                );
                 const dbNameVector = await this.vectorDBManager.getDiaryNameVector(dbName); // <--- 使用缓存
                 if (!dbNameVector) {
                     console.warn(`[RAGDiaryPlugin] Could not find cached vector for diary name: "${dbName}". Skipping.`);
@@ -1553,11 +1573,12 @@ class RAGDiaryPlugin {
 
                 if (finalSimilarity >= localThreshold) {
                     const diaryContent = await this.getDiaryContent(dbName);
-                    const safeContent = diaryContent
+                    const rawContent = diaryContent
                         .replace(/\[\[.*日记本.*\]\]/g, '[循环占位符已移除]')
                         .replace(/<<.*日记本>>/g, '[循环占位符已移除]')
                         .replace(/《《.*日记本.*》》/g, '[循环占位符已移除]')
                         .replace(/\{\{.*日记本\}\}/g, '[循环占位符已移除]');
+                    const safeContent = this._stripCodexMemoryMarkers(rawContent);
 
                     if (this.pushVcpInfo) {
                         this.pushVcpInfo({
@@ -1568,8 +1589,17 @@ class RAGDiaryPlugin {
                         });
                     }
 
+                    const codexRecallAudit = this._buildCodexRecallAuditPayload({
+                        dbName,
+                        recallType: 'full_text',
+                        content: rawContent
+                    });
+                    if (codexRecallAudit) {
+                        await this._recordCodexRecallAudit(codexRecallAudit);
+                    }
+
                     // ✅ 缓存结果
-                    this._setCachedResult(cacheKey, { content: safeContent });
+                    this._setCachedResult(cacheKey, { content: safeContent, codexRecallAudit });
                     return { placeholder, content: safeContent };
                 }
 
@@ -1694,6 +1724,9 @@ class RAGDiaryPlugin {
             // ✅ 尝试从缓存获取
             const cachedResult = this._getCachedResult(cacheKey);
             if (cachedResult) {
+                if (cachedResult.codexRecallAudit) {
+                    await this._recordCodexRecallAudit(cachedResult.codexRecallAudit, { fromCache: true });
+                }
                 processingPromises.push(Promise.resolve({ placeholder, content: cachedResult.content }));
                 continue; // ⭐ 跳过后续的阈值判断
             }
@@ -1701,7 +1734,14 @@ class RAGDiaryPlugin {
             processingPromises.push((async () => {
                 try {
                     const diaryConfig = this.ragConfig[dbName] || {};
-                    const localThreshold = diaryConfig.threshold || GLOBAL_SIMILARITY_THRESHOLD;
+                    const adaptiveTuning = await this._getCodexAdaptiveTuning(dbName);
+                    const localThreshold = Math.max(
+                        0.35,
+                        Math.min(
+                            0.95,
+                            (diaryConfig.threshold || GLOBAL_SIMILARITY_THRESHOLD) + (adaptiveTuning?.thresholdDelta || 0)
+                        )
+                    );
                     const dbNameVector = await this.vectorDBManager.getDiaryNameVector(dbName);
                     if (!dbNameVector) {
                         console.warn(`[RAGDiaryPlugin] Could not find cached vector for diary name: "${dbName}". Skipping.`);
@@ -1749,8 +1789,10 @@ class RAGDiaryPlugin {
                                 collectedAttachments // 🌟 V7
                             });
 
-                            // ✅ 缓存结果（RAG已在内部缓存，这里是额外保险）
-                            this._setCachedResult(cacheKey, { content: retrievedContent });
+                            // ✅ 缓存结果（RAG已在内部缓存，这里避免覆盖更完整的缓存负载）
+                            if (!this._getCachedResult(cacheKey)) {
+                                this._setCachedResult(cacheKey, { content: retrievedContent });
+                            }
                             return { placeholder, content: retrievedContent };
                         }
                     } else {
@@ -1852,11 +1894,12 @@ class RAGDiaryPlugin {
             processingPromises.push((async () => {
                 try {
                     const diaryContent = await this.getDiaryContent(dbName);
-                    const safeContent = diaryContent
+                    const rawContent = diaryContent
                         .replace(/\[\[.*日记本.*\]\]/g, '[循环占位符已移除]')
                         .replace(/<<.*日记本>>/g, '[循环占位符已移除]')
                         .replace(/《《.*日记本.*》》/g, '[循环占位符已移除]')
                         .replace(/\{\{.*日记本\}\}/g, '[循环占位符已移除]');
+                    const safeContent = this._stripCodexMemoryMarkers(rawContent);
 
                     if (this.pushVcpInfo) {
                         this.pushVcpInfo({
@@ -1865,6 +1908,15 @@ class RAGDiaryPlugin {
                             dbName: dbName,
                             message: `[RAGDiary] 已直接引入日记本：${dbName}，共 1 条全量记录`
                         });
+                    }
+
+                    const codexRecallAudit = this._buildCodexRecallAuditPayload({
+                        dbName,
+                        recallType: 'direct',
+                        content: rawContent
+                    });
+                    if (codexRecallAudit) {
+                        await this._recordCodexRecallAudit(codexRecallAudit);
                     }
 
                     return { placeholder, content: safeContent };
@@ -2239,6 +2291,9 @@ class RAGDiaryPlugin {
         // 2️⃣ 尝试从缓存获取
         const cachedResult = this._getCachedResult(cacheKey);
         if (cachedResult) {
+            if (cachedResult.codexRecallAudit) {
+                await this._recordCodexRecallAudit(cachedResult.codexRecallAudit, { fromCache: true });
+            }
             // 缓存命中时，仍需广播VCP Info（可选）
             if (this.pushVcpInfo && cachedResult.vcpInfo) {
                 try {
@@ -2270,6 +2325,9 @@ class RAGDiaryPlugin {
         // 统一使用 / 分隔符
         const timeDecayMatch = modifiers.match(/::TimeDecay(\d+)?(?:\/(\d+\.?\d*))?(?:\/([\w,]+))?/);
         const useTimeDecay = !!timeDecayMatch;
+        const config = this.ragParams?.RAGDiaryPlugin || {};
+        const tagWeightRange = config.tagWeightRange || [0.05, 0.45];
+        const truncationRange = config.tagTruncationRange || [0.5, 0.9];
 
         // 🌟 V8: 解析 TagMemo/TagMemo+ 修饰符
         // ::TagMemo+  → 激活 TagMemo + 测地线重排（动态权重）
@@ -2279,6 +2337,15 @@ class RAGDiaryPlugin {
         const useGeodesicRerank = /::TagMemo\+/.test(modifiers);
         const tagMemoWeightMatch = modifiers.match(/::TagMemo\+?([\d.]+)/);
         let tagWeight = tagMemoWeightMatch ? parseFloat(tagMemoWeightMatch[1]) : (modifiers.includes('::TagMemo') ? defaultTagWeight : null);
+        const adaptiveTuning = await this._getCodexAdaptiveTuning(dbName);
+        const effectiveDynamicK = Math.max(1, dynamicK + (adaptiveTuning?.kDelta || 0));
+        if (tagWeight !== null && adaptiveTuning?.tagWeightDelta) {
+            tagWeight = Math.max(tagWeightRange[0], Math.min(tagWeightRange[1], tagWeight + adaptiveTuning.tagWeightDelta));
+        }
+        const effectiveTagTruncationRatio = Math.max(
+            truncationRange[0],
+            Math.min(truncationRange[1], tagTruncationRatio + (adaptiveTuning?.truncationDelta || 0))
+        );
 
         // 🌟 V8: 构建 geodesicRerank 选项（传递给 search 的第 7 参数）
         const geoConfig = this.ragParams?.KnowledgeBaseManager?.geodesicRerank || {};
@@ -2294,7 +2361,7 @@ class RAGDiaryPlugin {
         // TagMemo修饰符检测（静默）
 
         const displayName = dbName + '日记本';
-        const finalK = Math.max(1, Math.round(dynamicK * kMultiplier));
+        const finalK = Math.max(1, Math.round(effectiveDynamicK * kMultiplier));
         // 🧹 V4.1: 多取 contextDiaryPrefixes.size 条作为去重补偿缓冲
         const dedupBuffer = contextDiaryPrefixes.size;
         const kForSearch = useRerank
@@ -2342,7 +2409,7 @@ class RAGDiaryPlugin {
                 if (boostResult && boostResult.info && boostResult.info.matchedTags) {
                     const rawTags = boostResult.info.matchedTags;
                     // 🌟 应用截断技术规避尾部噪音
-                    coreTagsForSearch = this._truncateCoreTags(rawTags, tagTruncationRatio, metrics);
+                    coreTagsForSearch = this._truncateCoreTags(rawTags, effectiveTagTruncationRatio, metrics);
 
                     // 重新混入幽灵节点（因为 _truncateCoreTags 可能会把它们择出去，或者它们本身就是 Object）
                     // 实际上 applyTagBoost 返回的 matchedTags 主要是字符串 ID。
@@ -2564,6 +2631,13 @@ class RAGDiaryPlugin {
                     geoAlpha: geoOptions?.geoAlpha, // 🌟 V8: 测地线混合权重
                     useTagMemo: tagWeight !== null, // ✅ 添加Tag模式标识
                     tagWeight: tagWeight, // ✅ 添加Tag权重
+                    adaptiveTuning: adaptiveTuning ? {
+                        status: adaptiveTuning.status,
+                        thresholdDelta: adaptiveTuning.thresholdDelta,
+                        tagWeightDelta: adaptiveTuning.tagWeightDelta,
+                        kDelta: adaptiveTuning.kDelta,
+                        truncationDelta: adaptiveTuning.truncationDelta
+                    } : null,
                     coreTags: coreTagsForDisplay, // 🌟 广播中依然显示提取到的标签，方便观察
                     timeRanges: (useTime && Array.isArray(timeRanges)) ? timeRanges.map(r => {
                         try {
@@ -2600,10 +2674,26 @@ class RAGDiaryPlugin {
             }
         }
 
+        const codexRecallAudit = this._buildCodexRecallAuditPayload({
+            dbName,
+            recallType: 'snippet',
+            results: finalResultsForBroadcast,
+            content: retrievedContent,
+            useTime,
+            useGroup,
+            useRerank,
+            useGeodesicRerank,
+            coreTags: coreTagsForDisplay
+        });
+        if (codexRecallAudit) {
+            await this._recordCodexRecallAudit(codexRecallAudit);
+        }
+
         // 4️⃣ 保存到缓存
         this._setCachedResult(cacheKey, {
             content: retrievedContent,
-            vcpInfo: vcpInfoData
+            vcpInfo: vcpInfoData,
+            codexRecallAudit
         });
 
         return retrievedContent;
@@ -2710,7 +2800,7 @@ class RAGDiaryPlugin {
     formatStandardResults(searchResults, displayName, metadata) {
         let innerContent = `\n[--- 从"${displayName}"中检索到的相关记忆片段 ---]\n`;
         if (searchResults && searchResults.length > 0) {
-            innerContent += searchResults.map(r => `* ${r.text.trim()}`).join('\n');
+            innerContent += searchResults.map(r => `* ${this._stripCodexMemoryMarkers(r.text || '').trim()}`).join('\n');
         } else {
             innerContent += "没有找到直接相关的记忆片段。";
         }
@@ -2740,9 +2830,10 @@ class RAGDiaryPlugin {
         if (ragEntries.length > 0) {
             innerContent += '【语义相关记忆】\n';
             ragEntries.forEach(entry => {
-                const dateMatch = entry.text.match(/^\[(\d{4}-\d{2}-\d{2})\]/);
+                const cleanedText = this._stripCodexMemoryMarkers(entry.text || '');
+                const dateMatch = cleanedText.match(/^\[(\d{4}-\d{2}-\d{2})\]/);
                 const datePrefix = dateMatch ? `[${dateMatch[1]}] ` : '';
-                innerContent += `* ${datePrefix}${entry.text.replace(/^\[.*?\]\s*-\s*.*?\n?/, '').trim()}\n`;
+                innerContent += `* ${datePrefix}${cleanedText.replace(/^\[.*?\]\s*-\s*.*?\n?/, '').trim()}\n`;
             });
         }
 
@@ -2751,7 +2842,8 @@ class RAGDiaryPlugin {
             // 按日期从新到旧排序
             timeEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
             timeEntries.forEach(entry => {
-                innerContent += `* [${entry.date}] ${entry.text.replace(/^\[.*?\]\s*-\s*.*?\n?/, '').trim()}\n`;
+                const cleanedText = this._stripCodexMemoryMarkers(entry.text || '');
+                innerContent += `* [${entry.date}] ${cleanedText.replace(/^\[.*?\]\s*-\s*.*?\n?/, '').trim()}\n`;
             });
         }
 
@@ -2776,7 +2868,7 @@ class RAGDiaryPlugin {
 
         innerContent += `[检索到 ${searchResults ? searchResults.length : 0} 条相关记忆]\n`;
         if (searchResults && searchResults.length > 0) {
-            innerContent += searchResults.map(r => `* ${r.text.trim()}`).join('\n');
+            innerContent += searchResults.map(r => `* ${this._stripCodexMemoryMarkers(r.text || '').trim()}`).join('\n');
         } else {
             innerContent += "没有找到直接相关的记忆片段。";
         }
@@ -3338,6 +3430,186 @@ class RAGDiaryPlugin {
     _getCachedResult(cacheKey) {
         if (!this.queryCacheEnabled) return null;
         return this.cacheManager.get('query', cacheKey);
+    }
+
+    _getCodexRecallTarget(dbName) {
+        const normalized = typeof dbName === 'string' ? dbName.trim() : '';
+        return CODEX_RECALL_DIARY_TARGETS.get(normalized) || null;
+    }
+
+    _extractRecallSourceFiles(results = [], limit = 3) {
+        const files = [];
+        const seen = new Set();
+
+        for (const result of Array.isArray(results) ? results : []) {
+            const candidate = [result?.fullPath, result?.sourceFile, result?.filePath, result?.path]
+                .find(value => typeof value === 'string' && value.trim());
+            if (!candidate) continue;
+
+            const normalized = candidate.replace(/\\/g, '/');
+            if (seen.has(normalized)) continue;
+
+            seen.add(normalized);
+            files.push(candidate);
+            if (files.length >= limit) break;
+        }
+
+        return files;
+    }
+
+    _extractMemoryIdsFromText(text) {
+        if (typeof text !== 'string' || !text) return [];
+        const matches = text.match(/(?:^|\n)Memory-ID:\s*([A-Za-z0-9-]+)/g) || [];
+        const ids = matches
+            .map(match => {
+                const capture = match.match(/Memory-ID:\s*([A-Za-z0-9-]+)/);
+                return capture ? capture[1] : null;
+            })
+            .filter(Boolean);
+        return [...new Set(ids)];
+    }
+
+    _normalizeTagArray(values = []) {
+        if (!Array.isArray(values)) return [];
+        return [...new Set(
+            values
+                .map(value => {
+                    if (typeof value === 'string') return value.trim();
+                    if (value && value.name) return String(value.name).trim();
+                    return String(value || '').trim();
+                })
+                .filter(Boolean)
+        )];
+    }
+
+    _extractAggregatedTags(results = [], fieldName) {
+        const tags = [];
+        for (const result of Array.isArray(results) ? results : []) {
+            const normalized = this._normalizeTagArray(result?.[fieldName]);
+            for (const tag of normalized) {
+                if (!tags.includes(tag)) tags.push(tag);
+            }
+        }
+        return tags;
+    }
+
+    _stripCodexMemoryMarkers(text) {
+        if (typeof text !== 'string' || !text) return text;
+        return text
+            .replace(/^Memory-ID:\s*[A-Za-z0-9-]+\n?/gm, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    _buildCodexRecallAuditPayload(options = {}) {
+        const {
+            dbName,
+            recallType,
+            results = [],
+            content = '',
+            useTime = false,
+            useGroup = false,
+            useRerank = false,
+            useGeodesicRerank = false,
+            coreTags = []
+        } = options;
+
+        const target = this._getCodexRecallTarget(dbName);
+        if (!target) return null;
+
+        const safeResults = Array.isArray(results) ? results.filter(Boolean) : [];
+        const resultCount = safeResults.length > 0 ? safeResults.length : (content ? 1 : 0);
+        if (resultCount < 1) return null;
+
+        const topResult = safeResults[0] || null;
+        const rawTopScore = topResult ? (topResult.rerank_score ?? topResult.score ?? null) : null;
+        const topScore = Number.isFinite(rawTopScore) ? Number(rawTopScore.toFixed(6)) : null;
+        const sourceKinds = [...new Set(
+            safeResults
+                .map(result => (typeof result?.source === 'string' && result.source.trim()) ? result.source.trim() : null)
+                .filter(Boolean)
+        )];
+        const sourceFiles = this._extractRecallSourceFiles(safeResults);
+        const memoryIds = [...new Set(
+            safeResults.flatMap(result => this._extractMemoryIdsFromText(result?.text || ''))
+        )];
+        if (memoryIds.length === 0 && content) {
+            memoryIds.push(...this._extractMemoryIdsFromText(content));
+        }
+        const topMemoryId = topResult
+            ? (this._extractMemoryIdsFromText(topResult.text || '')[0] || null)
+            : null;
+        const matchedTags = this._extractAggregatedTags(safeResults, 'matchedTags');
+        const coreTagHits = [
+            ...this._extractAggregatedTags(safeResults, 'coreTagsMatched'),
+            ...this._normalizeTagArray(coreTags)
+        ].filter((tag, index, array) => array.indexOf(tag) === index);
+        const topMatchedTags = topResult ? this._normalizeTagArray(topResult.matchedTags) : [];
+
+        return {
+            dbName,
+            target,
+            recallType,
+            resultCount,
+            topScore,
+            topMemoryId,
+            topMatchedTags,
+            matchedTags,
+            coreTags: coreTagHits,
+            topSourceFile: sourceFiles[0] || null,
+            memoryIds,
+            sourceFiles,
+            sourceKinds,
+            contentLength: typeof content === 'string' ? content.length : 0,
+            useTime: !!useTime,
+            useGroup: !!useGroup,
+            useRerank: !!useRerank,
+            useGeodesicRerank: !!useGeodesicRerank
+        };
+    }
+
+    async _recordCodexRecallAudit(payload, overrides = {}) {
+        if (!payload || !payload.target) return;
+
+        const entry = {
+            timestamp: new Date().toISOString(),
+            fromCache: false,
+            ...payload,
+            ...overrides
+        };
+
+        try {
+            await fs.mkdir(path.dirname(this.codexRecallAuditLogPath), { recursive: true });
+            await fs.appendFile(this.codexRecallAuditLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
+            this.codexAdaptiveCache.loadedAt = 0;
+        } catch (error) {
+            console.error('[RAGDiaryPlugin] Failed to append Codex recall audit:', error.message || error);
+        }
+    }
+
+    async _getCodexAdaptiveTuning(dbName) {
+        const adaptiveConfig = this.ragParams?.RAGDiaryPlugin?.codexAdaptiveRecall || {};
+        if (adaptiveConfig.enabled === false) return null;
+        if (dbName !== 'Codex' && dbName !== 'Codex的知识') return null;
+
+        const cacheTtlMs = adaptiveConfig.cacheTtlMs ?? 60000;
+        const now = Date.now();
+        if (this.codexAdaptiveCache.profile && (now - this.codexAdaptiveCache.loadedAt) < cacheTtlMs) {
+            return this.codexAdaptiveCache.profile.profiles.find(profile => profile.dbName === dbName) || null;
+        }
+
+        try {
+            const resolvedProjectBasePath = path.resolve(projectBasePath || path.join(__dirname, '..', '..'));
+            const profile = await getCodexAdaptiveProfile({
+                projectBasePath: resolvedProjectBasePath,
+                ragParams: this.ragParams
+            });
+            this.codexAdaptiveCache = { loadedAt: now, profile };
+            return profile.profiles.find(item => item.dbName === dbName) || null;
+        } catch (error) {
+            console.error('[RAGDiaryPlugin] Failed to load Codex adaptive profile:', error.message || error);
+            return null;
+        }
     }
 
     _setCachedResult(cacheKey, result) {
