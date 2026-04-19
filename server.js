@@ -110,6 +110,7 @@ const toolboxManager = require('./modules/toolboxManager.js');
 const messageProcessor = require('./modules/messageProcessor.js');
 const knowledgeBaseManager = require('./KnowledgeBaseManager.js'); // 新增：引入统一知识库管理器
 const pluginManager = require('./Plugin.js');
+const sarPromptManager = require('./modules/sarPromptManager.js');
 const taskScheduler = require('./routes/taskScheduler.js');
 const webSocketServer = require('./WebSocketServer.js'); // 新增 WebSocketServer 引入
 const FileFetcherServer = require('./FileFetcherServer.js'); // 引入新的 FileFetcherServer 模块
@@ -124,12 +125,15 @@ const apiErrorCounts = new Map();
 
 const loginAttempts = new Map();
 const tempBlocks = new Map();
-const MAX_LOGIN_ATTEMPTS = 5; // 15分钟内最多尝试5次
+const noCredentialAccess = new Map(); // 无凭据访问计数（防DDoS探测）
+const MAX_LOGIN_ATTEMPTS = 5; // 15分钟内最多尝试5次（错误凭据）
+const MAX_NO_CREDENTIAL_REQUESTS = 100; // 15分钟内无凭据访问上限（防DDoS探测）
 const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15分钟的窗口
-const TEMP_BLOCK_DURATION = 30 * 60 * 1000; // 封禁30分钟
+const TEMP_BLOCK_DURATION = 30 * 60 * 1000; // 封禁30分钟（错误凭据触发）
+const NO_CREDENTIAL_BLOCK_DURATION = 15 * 60 * 1000; // 封禁15分钟（无凭据DDoS触发）
 
 const ChatCompletionHandler = require('./modules/chatCompletionHandler.js');
-const { ChannelHubService } = require('./modules/channelHub/ChannelHubService');
+const ToolCallParser = require('./modules/vcpLoop/toolCallParser.js');
 
 const activeRequests = new Map(); // 新增：用于存储活动中的请求，以便中止
 
@@ -475,8 +479,12 @@ const adminAuth = (req, res, next) => {
 
         // 4. 验证凭据
         if (!credentials || credentials.name !== ADMIN_USERNAME || credentials.pass !== ADMIN_PASSWORD) {
-            // 认证失败，处理登录尝试计数（仅对非只读接口计数）
-            if (clientIp && !isReadOnlyPath) {
+            // 认证失败，处理登录尝试计数
+            // 🌟 关键修复：只有当用户主动提供了凭据（但凭据错误）时才计入失败次数
+            // 当 credentials 为 null 时（如 cookie 过期、用户登出后面板后台轮询），
+            // 不计入失败次数，避免面板挂着时 cookie 过期导致立即封禁 IP
+            const isActiveLoginAttempt = !!credentials;
+            if (clientIp && !isReadOnlyPath && isActiveLoginAttempt) {
                 const now = Date.now();
                 let attemptInfo = loginAttempts.get(clientIp) || { count: 0, firstAttempt: now };
 
@@ -494,6 +502,28 @@ const adminAuth = (req, res, next) => {
                     loginAttempts.delete(clientIp); // 封禁后清除尝试记录
                 } else {
                     loginAttempts.set(clientIp, attemptInfo);
+                }
+            }
+            // 🌟 防DDoS：无凭据访问独立计数，阈值更宽松（不影响正常 cookie 过期场景）
+            else if (clientIp && !isReadOnlyPath) {
+                const now = Date.now();
+                let accessInfo = noCredentialAccess.get(clientIp) || { count: 0, firstAccess: now };
+
+                if (now - accessInfo.firstAccess > LOGIN_ATTEMPT_WINDOW) {
+                    accessInfo = { count: 0, firstAccess: now };
+                }
+
+                accessInfo.count++;
+
+                if (accessInfo.count >= MAX_NO_CREDENTIAL_REQUESTS) {
+                    console.warn(`[AdminAuth] IP ${clientIp} blocked for ${NO_CREDENTIAL_BLOCK_DURATION / 60000} min — excessive unauthenticated requests (${accessInfo.count}/${MAX_NO_CREDENTIAL_REQUESTS}).`);
+                    tempBlocks.set(clientIp, { expires: now + NO_CREDENTIAL_BLOCK_DURATION });
+                    noCredentialAccess.delete(clientIp);
+                } else {
+                    noCredentialAccess.set(clientIp, accessInfo);
+                    if (accessInfo.count % 10 === 0) {
+                        console.log(`[AdminAuth] Unauthenticated access from IP: ${clientIp}. Count: ${accessInfo.count}/${MAX_NO_CREDENTIAL_REQUESTS}`);
+                    }
                 }
             }
 
@@ -904,36 +934,20 @@ app.post('/v1/human/tool', async (req, res) => {
             return res.status(400).json({ error: 'Request body must be a non-empty plain text.' });
         }
 
-        const toolRequestStartMarker = "<<<[TOOL_REQUEST]>>>";
-        const toolRequestEndMarker = "<<<[END_TOOL_REQUEST]>>>";
+        const extractedToolBlock = ToolCallParser.extractNextToolBlock(requestBody);
 
-        const startIndex = requestBody.indexOf(toolRequestStartMarker);
-        const endIndex = requestBody.indexOf(toolRequestEndMarker, startIndex);
-
-        if (startIndex === -1 || endIndex === -1) {
+        if (!extractedToolBlock) {
             return res.status(400).json({ error: 'Malformed request: Missing TOOL_REQUEST markers.' });
         }
 
-        const requestBlockContent = requestBody.substring(startIndex + toolRequestStartMarker.length, endIndex).trim();
+        const parsedToolCall = ToolCallParser.parseBlock(extractedToolBlock.blockContent);
 
-        let parsedToolArgs = {};
-        let requestedToolName = null;
-        const paramRegex = /([\w_]+)\s*:\s*「始」([\s\S]*?)「末」\s*(?:,)?/g;
-        let regexMatch;
-
-        while ((regexMatch = paramRegex.exec(requestBlockContent)) !== null) {
-            const key = regexMatch[1];
-            const value = regexMatch[2].trim();
-            if (key === "tool_name") {
-                requestedToolName = value;
-            } else {
-                parsedToolArgs[key] = value;
-            }
-        }
-
-        if (!requestedToolName) {
+        if (!parsedToolCall || !parsedToolCall.name) {
             return res.status(400).json({ error: 'Malformed request: tool_name not found within the request block.' });
         }
+
+        const requestedToolName = parsedToolCall.name;
+        const parsedToolArgs = parsedToolCall.args || {};
 
         if (DEBUG_MODE) {
             console.log(`[Human Tool Exec] Received tool call for: ${requestedToolName}`, parsedToolArgs);
@@ -1109,9 +1123,6 @@ const adminPanelRoutes = require('./routes/adminPanelRoutes')(
 
 // 新增：引入 VCP 论坛 API 路由
 const forumApiRoutes = require('./routes/forumApi');
-// 引入 ChannelHub 路由
-const channelHubAdminRoutes = require('./routes/admin/channelHub');
-const channelHubInternalRoutes = require('./routes/internal/channelHub');
 
 // --- End Admin API Router ---
 
@@ -1196,10 +1207,7 @@ async function initialize() {
     app.use('/admin_api', adminPanelRoutes);
     // 挂载 VCP 论坛 API 路由
     app.use('/admin_api/forum', forumApiRoutes);
-    // 挂载 ChannelHub 路由
-    app.use('/admin_api/channelHub', channelHubAdminRoutes.router);
-    app.use('/internal/channelHub', channelHubInternalRoutes.router);
-    console.log('服务类插件初始化完成，管理面板 API 路由、VCP 论坛 API 路由和 ChannelHub 路由已挂载。');
+    console.log('服务类插件初始化完成，管理面板 API 路由和 VCP 论坛 API 路由已挂载。');
 
     // --- 新增：通用依赖注入 ---
     // 在所有服务都初始化完毕后，再执行依赖注入，确保 VCPLog 等服务已准备就绪。
@@ -1308,29 +1316,12 @@ async function startServer() {
     await toolboxManager.initialize(DEBUG_MODE);
     console.log('Toolbox管理器初始化完成。');
 
+    console.log('正在初始化SarPrompt管理器...');
+    await sarPromptManager.initialize(DEBUG_MODE);
+    console.log('SarPrompt管理器初始化完成。');
+
     // 🌟 关键修复：在监听端口前完成所有初始化
     await initialize(); // This loads plugins and initializes services
-
-    // --- 新增：初始化 ChannelHub ---
-    console.log('[Server] 正在初始化 ChannelHub...');
-    const channelHub = new ChannelHubService({
-        config: {
-            baseDir: process.env.CHANNELHUB_BASE_DIR || './state/channelHub',
-            debugMode: DEBUG_MODE,
-            // 这里可以继续扩展 config.env 中的其他参数
-        },
-        logger: console,
-        chatCompletionHandler: chatCompletionHandler,
-        pluginManager: pluginManager
-    });
-    await channelHub.initialize();
-    app.set('channelHub', channelHub);
-
-    // 注入路由依赖
-    channelHubAdminRoutes.initialize(channelHub);
-    channelHubInternalRoutes.initialize({ channelHubService: channelHub });
-
-    console.log('[Server] ChannelHub 初始化完成并已挂载依赖。');
 
     // 🌟 核心网络优化：100% 确保首请求的 node-fetch ESM 模块热启动，消除冷启动导致的延迟和上游挂断风险
     console.log('[Server] 正在预热 node-fetch ESM 模块...');
@@ -1393,7 +1384,6 @@ async function gracefulShutdown(exitCode = 0) {
         await logClosePromise;
     }
 
-    console.log(`Graceful shutdown complete. Exiting with code ${exitCode}.`);
     process.exit(exitCode);
 }
 

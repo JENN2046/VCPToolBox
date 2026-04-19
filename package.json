@@ -3,10 +3,11 @@
   "version": "7.1.2",
   "main": "Server.js",
   "scripts": {
-    "test": "node --test tests/codex-memory-bridge.test.js tests/codex-memory-e2e.test.js tests/codex-memory-recall.test.js tests/codex-memory-admin.test.js tests/codex-memory-adaptive.test.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "start:admin": "node adminServer.js",
-    "start:all": "node server.js & node adminServer.js"
+    "start:all": "node server.js & node adminServer.js",
+    "build:admin": "cd AdminPanel-Vue && npm install && npm run build"
   },
   "keywords": [],
   "author": "",
