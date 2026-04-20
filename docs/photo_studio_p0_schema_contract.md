@@ -5,6 +5,7 @@ This file records the aligned `photo_studio` P0 contract on the clean engineerin
 Business source of truth:
 
 - [vcp_photo_studio_p0_schema_freeze.md](A:\VCP\docs\vcp_photo_studio_p0_schema_freeze.md)
+- [photo_studio_transport_convergence_decision.md](A:\VCP\VCPToolBox-main\docs\photo_studio_transport_convergence_decision.md)
 
 Engineering scope for this batch:
 
@@ -13,6 +14,11 @@ Engineering scope for this batch:
   - `pluginType: synchronous`
   - `protocol: stdio`
   - shared runtime store under `data/photo-studio/`
+
+Transport decision note:
+
+- For current implementation, transport authority comes from [photo_studio_transport_convergence_decision.md](A:\VCP\VCPToolBox-main\docs\photo_studio_transport_convergence_decision.md).
+- `hybridservice + direct` is not the active implementation target for this branch.
 
 ## P0 Plugin Set
 
