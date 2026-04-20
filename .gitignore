@@ -214,3 +214,7 @@ rust-vexus-lite/target/
 VCPDistributedServer
 # XiaohongshuFetch config
 Plugin/XiaohongshuFetch/config.env
+
+# photo_studio runtime data
+data/photo-studio/*.json
+data/photo-studio/*.lock

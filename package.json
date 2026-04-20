@@ -4,6 +4,7 @@
   "main": "Server.js",
   "scripts": {
     "test": "node --test tests/codex-memory-bridge.test.js tests/codex-memory-e2e.test.js tests/codex-memory-recall.test.js tests/codex-memory-admin.test.js tests/codex-memory-adaptive.test.js tests/codex-memory-search.test.js tests/codex-memory-mcp.test.js",
+    "test:photo-studio": "node --test tests/photo-studio/*.test.js",
     "test:dingtalk-cli": "node --test tests/dingtalk-cli/*.test.js",
     "test:dingtalk-cli:smoke": "node tests/dingtalk-cli/smoke-runner.js",
     "dws:baseline": "node Plugin/DingTalkCLI/tools/run-real-baseline.js",

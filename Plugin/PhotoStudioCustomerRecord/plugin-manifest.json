@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioCustomerRecord",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Customer Record",
+  "description": "Create or de-duplicate photo_studio customer records with a shared P0 schema and JSON store.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioCustomerRecord.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "create_customer_record",
+        "description": "Create or return an existing photo_studio customer record."
+      }
+    ]
+  }
+}

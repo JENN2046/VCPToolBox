@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioReplyDraft",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Reply Draft",
+  "description": "Generate deterministic client reply drafts from photo_studio customer and project context.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioReplyDraft.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "generate_client_reply_draft",
+        "description": "Generate a client reply draft for a defined scenario and tone."
+      }
+    ]
+  }
+}

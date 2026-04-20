@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioProjectTasks",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Project Tasks",
+  "description": "Generate phase-based project tasks for photo_studio projects with duplicate protection.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioProjectTasks.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "create_project_tasks",
+        "description": "Generate project tasks for phase pre_shoot, post_shoot, or delivery."
+      }
+    ]
+  }
+}

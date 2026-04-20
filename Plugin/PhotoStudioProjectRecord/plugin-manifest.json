@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioProjectRecord",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Project Record",
+  "description": "Create or de-duplicate photo_studio project records bound to an existing customer_id.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioProjectRecord.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "create_project_record",
+        "description": "Create or return an existing photo_studio project record."
+      }
+    ]
+  }
+}
