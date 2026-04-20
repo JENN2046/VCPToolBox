@@ -831,7 +831,7 @@ class PluginManager extends EventEmitter {
                 if (typeof serviceModule.processToolCall !== 'function') {
                     throw new Error(`[PluginManager] Hybrid service plugin "${toolName}" does not have a processToolCall function.`);
                 }
-                resultFromPlugin = await serviceModule.processToolCall(pluginSpecificArgs);
+                resultFromPlugin = await serviceModule.processToolCall(pluginSpecificArgs, normalizedExecutionContext);
             } else {
                 // --- 本地插件调用逻辑 (现有逻辑) ---
                 if (!((plugin.pluginType === 'synchronous' || plugin.pluginType === 'asynchronous') && plugin.communication?.protocol === 'stdio')) {

@@ -3,7 +3,13 @@
   "version": "7.1.2",
   "main": "Server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test tests/codex-memory-bridge.test.js tests/codex-memory-e2e.test.js tests/codex-memory-recall.test.js tests/codex-memory-admin.test.js tests/codex-memory-adaptive.test.js tests/codex-memory-search.test.js tests/codex-memory-mcp.test.js",
+    "test:dingtalk-cli": "node --test tests/dingtalk-cli/*.test.js",
+    "test:dingtalk-cli:smoke": "node tests/dingtalk-cli/smoke-runner.js",
+    "dws:baseline": "node Plugin/DingTalkCLI/tools/run-real-baseline.js",
+    "dws:matrix": "node Plugin/DingTalkCLI/tools/run-capability-matrix.js",
+    "dws:workflow": "node Plugin/DingTalkCLI/tools/run-workflow-e2e.js",
+    "dws:calibrate": "node Plugin/DingTalkCLI/tools/calibrate-schema-map.js",
     "start": "node server.js",
     "start:admin": "node adminServer.js",
     "start:all": "node server.js & node adminServer.js"
@@ -53,6 +59,7 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "rss-parser": "^3.13.0",
     "serpapi": "^2.2.1",
+    "ssh2": "^1.17.0",
     "stylelint": "^16.25.0",
     "trash": "^10.0.0",
     "turndown": "^7.2.1",

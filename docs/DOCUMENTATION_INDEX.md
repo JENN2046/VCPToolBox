@@ -34,6 +34,7 @@
 | 文档 | 描述 | 优先级 |
 |------|------|--------|
 | [MEMORY_SYSTEM.md](./MEMORY_SYSTEM.md) | TagMemo算法、EPA模块、残差金字塔、向量索引 | ⭐⭐⭐ |
+| [CODEX_MEMORY_BRIDGE.md](./CODEX_MEMORY_BRIDGE.md) | Codex 专用记忆写入通道、执行上下文、审计日志、管理面板监控 | ⭐⭐ |
 | [CONTEXT_BRIDGE.md](./CONTEXT_BRIDGE.md) | 上下文向量引力场公开接口、插件间向量共享机制 | ⭐⭐⭐ |
 | [DISTRIBUTED_ARCHITECTURE.md](./DISTRIBUTED_ARCHITECTURE.md) | WebSocket协议、节点注册、工具执行、文件传输 | ⭐⭐ |
 | [RUST_VECTOR_ENGINE.md](./RUST_VECTOR_ENGINE.md) | N-API接口、向量操作、性能特性 | ⭐⭐ |
@@ -61,6 +62,8 @@
 | 修改配置参数 | [CONFIGURATION.md](./CONFIGURATION.md) § 配置语义总表 |
 | 添加新API端点 | [API_ROUTES.md](./API_ROUTES.md) § 路由挂载流程 |
 | 优化RAG检索 | [MEMORY_SYSTEM.md](./MEMORY_SYSTEM.md) § TagMemo算法 |
+| 了解 Codex 记忆写入 | [CODEX_MEMORY_BRIDGE.md](./CODEX_MEMORY_BRIDGE.md) § 约束规则 |
+| 查看 Codex 记忆监控 | [CODEX_MEMORY_BRIDGE.md](./CODEX_MEMORY_BRIDGE.md) § Admin Monitoring |
 | 部署分布式节点 | [DISTRIBUTED_ARCHITECTURE.md](./DISTRIBUTED_ARCHITECTURE.md) § 节点注册 |
 | 调试向量索引 | [RUST_VECTOR_ENGINE.md](./RUST_VECTOR_ENGINE.md) § 错误处理 |
 | 定制管理面板 | [FRONTEND_COMPONENTS.md](./FRONTEND_COMPONENTS.md) § AdminPanel |
@@ -76,6 +79,7 @@
 | 插件管理 | `Plugin.js` | [PLUGIN_ECOSYSTEM.md](./PLUGIN_ECOSYSTEM.md) § 生命周期 |
 | WebSocket | `WebSocketServer.js` | [DISTRIBUTED_ARCHITECTURE.md](./DISTRIBUTED_ARCHITECTURE.md) § 协议 |
 | 知识库 | `KnowledgeBaseManager.js` | [MEMORY_SYSTEM.md](./MEMORY_SYSTEM.md) § 架构 |
+| Codex 记忆桥 | `Plugin/CodexMemoryBridge/` | [CODEX_MEMORY_BRIDGE.md](./CODEX_MEMORY_BRIDGE.md) |
 | 向量引擎 | `rust-vexus-lite/` | [RUST_VECTOR_ENGINE.md](./RUST_VECTOR_ENGINE.md) |
 | 路由层 | `routes/` | [API_ROUTES.md](./API_ROUTES.md) |
 | 管理面板 | `AdminPanel/` | [FRONTEND_COMPONENTS.md](./FRONTEND_COMPONENTS.md) |
@@ -220,3 +224,14 @@
 **文档生成工具：** OpenCode AI Agent  
 **最后更新：** 2026-02-13  
 **维护者：** VCPToolBox开发团队
+
+---
+
+## DingTalk CLI Integration
+
+- [dingtalk-cli/README.md](./dingtalk-cli/README.md)
+- [dingtalk-cli/01-architecture.md](./dingtalk-cli/01-architecture.md)
+- [dingtalk-cli/02-api-spec.md](./dingtalk-cli/02-api-spec.md)
+- [dingtalk-cli/03-operations.md](./dingtalk-cli/03-operations.md)
+- [dingtalk-cli/04-troubleshooting.md](./dingtalk-cli/04-troubleshooting.md)
+- [dingtalk-cli/05-gray-release.md](./dingtalk-cli/05-gray-release.md)

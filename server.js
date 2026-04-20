@@ -111,6 +111,8 @@ const messageProcessor = require('./modules/messageProcessor.js');
 const knowledgeBaseManager = require('./KnowledgeBaseManager.js'); // 新增：引入统一知识库管理器
 const pluginManager = require('./Plugin.js');
 const taskScheduler = require('./routes/taskScheduler.js');
+const toolExecutionRoutes = require('./routes/toolExecutionRoutes.js');
+const codexMemoryMcpRoutes = require('./routes/codexMemoryMcp.js');
 const webSocketServer = require('./WebSocketServer.js'); // 新增 WebSocketServer 引入
 const FileFetcherServer = require('./FileFetcherServer.js'); // 引入新的 FileFetcherServer 模块
 const vcpInfoHandler = require('./vcpInfoHandler.js'); // 引入新的 VCP 信息处理器
@@ -129,8 +131,10 @@ const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15分钟的窗口
 const TEMP_BLOCK_DURATION = 30 * 60 * 1000; // 封禁30分钟
 
 const ChatCompletionHandler = require('./modules/chatCompletionHandler.js');
+const { ChannelHubService } = require('./modules/channelHub/ChannelHubService');
 
 const activeRequests = new Map(); // 新增：用于存储活动中的请求，以便中止
+const dailyNoteRootPath = process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(__dirname, 'dailynote');
 
 // 新增：定时清理 activeRequests 防止内存泄漏
 setInterval(() => {
@@ -567,12 +571,31 @@ app.use((req, res, next) => {
         return next();
     }
 
+    let clientIp = req.ip;
+    if (clientIp && clientIp.substr(0, 7) === "::ffff:") {
+        clientIp = clientIp.substr(7);
+    }
+
+    const isLoopbackIp = clientIp === '127.0.0.1' || clientIp === '::1';
+    if (req.path.startsWith('/mcp/codex-memory') && isLoopbackIp) {
+        return next();
+    }
+
     const authHeader = req.headers.authorization;
     if (!authHeader || authHeader !== `Bearer ${serverKey}`) {
         return res.status(401).json({ error: 'Unauthorized (Bearer token required)' });
     }
     next();
 });
+
+app.use(toolExecutionRoutes({ pluginManager }));
+app.use('/mcp/codex-memory', codexMemoryMcpRoutes({
+    pluginManager,
+    knowledgeBaseManager,
+    getRagDiaryPlugin: () => pluginManager.messagePreprocessors.get('RAGDiaryPlugin'),
+    projectBasePath: __dirname,
+    dailyNoteRootPath
+}));
 
 // This function is no longer needed as the EmojiListGenerator plugin handles generation.
 // async function updateAndLoadAgentEmojiList(agentName, dirPath, filePath) { ... }
@@ -1083,10 +1106,6 @@ async function handleDiaryFromAIResponse(responseText) {
 
 // --- Admin API Router (Moved to routes/adminPanelRoutes.js) ---
 
-// Define dailyNoteRootPath here as it's needed by the adminPanelRoutes module
-// and was previously defined within the moved block.
-const dailyNoteRootPath = process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(__dirname, 'dailynote');
-
 // Import and use the admin panel routes, passing the getter for currentServerLogPath
 const adminPanelRoutes = require('./routes/adminPanelRoutes')(
     DEBUG_MODE,
@@ -1108,6 +1127,11 @@ const adminPanelRoutes = require('./routes/adminPanelRoutes')(
 
 // 新增：引入 VCP 论坛 API 路由
 const forumApiRoutes = require('./routes/forumApi');
+// 引入 ChannelHub 路由
+const channelHubAdminRoutes = require('./routes/admin/channelHub');
+const channelHubInternalRoutes = require('./routes/internal/channelHub');
+// 引入图片评分管理 API 路由
+const imageRatingApiRoutes = require('./routes/image-rating-api');
 
 // --- End Admin API Router ---
 
@@ -1192,7 +1216,11 @@ async function initialize() {
     app.use('/admin_api', adminPanelRoutes);
     // 挂载 VCP 论坛 API 路由
     app.use('/admin_api/forum', forumApiRoutes);
-    console.log('服务类插件初始化完成，管理面板 API 路由和 VCP 论坛 API 路由已挂载。');
+    // 挂载 ChannelHub 路由
+app.use("/api/image-rating", imageRatingApiRoutes);
+    app.use('/admin_api/channelHub', channelHubAdminRoutes.router);
+    app.use('/internal/channelHub', channelHubInternalRoutes.router);
+    console.log('服务类插件初始化完成，管理面板 API 路由、VCP 论坛 API 路由和 ChannelHub 路由已挂载。');
 
     // --- 新增：通用依赖注入 ---
     // 在所有服务都初始化完毕后，再执行依赖注入，确保 VCPLog 等服务已准备就绪。
@@ -1303,6 +1331,27 @@ async function startServer() {
 
     // 🌟 关键修复：在监听端口前完成所有初始化
     await initialize(); // This loads plugins and initializes services
+
+    // --- 新增：初始化 ChannelHub ---
+    console.log('[Server] 正在初始化 ChannelHub...');
+    const channelHub = new ChannelHubService({
+        config: {
+            baseDir: process.env.CHANNELHUB_BASE_DIR || __dirname,
+            debugMode: DEBUG_MODE,
+            // 这里可以继续扩展 config.env 中的其他参数
+        },
+        logger: console,
+        chatCompletionHandler: chatCompletionHandler,
+        pluginManager: pluginManager
+    });
+    await channelHub.initialize();
+    app.set('channelHub', channelHub);
+
+    // 注入路由依赖
+    channelHubAdminRoutes.initialize(channelHub);
+    channelHubInternalRoutes.initialize({ channelHubService: channelHub });
+
+    console.log('[Server] ChannelHub 初始化完成并已挂载依赖。');
 
     // 🌟 核心网络优化：100% 确保首请求的 node-fetch ESM 模块热启动，消除冷启动导致的延迟和上游挂断风险
     console.log('[Server] 正在预热 node-fetch ESM 模块...');
