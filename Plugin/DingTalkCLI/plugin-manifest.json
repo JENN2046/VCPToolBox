@@ -1,0 +1,96 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "DingTalkCLI",
+  "version": "1.0.0",
+  "displayName": "DingTalk CLI",
+  "description": "Unified dingtalk-workspace-cli (DWS) integration for VCPToolBox with schema discovery, security gates, workflows, audit and compatibility routing.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node DingTalkCLI.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 120000
+  },
+  "configSchema": {
+    "DWS_BIN": {
+      "type": "string",
+      "description": "DWS executable path",
+      "default": "dws"
+    },
+    "DWS_MIN_VERSION": {
+      "type": "string",
+      "description": "Minimal DWS version",
+      "default": "1.0.8"
+    },
+    "AUTH_MODE": {
+      "type": "string",
+      "description": "Authentication mode: auto/org/custom_app",
+      "default": "auto"
+    },
+    "DWS_GRAY_STAGE": {
+      "type": "string",
+      "description": "Gray stage policy: query_only/low_risk_write/full_write",
+      "default": "full_write"
+    },
+    "DWS_CLIENT_ID": {
+      "type": "string",
+      "description": "Client ID for custom_app mode",
+      "default": ""
+    },
+    "DWS_CLIENT_SECRET": {
+      "type": "string",
+      "description": "Client secret for custom_app mode",
+      "default": ""
+    },
+    "DWS_TRUSTED_DOMAINS": {
+      "type": "string",
+      "description": "Comma-separated trusted domains for URL args",
+      "default": ""
+    },
+    "DWS_TOOL_MAP_PATH": {
+      "type": "string",
+      "description": "Optional capability map path for tool alias resolution",
+      "default": ""
+    },
+    "AUDIT_LOG_PATH": {
+      "type": "string",
+      "description": "Audit JSONL path",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "health_check",
+        "description": "Check DWS binary, version and runtime readiness."
+      },
+      {
+        "commandIdentifier": "auth_status",
+        "description": "Get authentication status and token validity snapshot."
+      },
+      {
+        "commandIdentifier": "auth_login",
+        "description": "Trigger DWS login in mode auto/org/custom_app."
+      },
+      {
+        "commandIdentifier": "schema_list",
+        "description": "Discover tool registry via dws schema with cache fallback."
+      },
+      {
+        "commandIdentifier": "schema_tool",
+        "description": "Get schema details for one product.tool."
+      },
+      {
+        "commandIdentifier": "execute_tool",
+        "description": "Execute DWS capability with fixed fields: product, tool, args, apply, dry_run, yes, jq, format."
+      },
+      {
+        "commandIdentifier": "run_workflow",
+        "description": "Run built-in workflows: meeting_automation, customer_followup, daily_report_generation."
+      }
+    ]
+  }
+}

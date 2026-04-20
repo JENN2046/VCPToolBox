@@ -1,0 +1,75 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "WeeklyReportGenerator",
+  "version": "1.1.0",
+  "displayName": "Weekly Report Generator",
+  "description": "Generate weekly reports from work logs and export to DingTalk AI table via DingTalkCLI.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node WeeklyReportGenerator.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 120000
+  },
+  "configSchema": {
+    "VCP_API_URL": {
+      "type": "string",
+      "description": "VCP API base URL",
+      "default": "http://127.0.0.1:6005"
+    },
+    "VCP_API_KEY": {
+      "type": "string",
+      "description": "VCP API key",
+      "default": "vcp-secret"
+    },
+    "DEFAULT_MODEL": {
+      "type": "string",
+      "description": "AI model name",
+      "default": "Nova"
+    },
+    "DINGTALK_TABLE_UUID": {
+      "type": "string",
+      "description": "Legacy fallback AI table UUID for DingTalkTable export",
+      "default": ""
+    },
+    "DINGTALK_BASE_ID": {
+      "type": "string",
+      "description": "Preferred DWS AI table base_id for DingTalkCLI record create",
+      "default": ""
+    },
+    "DINGTALK_TABLE_ID": {
+      "type": "string",
+      "description": "Preferred DWS AI table table_id for DingTalkCLI record create",
+      "default": ""
+    },
+    "DINGTALK_WEEKLY_TABLE_WRITE_TOOL": {
+      "type": "string",
+      "description": "DWS aitable command path used by export_to_table",
+      "default": "record create"
+    },
+    "DWS_GRAY_STAGE": {
+      "type": "string",
+      "description": "Gray stage policy inherited by weekly export: query_only/low_risk_write/full_write",
+      "default": "full_write"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "generate_from_logs",
+        "description": "Generate weekly report from local work logs."
+      },
+      {
+        "commandIdentifier": "generate_from_diary",
+        "description": "Generate weekly report from diary/worklog source."
+      },
+      {
+        "commandIdentifier": "export_to_table",
+        "description": "Export report content to DingTalk AI table via DingTalkCLI (fallback DingTalkTable)."
+      }
+    ]
+  }
+}
