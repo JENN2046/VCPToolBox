@@ -1,0 +1,107 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "AIGentWorkflow",
+  "displayName": "AI 生图工作流编排师",
+  "version": "0.1.0",
+  "description": "AI 生图工作流编排师 Agent - 解析用户需求，匹配 ComfyUI 工作流模板，自动执行图像生成任务。支持电商/人像/营销/二次元四大场景。",
+  "author": "VCPToolBox Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node WorkflowOrchestrator.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 300000
+  },
+  "configSchema": {
+    "WORKFLOW_DEFAULT_TEMPLATE": {
+      "type": "string",
+      "description": "默认工作流模板",
+      "default": "text2img_basic"
+    },
+    "WORKFLOW_AUTO_EXECUTE": {
+      "type": "boolean",
+      "description": "是否自动执行工作流",
+      "default": false
+    },
+    "COMFYUI_BASE_URL": {
+      "type": "string",
+      "description": "ComfyUI 服务器地址",
+      "default": "http://localhost:8188"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "ExecuteWorkflow",
+        "description": "执行 AI 生图工作流\n\n🎨 **功能特性**:\n- 自然语言解析需求\n- 自动匹配工作流模板\n- 支持电商/人像/营销/二次元场景\n- 自动填充参数并执行\n\n📋 **调用格式**:\n<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentWorkflow「末」,\ntool_name:「始」ExecuteWorkflow「末」,\nuser_input:「始」(必需) 用户的自然语言描述，如'生成一张女装连衣裙的电商模特图'「末」,\nsimulate:「始」(可选) 是否模拟执行，默认 false「末」\n<<<[END_TOOL_REQUEST]>>>\n\n⚠️ **重要说明**:\n- 需要 ComfyUI 后端支持\n- 需要 AIGentPrompt 提示词支持\n- 支持 10 种预设工作流模板",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentWorkflow「末」,\ntool_name:「始」ExecuteWorkflow「末」,\nuser_input:「始」生成一张女装连衣裙的电商模特图，白色背景「末」,\nsimulate:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "ListTemplates",
+        "description": "列出可用工作流模板\n\n📚 **功能特性**:\n- 查看所有可用模板\n- 按分类筛选模板\n- 获取模板详细信息\n\n📋 **调用格式**:\n<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentWorkflow「末」,\ntool_name:「始」ListTemplates「末」,\ncategory:「始」(可选) 分类筛选：ecommerce/portrait/marketing/anime「末」\n<<<[END_TOOL_REQUEST]>>>\n",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentWorkflow「末」,\ntool_name:「始」ListTemplates「末」,\ncategory:「始」ecommerce「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  },
+  "features": {
+    "requirementParsing": {
+      "description": "自然语言需求解析",
+      "capabilities": [
+        "识别场景分类（电商/人像/营销/二次元）",
+        "提取服装类型",
+        "识别场景和风格",
+        "参数自动映射"
+      ]
+    },
+    "templateMatching": {
+      "description": "工作流模板匹配",
+      "capabilities": [
+        "10+ 预设模板",
+        "智能匹配算法",
+        "分类管理"
+      ]
+    },
+    "parameterFilling": {
+      "description": "自动参数填充",
+      "capabilities": [
+        "提示词自动生成",
+        "负面提示词生成",
+        "参数默认值管理"
+      ]
+    }
+  },
+  "dependencies": {
+    "ComfyUIGen": "Plugin/ComfyUIGen",
+    "AIGentPrompt": "Plugin/AIGentPrompt"
+  },
+  "systemIntegration": {
+    "vcpToolBox": {
+      "description": "深度集成 VCP ToolBox",
+      "features": [
+        "复用 ComfyUIGen 执行器",
+        "复用 AIGentPrompt 提示词生成",
+        "工作流模板管理"
+      ]
+    }
+  },
+  "changelog": {
+    "0.1.0": {
+      "date": "2026-04-15",
+      "changes": [
+        "初始版本发布",
+        "支持需求解析和模板匹配",
+        "10+ 预设工作流模板",
+        "支持电商/人像/营销/二次元场景"
+      ]
+    }
+  },
+  "compatibility": {
+    "vcpVersion": ">=1.0.0",
+    "nodeVersion": ">=14.0.0",
+    "requires": [
+      "ComfyUIGen"
+    ]
+  }
+}

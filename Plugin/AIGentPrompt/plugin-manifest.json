@@ -1,0 +1,108 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "AIGentPrompt",
+  "displayName": "AI 生图提示词工程师",
+  "version": "0.1.0",
+  "description": "AI 生图提示词工程师 Agent - 基于 RAG 检索从专业知识库生成专业级图像生成提示词。支持服装电商、人像写真、营销海报、二次元等场景。",
+  "author": "VCPToolBox Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node AIGentPrompt.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "configSchema": {
+    "AIGENT_RAG_ENABLED": {
+      "type": "boolean",
+      "description": "是否启用 RAG 检索",
+      "default": true
+    },
+    "AIGENT_DEFAULT_MODEL": {
+      "type": "string",
+      "description": "默认目标模型 (flux/sdxl/midjourney)",
+      "default": "flux"
+    },
+    "AIGENT_MAX_RESULTS": {
+      "type": "number",
+      "description": "最大返回结果数",
+      "default": 5
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "GenerateImagePrompt",
+        "description": "生成专业级 AI 生图提示词\n\n🎨 **功能特性**:\n- 基于 RAG 检索专业知识库\n- 支持服装电商/人像/营销/二次元场景\n- 自动适配不同模型语法 (Flux/SDXL/MJ)\n- 提供负面提示词建议\n\n📋 **调用格式**:\n<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentPrompt「末」,\ntool_name:「始」GenerateImagePrompt「末」,\nuser_input:「始」(必需) 用户的自然语言描述，如'生成一张女装连衣裙的电商模特图'「末」,\nmodel_type:「始」(可选) 目标模型：flux/sdxl/midjourney，默认 flux「末」,\nquality:「始」(可选) 质量等级：base/ultra/photorealistic/artistic，默认 ultra「末」\n<<<[END_TOOL_REQUEST]>>>\n\n⚠️ **重要说明**:\n- 需要 KnowledgeBaseManager 和 RAGDiaryPlugin 支持\n- 提示词库位于 dailynote/AI 生图提示词 - 服装电商分类库.md\n- 支持从现有提示词样本检索并组合",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentPrompt「末」,\ntool_name:「始」GenerateImagePrompt「末」,\nuser_input:「始」生成一张女装连衣裙的电商模特图，白色背景「末」,\nmodel_type:「始」flux「末」,\nquality:「始」ultra「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "SearchPromptTemplates",
+        "description": "搜索提示词模板\n\n📚 **功能特性**:\n- 按分类搜索提示词模板\n- 支持语义检索\n- 返回相似样本\n\n📋 **调用格式**:\n<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentPrompt「末」,\ntool_name:「始」SearchPromptTemplates「末」,\nquery:「始」(必需) 搜索关键词「末」,\ncategory:「始」(可选) 分类：fashion/portrait/marketing/anime「末」,\nlimit:「始」(可选) 返回数量，默认 5「末」\n<<<[END_TOOL_REQUEST]>>>\n",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」AIGentPrompt「末」,\ntool_name:「始」SearchPromptTemplates「末」,\nquery:「始」连衣裙 模特 电商「末」,\ncategory:「始」fashion「末」,\nlimit:「始」10「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  },
+  "features": {
+    "ragRetrieval": {
+      "description": "基于 RAG 的提示词检索",
+      "capabilities": [
+        "从 dailynote 知识库检索相似提示词",
+        "支持语义搜索",
+        "返回 Top-K 相关结果"
+      ]
+    },
+    "promptComposition": {
+      "description": "智能提示词组合",
+      "capabilities": [
+        "基于意图识别组合提示词",
+        "自动添加质量增强词",
+        "生成负面提示词"
+      ]
+    },
+    "modelAdaptation": {
+      "description": "模型语法适配",
+      "capabilities": [
+        "Flux.1 语法适配",
+        "SDXL 语法适配",
+        "Midjourney 语法适配"
+      ]
+    }
+  },
+  "dependencies": {
+    "knowledgeBaseManager": "KnowledgeBaseManager.js",
+    "ragDiaryPlugin": "Plugin/RAGDiaryPlugin/RAGDiaryPlugin.js"
+  },
+  "systemIntegration": {
+    "vcpToolBox": {
+      "description": "深度集成 VCP ToolBox",
+      "features": [
+        "复用 KnowledgeBaseManager 检索",
+        "复用 RAGDiaryPlugin 向量化",
+        "提示词库持久化存储"
+      ]
+    }
+  },
+  "changelog": {
+    "0.1.0": {
+      "date": "2026-04-15",
+      "changes": [
+        "初始版本发布",
+        "支持 RAG 提示词检索",
+        "支持服装电商/人像/营销/二次元场景",
+        "支持 Flux/SDXL/MJ 模型适配",
+        "内置 500+ 提示词样本"
+      ]
+    }
+  },
+  "compatibility": {
+    "vcpVersion": ">=1.0.0",
+    "nodeVersion": ">=14.0.0",
+    "requires": [
+      "KnowledgeBaseManager",
+      "RAGDiaryPlugin"
+    ]
+  }
+}

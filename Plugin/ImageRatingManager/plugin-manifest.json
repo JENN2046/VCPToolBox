@@ -1,0 +1,65 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "ImageRatingManager",
+  "version": "1.0.0",
+  "displayName": "AI 生图评分管理系统",
+  "description": "AI 生图评分管理系统 - 支持 1-10 分评分、评价、标签、收藏功能",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node image-rating-manager.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 10000
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "agentSearchImages",
+        "description": "搜索图片，支持按评分、标签、收藏状态筛选"
+      },
+      {
+        "commandIdentifier": "agentGetHighRatedImages",
+        "description": "获取高分图片（用于参考学习）"
+      },
+      {
+        "commandIdentifier": "agentGetLowRatedImages",
+        "description": "获取低分图片（用于分析问题）"
+      },
+      {
+        "commandIdentifier": "agentGetImagesByTags",
+        "description": "获取特定标签的图片"
+      },
+      {
+        "commandIdentifier": "agentGetFavorites",
+        "description": "获取收藏的图片列表"
+      },
+      {
+        "commandIdentifier": "agentSetImageRating",
+        "description": "为图片设置评分"
+      },
+      {
+        "commandIdentifier": "agentAddImageTags",
+        "description": "为图片添加标签"
+      },
+      {
+        "commandIdentifier": "agentGetStats",
+        "description": "获取统计信息"
+      },
+      {
+        "commandIdentifier": "agentGetAllTags",
+        "description": "获取所有标签"
+      },
+      {
+        "commandIdentifier": "agentAnalyzeScoreDistribution",
+        "description": "分析评分趋势"
+      },
+      {
+        "commandIdentifier": "agentGetSimilarHighRated",
+        "description": "获取相似标签的高分图片（用于推荐参考）"
+      }
+    ]
+  }
+}

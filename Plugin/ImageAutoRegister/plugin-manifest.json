@@ -1,0 +1,20 @@
+{
+  "name": "ImageAutoRegister",
+  "version": "1.0.0",
+  "description": "自动监听 image/ 目录新图片并注册到评分管理系统",
+  "main": "image-auto-register.js",
+  "author": "VCP Team",
+  "license": "MIT",
+  "pluginType": "service",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node image-auto-register.js"
+  },
+  "config": {
+    "enabled": true,
+    "autoInitialize": true
+  },
+  "capabilities": {
+    "imageWatcher": "监听图片目录变化并自动注册"
+  }
+}
