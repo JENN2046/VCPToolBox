@@ -12,7 +12,8 @@
     "dws:calibrate": "node Plugin/DingTalkCLI/tools/calibrate-schema-map.js",
     "start": "node server.js",
     "start:admin": "node adminServer.js",
-    "start:all": "node server.js & node adminServer.js"
+    "start:all": "node server.js & node adminServer.js",
+    "build:admin": "cd AdminPanel-Vue && npm install && npm run build"
   },
   "keywords": [],
   "author": "",
