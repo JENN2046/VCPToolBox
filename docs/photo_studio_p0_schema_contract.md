@@ -987,3 +987,26 @@ The current `feature/photo-studio-p5-delivery-ops` branch adds a bounded queue p
 - `queued -> failed`
 - `failed -> retry_scheduled`
 - `retry_scheduled -> queued`
+
+## Partial P6 Addition: Delivery Operator Reporting and Audit Views
+
+The next planning cycle adds read-only visibility over the local-shadow delivery records.
+
+### Commands
+
+- `generate_delivery_operator_report`
+- `inspect_delivery_audit_trail`
+
+### Data Sources
+
+These commands read from the existing photo_studio local-shadow records, especially:
+
+- `external_exports.json`
+- derived queue state from the existing delivery records
+
+### Behavior Notes
+
+- `generate_delivery_operator_report` summarizes delivery health, operator alerts, and row-level snapshots.
+- `inspect_delivery_audit_trail` derives a timeline view from the stored delivery timestamps and state fields.
+- Both commands are read-only and remain local-shadow only.
+- The reporting layer does not add a new external persistence path or real external API integration.
