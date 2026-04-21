@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioCalendarSync",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Calendar Sync",
+  "description": "Create local shadow calendar coordination records for photo_studio projects.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioCalendarSync.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "sync_calendar_event",
+        "description": "Create or update a calendar coordination shadow record for a project milestone or follow-up."
+      }
+    ]
+  }
+}

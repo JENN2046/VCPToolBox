@@ -4,6 +4,7 @@ const DEFAULT_RELATIVE_DATA_DIR = path.join('data', 'photo-studio');
 
 const COLLECTION_FILES = Object.freeze({
     archiveAssets: 'archive_assets.json',
+    calendarEvents: 'calendar_events.json',
     customers: 'customers.json',
     contentPool: 'content_pool.json',
     projects: 'projects.json',
@@ -115,6 +116,12 @@ const ARCHIVE_MODES = Object.freeze([
     'move'
 ]);
 
+const CALENDAR_EVENT_TYPES = Object.freeze([
+    'milestone',
+    'follow_up',
+    'deadline'
+]);
+
 const ERROR_CODES = Object.freeze([
     'MISSING_REQUIRED_FIELD',
     'INVALID_INPUT',
@@ -130,6 +137,9 @@ const DEFAULT_PROJECT_STATUS = 'inquiry';
 const DEFAULT_ARCHIVE_KEY = 'project_assets';
 const DEFAULT_ARCHIVE_MODE = 'shadow';
 const DEFAULT_ARCHIVE_SURFACE = 'local_shadow_archive';
+const DEFAULT_CALENDAR_EVENT_TYPE = 'milestone';
+const DEFAULT_CALENDAR_SURFACE = 'local_shadow_calendar';
+const DEFAULT_CALENDAR_TIMEZONE = 'Asia/Shanghai';
 const DEFAULT_CONTENT_POOL_USAGE_STATUS = 'candidate';
 const DEFAULT_TASK_STATUS = 'pending';
 const DEFAULT_REMINDER_STATUS = 'pending';
@@ -137,12 +147,16 @@ const DEFAULT_REMINDER_STATUS = 'pending';
 module.exports = {
     ALLOWED_PROJECT_STATUS_TRANSITIONS,
     ARCHIVE_MODES,
+    CALENDAR_EVENT_TYPES,
     COLLECTION_FILES,
     CUSTOMER_SOURCES,
     CUSTOMER_TYPES,
     DEFAULT_ARCHIVE_KEY,
     DEFAULT_ARCHIVE_MODE,
     DEFAULT_ARCHIVE_SURFACE,
+    DEFAULT_CALENDAR_EVENT_TYPE,
+    DEFAULT_CALENDAR_SURFACE,
+    DEFAULT_CALENDAR_TIMEZONE,
     DEFAULT_CONTENT_POOL_USAGE_STATUS,
     DEFAULT_PROJECT_STATUS,
     DEFAULT_REMINDER_STATUS,
