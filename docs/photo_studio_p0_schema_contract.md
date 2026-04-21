@@ -906,3 +906,84 @@ The current `feature/photo-studio-p4-external-delivery` branch extends the bound
 - The same export key still updates a single record instead of creating duplicates.
 - `retry_after_date` is derived from `reference_date` when the delivery state is `retry_scheduled`.
 - The batch remains local-shadow only and does not invoke a real external Sheet or Notion API.
+
+## Partial P5 Addition: External Delivery Queue Operations
+
+The current `feature/photo-studio-p5-delivery-ops` branch adds a bounded queue processor for the local-shadow delivery records.
+
+### Command
+
+- `process_external_delivery_queue`
+
+### Input
+
+```json
+{
+  "action": "list_due|mark_queued|mark_delivered|mark_failed|reschedule_retry",
+  "external_export_id": "string|null",
+  "export_key": "string|null",
+  "reference_date": "string|null",
+  "delivery_receipt_id": "string|null",
+  "delivery_error": "string|null",
+  "retry_after_days": 2,
+  "note": "string|null"
+}
+```
+
+### List Output
+
+```json
+{
+  "queue_action": "list_due",
+  "reference_date": "2026-05-06",
+  "queue_summary": {
+    "total_records": 6,
+    "queueable_records": 5,
+    "ready_to_publish_count": 1,
+    "queued_count": 1,
+    "retry_scheduled_count": 2,
+    "failed_count": 1,
+    "due_now_count": 4
+  },
+  "queue_items": []
+}
+```
+
+### Mutation Output
+
+```json
+{
+  "queue_action": "mark_delivered",
+  "external_export_id": "export_ab12cd34",
+  "export_key": "sync_to_external_sheet_or_notion:sheet:photo_studio_project_inventory:all_projects:all:include_closed",
+  "previous_delivery_state": "queued",
+  "delivery_state": "delivered",
+  "delivery_attempts": 1,
+  "delivery_acknowledged": true,
+  "delivery_receipt_id": "receipt-001",
+  "delivery_error": null,
+  "retry_after_days": 2,
+  "retry_after_date": null,
+  "delivery_channel": "local_shadow_outbox",
+  "duplicate": false,
+  "updated_at": "2026-05-06T08:00:00.000Z"
+}
+```
+
+### Behavior Notes
+
+- The queue processor reads and updates `external_exports.json`.
+- `list_due` returns queueable records only and keeps delivered records out of the queue view.
+- `mark_queued` accepts `ready_to_publish` and `retry_scheduled`.
+- `mark_delivered` requires `delivery_receipt_id`.
+- `mark_failed` requires `delivery_error`.
+- `reschedule_retry` is bounded to failed records and keeps retry timing explicit.
+- Queue-state transitions stay local-shadow only and do not invoke a real external Sheet or Notion API.
+
+### Queue State Transitions
+
+- `ready_to_publish -> queued`
+- `queued -> delivered`
+- `queued -> failed`
+- `failed -> retry_scheduled`
+- `retry_scheduled -> queued`

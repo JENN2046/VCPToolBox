@@ -155,6 +155,13 @@ const EXTERNAL_DELIVERY_STATES = Object.freeze([
     'retry_scheduled',
     'failed'
 ]);
+const EXTERNAL_DELIVERY_QUEUE_ACTIONS = Object.freeze([
+    'list_due',
+    'mark_queued',
+    'mark_delivered',
+    'mark_failed',
+    'reschedule_retry'
+]);
 const DEFAULT_TASK_STATUS = 'pending';
 const DEFAULT_REMINDER_STATUS = 'pending';
 
@@ -184,6 +191,7 @@ module.exports = {
     DEFAULT_RELATIVE_DATA_DIR,
     ERROR_CODES,
     EXTERNAL_DELIVERY_STATES,
+    EXTERNAL_DELIVERY_QUEUE_ACTIONS,
     PROJECT_STATUSES,
     PROJECT_TYPES,
     RECORD_VERSION,
