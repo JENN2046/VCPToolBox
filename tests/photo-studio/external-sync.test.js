@@ -85,6 +85,9 @@ test('sync_to_external_sheet_or_notion exports a full project inventory shadow r
     const result = await runPlugin(EXTERNAL_SYNC_PLUGIN, {
         reference_date: '2026-05-05',
         upcoming_days: 7,
+        delivery_state: 'queued',
+        delivery_attempts: 1,
+        delivery_acknowledged: false,
         note: 'Weekly sync export'
     }, env);
 
@@ -98,7 +101,11 @@ test('sync_to_external_sheet_or_notion exports a full project inventory shadow r
     assert.equal(result.json.data.export_summary.closed_projects, 1);
     assert.equal(result.json.data.export_summary.overdue_projects, 1);
     assert.equal(result.json.data.export_summary.due_soon_projects, 1);
+    assert.equal(result.json.data.delivery_state, 'queued');
+    assert.equal(result.json.data.delivery_attempts, 1);
+    assert.equal(result.json.data.delivery_acknowledged, false);
     assert.equal(result.json.meta.degraded, true);
+    assert.match(result.json.data.export_text, /Delivery state: queued \| attempts 1/);
     assert.match(result.json.data.export_text, /Photo Studio external sync export/);
     assert.match(result.json.data.export_text, /Weekly sync export/);
     assert.equal(result.json.data.export_rows[0].status, 'completed');
@@ -107,6 +114,10 @@ test('sync_to_external_sheet_or_notion exports a full project inventory shadow r
     const externalExports = await readStoreJson(workspace.dataDir, 'external_exports.json');
     assert.equal(externalExports.records.length, 1);
     assert.equal(externalExports.records[0].export_key.includes('sync_to_external_sheet_or_notion:sheet:photo_studio_project_inventory:all_projects:all:include_closed'), true);
+    assert.equal(externalExports.records[0].delivery_state, 'queued');
+    assert.equal(externalExports.records[0].delivery_attempts, 1);
+    assert.equal(externalExports.records[0].delivery_acknowledged, false);
+    assert.equal(externalExports.records[0].delivery_channel, 'local_shadow_outbox');
 });
 
 test('sync_to_external_sheet_or_notion updates the same export record for the same target key', async (t) => {
@@ -145,7 +156,11 @@ test('sync_to_external_sheet_or_notion updates the same export record for the sa
         target_type: 'notion',
         target_name: 'Client Board',
         project_id: 'proj_20000001',
-        reference_date: '2026-05-05'
+        reference_date: '2026-05-05',
+        delivery_state: 'retry_scheduled',
+        delivery_error: 'Notion rate limit',
+        retry_after_days: 3,
+        delivery_attempts: 2
     }, env);
 
     assertSuccessEnvelope(firstResult);
@@ -153,6 +168,9 @@ test('sync_to_external_sheet_or_notion updates the same export record for the sa
     assert.equal(firstResult.json.data.export_rows.length, 1);
     assert.equal(firstResult.json.data.export_rows[0].target_type, 'notion');
     assert.equal(firstResult.json.data.export_rows[0].target_name, 'Client Board');
+    assert.equal(firstResult.json.data.delivery_state, 'retry_scheduled');
+    assert.equal(firstResult.json.data.delivery_attempts, 2);
+    assert.equal(firstResult.json.data.retry_after_date, '2026-05-08');
 
     await writeStore(workspace.dataDir, 'projects.json', [
         {
@@ -174,7 +192,11 @@ test('sync_to_external_sheet_or_notion updates the same export record for the sa
         target_type: 'notion',
         target_name: 'Client Board',
         project_id: 'proj_20000001',
-        reference_date: '2026-05-05'
+        reference_date: '2026-05-05',
+        delivery_state: 'delivered',
+        delivery_receipt_id: 'receipt-001',
+        delivery_acknowledged: true,
+        delivery_attempts: 3
     }, env);
 
     assertSuccessEnvelope(secondResult);
@@ -183,14 +205,19 @@ test('sync_to_external_sheet_or_notion updates the same export record for the sa
     assert.equal(secondResult.json.data.export_rows[0].status, 'delivered');
     assert.equal(secondResult.json.data.export_summary.total_projects, 1);
     assert.equal(secondResult.json.data.export_summary.closed_projects, 0);
+    assert.equal(secondResult.json.data.delivery_state, 'delivered');
+    assert.equal(secondResult.json.data.delivery_receipt_id, 'receipt-001');
+    assert.equal(secondResult.json.data.delivery_acknowledged, true);
     assert.equal(secondResult.json.meta.degraded, false);
 
     const externalExports = await readStoreJson(workspace.dataDir, 'external_exports.json');
     assert.equal(externalExports.records.length, 1);
     assert.equal(externalExports.records[0].export_rows[0].status, 'delivered');
+    assert.equal(externalExports.records[0].delivery_state, 'delivered');
+    assert.equal(externalExports.records[0].delivery_receipt_id, 'receipt-001');
 });
 
-test('sync_to_external_sheet_or_notion rejects invalid targets and missing projects', async (t) => {
+test('sync_to_external_sheet_or_notion rejects invalid targets, missing projects, and failed deliveries without errors', async (t) => {
     const workspace = await createTempWorkspace();
     t.after(() => cleanupWorkspace(workspace.workspaceRoot));
 
@@ -215,4 +242,11 @@ test('sync_to_external_sheet_or_notion rejects invalid targets and missing proje
 
     assertFailureEnvelope(missingProjectResult, 'RESOURCE_NOT_FOUND');
     assert.equal(missingProjectResult.json.error.field, 'project_id');
+
+    const failedDeliveryResult = await runPlugin(EXTERNAL_SYNC_PLUGIN, {
+        delivery_state: 'failed'
+    }, env);
+
+    assertFailureEnvelope(failedDeliveryResult, 'MISSING_REQUIRED_FIELD');
+    assert.equal(failedDeliveryResult.json.error.field, 'delivery_error');
 });

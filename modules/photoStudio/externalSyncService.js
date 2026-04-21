@@ -1,7 +1,11 @@
 const {
+    DEFAULT_EXTERNAL_DELIVERY_CHANNEL,
+    DEFAULT_EXTERNAL_DELIVERY_RETRY_AFTER_DAYS,
+    DEFAULT_EXTERNAL_DELIVERY_STATE,
     DEFAULT_EXTERNAL_SYNC_SURFACE,
     DEFAULT_EXTERNAL_SYNC_TARGET_NAME,
-    DEFAULT_EXTERNAL_SYNC_TARGET_TYPE
+    DEFAULT_EXTERNAL_SYNC_TARGET_TYPE,
+    EXTERNAL_DELIVERY_STATES
 } = require('./constants');
 const { buildSuccess, PhotoStudioError } = require('./runtime');
 const { buildExternalSyncText } = require('./externalSyncTemplates');
@@ -59,6 +63,22 @@ function parseOptionalBoolean(value, fieldName, defaultValue) {
     return value;
 }
 
+function parseOptionalDeliveryAttempts(value, fieldName, defaultValue) {
+    if (value === null || value === undefined || value === '') {
+        return defaultValue;
+    }
+
+    const numericValue = typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isInteger(numericValue) || numericValue <= 0) {
+        throw new PhotoStudioError('INVALID_INPUT', `${fieldName} must be a positive integer.`, {
+            field: fieldName,
+            value
+        });
+    }
+
+    return numericValue;
+}
+
 function resolveReferenceDate(value) {
     if (value === null || value === undefined || value === '') {
         return new Date().toISOString().slice(0, 10);
@@ -79,6 +99,14 @@ function addDays(dateString, days) {
     const date = toUtcDayStart(dateString);
     date.setUTCDate(date.getUTCDate() + days);
     return toIsoDate(date);
+}
+
+function resolveRetryAfterDate(referenceDate, retryAfterDays, deliveryState) {
+    if (deliveryState !== 'retry_scheduled') {
+        return null;
+    }
+
+    return addDays(referenceDate, retryAfterDays);
 }
 
 function diffInDays(targetDateString, referenceDateString) {
@@ -162,6 +190,14 @@ function buildExportRecordSummary(record, isNew) {
         reference_date: record.reference_date,
         upcoming_days: record.upcoming_days,
         include_closed_projects: record.include_closed_projects,
+        delivery_state: record.delivery_state,
+        delivery_attempts: record.delivery_attempts,
+        delivery_acknowledged: record.delivery_acknowledged,
+        delivery_receipt_id: record.delivery_receipt_id,
+        delivery_error: record.delivery_error,
+        retry_after_date: record.retry_after_date,
+        delivery_channel: record.delivery_channel,
+        retry_after_days: record.retry_after_days,
         export_row_count: record.export_row_count,
         export_summary: record.export_summary,
         export_rows: record.export_rows,
@@ -182,7 +218,31 @@ async function syncToExternalSheetOrNotion(input) {
     const referenceDate = resolveReferenceDate(optionalString(input.reference_date, 'reference_date'));
     const upcomingDays = parsePositiveInteger(input.upcoming_days, 'upcoming_days', 14);
     const includeClosedProjects = parseOptionalBoolean(input.include_closed_projects, 'include_closed_projects', true);
+    const deliveryState = requireEnum(input.delivery_state || DEFAULT_EXTERNAL_DELIVERY_STATE, 'delivery_state', EXTERNAL_DELIVERY_STATES);
+    const deliveryAttempts = parseOptionalDeliveryAttempts(
+        input.delivery_attempts,
+        'delivery_attempts',
+        input.delivery_state ? 1 : 1
+    );
+    const deliveryReceiptId = optionalString(input.delivery_receipt_id, 'delivery_receipt_id');
+    const deliveryError = optionalString(input.delivery_error, 'delivery_error');
+    const deliveryAcknowledged = parseOptionalBoolean(
+        input.delivery_acknowledged,
+        'delivery_acknowledged',
+        deliveryState === 'delivered'
+    );
+    const retryAfterDays = parsePositiveInteger(
+        input.retry_after_days,
+        'retry_after_days',
+        DEFAULT_EXTERNAL_DELIVERY_RETRY_AFTER_DAYS
+    );
     const note = optionalString(input.note, 'note');
+
+    if ((deliveryState === 'failed' || deliveryState === 'retry_scheduled') && !deliveryError) {
+        throw new PhotoStudioError('MISSING_REQUIRED_FIELD', 'delivery_error is required when delivery_state indicates a failure or retry.', {
+            field: 'delivery_error'
+        });
+    }
 
     return withStoreLock(async ({ dataDir }) => {
         const projectCollection = await readCollection('projects', dataDir);
@@ -216,6 +276,13 @@ async function syncToExternalSheetOrNotion(input) {
         ].join(':');
         const existing = exportCollection.records.find((record) => record.export_key === exportKey) || null;
         const timestamp = nowIso();
+        const hasExplicitDeliveryAttempts = input.delivery_attempts !== undefined
+            && input.delivery_attempts !== null
+            && input.delivery_attempts !== '';
+        const resolvedDeliveryAttempts = existing && !hasExplicitDeliveryAttempts
+            ? existing.delivery_attempts
+            : deliveryAttempts;
+        const retryAfterDate = resolveRetryAfterDate(referenceDate, retryAfterDays, deliveryState);
         const exportText = buildExternalSyncText({
             targetType,
             targetName,
@@ -225,6 +292,11 @@ async function syncToExternalSheetOrNotion(input) {
             upcomingDays,
             summary,
             exportRows,
+            deliveryState,
+            deliveryAttempts: resolvedDeliveryAttempts,
+            deliveryReceiptId,
+            retryAfterDate,
+            deliveryError,
             note
         });
         const exportRecord = {
@@ -237,6 +309,14 @@ async function syncToExternalSheetOrNotion(input) {
             reference_date: referenceDate,
             upcoming_days: upcomingDays,
             include_closed_projects: includeClosedProjects,
+            delivery_state: deliveryState,
+            delivery_attempts: resolvedDeliveryAttempts,
+            delivery_acknowledged: deliveryAcknowledged,
+            delivery_receipt_id: deliveryReceiptId,
+            delivery_error: deliveryError,
+            retry_after_days: retryAfterDays,
+            retry_after_date: retryAfterDate,
+            delivery_channel: DEFAULT_EXTERNAL_DELIVERY_CHANNEL,
             export_row_count: exportRows.length,
             export_summary: summary,
             export_rows: exportRows,
@@ -266,7 +346,12 @@ async function syncToExternalSheetOrNotion(input) {
             export_scope: exportScope,
             duplicate: Boolean(existing),
             sync_mode: 'local_shadow',
-            degraded: summary.missing_customer_count > 0 || summary.missing_due_date_count > 0
+            delivery_state: deliveryState,
+            delivery_attempts: resolvedDeliveryAttempts,
+            degraded: summary.missing_customer_count > 0
+                || summary.missing_due_date_count > 0
+                || deliveryState === 'failed'
+                || deliveryState === 'retry_scheduled'
         });
     });
 }

@@ -21,6 +21,11 @@ function buildExternalSyncText({
     upcomingDays,
     summary,
     exportRows,
+    deliveryState,
+    deliveryAttempts,
+    deliveryReceiptId,
+    retryAfterDate,
+    deliveryError,
     note
 }) {
     const sections = [
@@ -30,11 +35,16 @@ function buildExternalSyncText({
         `Scope: ${exportScope}${projectId ? ` (${projectId})` : ''}`,
         `Reference date: ${referenceDate}`,
         `Upcoming window: ${upcomingDays} day(s)`,
-        `Summary: total ${summary.total_projects} | active ${summary.active_projects} | closed ${summary.closed_projects} | overdue ${summary.overdue_projects} | due soon ${summary.due_soon_projects}`
+        `Summary: total ${summary.total_projects} | active ${summary.active_projects} | closed ${summary.closed_projects} | overdue ${summary.overdue_projects} | due soon ${summary.due_soon_projects}`,
+        `Delivery state: ${deliveryState} | attempts ${deliveryAttempts}${deliveryReceiptId ? ` | receipt ${deliveryReceiptId}` : ''}${retryAfterDate ? ` | retry after ${retryAfterDate}` : ''}`
     ];
 
     if (note) {
         sections.push(`Note: ${note}`);
+    }
+
+    if (deliveryError) {
+        sections.push(`Delivery error: ${deliveryError}`);
     }
 
     sections.push(buildListSection(`Export rows (${exportRows.length})`, exportRows.map(formatExportRow)));

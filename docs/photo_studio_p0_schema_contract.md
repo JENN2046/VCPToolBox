@@ -863,3 +863,46 @@ The current `feature/photo-studio-p3-weekly-digest` branch also adds a bounded e
 - It supports exporting all projects or a single `project_id`.
 - Repeated syncs for the same target key update the same export record instead of creating duplicates.
 - It stays local and does not call an external Sheet or Notion API yet.
+
+## Partial P4 Addition: External Delivery Hardening
+
+The current `feature/photo-studio-p4-external-delivery` branch extends the bounded external export path with explicit delivery metadata.
+
+### Command
+
+- `sync_to_external_sheet_or_notion`
+
+### Additional Input
+
+```json
+{
+  "delivery_state": "ready_to_publish|queued|delivered|retry_scheduled|failed",
+  "delivery_attempts": 1,
+  "delivery_acknowledged": false,
+  "delivery_receipt_id": "string|null",
+  "delivery_error": "string|null",
+  "retry_after_days": 2
+}
+```
+
+### Additional Output
+
+```json
+{
+  "delivery_state": "queued",
+  "delivery_attempts": 1,
+  "delivery_acknowledged": false,
+  "delivery_receipt_id": null,
+  "delivery_error": null,
+  "retry_after_date": null,
+  "delivery_channel": "local_shadow_outbox"
+}
+```
+
+### Behavior Notes
+
+- The plugin stores delivery metadata in `external_exports.json` alongside the export manifest.
+- `retry_scheduled` and `failed` states require `delivery_error`.
+- The same export key still updates a single record instead of creating duplicates.
+- `retry_after_date` is derived from `reference_date` when the delivery state is `retry_scheduled`.
+- The batch remains local-shadow only and does not invoke a real external Sheet or Notion API.
