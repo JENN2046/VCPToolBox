@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioFieldAudit",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Field Audit",
+  "description": "Audit photo_studio projects for missing required and recommended fields.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioFieldAudit.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "check_missing_project_fields",
+        "description": "Audit photo_studio projects for missing required and recommended fields."
+      }
+    ]
+  }
+}

@@ -757,3 +757,50 @@ The current `feature/photo-studio-p3-weekly-digest` branch adds the first P3 plu
 - It produces a deterministic weekly digest for the same snapshot and reference date.
 - It does not create a new runtime store.
 - Degraded mode remains explicit via `meta.degraded` when missing customer or project references are detected.
+
+## Partial P3 Addition: Missing Project Fields Audit
+
+The current `feature/photo-studio-p3-weekly-digest` branch also adds the project field audit plugin.
+
+### Command
+
+- `check_missing_project_fields`
+
+### Input
+
+```json
+{
+  "project_id": "string|null",
+  "include_recommended_fields": true
+}
+```
+
+### Output
+
+```json
+{
+  "audit_label": "missing_project_fields",
+  "audit_mode": "all_projects",
+  "checked_project_id": null,
+  "include_recommended_fields": true,
+  "summary": {
+    "total_projects_checked": 3,
+    "complete_projects": 1,
+    "incomplete_projects": 2,
+    "projects_with_issues": 2,
+    "required_field_gap_count": 4,
+    "recommended_field_gap_count": 3,
+    "invalid_customer_reference_count": 1
+  },
+  "project_rows": [],
+  "audit_text": "string"
+}
+```
+
+### Behavior Notes
+
+- The plugin reads from `projects.json` and `customers.json`.
+- It supports auditing the entire project set or a single `project_id`.
+- It reports hard required field gaps separately from recommended field gaps.
+- It marks invalid customer references explicitly instead of treating them as silent missing fields.
+- It does not create a new runtime store or trigger follow-up actions.
