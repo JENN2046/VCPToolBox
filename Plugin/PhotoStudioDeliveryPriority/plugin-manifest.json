@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioDeliveryPriority",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Delivery Priority",
+  "description": "Prioritize pending delivery actions from the local-shadow queue.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioDeliveryPriority.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "prioritize_pending_delivery_actions",
+        "description": "Prioritize pending delivery actions from the local-shadow queue."
+      }
+    ]
+  }
+}
