@@ -1010,3 +1010,27 @@ These commands read from the existing photo_studio local-shadow records, especia
 - `inspect_delivery_audit_trail` derives a timeline view from the stored delivery timestamps and state fields.
 - Both commands are read-only and remain local-shadow only.
 - The reporting layer does not add a new external persistence path or real external API integration.
+
+## Partial P7 Addition: Queue Scheduling Automation
+
+The next planning cycle adds read-only scheduling over the local-shadow delivery queue.
+
+### Commands
+
+- `generate_delivery_queue_schedule`
+- `prioritize_pending_delivery_actions`
+
+### Data Sources
+
+These commands read from the existing photo_studio local-shadow records, especially:
+
+- `external_exports.json`
+- queue state already derived from delivery metadata
+- local reporting snapshots from earlier phases
+
+### Behavior Notes
+
+- `generate_delivery_queue_schedule` groups actionable delivery items into deterministic schedule windows.
+- `prioritize_pending_delivery_actions` produces a bounded priority queue for operator review.
+- Both commands are read-only and remain local-shadow only.
+- The scheduling layer does not add a new external persistence path or real external API integration.
