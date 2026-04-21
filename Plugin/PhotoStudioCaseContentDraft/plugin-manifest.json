@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioCaseContentDraft",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Case Content Draft",
+  "description": "Generate reusable case-study and promotional copy from a content-pool item.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioCaseContentDraft.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "generate_case_content_draft",
+        "description": "Generate structured case-study copy from a content pool record."
+      }
+    ]
+  }
+}

@@ -4,6 +4,7 @@ const DEFAULT_RELATIVE_DATA_DIR = path.join('data', 'photo-studio');
 
 const COLLECTION_FILES = Object.freeze({
     customers: 'customers.json',
+    contentPool: 'content_pool.json',
     projects: 'projects.json',
     tasks: 'tasks.json',
     statusLog: 'status_log.json',
@@ -119,6 +120,7 @@ const ERROR_CODES = Object.freeze([
 
 const RECORD_VERSION = 1;
 const DEFAULT_PROJECT_STATUS = 'inquiry';
+const DEFAULT_CONTENT_POOL_USAGE_STATUS = 'candidate';
 const DEFAULT_TASK_STATUS = 'pending';
 const DEFAULT_REMINDER_STATUS = 'pending';
 
@@ -127,6 +129,7 @@ module.exports = {
     COLLECTION_FILES,
     CUSTOMER_SOURCES,
     CUSTOMER_TYPES,
+    DEFAULT_CONTENT_POOL_USAGE_STATUS,
     DEFAULT_PROJECT_STATUS,
     DEFAULT_REMINDER_STATUS,
     DEFAULT_TASK_STATUS,
