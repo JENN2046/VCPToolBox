@@ -297,6 +297,7 @@ The current aligned batch keeps the shared runtime store under:
 - `data/photo-studio/tasks.json`
 - `data/photo-studio/status_log.json`
 - `data/photo-studio/reminders.json` once P1-A reminder support is used
+- `data/photo-studio/content_pool.json` once P1-B content-pool support is used
 
 Runtime path overrides currently supported:
 
@@ -449,3 +450,99 @@ Projects in other states return `CONFLICT` with the current status and allowed s
 - The plugin writes to `reminders.json` and does not sync to external reminder systems.
 - If `due_date` is omitted, the service computes a default due date from project dates or a small type-specific fallback offset.
 - Duplicate policy is idempotent for active reminders: the same pending `project_id + reminder_type` pair returns the existing reminder instead of creating a second record.
+
+## Partial P1-B Addition: Content Pool
+
+The current `feature/photo-studio-p1-content-pool` branch adds the content-pool foundation for reusable case drafting.
+
+### Command
+
+- `push_project_to_content_pool`
+
+### Input
+
+```json
+{
+  "project_id": "string",
+  "theme": "string|null",
+  "deliverables_summary": "string|null"
+}
+```
+
+### Status Gate
+
+`push_project_to_content_pool` is allowed only when the project status is:
+
+- `delivered`
+- `completed`
+
+Projects in other states return `CONFLICT` with the current status and allowed statuses in `error.details`.
+
+### Content Item Record
+
+```json
+{
+  "content_item_id": "content_ab12cd34",
+  "project_id": "proj_ab12cd34",
+  "customer_id": "cust_ab12cd34",
+  "customer_name": "Luna Studio",
+  "project_name": "May Wedding Story",
+  "project_type": "wedding",
+  "theme": "romantic wedding story",
+  "deliverables_summary": "A polished gallery and social-ready highlights.",
+  "usage_status": "candidate",
+  "created_at": "2026-04-20T00:00:00.000Z"
+}
+
+### Behavior Notes
+
+- The plugin writes to `content_pool.json`.
+- Repeated pushes for the same project update the existing content item instead of creating duplicates.
+- The plugin stays local and does not publish externally.
+
+## Partial P1-B Addition: Case Content Draft
+
+The current `feature/photo-studio-p1-content-pool` branch also adds the case-content drafting plugin.
+
+### Command
+
+- `generate_case_content_draft`
+
+### Input
+
+```json
+{
+  "content_item_id": "string|null",
+  "project_id": "string|null",
+  "tone": "formal|friendly|warm"
+}
+```
+
+### Output
+
+```json
+{
+  "content_item_id": "content_ab12cd34",
+  "project_id": "proj_ab12cd34",
+  "customer_id": "cust_ab12cd34",
+  "customer_name": "Luna Studio",
+  "project_name": "May Wedding Story",
+  "project_type": "wedding",
+  "theme": "romantic wedding story",
+  "deliverables_summary": "A polished gallery and social-ready highlights.",
+  "usage_status": "candidate",
+  "draft_variants": {
+    "case_title": "Luna Studio x May Wedding Story",
+    "short_case_summary": "string",
+    "social_caption": "string",
+    "portfolio_description": "string",
+    "tone": "warm"
+  },
+  "generation_time": "2026-04-20T00:00:00.000Z"
+}
+
+### Behavior Notes
+
+- The plugin reads from normalized content-pool data.
+- It accepts either `content_item_id` or `project_id`.
+- It keeps degraded behavior explicit via `meta.degraded` when source fields are incomplete.
