@@ -680,3 +680,80 @@ Projects in other states return `CONFLICT` with the current status and allowed s
 - The plugin writes to `archive_assets.json`.
 - Repeated archive requests for the same `project_id + archive_surface + archive_key` update the existing record instead of creating duplicates.
 - The plugin currently produces a local shadow archive record and does not move files or publish to an external archive provider yet.
+
+## Partial P3 Addition: Weekly Project Digest
+
+The current `feature/photo-studio-p3-weekly-digest` branch adds the first P3 plugin for weekly project visibility.
+
+### Command
+
+- `generate_weekly_project_digest`
+
+### Input
+
+```json
+{
+  "reference_date": "string|null",
+  "lookback_days": "number|null",
+  "upcoming_days": "number|null"
+}
+```
+
+### Output
+
+```json
+{
+  "digest_label": "weekly_project_digest",
+  "reference_date": "2026-05-05",
+  "lookback_days": 7,
+  "upcoming_days": 14,
+  "generated_at": "2026-05-05T23:59:59.999Z",
+  "window_start": "2026-04-29",
+  "window_end": "2026-05-05",
+  "summary": {
+    "total_projects": 12,
+    "active_projects": 8,
+    "closed_projects": 4,
+    "overdue_projects": 2,
+    "due_soon_projects": 3,
+    "recent_transition_count": 5
+  },
+  "status_counts": {
+    "inquiry": 1,
+    "quoted": 2,
+    "confirmed": 1,
+    "preparing": 0,
+    "shooting": 1,
+    "editing": 1,
+    "reviewing": 2,
+    "delivered": 1,
+    "completed": 2,
+    "archived": 1,
+    "cancelled": 0
+  },
+  "project_type_counts": {
+    "wedding": 4,
+    "portrait": 3,
+    "commercial": 3,
+    "event": 1,
+    "other": 1
+  },
+  "overdue_projects": [],
+  "upcoming_due_projects": [],
+  "recent_transitions": [],
+  "data_quality": {
+    "missing_due_date_count": 0,
+    "missing_customer_count": 0,
+    "missing_project_reference_count": 0
+  },
+  "digest_text": "string",
+  "project_rows": []
+}
+```
+
+### Behavior Notes
+
+- The plugin reads from `projects.json`, `customers.json`, and `status_log.json`.
+- It produces a deterministic weekly digest for the same snapshot and reference date.
+- It does not create a new runtime store.
+- Degraded mode remains explicit via `meta.degraded` when missing customer or project references are detected.
