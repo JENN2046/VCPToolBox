@@ -300,6 +300,7 @@ The current aligned batch keeps the shared runtime store under:
 - `data/photo-studio/content_pool.json` once P1-B content-pool support is used
 - `data/photo-studio/calendar_events.json` once P2-A calendar coordination support is used
 - `data/photo-studio/archive_assets.json` once P2-B asset archive support is used
+- `data/photo-studio/external_exports.json` once P3 external sheet / Notion export support is used
 
 Runtime path overrides currently supported:
 
@@ -804,3 +805,61 @@ The current `feature/photo-studio-p3-weekly-digest` branch also adds the project
 - It reports hard required field gaps separately from recommended field gaps.
 - It marks invalid customer references explicitly instead of treating them as silent missing fields.
 - It does not create a new runtime store or trigger follow-up actions.
+
+## Partial P3 Addition: External Sheet / Notion Sync
+
+The current `feature/photo-studio-p3-weekly-digest` branch also adds a bounded external sync exporter.
+
+### Command
+
+- `sync_to_external_sheet_or_notion`
+
+### Input
+
+```json
+{
+  "target_type": "sheet|notion|null",
+  "target_name": "string|null",
+  "project_id": "string|null",
+  "reference_date": "string|null",
+  "upcoming_days": "number|null",
+  "include_closed_projects": true,
+  "note": "string|null"
+}
+```
+
+### Output
+
+```json
+{
+  "external_export_id": "export_ab12cd34",
+  "export_key": "sync_to_external_sheet_or_notion:sheet:photo_studio_project_inventory:all_projects:all:include_closed",
+  "target_type": "sheet",
+  "target_name": "photo_studio_project_inventory",
+  "export_scope": "all_projects",
+  "project_id": null,
+  "reference_date": "2026-05-05",
+  "upcoming_days": 14,
+  "include_closed_projects": true,
+  "export_row_count": 3,
+  "export_summary": {
+    "total_projects": 3,
+    "active_projects": 2,
+    "closed_projects": 1,
+    "overdue_projects": 1,
+    "due_soon_projects": 1,
+    "missing_due_date_count": 0,
+    "missing_customer_count": 1
+  },
+  "export_rows": [],
+  "export_text": "string"
+}
+```
+
+### Behavior Notes
+
+- The plugin reads from `projects.json` and `customers.json`.
+- It writes a normalized export manifest to `external_exports.json`.
+- It supports exporting all projects or a single `project_id`.
+- Repeated syncs for the same target key update the same export record instead of creating duplicates.
+- It stays local and does not call an external Sheet or Notion API yet.

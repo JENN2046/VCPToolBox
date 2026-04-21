@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioExternalSync",
+  "version": "1.0.0",
+  "displayName": "Photo Studio External Sync",
+  "description": "Build a local shadow export for photo_studio project data toward sheet or Notion targets.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioExternalSync.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "sync_to_external_sheet_or_notion",
+        "description": "Build a local shadow export of photo_studio project data for sheet or Notion targets."
+      }
+    ]
+  }
+}
