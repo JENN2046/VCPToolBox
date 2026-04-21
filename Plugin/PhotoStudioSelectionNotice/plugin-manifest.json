@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioSelectionNotice",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Selection Notice",
+  "description": "Generate a client-facing selection notice for photo_studio projects in editing or reviewing.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioSelectionNotice.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "create_selection_notice",
+        "description": "Generate a selection notice draft for a project that is ready for image selection."
+      }
+    ]
+  }
+}
