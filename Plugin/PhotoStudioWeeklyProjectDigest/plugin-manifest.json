@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioWeeklyProjectDigest",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Weekly Project Digest",
+  "description": "Generate a deterministic weekly digest for photo_studio project activity.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioWeeklyProjectDigest.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "generate_weekly_project_digest",
+        "description": "Generate a weekly digest for project state, due dates, and recent transitions."
+      }
+    ]
+  }
+}

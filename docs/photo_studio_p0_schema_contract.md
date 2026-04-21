@@ -300,6 +300,7 @@ The current aligned batch keeps the shared runtime store under:
 - `data/photo-studio/content_pool.json` once P1-B content-pool support is used
 - `data/photo-studio/calendar_events.json` once P2-A calendar coordination support is used
 - `data/photo-studio/archive_assets.json` once P2-B asset archive support is used
+- `data/photo-studio/external_exports.json` once P3 external sheet / Notion export support is used
 
 Runtime path overrides currently supported:
 
@@ -680,3 +681,185 @@ Projects in other states return `CONFLICT` with the current status and allowed s
 - The plugin writes to `archive_assets.json`.
 - Repeated archive requests for the same `project_id + archive_surface + archive_key` update the existing record instead of creating duplicates.
 - The plugin currently produces a local shadow archive record and does not move files or publish to an external archive provider yet.
+
+## Partial P3 Addition: Weekly Project Digest
+
+The current `feature/photo-studio-p3-weekly-digest` branch adds the first P3 plugin for weekly project visibility.
+
+### Command
+
+- `generate_weekly_project_digest`
+
+### Input
+
+```json
+{
+  "reference_date": "string|null",
+  "lookback_days": "number|null",
+  "upcoming_days": "number|null"
+}
+```
+
+### Output
+
+```json
+{
+  "digest_label": "weekly_project_digest",
+  "reference_date": "2026-05-05",
+  "lookback_days": 7,
+  "upcoming_days": 14,
+  "generated_at": "2026-05-05T23:59:59.999Z",
+  "window_start": "2026-04-29",
+  "window_end": "2026-05-05",
+  "summary": {
+    "total_projects": 12,
+    "active_projects": 8,
+    "closed_projects": 4,
+    "overdue_projects": 2,
+    "due_soon_projects": 3,
+    "recent_transition_count": 5
+  },
+  "status_counts": {
+    "inquiry": 1,
+    "quoted": 2,
+    "confirmed": 1,
+    "preparing": 0,
+    "shooting": 1,
+    "editing": 1,
+    "reviewing": 2,
+    "delivered": 1,
+    "completed": 2,
+    "archived": 1,
+    "cancelled": 0
+  },
+  "project_type_counts": {
+    "wedding": 4,
+    "portrait": 3,
+    "commercial": 3,
+    "event": 1,
+    "other": 1
+  },
+  "overdue_projects": [],
+  "upcoming_due_projects": [],
+  "recent_transitions": [],
+  "data_quality": {
+    "missing_due_date_count": 0,
+    "missing_customer_count": 0,
+    "missing_project_reference_count": 0
+  },
+  "digest_text": "string",
+  "project_rows": []
+}
+```
+
+### Behavior Notes
+
+- The plugin reads from `projects.json`, `customers.json`, and `status_log.json`.
+- It produces a deterministic weekly digest for the same snapshot and reference date.
+- It does not create a new runtime store.
+- Degraded mode remains explicit via `meta.degraded` when missing customer or project references are detected.
+
+## Partial P3 Addition: Missing Project Fields Audit
+
+The current `feature/photo-studio-p3-weekly-digest` branch also adds the project field audit plugin.
+
+### Command
+
+- `check_missing_project_fields`
+
+### Input
+
+```json
+{
+  "project_id": "string|null",
+  "include_recommended_fields": true
+}
+```
+
+### Output
+
+```json
+{
+  "audit_label": "missing_project_fields",
+  "audit_mode": "all_projects",
+  "checked_project_id": null,
+  "include_recommended_fields": true,
+  "summary": {
+    "total_projects_checked": 3,
+    "complete_projects": 1,
+    "incomplete_projects": 2,
+    "projects_with_issues": 2,
+    "required_field_gap_count": 4,
+    "recommended_field_gap_count": 3,
+    "invalid_customer_reference_count": 1
+  },
+  "project_rows": [],
+  "audit_text": "string"
+}
+```
+
+### Behavior Notes
+
+- The plugin reads from `projects.json` and `customers.json`.
+- It supports auditing the entire project set or a single `project_id`.
+- It reports hard required field gaps separately from recommended field gaps.
+- It marks invalid customer references explicitly instead of treating them as silent missing fields.
+- It does not create a new runtime store or trigger follow-up actions.
+
+## Partial P3 Addition: External Sheet / Notion Sync
+
+The current `feature/photo-studio-p3-weekly-digest` branch also adds a bounded external sync exporter.
+
+### Command
+
+- `sync_to_external_sheet_or_notion`
+
+### Input
+
+```json
+{
+  "target_type": "sheet|notion|null",
+  "target_name": "string|null",
+  "project_id": "string|null",
+  "reference_date": "string|null",
+  "upcoming_days": "number|null",
+  "include_closed_projects": true,
+  "note": "string|null"
+}
+```
+
+### Output
+
+```json
+{
+  "external_export_id": "export_ab12cd34",
+  "export_key": "sync_to_external_sheet_or_notion:sheet:photo_studio_project_inventory:all_projects:all:include_closed",
+  "target_type": "sheet",
+  "target_name": "photo_studio_project_inventory",
+  "export_scope": "all_projects",
+  "project_id": null,
+  "reference_date": "2026-05-05",
+  "upcoming_days": 14,
+  "include_closed_projects": true,
+  "export_row_count": 3,
+  "export_summary": {
+    "total_projects": 3,
+    "active_projects": 2,
+    "closed_projects": 1,
+    "overdue_projects": 1,
+    "due_soon_projects": 1,
+    "missing_due_date_count": 0,
+    "missing_customer_count": 1
+  },
+  "export_rows": [],
+  "export_text": "string"
+}
+```
+
+### Behavior Notes
+
+- The plugin reads from `projects.json` and `customers.json`.
+- It writes a normalized export manifest to `external_exports.json`.
+- It supports exporting all projects or a single `project_id`.
+- Repeated syncs for the same target key update the same export record instead of creating duplicates.
+- It stays local and does not call an external Sheet or Notion API yet.

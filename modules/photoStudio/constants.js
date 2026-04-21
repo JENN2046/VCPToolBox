@@ -7,6 +7,7 @@ const COLLECTION_FILES = Object.freeze({
     calendarEvents: 'calendar_events.json',
     customers: 'customers.json',
     contentPool: 'content_pool.json',
+    externalExports: 'external_exports.json',
     projects: 'projects.json',
     tasks: 'tasks.json',
     statusLog: 'status_log.json',
@@ -141,6 +142,9 @@ const DEFAULT_CALENDAR_EVENT_TYPE = 'milestone';
 const DEFAULT_CALENDAR_SURFACE = 'local_shadow_calendar';
 const DEFAULT_CALENDAR_TIMEZONE = 'Asia/Shanghai';
 const DEFAULT_CONTENT_POOL_USAGE_STATUS = 'candidate';
+const DEFAULT_EXTERNAL_SYNC_SURFACE = 'local_shadow_external_export';
+const DEFAULT_EXTERNAL_SYNC_TARGET_NAME = 'photo_studio_project_inventory';
+const DEFAULT_EXTERNAL_SYNC_TARGET_TYPE = 'sheet';
 const DEFAULT_TASK_STATUS = 'pending';
 const DEFAULT_REMINDER_STATUS = 'pending';
 
@@ -158,6 +162,9 @@ module.exports = {
     DEFAULT_CALENDAR_SURFACE,
     DEFAULT_CALENDAR_TIMEZONE,
     DEFAULT_CONTENT_POOL_USAGE_STATUS,
+    DEFAULT_EXTERNAL_SYNC_SURFACE,
+    DEFAULT_EXTERNAL_SYNC_TARGET_NAME,
+    DEFAULT_EXTERNAL_SYNC_TARGET_TYPE,
     DEFAULT_PROJECT_STATUS,
     DEFAULT_REMINDER_STATUS,
     DEFAULT_TASK_STATUS,
