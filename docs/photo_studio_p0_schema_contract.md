@@ -298,6 +298,7 @@ The current aligned batch keeps the shared runtime store under:
 - `data/photo-studio/status_log.json`
 - `data/photo-studio/reminders.json` once P1-A reminder support is used
 - `data/photo-studio/content_pool.json` once P1-B content-pool support is used
+- `data/photo-studio/calendar_events.json` once P2-A calendar coordination support is used
 - `data/photo-studio/archive_assets.json` once P2-B asset archive support is used
 
 Runtime path overrides currently supported:
@@ -501,6 +502,75 @@ Projects in other states return `CONFLICT` with the current status and allowed s
 - The plugin writes to `content_pool.json`.
 - Repeated pushes for the same project update the existing content item instead of creating duplicates.
 - The plugin stays local and does not publish externally.
+
+### Partial P2-A Addition: Calendar Sync
+
+The current `feature/photo-studio-p2-calendar-sync` branch adds the first P2-A plugin for calendar coordination.
+
+### Command
+
+- `sync_calendar_event`
+
+### Input
+
+```json
+{
+  "project_id": "string",
+  "event_type": "milestone|follow_up|deadline",
+  "event_key": "string|null",
+  "event_date": "string|null",
+  "event_time": "string|null",
+  "calendar_surface": "string|null",
+  "timezone": "string|null",
+  "event_title": "string|null",
+  "note": "string|null"
+}
+```
+
+### Status Gate
+
+`sync_calendar_event` is allowed only when the project status is:
+
+- `quoted`
+- `confirmed`
+- `preparing`
+- `shooting`
+- `editing`
+- `reviewing`
+- `delivered`
+- `completed`
+
+Projects in other states return `CONFLICT` with the current status and allowed statuses in `error.details`.
+
+### Calendar Event Record
+
+```json
+{
+  "calendar_event_id": "calendar_ab12cd34",
+  "project_id": "proj_ab12cd34",
+  "customer_id": "cust_ab12cd34",
+  "customer_name": "Luna Studio",
+  "project_name": "May Wedding Story",
+  "project_type": "wedding",
+  "project_status": "reviewing",
+  "event_type": "follow_up",
+  "event_key": "client-review-1",
+  "event_title": "Client review checkpoint",
+  "event_description": "string",
+  "event_date": "2026-05-16",
+  "event_time": "09:30",
+  "timezone": "Asia/Shanghai",
+  "calendar_surface": "local_shadow_calendar",
+  "sync_state": "local_shadow",
+  "created_at": "2026-04-20T00:00:00.000Z"
+}
+```
+
+### Behavior Notes
+
+- The plugin writes to `calendar_events.json`.
+- Repeated syncs for the same `project_id + calendar_surface + event_key` update the existing shadow event instead of creating duplicates.
+- The plugin currently produces a local shadow coordination record and does not publish to an external calendar provider yet.
 
 ## Partial P1-B Addition: Case Content Draft
 
