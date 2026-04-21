@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioDeliveryTasks",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Delivery Tasks",
+  "description": "Generate delivery-stage tasks for photo_studio projects that have reached review or delivery readiness.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioDeliveryTasks.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "create_delivery_tasks",
+        "description": "Generate deterministic delivery-stage tasks for a project that is ready for handoff."
+      }
+    ]
+  }
+}

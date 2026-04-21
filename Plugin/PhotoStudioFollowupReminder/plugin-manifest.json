@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioFollowupReminder",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Followup Reminder",
+  "description": "Create structured follow-up reminders for photo_studio projects without external scheduling side effects.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioFollowupReminder.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "create_followup_reminder",
+        "description": "Create a structured reminder for quotation follow-up, delivery follow-up, or revisit scenarios."
+      }
+    ]
+  }
+}

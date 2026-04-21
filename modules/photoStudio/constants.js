@@ -6,7 +6,8 @@ const COLLECTION_FILES = Object.freeze({
     customers: 'customers.json',
     projects: 'projects.json',
     tasks: 'tasks.json',
-    statusLog: 'status_log.json'
+    statusLog: 'status_log.json',
+    reminders: 'reminders.json'
 });
 
 const CUSTOMER_TYPES = Object.freeze([
@@ -94,6 +95,18 @@ const REPLY_TONES = Object.freeze([
     'warm'
 ]);
 
+const REMINDER_TYPES = Object.freeze([
+    'quotation_followup',
+    'delivery_followup',
+    'revisit'
+]);
+
+const REMINDER_STATUSES = Object.freeze([
+    'pending',
+    'completed',
+    'cancelled'
+]);
+
 const ERROR_CODES = Object.freeze([
     'MISSING_REQUIRED_FIELD',
     'INVALID_INPUT',
@@ -107,6 +120,7 @@ const ERROR_CODES = Object.freeze([
 const RECORD_VERSION = 1;
 const DEFAULT_PROJECT_STATUS = 'inquiry';
 const DEFAULT_TASK_STATUS = 'pending';
+const DEFAULT_REMINDER_STATUS = 'pending';
 
 module.exports = {
     ALLOWED_PROJECT_STATUS_TRANSITIONS,
@@ -114,12 +128,15 @@ module.exports = {
     CUSTOMER_SOURCES,
     CUSTOMER_TYPES,
     DEFAULT_PROJECT_STATUS,
+    DEFAULT_REMINDER_STATUS,
     DEFAULT_TASK_STATUS,
     DEFAULT_RELATIVE_DATA_DIR,
     ERROR_CODES,
     PROJECT_STATUSES,
     PROJECT_TYPES,
     RECORD_VERSION,
+    REMINDER_STATUSES,
+    REMINDER_TYPES,
     REPLY_CONTEXT_TYPES,
     REPLY_TONES,
     TASK_STATUSES,
