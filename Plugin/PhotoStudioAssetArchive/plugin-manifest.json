@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioAssetArchive",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Asset Archive",
+  "description": "Create local shadow archive records for completed photo_studio projects.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioAssetArchive.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "archive_project_assets",
+        "description": "Create or update a local shadow archive record for a completed project."
+      }
+    ]
+  }
+}

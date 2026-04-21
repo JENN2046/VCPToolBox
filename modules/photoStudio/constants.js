@@ -3,6 +3,7 @@ const path = require('path');
 const DEFAULT_RELATIVE_DATA_DIR = path.join('data', 'photo-studio');
 
 const COLLECTION_FILES = Object.freeze({
+    archiveAssets: 'archive_assets.json',
     customers: 'customers.json',
     contentPool: 'content_pool.json',
     projects: 'projects.json',
@@ -108,6 +109,12 @@ const REMINDER_STATUSES = Object.freeze([
     'cancelled'
 ]);
 
+const ARCHIVE_MODES = Object.freeze([
+    'shadow',
+    'copy',
+    'move'
+]);
+
 const ERROR_CODES = Object.freeze([
     'MISSING_REQUIRED_FIELD',
     'INVALID_INPUT',
@@ -120,15 +127,22 @@ const ERROR_CODES = Object.freeze([
 
 const RECORD_VERSION = 1;
 const DEFAULT_PROJECT_STATUS = 'inquiry';
+const DEFAULT_ARCHIVE_KEY = 'project_assets';
+const DEFAULT_ARCHIVE_MODE = 'shadow';
+const DEFAULT_ARCHIVE_SURFACE = 'local_shadow_archive';
 const DEFAULT_CONTENT_POOL_USAGE_STATUS = 'candidate';
 const DEFAULT_TASK_STATUS = 'pending';
 const DEFAULT_REMINDER_STATUS = 'pending';
 
 module.exports = {
     ALLOWED_PROJECT_STATUS_TRANSITIONS,
+    ARCHIVE_MODES,
     COLLECTION_FILES,
     CUSTOMER_SOURCES,
     CUSTOMER_TYPES,
+    DEFAULT_ARCHIVE_KEY,
+    DEFAULT_ARCHIVE_MODE,
+    DEFAULT_ARCHIVE_SURFACE,
     DEFAULT_CONTENT_POOL_USAGE_STATUS,
     DEFAULT_PROJECT_STATUS,
     DEFAULT_REMINDER_STATUS,

@@ -298,6 +298,7 @@ The current aligned batch keeps the shared runtime store under:
 - `data/photo-studio/status_log.json`
 - `data/photo-studio/reminders.json` once P1-A reminder support is used
 - `data/photo-studio/content_pool.json` once P1-B content-pool support is used
+- `data/photo-studio/archive_assets.json` once P2-B asset archive support is used
 
 Runtime path overrides currently supported:
 
@@ -493,6 +494,7 @@ Projects in other states return `CONFLICT` with the current status and allowed s
   "usage_status": "candidate",
   "created_at": "2026-04-20T00:00:00.000Z"
 }
+```
 
 ### Behavior Notes
 
@@ -540,9 +542,71 @@ The current `feature/photo-studio-p1-content-pool` branch also adds the case-con
   },
   "generation_time": "2026-04-20T00:00:00.000Z"
 }
+```
 
 ### Behavior Notes
 
 - The plugin reads from normalized content-pool data.
 - It accepts either `content_item_id` or `project_id`.
 - It keeps degraded behavior explicit via `meta.degraded` when source fields are incomplete.
+
+## Partial P2-B Addition: Asset Archive
+
+The current `feature/photo-studio-p2-asset-lifecycle` branch adds the first P2-B plugin for local shadow asset archiving.
+
+### Command
+
+- `archive_project_assets`
+
+### Input
+
+```json
+{
+  "project_id": "string",
+  "archive_key": "string|null",
+  "archive_path": "string|null",
+  "archive_label": "string|null",
+  "archive_mode": "shadow|copy|move",
+  "archive_surface": "string|null",
+  "asset_summary": "string|null",
+  "note": "string|null"
+}
+```
+
+### Status Gate
+
+`archive_project_assets` is allowed only when the project status is:
+
+- `completed`
+- `archived`
+
+Projects in other states return `CONFLICT` with the current status and allowed statuses in `error.details`.
+
+### Archive Record
+
+```json
+{
+  "archive_asset_id": "archive_ab12cd34",
+  "project_id": "proj_ab12cd34",
+  "customer_id": "cust_ab12cd34",
+  "customer_name": "Luna Studio",
+  "project_name": "May Wedding Story",
+  "project_type": "wedding",
+  "project_status": "completed",
+  "archive_key": "project_assets",
+  "archive_path": "archive/photo-studio/proj_ab12cd34",
+  "archive_label": "May Wedding Story assets",
+  "archive_mode": "shadow",
+  "asset_summary": "Project assets archived for review and retention.",
+  "archive_description": "string",
+  "archive_surface": "local_shadow_archive",
+  "sync_state": "local_shadow",
+  "created_at": "2026-04-20T00:00:00.000Z"
+}
+```
+
+### Behavior Notes
+
+- The plugin writes to `archive_assets.json`.
+- Repeated archive requests for the same `project_id + archive_surface + archive_key` update the existing record instead of creating duplicates.
+- The plugin currently produces a local shadow archive record and does not move files or publish to an external archive provider yet.
