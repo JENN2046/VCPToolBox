@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "PhotoStudioDeliveryAuditTrail",
+  "version": "1.0.0",
+  "displayName": "Photo Studio Delivery Audit Trail",
+  "description": "Inspect the local-shadow delivery audit trail for photo_studio exports.",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node PhotoStudioDeliveryAuditTrail.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {
+    "PHOTO_STUDIO_DATA_DIR": {
+      "type": "string",
+      "description": "Optional absolute runtime data directory for photo_studio records.",
+      "default": ""
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "inspect_delivery_audit_trail",
+        "description": "Inspect the local-shadow delivery audit trail for photo_studio exports."
+      }
+    ]
+  }
+}
