@@ -45,6 +45,11 @@
   "config_schema": {
     "DebugMode": { "type": "boolean", "default": false },
     "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." },
+    "DwsBin": { "type": "string", "default": "dws", "description": "Optional DingTalk workspace CLI binary path for sheet live publish activation." },
+    "DingTalkBaseId": { "type": "string", "default": "", "description": "Existing DingTalk AI table base id for single-record live publish activation." },
+    "DingTalkTableId": { "type": "string", "default": "", "description": "Existing DingTalk AI table table id for single-record live publish activation." },
+    "DingTalkFieldMap": { "type": "string", "default": "", "description": "JSON object that maps DingTalk field ids to export record paths or literal values." },
+    "DwsTimeoutMs": { "type": "integer", "default": 15000, "description": "Optional timeout in milliseconds for dws live publish commands." },
     "NotionApiKey": { "type": "string", "default": "", "description": "Optional Notion API key for live publish activation." },
     "NotionParentPageId": { "type": "string", "default": "", "description": "Optional Notion parent page id for live publish activation." },
     "NotionVersion": { "type": "string", "default": "2022-06-28", "description": "Optional Notion-Version header for live publish activation." }

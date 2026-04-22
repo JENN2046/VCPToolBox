@@ -2,6 +2,7 @@ const DEFAULT_NOTION_VERSION = '2022-06-28';
 const DEFAULT_EXECUTION_MODE = 'dry_run';
 const NOTION_API_BASE_URL = 'https://api.notion.com/v1/pages';
 const TEXT_BLOCK_MAX_LENGTH = 1800;
+const dingTalkAITablePublishAdapter = require('./DingTalkAITablePublishAdapter');
 
 class ExternalPublishAdapter {
   constructor() {
@@ -12,6 +13,7 @@ class ExternalPublishAdapter {
     this._config = {
       ...nextConfig
     };
+    dingTalkAITablePublishAdapter.configure(nextConfig);
 
     return this;
   }
@@ -19,6 +21,12 @@ class ExternalPublishAdapter {
   async publishRecord(record, options = {}) {
     const executionMode = this._resolveExecutionMode(options.execution_mode);
     const targetType = String(record.target_type || '').trim();
+
+    if (targetType === 'sheet') {
+      return dingTalkAITablePublishAdapter.publishRecord(record, {
+        execution_mode: executionMode
+      });
+    }
 
     if (targetType !== 'notion') {
       return {
