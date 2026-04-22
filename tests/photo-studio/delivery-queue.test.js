@@ -395,6 +395,86 @@ test('process_external_delivery_queue publish_record live mode publishes a notio
   assert.equal(externalExports[0].external_reference_url, 'https://www.notion.so/notion-page-123');
 });
 
+test('process_external_delivery_queue clears stale live publish config across re-initialization', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  const envKeys = [
+    'VCP_PHOTO_STUDIO_NOTION_API_KEY',
+    'NOTION_API_KEY',
+    'VCP_PHOTO_STUDIO_NOTION_PARENT_PAGE_ID',
+    'NOTION_PARENT_PAGE_ID'
+  ];
+  const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+
+  envKeys.forEach((key) => {
+    delete process.env[key];
+  });
+
+  t.after(() => {
+    envKeys.forEach((key) => {
+      if (originalEnv[key] === undefined) {
+        delete process.env[key];
+        return;
+      }
+
+      process.env[key] = originalEnv[key];
+    });
+  });
+
+  let fetchCalled = false;
+  const fakeFetch = async () => {
+    fetchCalled = true;
+    throw new Error('stale fetch should not be reused');
+  };
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    NotionApiKey: 'secret_notion_key',
+    NotionParentPageId: 'parent-page-001',
+    ExternalPublishFetch: fakeFetch
+  });
+
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_notion: buildExportRecord({
+      external_export_id: 'export_notion',
+      export_key: 'queue:notion_reinit',
+      target_type: 'notion',
+      target_name: 'Client Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'reinit notion export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:notion_reinit',
+    reference_date: '2026-05-06',
+    execution_mode: 'live'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'missing_live_config');
+  assert.equal(result.data.no_op, true);
+  assert.deepEqual(result.data.missing_fields, ['NotionApiKey', 'NotionParentPageId']);
+  assert.equal(result.data.record_unchanged, true);
+  assert.equal(fetchCalled, false);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'ready_to_publish');
+  assert.equal(externalExports[0].delivery_receipt_id, null);
+});
+
 test('process_external_delivery_queue publish_record live mode no-ops for unsupported targets and preserves local shadow state', async (t) => {
   const dataRoot = makeTempDataRoot();
   t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
