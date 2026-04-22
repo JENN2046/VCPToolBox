@@ -1,0 +1,61 @@
+{
+  "name": "create_project_tasks",
+  "display_name": "摄影工作室·项目任务拆解",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "project",
+  "description": "按 Guide 的阶段模型为项目生成任务，任务记录落在 Task 结构上。",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "required": ["project_id"],
+    "properties": {
+      "project_id": { "type": "string" },
+      "task_template": { "type": "string" },
+      "override_existing": { "type": "boolean" },
+      "tasks": { "type": "array" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "摄影工作室数据根目录" }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "CreateProjectTasks",
+        "command": "create_project_tasks",
+        "description": "生成项目任务清单，输出带 phase / priority / blocker_flag 的 Task 记录。",
+        "example": "tool_name: create_project_tasks, project_id: proj_001, task_template: wedding_standard"
+      }
+    ]
+  }
+}
