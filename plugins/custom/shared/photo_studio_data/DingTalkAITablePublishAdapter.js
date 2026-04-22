@@ -230,7 +230,16 @@ class DingTalkAITablePublishAdapter {
 
   _resolveMappedValue(descriptor, record) {
     if (typeof descriptor === 'string') {
-      return this._getPathValue(record, descriptor);
+      const resolvedPathValue = this._getPathValue(record, descriptor);
+      if (resolvedPathValue !== undefined) {
+        return resolvedPathValue;
+      }
+
+      return descriptor;
+    }
+
+    if (typeof descriptor === 'number' || typeof descriptor === 'boolean') {
+      return descriptor;
     }
 
     if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) {
