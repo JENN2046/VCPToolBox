@@ -10,7 +10,6 @@ class ExternalPublishAdapter {
 
   configure(nextConfig = {}) {
     this._config = {
-      ...this._config,
       ...nextConfig
     };
 
