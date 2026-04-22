@@ -171,6 +171,20 @@
       "enabled": true
     },
     {
+      "name": "generate_delivery_operator_report",
+      "path": "custom/reporting/generate_delivery_operator_report",
+      "version": "2.0.0",
+      "status": "staging",
+      "category": "reporting",
+      "branch": "staging/current",
+      "schema_version": "2026-04-22",
+      "input_schema_hash": "88d8e928cec07e279027aea24310eed024318836e359bbbcc8e20d7cb888bec8",
+      "output_schema_hash": "badb1e2892ad6702f1c349b9edebdd429516e5615c0b1046556e8ffa6cd7eb98",
+      "vcp_min": "7.1.2",
+      "vcp_max_tested": "7.1.2",
+      "enabled": true
+    },
+    {
       "name": "generate_weekly_project_digest",
       "path": "custom/reporting/generate_weekly_project_digest",
       "version": "2.0.0",
@@ -179,6 +193,20 @@
       "branch": "staging/current",
       "schema_version": "2026-04-22",
       "input_schema_hash": "a2ccf1d8e74cca82a238cb07354dbff20ca4e9e795e4b40d0f59639aabfe20e8",
+      "output_schema_hash": "badb1e2892ad6702f1c349b9edebdd429516e5615c0b1046556e8ffa6cd7eb98",
+      "vcp_min": "7.1.2",
+      "vcp_max_tested": "7.1.2",
+      "enabled": true
+    },
+    {
+      "name": "inspect_delivery_audit_trail",
+      "path": "custom/reporting/inspect_delivery_audit_trail",
+      "version": "2.0.0",
+      "status": "staging",
+      "category": "reporting",
+      "branch": "staging/current",
+      "schema_version": "2026-04-22",
+      "input_schema_hash": "88d8e928cec07e279027aea24310eed024318836e359bbbcc8e20d7cb888bec8",
       "output_schema_hash": "badb1e2892ad6702f1c349b9edebdd429516e5615c0b1046556e8ffa6cd7eb98",
       "vcp_min": "7.1.2",
       "vcp_max_tested": "7.1.2",
