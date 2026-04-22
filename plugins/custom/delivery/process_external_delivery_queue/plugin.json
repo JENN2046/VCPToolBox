@@ -1,0 +1,67 @@
+{
+  "name": "process_external_delivery_queue",
+  "display_name": "Photo Studio External Delivery Queue",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "delivery",
+  "description": "Processes the local-shadow external delivery queue for photo studio exports.",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["list_due", "mark_queued", "mark_delivered", "mark_failed", "reschedule_retry"]
+      },
+      "reference_date": { "type": "string" },
+      "external_export_id": { "type": "string" },
+      "export_key": { "type": "string" },
+      "delivery_receipt_id": { "type": "string" },
+      "delivery_error": { "type": "string" },
+      "retry_after_days": { "type": "integer" },
+      "note": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "ProcessExternalDeliveryQueue",
+        "command": "process_external_delivery_queue",
+        "description": "Lists and updates the local-shadow external delivery queue.",
+        "example": "tool_name: process_external_delivery_queue, action: list_due, reference_date: 2026-05-06"
+      }
+    ]
+  }
+}
