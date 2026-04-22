@@ -17,6 +17,8 @@ const DATA_FILES = {
   tasks: 'tasks.json',
   statusLog: 'status_log.json',
   reminders: 'reminders.json',
+  calendarEvents: 'calendar_events.json',
+  archiveAssets: 'archive_assets.json',
   contentPool: 'content_pool.json',
   templates: 'templates.json'
 };
@@ -27,6 +29,8 @@ const DEFAULT_FILE_CONTENT = {
   [DATA_FILES.tasks]: {},
   [DATA_FILES.statusLog]: [],
   [DATA_FILES.reminders]: {},
+  [DATA_FILES.calendarEvents]: {},
+  [DATA_FILES.archiveAssets]: {},
   [DATA_FILES.contentPool]: {},
   [DATA_FILES.templates]: {}
 };
@@ -367,6 +371,70 @@ class PhotoStudioDataStore {
     reminders[reminderId] = record;
     this._atomicWrite(this._filePath(DATA_FILES.reminders), reminders);
     return record;
+  }
+
+  getCalendarEventsByProject(projectId) {
+    const calendarEvents = this._read(DATA_FILES.calendarEvents);
+    return Object.values(calendarEvents).filter(event => event.project_id === projectId);
+  }
+
+  upsertCalendarEvent(eventData) {
+    const calendarEvents = this._reload(DATA_FILES.calendarEvents);
+    const existing = Object.values(calendarEvents).find((event) =>
+      event.project_id === eventData.project_id
+      && event.calendar_surface === eventData.calendar_surface
+      && event.event_key === eventData.event_key
+    ) || null;
+
+    const now = new Date().toISOString();
+    const calendarEventId = existing ? existing.calendar_event_id : this.generateId('calendar');
+    const record = {
+      calendar_event_id: calendarEventId,
+      created_at: existing ? existing.created_at : now,
+      updated_at: now,
+      sync_state: 'local_shadow',
+      ...existing,
+      ...eventData,
+      calendar_event_id: calendarEventId,
+      created_at: existing ? existing.created_at : now,
+      updated_at: now
+    };
+
+    calendarEvents[calendarEventId] = record;
+    this._atomicWrite(this._filePath(DATA_FILES.calendarEvents), calendarEvents);
+    return { record, existing };
+  }
+
+  getArchiveAssetsByProject(projectId) {
+    const archiveAssets = this._read(DATA_FILES.archiveAssets);
+    return Object.values(archiveAssets).filter(asset => asset.project_id === projectId);
+  }
+
+  upsertArchiveAsset(assetData) {
+    const archiveAssets = this._reload(DATA_FILES.archiveAssets);
+    const existing = Object.values(archiveAssets).find((asset) =>
+      asset.project_id === assetData.project_id
+      && asset.archive_surface === assetData.archive_surface
+      && asset.archive_key === assetData.archive_key
+    ) || null;
+
+    const now = new Date().toISOString();
+    const archiveAssetId = existing ? existing.archive_asset_id : this.generateId('archive');
+    const record = {
+      archive_asset_id: archiveAssetId,
+      created_at: existing ? existing.created_at : now,
+      updated_at: now,
+      sync_state: 'local_shadow',
+      ...existing,
+      ...assetData,
+      archive_asset_id: archiveAssetId,
+      created_at: existing ? existing.created_at : now,
+      updated_at: now
+    };
+
+    archiveAssets[archiveAssetId] = record;
+    this._atomicWrite(this._filePath(DATA_FILES.archiveAssets), archiveAssets);
+    return { record, existing };
   }
 
   listContentPool() {
