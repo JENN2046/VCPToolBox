@@ -1,3 +1,4 @@
+const path = require('path');
 const { spawn } = require('child_process');
 
 const DEFAULT_DWS_BIN = 'dws';
@@ -389,10 +390,19 @@ class DingTalkAITablePublishAdapter {
     }
 
     return async (command, args, options = {}) => new Promise((resolve, reject) => {
-      const child = spawn(command, args, {
-        shell: false,
-        windowsHide: true
-      });
+      const resolvedCommand = this._resolveWindowsDwsCommand(command);
+      const child = process.platform === 'win32'
+        ? spawn(process.execPath, [
+          resolvedCommand,
+          ...args
+        ], {
+          shell: false,
+          windowsHide: true
+        })
+        : spawn(command, args, {
+          shell: false,
+          windowsHide: true
+        });
 
       let stdout = '';
       let stderr = '';
@@ -456,13 +466,48 @@ class DingTalkAITablePublishAdapter {
           ok: true,
           payload
         });
-      });
+        });
     });
+  }
+
+  _resolveWindowsDwsCommand(command) {
+    const normalized = String(command || '').trim();
+    if (process.platform !== 'win32' || !normalized) {
+      return normalized;
+    }
+
+    const appData = String(process.env.APPDATA || '').trim();
+    if (!appData) {
+      return normalized;
+    }
+
+    const dwsScriptPath = path.join(appData, 'npm', 'node_modules', 'dingtalk-workspace-cli', 'bin', 'dws.js');
+    if (require('fs').existsSync(dwsScriptPath)) {
+      return dwsScriptPath;
+    }
+
+    return normalized;
   }
 
   _extractReceiptId(payload) {
     if (!payload || typeof payload !== 'object') {
       return null;
+    }
+
+    if (typeof payload.newRecordIds === 'object' && Array.isArray(payload.newRecordIds) && payload.newRecordIds.length > 0) {
+      const first = payload.newRecordIds[0];
+      if (typeof first === 'string' && first.trim()) {
+        return first.trim();
+      }
+    }
+
+    if (payload.data && typeof payload.data === 'object') {
+      if (typeof payload.data.newRecordIds === 'object' && Array.isArray(payload.data.newRecordIds) && payload.data.newRecordIds.length > 0) {
+        const first = payload.data.newRecordIds[0];
+        if (typeof first === 'string' && first.trim()) {
+          return first.trim();
+        }
+      }
     }
 
     if (typeof payload.recordId === 'string' && payload.recordId.trim()) {

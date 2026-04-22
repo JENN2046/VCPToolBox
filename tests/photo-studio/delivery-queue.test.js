@@ -456,10 +456,8 @@ test('process_external_delivery_queue publish_record live mode creates a DingTal
         ok: true,
         payload: {
           data: {
-            records: [
-              {
-                recordId: 'rec_dingtalk_001'
-              }
+            newRecordIds: [
+              'rec_dingtalk_001'
             ]
           }
         }
