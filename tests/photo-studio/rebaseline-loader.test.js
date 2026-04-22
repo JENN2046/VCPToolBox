@@ -31,12 +31,13 @@ test('photo_studio rebaseline modern registry points to plugin.json contracts', 
 
   registry.plugins.forEach((plugin) => {
     const pluginJsonPath = path.join(path.dirname(registryPath), plugin.path, 'plugin.json');
+    const normalizedPluginJsonPath = pluginJsonPath.replace(/\\/g, '/');
     const pluginJson = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf-8'));
 
     assert.equal(plugin.enabled, true);
     assert.equal(plugin.branch, 'staging/current');
     assert.equal(pluginJson.name, plugin.name);
     assert.equal(pluginJson.runtime.entry_point.script, 'src/index.js');
-    assert.match(pluginJsonPath, /\\plugins\\custom\\/);
+    assert.match(normalizedPluginJsonPath, /\/plugins\/custom\//);
   });
 });

@@ -488,14 +488,20 @@ class PluginManager extends EventEmitter {
                 if (entry.enabled === false) continue;
                 if (!entry.name || !entry.path) continue;
 
-                const pluginPath = path.join(MODERN_PLUGIN_DIR, entry.path);
-                const manifestPath = path.join(pluginPath, MODERN_MANIFEST_FILE_NAME);
-                const manifestContent = await fs.readFile(manifestPath, 'utf-8');
-                const pluginJson = JSON.parse(manifestContent);
-                const manifest = this._normalizeModernManifest(pluginJson, pluginPath, entry);
-                if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
-                manifest.pluginSpecificEnvConfig = await this._loadPluginEnvConfig(pluginPath, manifest.name);
-                manifests.push(manifest);
+                try {
+                    const pluginPath = path.join(MODERN_PLUGIN_DIR, entry.path);
+                    const manifestPath = path.join(pluginPath, MODERN_MANIFEST_FILE_NAME);
+                    const manifestContent = await fs.readFile(manifestPath, 'utf-8');
+                    const pluginJson = JSON.parse(manifestContent);
+                    const manifest = this._normalizeModernManifest(pluginJson, pluginPath, entry);
+                    if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
+                    manifest.pluginSpecificEnvConfig = await this._loadPluginEnvConfig(pluginPath, manifest.name);
+                    manifests.push(manifest);
+                } catch (error) {
+                    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
+                        console.error(`[PluginManager] Error loading modern plugin from ${entry.name}:`, error);
+                    }
+                }
             }
 
             return manifests;
