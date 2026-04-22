@@ -16,6 +16,7 @@ const DATA_FILES = {
   projects: 'projects.json',
   tasks: 'tasks.json',
   statusLog: 'status_log.json',
+  reminders: 'reminders.json',
   contentPool: 'content_pool.json',
   templates: 'templates.json'
 };
@@ -25,6 +26,7 @@ const DEFAULT_FILE_CONTENT = {
   [DATA_FILES.projects]: {},
   [DATA_FILES.tasks]: {},
   [DATA_FILES.statusLog]: [],
+  [DATA_FILES.reminders]: {},
   [DATA_FILES.contentPool]: {},
   [DATA_FILES.templates]: {}
 };
@@ -62,6 +64,11 @@ class PhotoStudioDataStore {
 
   getDataRoot() {
     return this.dataRoot;
+  }
+
+  clearCache() {
+    this._cache.clear();
+    return this;
   }
 
   resetAllData() {
@@ -298,6 +305,13 @@ class PhotoStudioDataStore {
     return created;
   }
 
+  setTasksByProject(projectId, taskList) {
+    const tasks = this._reload(DATA_FILES.tasks);
+    tasks[projectId] = taskList;
+    this._atomicWrite(this._filePath(DATA_FILES.tasks), tasks);
+    return tasks[projectId];
+  }
+
   appendStatusLog(logEntry) {
     const logs = this._reload(DATA_FILES.statusLog);
     const now = new Date().toISOString();
@@ -319,6 +333,40 @@ class PhotoStudioDataStore {
   getStatusLog(projectId) {
     const logs = this._read(DATA_FILES.statusLog);
     return logs.filter(entry => entry.project_id === projectId);
+  }
+
+  getRemindersByProject(projectId) {
+    const reminders = this._read(DATA_FILES.reminders);
+    return Object.values(reminders).filter(reminder => reminder.project_id === projectId);
+  }
+
+  findPendingReminder(projectId, reminderType) {
+    const reminders = this._read(DATA_FILES.reminders);
+    return Object.values(reminders).find((reminder) =>
+      reminder.project_id === projectId
+      && reminder.reminder_type === reminderType
+      && reminder.status === 'pending'
+    ) || null;
+  }
+
+  createReminder(reminderData) {
+    const reminders = this._read(DATA_FILES.reminders);
+    const now = new Date().toISOString();
+    const reminderId = this.generateId('rem');
+    const record = {
+      reminder_id: reminderId,
+      project_id: reminderData.project_id,
+      customer_id: reminderData.customer_id,
+      reminder_type: reminderData.reminder_type,
+      due_date: reminderData.due_date || '',
+      status: reminderData.status || 'pending',
+      note: reminderData.note || '',
+      created_at: now,
+      updated_at: now
+    };
+    reminders[reminderId] = record;
+    this._atomicWrite(this._filePath(DATA_FILES.reminders), reminders);
+    return record;
   }
 
   listContentPool() {

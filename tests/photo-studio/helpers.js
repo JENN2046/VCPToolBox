@@ -1,100 +1,76 @@
-const assert = require('node:assert/strict');
-const fs = require('fs').promises;
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const store = require('../../plugins/custom/shared/photo_studio_data/PhotoStudioDataStore');
+const customerPlugin = require('../../plugins/custom/crm/create_customer_record/src/index.js');
+const projectPlugin = require('../../plugins/custom/project/create_project_record/src/index.js');
+const statusPlugin = require('../../plugins/custom/project/update_project_status/src/index.js');
+const tasksPlugin = require('../../plugins/custom/project/create_project_tasks/src/index.js');
+const replyPlugin = require('../../plugins/custom/crm/generate_client_reply_draft/src/index.js');
 
-async function createTempWorkspace(prefix = 'photo-studio-') {
-    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-    const dataDir = path.join(workspaceRoot, 'data', 'photo-studio');
-
-    return {
-        workspaceRoot,
-        dataDir
-    };
+async function initializeCorePlugins(dataRoot) {
+  const sharedConfig = { DebugMode: false, PhotoStudioDataPath: dataRoot };
+  store.configureDataRoot(dataRoot).resetAllData();
+  await customerPlugin.initialize(sharedConfig);
+  await projectPlugin.initialize(sharedConfig);
+  await statusPlugin.initialize(sharedConfig);
+  await tasksPlugin.initialize(sharedConfig);
+  await replyPlugin.initialize(sharedConfig);
+  return sharedConfig;
 }
 
-async function cleanupWorkspace(workspaceRoot) {
-    await fs.rm(workspaceRoot, { recursive: true, force: true });
+function makeTempDataRoot() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'photo-studio-batch2-'));
 }
 
-function runPlugin(scriptRelativePath, payload, env = {}) {
-    const scriptPath = path.join(REPO_ROOT, scriptRelativePath);
+async function createCoreFixture() {
+  const customerResult = await customerPlugin.processToolCall({
+    customer_name: 'Northlight Studio',
+    customer_type: 'individual',
+    contact_wechat: 'northlight-photo'
+  });
 
-    return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [scriptPath], {
-            cwd: path.dirname(scriptPath),
-            env: {
-                ...process.env,
-                ...env
-            },
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
+  const projectResult = await projectPlugin.processToolCall({
+    customer_id: customerResult.data.customer_id,
+    project_name: 'May Wedding Story',
+    project_type: 'wedding',
+    shoot_date: '2026-05-04',
+    delivery_deadline: '2026-05-18',
+    budget: 28800
+  });
 
-        let stdout = '';
-        let stderr = '';
+  return {
+    customer_id: customerResult.data.customer_id,
+    project_id: projectResult.data.project_id
+  };
+}
 
-        child.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
+async function moveProjectToStatus(projectId, targetStatus) {
+  const transitionPath = ['quoted', 'confirmed', 'preparing', 'shot', 'selection_pending', 'retouching', 'delivering', 'completed', 'archived'];
 
-        child.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-
-        child.on('error', reject);
-
-        child.on('close', (code) => {
-            const trimmedStdout = stdout.trim();
-            let parsed = null;
-
-            if (trimmedStdout) {
-                try {
-                    parsed = JSON.parse(trimmedStdout);
-                } catch (error) {
-                    reject(new Error(`Failed to parse plugin stdout: ${error.message}\nstdout=${trimmedStdout}\nstderr=${stderr}`));
-                    return;
-                }
-            }
-
-            resolve({
-                code,
-                json: parsed,
-                stderr,
-                stdout: trimmedStdout
-            });
-        });
-
-        child.stdin.end(JSON.stringify(payload));
+  for (const nextStatus of transitionPath) {
+    const result = await statusPlugin.processToolCall({
+      project_id: projectId,
+      new_status: nextStatus
     });
-}
 
-async function readStoreJson(dataDir, fileName) {
-    const raw = await fs.readFile(path.join(dataDir, fileName), 'utf8');
-    return JSON.parse(raw);
-}
+    if (result.success !== true) {
+      throw new Error(`Unable to transition ${projectId} to ${nextStatus}: ${JSON.stringify(result)}`);
+    }
 
-function assertSuccessEnvelope(result) {
-    assert.equal(result.code, 0, result.stderr || result.stdout);
-    assert.ok(result.json, 'Expected JSON output');
-    assert.equal(result.json.success, true, result.stdout);
-    assert.equal(result.json.error, null);
-}
+    if (nextStatus === targetStatus) {
+      return;
+    }
+  }
 
-function assertFailureEnvelope(result, expectedCode) {
-    assert.equal(result.code, 1, result.stdout);
-    assert.ok(result.json, 'Expected JSON output');
-    assert.equal(result.json.success, false);
-    assert.equal(result.json.error.code, expectedCode);
+  throw new Error(`Unsupported target status for helper: ${targetStatus}`);
 }
 
 module.exports = {
-    assertFailureEnvelope,
-    assertSuccessEnvelope,
-    cleanupWorkspace,
-    createTempWorkspace,
-    readStoreJson,
-    runPlugin
+  createCoreFixture,
+  initializeCorePlugins,
+  makeTempDataRoot,
+  moveProjectToStatus,
+  store
 };
