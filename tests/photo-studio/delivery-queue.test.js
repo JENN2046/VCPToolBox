@@ -273,3 +273,243 @@ test('process_external_delivery_queue supports failed -> retry_scheduled -> queu
   assert.equal(externalExports.find((record) => record.export_key === 'queue:failed').delivery_state, 'queued');
   assert.equal(externalExports.find((record) => record.export_key === 'queue:failed').delivery_attempts, 2);
 });
+
+test('process_external_delivery_queue supports publish_record dry_run without mutating the local shadow record', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({ DebugMode: false, PhotoStudioDataPath: dataRoot });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_notion: buildExportRecord({
+      external_export_id: 'export_notion',
+      export_key: 'queue:notion_dry_run',
+      target_type: 'notion',
+      target_name: 'Client Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'dry run notion export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:notion_dry_run',
+    reference_date: '2026-05-06',
+    execution_mode: 'dry_run'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'dry_run_preview');
+  assert.equal(result.data.preview_only, true);
+  assert.equal(result.data.record_unchanged, true);
+  assert.equal(result.data.delivery_state, 'ready_to_publish');
+  assert.equal(result.data.request_preview.provider, 'notion');
+  assert.equal(result.data.request_preview.page_title.includes('Client Board'), true);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'ready_to_publish');
+  assert.equal(externalExports[0].delivery_receipt_id, null);
+});
+
+test('process_external_delivery_queue publish_record live mode publishes a notion child page and persists delivery metadata', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  let capturedRequest = null;
+  const fakeFetch = async (url, options) => {
+    capturedRequest = {
+      url,
+      options: {
+        ...options,
+        headers: { ...options.headers },
+        body: JSON.parse(options.body)
+      }
+    };
+
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return {
+          id: 'notion-page-123',
+          url: 'https://www.notion.so/notion-page-123'
+        };
+      }
+    };
+  };
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    NotionApiKey: 'secret_notion_key',
+    NotionParentPageId: 'parent-page-001',
+    ExternalPublishFetch: fakeFetch
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_notion: buildExportRecord({
+      external_export_id: 'export_notion',
+      export_key: 'queue:notion_live',
+      target_type: 'notion',
+      target_name: 'Client Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'line 1\nline 2'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:notion_live',
+    reference_date: '2026-05-06',
+    execution_mode: 'live'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'live_published');
+  assert.equal(result.data.published, true);
+  assert.equal(result.data.delivery_state, 'delivered');
+  assert.equal(result.data.delivery_acknowledged, true);
+  assert.equal(result.data.delivery_receipt_id, 'notion-page-123');
+  assert.equal(result.data.external_reference_url, 'https://www.notion.so/notion-page-123');
+  assert.equal(result.data.delivery_channel, 'notion_page');
+
+  assert.equal(capturedRequest.url, 'https://api.notion.com/v1/pages');
+  assert.equal(capturedRequest.options.method, 'POST');
+  assert.equal(capturedRequest.options.headers.Authorization, 'Bearer secret_notion_key');
+  assert.equal(capturedRequest.options.headers['Notion-Version'], '2022-06-28');
+  assert.equal(capturedRequest.options.body.parent.page_id, 'parent-page-001');
+  assert.equal(Array.isArray(capturedRequest.options.body.children), true);
+  assert.equal(capturedRequest.options.body.children.length >= 1, true);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'delivered');
+  assert.equal(externalExports[0].delivery_receipt_id, 'notion-page-123');
+  assert.equal(externalExports[0].external_reference_url, 'https://www.notion.so/notion-page-123');
+});
+
+test('process_external_delivery_queue clears stale live publish config across re-initialization', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  const envKeys = [
+    'VCP_PHOTO_STUDIO_NOTION_API_KEY',
+    'NOTION_API_KEY',
+    'VCP_PHOTO_STUDIO_NOTION_PARENT_PAGE_ID',
+    'NOTION_PARENT_PAGE_ID'
+  ];
+  const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+
+  envKeys.forEach((key) => {
+    delete process.env[key];
+  });
+
+  t.after(() => {
+    envKeys.forEach((key) => {
+      if (originalEnv[key] === undefined) {
+        delete process.env[key];
+        return;
+      }
+
+      process.env[key] = originalEnv[key];
+    });
+  });
+
+  let fetchCalled = false;
+  const fakeFetch = async () => {
+    fetchCalled = true;
+    throw new Error('stale fetch should not be reused');
+  };
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    NotionApiKey: 'secret_notion_key',
+    NotionParentPageId: 'parent-page-001',
+    ExternalPublishFetch: fakeFetch
+  });
+
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_notion: buildExportRecord({
+      external_export_id: 'export_notion',
+      export_key: 'queue:notion_reinit',
+      target_type: 'notion',
+      target_name: 'Client Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'reinit notion export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:notion_reinit',
+    reference_date: '2026-05-06',
+    execution_mode: 'live'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'missing_live_config');
+  assert.equal(result.data.no_op, true);
+  assert.deepEqual(result.data.missing_fields, ['NotionApiKey', 'NotionParentPageId']);
+  assert.equal(result.data.record_unchanged, true);
+  assert.equal(fetchCalled, false);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'ready_to_publish');
+  assert.equal(externalExports[0].delivery_receipt_id, null);
+});
+
+test('process_external_delivery_queue publish_record live mode no-ops for unsupported targets and preserves local shadow state', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({ DebugMode: false, PhotoStudioDataPath: dataRoot });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_sheet: buildExportRecord({
+      external_export_id: 'export_sheet',
+      export_key: 'queue:sheet_live',
+      target_type: 'sheet',
+      target_name: 'Ops Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'sheet export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:sheet_live',
+    reference_date: '2026-05-06',
+    execution_mode: 'live'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'unsupported_live_target');
+  assert.equal(result.data.no_op, true);
+  assert.equal(result.data.record_unchanged, true);
+  assert.equal(result.meta.degraded, true);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'ready_to_publish');
+  assert.equal(externalExports[0].delivery_receipt_id, null);
+});
