@@ -4,6 +4,7 @@
   "main": "Server.js",
   "scripts": {
     "test": "node --test tests/codex-memory-bridge.test.js tests/codex-memory-e2e.test.js tests/codex-memory-recall.test.js tests/codex-memory-admin.test.js tests/codex-memory-adaptive.test.js",
+    "test:photo-studio": "node --test tests/photo-studio/*.test.js",
     "start": "node server.js",
     "start:admin": "node adminServer.js",
     "start:all": "node server.js & node adminServer.js"

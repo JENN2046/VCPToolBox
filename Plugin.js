@@ -11,8 +11,11 @@ const chokidar = require('chokidar');
 const { getAuthCode } = require('./modules/captchaDecoder'); // 导入统一的解码函数
 const ToolApprovalManager = require('./modules/toolApprovalManager');
 
-const PLUGIN_DIR = path.join(__dirname, 'Plugin');
-const manifestFileName = 'plugin-manifest.json';
+const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
+const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
+const MODERN_PLUGIN_DIR = path.join(__dirname, 'plugins');
+const MODERN_PLUGIN_REGISTRY_FILE = path.join(MODERN_PLUGIN_DIR, 'registry.json');
+const MODERN_MANIFEST_FILE_NAME = 'plugin.json';
 const PREPROCESSOR_ORDER_FILE = path.join(__dirname, 'preprocessor_order.json');
 
 class PluginManager extends EventEmitter {
@@ -413,6 +416,142 @@ class PluginManager extends EventEmitter {
         console.log('[PluginManager] All plugin shutdown processes initiated and scheduled jobs cancelled.'); // Keep
     }
 
+    async _loadPluginEnvConfig(pluginPath, pluginName) {
+        try {
+            const pluginEnvContent = await fs.readFile(path.join(pluginPath, 'config.env'), 'utf-8');
+            return dotenv.parse(pluginEnvContent);
+        } catch (envError) {
+            if (envError.code !== 'ENOENT') {
+                console.warn(`[PluginManager] Error reading config.env for ${pluginName}:`, envError.message);
+            }
+            return {};
+        }
+    }
+
+    _normalizeModernManifest(pluginJson, pluginPath, registryEntry = {}) {
+        const runtime = pluginJson.runtime || {};
+        const runtimeEntryPoint = runtime.entry_point || runtime.entryPoint || {};
+        const runtimeCommunication = runtime.communication || {};
+        const timeoutMs = Number(pluginJson.timeout_seconds || runtime.timeout_seconds || 0);
+
+        return {
+            manifestVersion: pluginJson.schema_version || '2026-04-22',
+            name: pluginJson.name,
+            version: pluginJson.version,
+            displayName: pluginJson.display_name || pluginJson.displayName || pluginJson.name,
+            description: pluginJson.description || '',
+            author: pluginJson.author || 'PhotoStudio',
+            category: pluginJson.category || registryEntry.category || 'custom',
+            status: pluginJson.status || registryEntry.status || 'staging',
+            compatibility: pluginJson.compatibility || {},
+            pluginType: runtime.plugin_type || pluginJson.pluginType,
+            entryPoint: {
+                script: runtimeEntryPoint.script || pluginJson.entryPoint?.script,
+                command: runtimeEntryPoint.command || pluginJson.entryPoint?.command
+            },
+            communication: {
+                protocol: runtimeCommunication.protocol || pluginJson.communication?.protocol,
+                timeout: timeoutMs > 0 ? timeoutMs * 1000 : (runtimeCommunication.timeout || pluginJson.communication?.timeout)
+            },
+            configSchema: pluginJson.config_schema || pluginJson.configSchema || {},
+            capabilities: pluginJson.capabilities || {},
+            requiresContextBridge: Boolean(pluginJson.requires_context_bridge ?? pluginJson.requiresContextBridge),
+            modernContract: true,
+            registryEntry,
+            basePath: pluginPath,
+            pluginSpecificEnvConfig: {}
+        };
+    }
+
+    async _discoverModernPluginManifests() {
+        try {
+            const registryContent = await fs.readFile(MODERN_PLUGIN_REGISTRY_FILE, 'utf-8');
+            const registry = JSON.parse(registryContent);
+            const registryEntries = Array.isArray(registry.plugins) ? registry.plugins : [];
+            const manifests = [];
+
+            for (const entry of registryEntries) {
+                if (entry.enabled === false) continue;
+                if (!entry.name || !entry.path) continue;
+
+                const pluginPath = path.join(MODERN_PLUGIN_DIR, entry.path);
+                const manifestPath = path.join(pluginPath, MODERN_MANIFEST_FILE_NAME);
+                const manifestContent = await fs.readFile(manifestPath, 'utf-8');
+                const pluginJson = JSON.parse(manifestContent);
+                const manifest = this._normalizeModernManifest(pluginJson, pluginPath, entry);
+                if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
+                manifest.pluginSpecificEnvConfig = await this._loadPluginEnvConfig(pluginPath, manifest.name);
+                manifests.push(manifest);
+            }
+
+            return manifests;
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                console.error('[PluginManager] Error discovering modern plugins:', error);
+            }
+            return [];
+        }
+    }
+
+    async _discoverLegacyPluginManifests() {
+        try {
+            const pluginFolders = await fs.readdir(LEGACY_PLUGIN_DIR, { withFileTypes: true });
+            const manifests = [];
+
+            for (const folder of pluginFolders) {
+                if (!folder.isDirectory()) continue;
+
+                const pluginPath = path.join(LEGACY_PLUGIN_DIR, folder.name);
+                const manifestPath = path.join(pluginPath, LEGACY_MANIFEST_FILE_NAME);
+                try {
+                    const manifestContent = await fs.readFile(manifestPath, 'utf-8');
+                    const manifest = JSON.parse(manifestContent);
+                    if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
+                    manifest.basePath = pluginPath;
+                    manifest.pluginSpecificEnvConfig = await this._loadPluginEnvConfig(pluginPath, manifest.name);
+                    manifests.push(manifest);
+                } catch (error) {
+                    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
+                        console.error(`[PluginManager] Error loading legacy plugin from ${folder.name}:`, error);
+                    }
+                }
+            }
+
+            return manifests;
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                console.error('[PluginManager] Error reading legacy plugin directory:', error);
+            }
+            return [];
+        }
+    }
+
+    async _registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize) {
+        this.plugins.set(manifest.name, manifest);
+        console.log(`[PluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name}, Type: ${manifest.pluginType})`);
+
+        const isPreprocessor = manifest.pluginType === 'messagePreprocessor' || manifest.pluginType === 'hybridservice';
+        const isService = manifest.pluginType === 'service' || manifest.pluginType === 'hybridservice';
+
+        if ((isPreprocessor || isService) && manifest.entryPoint.script && manifest.communication?.protocol === 'direct') {
+            try {
+                const scriptPath = path.join(manifest.basePath, manifest.entryPoint.script);
+                const module = require(scriptPath);
+
+                modulesToInitialize.push({ manifest, module });
+
+                if (isPreprocessor && typeof module.processMessages === 'function') {
+                    discoveredPreprocessors.set(manifest.name, module);
+                }
+                if (isService) {
+                    this.serviceModules.set(manifest.name, { manifest, module });
+                }
+            } catch (error) {
+                console.error(`[PluginManager] Error loading module for ${manifest.name}:`, error);
+            }
+        }
+    }
+
     async loadPlugins() {
         console.log('[PluginManager] Starting plugin discovery...');
         // 1. 清理现有插件状态
@@ -454,55 +593,16 @@ class PluginManager extends EventEmitter {
 
         try {
             // 2. 发现并加载所有插件模块，但不初始化
-            const pluginFolders = await fs.readdir(PLUGIN_DIR, { withFileTypes: true });
-            for (const folder of pluginFolders) {
-                if (folder.isDirectory()) {
-                    const pluginPath = path.join(PLUGIN_DIR, folder.name);
-                    const manifestPath = path.join(pluginPath, manifestFileName);
-                    try {
-                        const manifestContent = await fs.readFile(manifestPath, 'utf-8');
-                        const manifest = JSON.parse(manifestContent);
-                        if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
-                        if (this.plugins.has(manifest.name)) continue;
+            const modernManifests = await this._discoverModernPluginManifests();
+            for (const manifest of modernManifests) {
+                if (this.plugins.has(manifest.name)) continue;
+                await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);
+            }
 
-                        manifest.basePath = pluginPath;
-                        manifest.pluginSpecificEnvConfig = {};
-                        try {
-                            const pluginEnvContent = await fs.readFile(path.join(pluginPath, 'config.env'), 'utf-8');
-                            manifest.pluginSpecificEnvConfig = dotenv.parse(pluginEnvContent);
-                        } catch (envError) {
-                            if (envError.code !== 'ENOENT') console.warn(`[PluginManager] Error reading config.env for ${manifest.name}:`, envError.message);
-                        }
-
-                        this.plugins.set(manifest.name, manifest);
-                        console.log(`[PluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name}, Type: ${manifest.pluginType})`);
-
-                        const isPreprocessor = manifest.pluginType === 'messagePreprocessor' || manifest.pluginType === 'hybridservice';
-                        const isService = manifest.pluginType === 'service' || manifest.pluginType === 'hybridservice';
-
-                        if ((isPreprocessor || isService) && manifest.entryPoint.script && manifest.communication?.protocol === 'direct') {
-                            try {
-                                const scriptPath = path.join(pluginPath, manifest.entryPoint.script);
-                                const module = require(scriptPath);
-
-                                modulesToInitialize.push({ manifest, module });
-
-                                if (isPreprocessor && typeof module.processMessages === 'function') {
-                                    discoveredPreprocessors.set(manifest.name, module);
-                                }
-                                if (isService) {
-                                    this.serviceModules.set(manifest.name, { manifest, module });
-                                }
-                            } catch (e) {
-                                console.error(`[PluginManager] Error loading module for ${manifest.name}:`, e);
-                            }
-                        }
-                    } catch (error) {
-                        if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
-                            console.error(`[PluginManager] Error loading plugin from ${folder.name}:`, error);
-                        }
-                    }
-                }
+            const legacyManifests = await this._discoverLegacyPluginManifests();
+            for (const manifest of legacyManifests) {
+                if (this.plugins.has(manifest.name)) continue;
+                await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);
             }
 
             // 3. 确定预处理器加载顺序
@@ -602,7 +702,7 @@ class PluginManager extends EventEmitter {
             this.buildVCPDescription();
             console.log(`[PluginManager] Plugin discovery finished. Loaded ${this.plugins.size} plugins.`);
         } catch (error) {
-            if (error.code === 'ENOENT') console.error(`[PluginManager] Plugin directory ${PLUGIN_DIR} not found.`);
+            if (error.code === 'ENOENT') console.error(`[PluginManager] Plugin directories ${MODERN_PLUGIN_DIR} / ${LEGACY_PLUGIN_DIR} not found.`);
             else console.error('[PluginManager] Error reading plugin directory:', error);
         }
     }
