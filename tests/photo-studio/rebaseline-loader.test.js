@@ -19,6 +19,7 @@ test('photo_studio rebaseline modern registry points to plugin.json contracts', 
     'create_selection_notice',
     'generate_client_reply_draft',
     'generate_weekly_project_digest',
+    'process_external_delivery_queue',
     'sync_calendar_event',
     'sync_to_external_sheet_or_notion',
     'update_project_status'
