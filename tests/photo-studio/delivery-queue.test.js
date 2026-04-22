@@ -530,6 +530,71 @@ test('process_external_delivery_queue publish_record live mode creates a DingTal
   assert.equal(externalExports[0].external_reference_url, 'https://alidocs.dingtalk.com/i/nodes/base_001');
 });
 
+test('process_external_delivery_queue publish_record dry_run supports literal DingTalk field values', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  const commandCalls = [];
+  const fakeCommandRunner = async (command, args) => {
+    commandCalls.push({ command, args });
+
+    if (args[0] === 'auth' && args[1] === 'status') {
+      return {
+        ok: true,
+        payload: {
+          authenticated: true,
+          token_valid: true
+        }
+      };
+    }
+
+    throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+  };
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    DingTalkBaseId: 'base_literal',
+    DingTalkTableId: 'table_literal',
+    DingTalkFieldMap: {
+      fldTitle: 'export_rows.0.project_id',
+      fldChannel: 'photo_studio',
+      fldPriority: 3,
+      fldEnabled: true
+    },
+    DingTalkCommandRunner: fakeCommandRunner
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_sheet_literal: buildExportRecord({
+      external_export_id: 'export_sheet_literal',
+      export_key: 'queue:dingtalk_literal',
+      target_type: 'sheet',
+      target_name: 'photo_studio_literal_test',
+      delivery_state: 'ready_to_publish',
+      export_text: 'literal dingtalk export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:dingtalk_literal',
+    reference_date: '2026-05-06',
+    execution_mode: 'dry_run'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'dry_run_preview');
+  assert.equal(result.data.request_preview.records_preview[0].cells.fldTitle, 'proj_20000001');
+  assert.equal(result.data.request_preview.records_preview[0].cells.fldChannel, 'photo_studio');
+  assert.equal(result.data.request_preview.records_preview[0].cells.fldPriority, 3);
+  assert.equal(result.data.request_preview.records_preview[0].cells.fldEnabled, true);
+  assert.equal(commandCalls.length, 1);
+});
+
 test('process_external_delivery_queue clears stale live publish config across re-initialization', async (t) => {
   const dataRoot = makeTempDataRoot();
   t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
