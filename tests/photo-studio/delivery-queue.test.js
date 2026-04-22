@@ -278,17 +278,45 @@ test('process_external_delivery_queue supports publish_record dry_run without mu
   const dataRoot = makeTempDataRoot();
   t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
+  const commandCalls = [];
+  const fakeCommandRunner = async (command, args) => {
+    commandCalls.push({ command, args });
+
+    if (args[0] === 'auth' && args[1] === 'status') {
+      return {
+        ok: true,
+        payload: {
+          authenticated: true,
+          token_valid: true
+        }
+      };
+    }
+
+    throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+  };
+
   store.configureDataRoot(dataRoot).resetAllData();
-  await deliveryQueuePlugin.initialize({ DebugMode: false, PhotoStudioDataPath: dataRoot });
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    DingTalkBaseId: 'base_001',
+    DingTalkTableId: 'table_001',
+    DingTalkFieldMap: JSON.stringify({
+      fldTitle: 'export_rows.0.project_id',
+      fldSummary: 'export_text',
+      fldProjectCount: 'export_summary.total_projects'
+    }),
+    DingTalkCommandRunner: fakeCommandRunner
+  });
 
   writeJson(dataRoot, 'external_exports.json', {
-    export_notion: buildExportRecord({
-      external_export_id: 'export_notion',
-      export_key: 'queue:notion_dry_run',
-      target_type: 'notion',
-      target_name: 'Client Board',
+    export_sheet: buildExportRecord({
+      external_export_id: 'export_sheet',
+      export_key: 'queue:dingtalk_dry_run',
+      target_type: 'sheet',
+      target_name: 'photo_studio_project_inventory',
       delivery_state: 'ready_to_publish',
-      export_text: 'dry run notion export'
+      export_text: 'dry run dingtalk export'
     })
   });
 
@@ -296,7 +324,7 @@ test('process_external_delivery_queue supports publish_record dry_run without mu
 
   const result = await deliveryQueuePlugin.processToolCall({
     action: 'publish_record',
-    export_key: 'queue:notion_dry_run',
+    export_key: 'queue:dingtalk_dry_run',
     reference_date: '2026-05-06',
     execution_mode: 'dry_run'
   });
@@ -306,8 +334,18 @@ test('process_external_delivery_queue supports publish_record dry_run without mu
   assert.equal(result.data.preview_only, true);
   assert.equal(result.data.record_unchanged, true);
   assert.equal(result.data.delivery_state, 'ready_to_publish');
-  assert.equal(result.data.request_preview.provider, 'notion');
-  assert.equal(result.data.request_preview.page_title.includes('Client Board'), true);
+  assert.equal(result.data.request_preview.provider, 'dingtalk_ai_table');
+  assert.equal(result.data.request_preview.base_id, 'base_001');
+  assert.equal(result.data.request_preview.table_id, 'table_001');
+  assert.equal(result.data.request_preview.command_preview.command, 'dws');
+  assert.equal(result.data.request_preview.command_preview.args.includes('--records'), true);
+  assert.equal(result.data.request_preview.records_preview[0].cells.fldTitle, 'proj_20000001');
+  assert.equal(result.data.request_preview.records_preview[0].cells.fldProjectCount, 1);
+  assert.equal(commandCalls.length, 1);
+  assert.deepEqual(commandCalls[0], {
+    command: 'dws',
+    args: ['auth', 'status', '--format', 'json']
+  });
 
   const externalExports = store.getExternalExports();
   assert.equal(externalExports.length, 1);
@@ -395,6 +433,104 @@ test('process_external_delivery_queue publish_record live mode publishes a notio
   assert.equal(externalExports[0].external_reference_url, 'https://www.notion.so/notion-page-123');
 });
 
+test('process_external_delivery_queue publish_record live mode creates a DingTalk AI table record and persists delivery metadata', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  const commandCalls = [];
+  const fakeCommandRunner = async (command, args) => {
+    commandCalls.push({ command, args });
+
+    if (args[0] === 'auth' && args[1] === 'status') {
+      return {
+        ok: true,
+        payload: {
+          authenticated: true,
+          token_valid: true
+        }
+      };
+    }
+
+    if (args[0] === 'aitable' && args[1] === 'record' && args[2] === 'create') {
+      return {
+        ok: true,
+        payload: {
+          data: {
+            records: [
+              {
+                recordId: 'rec_dingtalk_001'
+              }
+            ]
+          }
+        }
+      };
+    }
+
+    throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+  };
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    DingTalkBaseId: 'base_001',
+    DingTalkTableId: 'table_001',
+    DingTalkFieldMap: {
+      fldTitle: 'export_rows.0.project_id',
+      fldSummary: 'export_text',
+      fldTargetName: 'target_name'
+    },
+    DingTalkCommandRunner: fakeCommandRunner
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_sheet: buildExportRecord({
+      external_export_id: 'export_sheet',
+      export_key: 'queue:dingtalk_live',
+      target_type: 'sheet',
+      target_name: 'photo_studio_project_inventory',
+      delivery_state: 'ready_to_publish',
+      export_text: 'live dingtalk export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:dingtalk_live',
+    reference_date: '2026-05-06',
+    execution_mode: 'live'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'live_published');
+  assert.equal(result.data.published, true);
+  assert.equal(result.data.delivery_state, 'delivered');
+  assert.equal(result.data.delivery_acknowledged, true);
+  assert.equal(result.data.delivery_receipt_id, 'rec_dingtalk_001');
+  assert.equal(result.data.external_reference_url, 'https://alidocs.dingtalk.com/i/nodes/base_001');
+  assert.equal(result.data.delivery_channel, 'dingtalk_ai_table');
+  assert.equal(commandCalls.length, 2);
+  assert.equal(commandCalls[1].command, 'dws');
+  assert.deepEqual(commandCalls[1].args.slice(0, 7), [
+    'aitable',
+    'record',
+    'create',
+    '--base-id',
+    'base_001',
+    '--table-id',
+    'table_001'
+  ]);
+  assert.equal(commandCalls[1].args.includes('--records'), true);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'delivered');
+  assert.equal(externalExports[0].delivery_receipt_id, 'rec_dingtalk_001');
+  assert.equal(externalExports[0].external_reference_url, 'https://alidocs.dingtalk.com/i/nodes/base_001');
+});
+
 test('process_external_delivery_queue clears stale live publish config across re-initialization', async (t) => {
   const dataRoot = makeTempDataRoot();
   t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
@@ -475,7 +611,7 @@ test('process_external_delivery_queue clears stale live publish config across re
   assert.equal(externalExports[0].delivery_receipt_id, null);
 });
 
-test('process_external_delivery_queue publish_record live mode no-ops for unsupported targets and preserves local shadow state', async (t) => {
+test('process_external_delivery_queue publish_record live mode no-ops for sheet targets when DingTalk live config is missing', async (t) => {
   const dataRoot = makeTempDataRoot();
   t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
@@ -503,9 +639,10 @@ test('process_external_delivery_queue publish_record live mode no-ops for unsupp
   });
 
   assert.equal(result.success, true);
-  assert.equal(result.data.activation_status, 'unsupported_live_target');
+  assert.equal(result.data.activation_status, 'missing_live_config');
   assert.equal(result.data.no_op, true);
   assert.equal(result.data.record_unchanged, true);
+  assert.deepEqual(result.data.missing_fields, ['DingTalkBaseId', 'DingTalkTableId', 'DingTalkFieldMap']);
   assert.equal(result.meta.degraded, true);
 
   const externalExports = store.getExternalExports();
