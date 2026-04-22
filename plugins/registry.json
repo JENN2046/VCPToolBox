@@ -185,6 +185,20 @@
       "enabled": true
     },
     {
+      "name": "generate_delivery_queue_schedule",
+      "path": "custom/reporting/generate_delivery_queue_schedule",
+      "version": "2.0.0",
+      "status": "staging",
+      "category": "reporting",
+      "branch": "staging/current",
+      "schema_version": "2026-04-22",
+      "input_schema_hash": "a5de885fddc5bd1c4ba5604e4cca4dd3ae5ab6d02dbbc23c4ed40987ce765b80",
+      "output_schema_hash": "badb1e2892ad6702f1c349b9edebdd429516e5615c0b1046556e8ffa6cd7eb98",
+      "vcp_min": "7.1.2",
+      "vcp_max_tested": "7.1.2",
+      "enabled": true
+    },
+    {
       "name": "generate_weekly_project_digest",
       "path": "custom/reporting/generate_weekly_project_digest",
       "version": "2.0.0",
@@ -207,6 +221,20 @@
       "branch": "staging/current",
       "schema_version": "2026-04-22",
       "input_schema_hash": "88d8e928cec07e279027aea24310eed024318836e359bbbcc8e20d7cb888bec8",
+      "output_schema_hash": "badb1e2892ad6702f1c349b9edebdd429516e5615c0b1046556e8ffa6cd7eb98",
+      "vcp_min": "7.1.2",
+      "vcp_max_tested": "7.1.2",
+      "enabled": true
+    },
+    {
+      "name": "prioritize_pending_delivery_actions",
+      "path": "custom/reporting/prioritize_pending_delivery_actions",
+      "version": "2.0.0",
+      "status": "staging",
+      "category": "reporting",
+      "branch": "staging/current",
+      "schema_version": "2026-04-22",
+      "input_schema_hash": "a5de885fddc5bd1c4ba5604e4cca4dd3ae5ab6d02dbbc23c4ed40987ce765b80",
       "output_schema_hash": "badb1e2892ad6702f1c349b9edebdd429516e5615c0b1046556e8ffa6cd7eb98",
       "vcp_min": "7.1.2",
       "vcp_max_tested": "7.1.2",
