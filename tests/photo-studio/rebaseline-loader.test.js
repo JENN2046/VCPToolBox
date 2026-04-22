@@ -10,8 +10,11 @@ test('photo_studio rebaseline modern registry points to plugin.json contracts', 
 
   assert.deepEqual(pluginNames, [
     'create_customer_record',
+    'create_delivery_tasks',
+    'create_followup_reminder',
     'create_project_record',
     'create_project_tasks',
+    'create_selection_notice',
     'generate_client_reply_draft',
     'update_project_status'
   ]);
