@@ -1,0 +1,62 @@
+{
+  "name": "prioritize_pending_delivery_actions",
+  "display_name": "Photo Studio Pending Delivery Priority",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "reporting",
+  "description": "Builds a bounded priority queue for pending local-shadow delivery actions.",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "reference_date": { "type": "string" },
+      "project_id": { "type": "string" },
+      "export_key": { "type": "string" },
+      "target_type": { "type": "string" },
+      "delivery_state": { "type": "string" },
+      "max_items": { "type": "integer" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "PrioritizePendingDeliveryActions",
+        "command": "prioritize_pending_delivery_actions",
+        "description": "Prioritize pending local-shadow delivery actions into a bounded operator queue.",
+        "example": "tool_name: prioritize_pending_delivery_actions, project_id: proj_20000001, reference_date: 2026-05-06, max_items: 3"
+      }
+    ]
+  }
+}
