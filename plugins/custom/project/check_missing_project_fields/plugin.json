@@ -1,0 +1,58 @@
+{
+  "name": "check_missing_project_fields",
+  "display_name": "Photo Studio Project Field Audit",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "project",
+  "description": "Audits project records for missing required and recommended fields under the Guide-aligned data model.",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": { "type": "string" },
+      "include_recommended_fields": { "type": "boolean" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "CheckMissingProjectFields",
+        "command": "check_missing_project_fields",
+        "description": "Audit project records for missing required fields and broken customer references.",
+        "example": "tool_name: check_missing_project_fields, include_recommended_fields: true"
+      }
+    ]
+  }
+}

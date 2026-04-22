@@ -19,6 +19,7 @@ const DATA_FILES = {
   reminders: 'reminders.json',
   calendarEvents: 'calendar_events.json',
   archiveAssets: 'archive_assets.json',
+  externalExports: 'external_exports.json',
   contentPool: 'content_pool.json',
   templates: 'templates.json'
 };
@@ -31,6 +32,7 @@ const DEFAULT_FILE_CONTENT = {
   [DATA_FILES.reminders]: {},
   [DATA_FILES.calendarEvents]: {},
   [DATA_FILES.archiveAssets]: {},
+  [DATA_FILES.externalExports]: {},
   [DATA_FILES.contentPool]: {},
   [DATA_FILES.templates]: {}
 };
@@ -139,6 +141,10 @@ class PhotoStudioDataStore {
     return customers[customerId] || null;
   }
 
+  listCustomers() {
+    return Object.values(this._read(DATA_FILES.customers));
+  }
+
   findCustomerByNameAndContact(name, phone, wechat, email = '') {
     const customers = this._read(DATA_FILES.customers);
     const targetContactValue = _pickContactValue(phone, wechat, email);
@@ -191,6 +197,10 @@ class PhotoStudioDataStore {
   getProject(projectId) {
     const projects = this._read(DATA_FILES.projects);
     return projects[projectId] || null;
+  }
+
+  listProjects() {
+    return Object.values(this._read(DATA_FILES.projects));
   }
 
   findProjectByCustomerAndName(customerId, projectName) {
@@ -339,6 +349,10 @@ class PhotoStudioDataStore {
     return logs.filter(entry => entry.project_id === projectId);
   }
 
+  listStatusLog() {
+    return this._read(DATA_FILES.statusLog).slice();
+  }
+
   getRemindersByProject(projectId) {
     const reminders = this._read(DATA_FILES.reminders);
     return Object.values(reminders).filter(reminder => reminder.project_id === projectId);
@@ -434,6 +448,35 @@ class PhotoStudioDataStore {
 
     archiveAssets[archiveAssetId] = record;
     this._atomicWrite(this._filePath(DATA_FILES.archiveAssets), archiveAssets);
+    return { record, existing };
+  }
+
+  getExternalExports() {
+    return Object.values(this._read(DATA_FILES.externalExports));
+  }
+
+  upsertExternalExport(exportData) {
+    const externalExports = this._reload(DATA_FILES.externalExports);
+    const existing = Object.values(externalExports).find((exportRecord) =>
+      exportRecord.export_key === exportData.export_key
+    ) || null;
+
+    const now = new Date().toISOString();
+    const externalExportId = existing ? existing.external_export_id : this.generateId('export');
+    const record = {
+      external_export_id: externalExportId,
+      created_at: existing ? existing.created_at : now,
+      updated_at: now,
+      sync_state: 'local_shadow',
+      ...existing,
+      ...exportData,
+      external_export_id: externalExportId,
+      created_at: existing ? existing.created_at : now,
+      updated_at: now
+    };
+
+    externalExports[externalExportId] = record;
+    this._atomicWrite(this._filePath(DATA_FILES.externalExports), externalExports);
     return { record, existing };
   }
 

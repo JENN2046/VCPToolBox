@@ -1,0 +1,59 @@
+{
+  "name": "generate_weekly_project_digest",
+  "display_name": "Photo Studio Weekly Project Digest",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "reporting",
+  "description": "Builds a weekly project digest from the Guide-aligned customer, project, and status-log datasets.",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 20,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "reference_date": { "type": "string" },
+      "lookback_days": { "type": "integer" },
+      "upcoming_days": { "type": "integer" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "GenerateWeeklyProjectDigest",
+        "command": "generate_weekly_project_digest",
+        "description": "Build a weekly digest for active, overdue, and recently transitioned projects.",
+        "example": "tool_name: generate_weekly_project_digest, reference_date: 2026-05-05, lookback_days: 7"
+      }
+    ]
+  }
+}
