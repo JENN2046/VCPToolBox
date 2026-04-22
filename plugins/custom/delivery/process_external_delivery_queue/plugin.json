@@ -20,11 +20,12 @@
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["list_due", "mark_queued", "mark_delivered", "mark_failed", "reschedule_retry"]
+        "enum": ["list_due", "mark_queued", "mark_delivered", "mark_failed", "reschedule_retry", "publish_record"]
       },
       "reference_date": { "type": "string" },
       "external_export_id": { "type": "string" },
       "export_key": { "type": "string" },
+      "execution_mode": { "type": "string", "enum": ["dry_run", "live"] },
       "delivery_receipt_id": { "type": "string" },
       "delivery_error": { "type": "string" },
       "retry_after_days": { "type": "integer" },
@@ -43,7 +44,10 @@
   },
   "config_schema": {
     "DebugMode": { "type": "boolean", "default": false },
-    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." }
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." },
+    "NotionApiKey": { "type": "string", "default": "", "description": "Optional Notion API key for live publish activation." },
+    "NotionParentPageId": { "type": "string", "default": "", "description": "Optional Notion parent page id for live publish activation." },
+    "NotionVersion": { "type": "string", "default": "2022-06-28", "description": "Optional Notion-Version header for live publish activation." }
   },
   "runtime": {
     "plugin_type": "hybridservice",
@@ -59,7 +63,7 @@
       {
         "commandIdentifier": "ProcessExternalDeliveryQueue",
         "command": "process_external_delivery_queue",
-        "description": "Lists and updates the local-shadow external delivery queue.",
+        "description": "Lists, updates, and manually publishes the external delivery queue with bounded dry-run/live activation.",
         "example": "tool_name: process_external_delivery_queue, action: list_due, reference_date: 2026-05-06"
       }
     ]
