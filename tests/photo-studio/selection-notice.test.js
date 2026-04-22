@@ -1,158 +1,77 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('fs').promises;
+const fs = require('fs');
 const path = require('path');
-const {
-    assertFailureEnvelope,
-    assertSuccessEnvelope,
-    cleanupWorkspace,
-    createTempWorkspace,
-    readStoreJson,
-    runPlugin
-} = require('./helpers');
 
-const CUSTOMER_PLUGIN = 'Plugin/PhotoStudioCustomerRecord/PhotoStudioCustomerRecord.js';
-const PROJECT_PLUGIN = 'Plugin/PhotoStudioProjectRecord/PhotoStudioProjectRecord.js';
-const STATUS_PLUGIN = 'Plugin/PhotoStudioProjectStatus/PhotoStudioProjectStatus.js';
-const SELECTION_NOTICE_PLUGIN = 'Plugin/PhotoStudioSelectionNotice/PhotoStudioSelectionNotice.js';
+const selectionNoticePlugin = require('../../plugins/custom/delivery/create_selection_notice/src/index.js');
+const { createCoreFixture, initializeCorePlugins, makeTempDataRoot, moveProjectToStatus, store } = require('./helpers');
 
-async function createProjectFixture(env) {
-    const customerResult = await runPlugin(CUSTOMER_PLUGIN, {
-        customer_name: 'Northlight Studio',
-        customer_type: 'individual',
-        contact_wechat: 'northlight-photo'
-    }, env);
-    assertSuccessEnvelope(customerResult);
+test('create_selection_notice succeeds for a project in selection_pending', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
-    const projectResult = await runPlugin(PROJECT_PLUGIN, {
-        customer_id: customerResult.json.data.customer_id,
-        project_name: 'May Wedding Story',
-        project_type: 'wedding',
-        start_date: '2026-05-04',
-        due_date: '2026-05-18',
-        budget: 28800
-    }, env);
-    assertSuccessEnvelope(projectResult);
+  const sharedConfig = await initializeCorePlugins(dataRoot);
+  await selectionNoticePlugin.initialize(sharedConfig);
 
-    return {
-        customer_id: customerResult.json.data.customer_id,
-        project_id: projectResult.json.data.project_id
-    };
-}
+  const fixture = await createCoreFixture();
+  await moveProjectToStatus(fixture.project_id, 'selection_pending');
 
-async function moveProjectToStatus(projectId, targetStatus, env) {
-    const transitionPath = ['quoted', 'confirmed', 'preparing', 'shooting', 'editing', 'reviewing'];
+  const result = await selectionNoticePlugin.processToolCall({
+    project_id: fixture.project_id,
+    selection_deadline: '2026-05-21',
+    selection_method: 'shared online gallery',
+    note_to_client: 'Please prioritize hero images.',
+    tone: 'friendly'
+  });
 
-    for (const nextStatus of transitionPath) {
-        const result = await runPlugin(STATUS_PLUGIN, {
-            project_id: projectId,
-            new_status: nextStatus
-        }, env);
-        assertSuccessEnvelope(result);
-
-        if (nextStatus === targetStatus) {
-            return;
-        }
-    }
-
-    throw new Error(`Unsupported target status in test helper: ${targetStatus}`);
-}
-
-test('create_selection_notice succeeds for a project in editing', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
-
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
-
-    const fixture = await createProjectFixture(env);
-    await moveProjectToStatus(fixture.project_id, 'editing', env);
-
-    const result = await runPlugin(SELECTION_NOTICE_PLUGIN, {
-        project_id: fixture.project_id,
-        selection_deadline: '2026-05-21',
-        selection_method: 'shared online gallery',
-        note_to_client: 'Please prioritize hero images.',
-        tone: 'friendly'
-    }, env);
-
-    assertSuccessEnvelope(result);
-    assert.equal(result.json.data.project_id, fixture.project_id);
-    assert.equal(result.json.data.customer_name, 'Northlight Studio');
-    assert.equal(result.json.data.selection_deadline, '2026-05-21');
-    assert.equal(result.json.data.selection_method, 'shared online gallery');
-    assert.equal(result.json.meta.degraded, false);
-    assert.equal(result.json.meta.project_status, 'editing');
-    assert.match(result.json.data.notice_content, /May Wedding Story/);
-    assert.match(result.json.data.notice_content, /2026-05-21/);
-});
-
-test('create_selection_notice succeeds for a project in reviewing and defaults the deadline', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
-
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
-
-    const fixture = await createProjectFixture(env);
-    await moveProjectToStatus(fixture.project_id, 'reviewing', env);
-
-    const result = await runPlugin(SELECTION_NOTICE_PLUGIN, {
-        project_id: fixture.project_id
-    }, env);
-
-    assertSuccessEnvelope(result);
-    assert.equal(result.json.data.selection_deadline, '2026-05-18');
-    assert.equal(result.json.data.selection_method, 'online gallery review');
-    assert.equal(result.json.meta.project_status, 'reviewing');
+  assert.equal(result.success, true);
+  assert.equal(result.data.project_id, fixture.project_id);
+  assert.equal(result.data.customer_name, 'Northlight Studio');
+  assert.equal(result.data.selection_deadline, '2026-05-21');
+  assert.equal(result.data.selection_method, 'shared online gallery');
+  assert.equal(result.meta.degraded, false);
+  assert.equal(result.meta.project_status, 'selection_pending');
+  assert.match(result.data.draft_body, /May Wedding Story/);
+  assert.match(result.data.draft_body, /2026-05-21/);
 });
 
 test('create_selection_notice rejects projects outside the allowed selection states', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
+  const sharedConfig = await initializeCorePlugins(dataRoot);
+  await selectionNoticePlugin.initialize(sharedConfig);
 
-    const fixture = await createProjectFixture(env);
-    const result = await runPlugin(SELECTION_NOTICE_PLUGIN, {
-        project_id: fixture.project_id
-    }, env);
+  const fixture = await createCoreFixture();
+  const result = await selectionNoticePlugin.processToolCall({
+    project_id: fixture.project_id
+  });
 
-    assertFailureEnvelope(result, 'CONFLICT');
-    assert.equal(result.json.error.field, 'project_id');
-    assert.deepEqual(result.json.error.details.allowed_statuses, ['editing', 'reviewing']);
+  assert.equal(result.success, false);
+  assert.equal(result.error.code, 'CONFLICT');
+  assert.equal(result.error.field, 'project_id');
+  assert.deepEqual(result.error.details.allowed_statuses, ['shot', 'selection_pending']);
 });
 
 test('create_selection_notice keeps degraded mode explicit when customer context is missing', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
+  const sharedConfig = await initializeCorePlugins(dataRoot);
+  await selectionNoticePlugin.initialize(sharedConfig);
 
-    const fixture = await createProjectFixture(env);
-    await moveProjectToStatus(fixture.project_id, 'editing', env);
+  const fixture = await createCoreFixture();
+  await moveProjectToStatus(fixture.project_id, 'shot');
 
-    const customerStorePath = path.join(workspace.dataDir, 'customers.json');
-    const customerStore = await readStoreJson(workspace.dataDir, 'customers.json');
-    customerStore.records = [];
-    await fs.writeFile(customerStorePath, JSON.stringify(customerStore, null, 2), 'utf8');
+  fs.writeFileSync(path.join(dataRoot, 'customers.json'), JSON.stringify({}, null, 2), 'utf8');
+  store.clearCache().configureDataRoot(dataRoot);
 
-    const result = await runPlugin(SELECTION_NOTICE_PLUGIN, {
-        project_id: fixture.project_id
-    }, env);
+  const result = await selectionNoticePlugin.processToolCall({
+    project_id: fixture.project_id
+  });
 
-    assertSuccessEnvelope(result);
-    assert.equal(result.json.meta.degraded, true);
-    assert.equal(result.json.data.customer_name, '[瀹㈡埛濮撳悕]');
-    assert.match(result.json.data.notice_content, /\[瀹㈡埛濮撳悕\]/);
+  assert.equal(result.success, true);
+  assert.equal(result.meta.degraded, true);
+  assert.equal(result.data.customer_name, '[客户姓名]');
+  assert.match(result.data.draft_body, /\[客户姓名\]/);
 });

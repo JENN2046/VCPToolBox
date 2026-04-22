@@ -1,0 +1,71 @@
+{
+  "name": "create_project_record",
+  "display_name": "摄影工作室·项目建档",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "project",
+  "description": "创建摄影工作室项目记录，写入 Guide 对齐后的 Project 数据结构并默认落在 lead 状态。",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "customer_id",
+      "project_name",
+      "project_type"
+    ],
+    "properties": {
+      "customer_id": { "type": "string" },
+      "project_name": { "type": "string" },
+      "project_type": { "type": "string", "enum": ["wedding", "portrait", "commercial", "event", "other"] },
+      "shoot_date": { "type": "string" },
+      "location": { "type": "string" },
+      "style_keywords": { "type": ["array", "string"] },
+      "delivery_deadline": { "type": "string" },
+      "is_public_allowed": { "type": "boolean" },
+      "current_blocker": { "type": "string" },
+      "notes": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "摄影工作室数据根目录" }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "CreateProject",
+        "command": "create_project_record",
+        "description": "创建项目记录并返回 project_id，默认状态为 lead。",
+        "example": "tool_name: create_project_record, customer_id: cust_001, project_name: 张三婚礼跟拍, project_type: wedding"
+      }
+    ]
+  }
+}

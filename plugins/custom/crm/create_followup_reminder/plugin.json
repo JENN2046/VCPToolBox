@@ -1,0 +1,64 @@
+{
+  "name": "create_followup_reminder",
+  "display_name": "摄影工作室·回访提醒",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "crm",
+  "description": "为报价、交付和回访场景写入本地影子提醒记录。",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "required": ["project_id", "reminder_type"],
+    "properties": {
+      "project_id": { "type": "string" },
+      "reminder_type": {
+        "type": "string",
+        "enum": ["quotation_followup", "delivery_followup", "revisit"]
+      },
+      "due_date": { "type": "string" },
+      "note": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "摄影工作室数据根目录" }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "CreateFollowupReminder",
+        "command": "create_followup_reminder",
+        "description": "写入报价跟进、交付跟进或回访提醒。",
+        "example": "tool_name: create_followup_reminder, project_id: proj_001, reminder_type: quotation_followup"
+      }
+    ]
+  }
+}

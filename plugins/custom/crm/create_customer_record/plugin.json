@@ -1,0 +1,71 @@
+{
+  "name": "create_customer_record",
+  "display_name": "摄影工作室·客户建档",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "crm",
+  "description": "创建摄影工作室客户记录，写入 Guide 对齐后的 Customer 数据结构并做去重。",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "customer_name",
+      "customer_type"
+    ],
+    "properties": {
+      "customer_name": { "type": "string" },
+      "customer_type": { "type": "string", "enum": ["individual", "corporate"] },
+      "contact_phone": { "type": "string" },
+      "contact_wechat": { "type": "string" },
+      "contact_email": { "type": "string" },
+      "source": { "type": "string" },
+      "source_channel": { "type": "string" },
+      "project_type_preference": { "type": "string" },
+      "budget_range": { "type": "string" },
+      "notes": { "type": "string" },
+      "remark": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "摄影工作室数据根目录" }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "CreateCustomer",
+        "command": "create_customer_record",
+        "description": "创建客户记录，生成 customer_id，并返回 contact_value / normalized_contact_key。",
+        "example": "tool_name: create_customer_record, customer_name: 张三, customer_type: individual, contact_phone: 13800138000"
+      }
+    ]
+  }
+}

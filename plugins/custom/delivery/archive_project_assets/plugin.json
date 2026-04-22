@@ -1,0 +1,65 @@
+{
+  "name": "archive_project_assets",
+  "display_name": "摄影工作室·素材归档",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "delivery",
+  "description": "为已完成项目写入本地影子归档记录。",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "required": ["project_id"],
+    "properties": {
+      "project_id": { "type": "string" },
+      "archive_key": { "type": "string" },
+      "archive_path": { "type": "string" },
+      "archive_label": { "type": "string" },
+      "archive_mode": { "type": "string", "enum": ["shadow", "copy", "move"] },
+      "archive_surface": { "type": "string" },
+      "asset_summary": { "type": "string" },
+      "note": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "摄影工作室数据根目录" }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "ArchiveProjectAssets",
+        "command": "archive_project_assets",
+        "description": "为已完成项目生成或更新本地影子归档记录。",
+        "example": "tool_name: archive_project_assets, project_id: proj_001, archive_mode: shadow"
+      }
+    ]
+  }
+}

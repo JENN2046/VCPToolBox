@@ -1,0 +1,61 @@
+{
+  "name": "create_delivery_tasks",
+  "display_name": "摄影工作室·交付任务生成",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "delivery",
+  "description": "为可交付项目生成确定性的交付阶段任务。",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "required": ["project_id"],
+    "properties": {
+      "project_id": { "type": "string" },
+      "delivery_mode": { "type": "string" },
+      "delivery_deadline": { "type": "string" },
+      "override_existing": { "type": "boolean" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "摄影工作室数据根目录" }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "CreateDeliveryTasks",
+        "command": "create_delivery_tasks",
+        "description": "为交付就绪项目生成 delivery-stage 任务。",
+        "example": "tool_name: create_delivery_tasks, project_id: proj_001, delivery_mode: online gallery"
+      }
+    ]
+  }
+}

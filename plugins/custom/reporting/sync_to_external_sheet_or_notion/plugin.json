@@ -1,0 +1,69 @@
+{
+  "name": "sync_to_external_sheet_or_notion",
+  "display_name": "Photo Studio External Sync Export",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "reporting",
+  "description": "Builds a local-shadow export for sheet or notion targets from the Guide-aligned photo studio project inventory.",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 20,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "target_type": { "type": "string", "enum": ["sheet", "notion"] },
+      "target_name": { "type": "string" },
+      "project_id": { "type": "string" },
+      "reference_date": { "type": "string" },
+      "upcoming_days": { "type": "integer" },
+      "include_closed_projects": { "type": "boolean" },
+      "delivery_state": { "type": "string", "enum": ["ready_to_publish", "queued", "delivered", "retry_scheduled", "failed"] },
+      "delivery_attempts": { "type": "integer" },
+      "delivery_acknowledged": { "type": "boolean" },
+      "delivery_receipt_id": { "type": "string" },
+      "delivery_error": { "type": "string" },
+      "retry_after_days": { "type": "integer" },
+      "note": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "Photo studio data root." }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "SyncToExternalSheetOrNotion",
+        "command": "sync_to_external_sheet_or_notion",
+        "description": "Build a local-shadow export record for sheet or notion delivery targets.",
+        "example": "tool_name: sync_to_external_sheet_or_notion, target_type: sheet, target_name: photo_studio_project_inventory"
+      }
+    ]
+  }
+}
