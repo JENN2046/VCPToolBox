@@ -1,13 +1,15 @@
 const path = require('path');
 
 const store = require(path.join(__dirname, '..', '..', '..', 'shared', 'photo_studio_data', 'PhotoStudioDataStore'));
+const externalPublishAdapter = require(path.join(__dirname, '..', '..', '..', 'shared', 'photo_studio_data', 'ExternalPublishAdapter'));
 
 const EXTERNAL_DELIVERY_QUEUE_ACTIONS = Object.freeze([
   'list_due',
   'mark_queued',
   'mark_delivered',
   'mark_failed',
-  'reschedule_retry'
+  'reschedule_retry',
+  'publish_record'
 ]);
 
 const QUEUEABLE_STATES = new Set([
@@ -150,6 +152,10 @@ function _buildExportText(record) {
 
   if (record.note) {
     lines.push(`Note: ${record.note}`);
+  }
+
+  if (record.external_reference_url) {
+    lines.push(`External reference: ${record.external_reference_url}`);
   }
 
   const exportRows = Array.isArray(record.export_rows) ? record.export_rows : [];
@@ -468,6 +474,71 @@ function _updateRecordForAction(record, action, args, referenceDate) {
   };
 }
 
+function _resolveExecutionMode(value) {
+  const candidate = String(value || 'dry_run').trim();
+  return candidate === 'live' ? 'live' : 'dry_run';
+}
+
+function _isPublishableState(record, referenceDate) {
+  if (record.delivery_state === 'ready_to_publish' || record.delivery_state === 'queued') {
+    return true;
+  }
+
+  if (record.delivery_state === 'retry_scheduled') {
+    return !record.retry_after_date || record.retry_after_date <= referenceDate;
+  }
+
+  return false;
+}
+
+function _buildUpdatedRecordForPublish(record, publishResult, args, referenceDate) {
+  const normalizedRecord = _normalizeRecord(record);
+  const updatedAt = _timestamp();
+  const nextNote = args.note !== undefined ? String(args.note || '').trim() || null : normalizedRecord.note || null;
+  const shouldIncrementAttempt = normalizedRecord.delivery_state === 'retry_scheduled';
+  const nextAttemptCount = shouldIncrementAttempt
+    ? normalizedRecord.delivery_attempts + 1
+    : normalizedRecord.delivery_attempts;
+
+  if (!publishResult.ok) {
+    const failedRecord = {
+      ...normalizedRecord,
+      delivery_state: 'failed',
+      delivery_attempts: nextAttemptCount,
+      delivery_acknowledged: false,
+      delivery_receipt_id: null,
+      delivery_error: publishResult.error_message || 'External publish failed.',
+      retry_after_date: null,
+      delivery_channel: publishResult.adapter || normalizedRecord.delivery_channel || DEFAULT_EXTERNAL_DELIVERY_CHANNEL,
+      publish_adapter: publishResult.adapter || null,
+      last_publish_mode: publishResult.execution_mode || 'live',
+      external_reference_url: null,
+      note: nextNote,
+      updated_at: updatedAt
+    };
+    failedRecord.export_text = _buildExportText(failedRecord);
+    return failedRecord;
+  }
+
+  const deliveredRecord = {
+    ...normalizedRecord,
+    delivery_state: 'delivered',
+    delivery_attempts: nextAttemptCount,
+    delivery_acknowledged: true,
+    delivery_receipt_id: publishResult.receipt_id || normalizedRecord.delivery_receipt_id || null,
+    delivery_error: null,
+    retry_after_date: null,
+    delivery_channel: publishResult.adapter || normalizedRecord.delivery_channel || DEFAULT_EXTERNAL_DELIVERY_CHANNEL,
+    publish_adapter: publishResult.adapter || null,
+    last_publish_mode: publishResult.execution_mode || 'live',
+    external_reference_url: publishResult.external_reference_url || null,
+    note: nextNote,
+    updated_at: updatedAt
+  };
+  deliveredRecord.export_text = _buildExportText(deliveredRecord);
+  return deliveredRecord;
+}
+
 async function processToolCall(args) {
   const action = String(args.action || 'list_due').trim();
   if (!EXTERNAL_DELIVERY_QUEUE_ACTIONS.includes(action)) {
@@ -519,6 +590,106 @@ async function processToolCall(args) {
     return resolved.error;
   }
 
+  if (action === 'publish_record') {
+    const normalizedRecord = _normalizeRecord(resolved.record);
+    const executionMode = _resolveExecutionMode(args.execution_mode);
+
+    if (!_isPublishableState(normalizedRecord, referenceDate)) {
+      return _error('INVALID_TRANSITION', `Cannot publish record from ${normalizedRecord.delivery_state}.`, 'action', {
+        current_state: normalizedRecord.delivery_state,
+        action,
+        execution_mode: executionMode
+      });
+    }
+
+    const publishResult = await externalPublishAdapter.publishRecord(normalizedRecord, {
+      execution_mode: executionMode
+    });
+
+    if (publishResult.no_op) {
+      return _success({
+        queue_action: action,
+        external_export_id: normalizedRecord.external_export_id,
+        export_key: normalizedRecord.export_key,
+        execution_mode: executionMode,
+        activation_status: publishResult.activation_status,
+        published: false,
+        no_op: true,
+        delivery_state: normalizedRecord.delivery_state,
+        delivery_attempts: normalizedRecord.delivery_attempts,
+        delivery_channel: normalizedRecord.delivery_channel || DEFAULT_EXTERNAL_DELIVERY_CHANNEL,
+        reason: publishResult.reason || null,
+        missing_fields: publishResult.missing_fields || [],
+        request_preview: publishResult.request_preview || null,
+        record_unchanged: true
+      }, {
+        entity: 'external_delivery_queue',
+        sync_mode: 'local_shadow',
+        queue_action: action,
+        execution_mode: executionMode,
+        degraded: true,
+        no_op: true
+      });
+    }
+
+    if (executionMode === 'dry_run') {
+      return _success({
+        queue_action: action,
+        external_export_id: normalizedRecord.external_export_id,
+        export_key: normalizedRecord.export_key,
+        execution_mode: executionMode,
+        activation_status: publishResult.activation_status,
+        published: false,
+        no_op: true,
+        preview_only: true,
+        delivery_state: normalizedRecord.delivery_state,
+        delivery_attempts: normalizedRecord.delivery_attempts,
+        delivery_channel: normalizedRecord.delivery_channel || DEFAULT_EXTERNAL_DELIVERY_CHANNEL,
+        request_preview: publishResult.request_preview || null,
+        record_unchanged: true
+      }, {
+        entity: 'external_delivery_queue',
+        sync_mode: 'local_shadow',
+        queue_action: action,
+        execution_mode: executionMode,
+        duplicate: false
+      });
+    }
+
+    const persisted = store.upsertExternalExport(
+      _buildUpdatedRecordForPublish(normalizedRecord, publishResult, args, referenceDate)
+    ).record;
+
+    return _success({
+      queue_action: action,
+      external_export_id: persisted.external_export_id,
+      export_key: persisted.export_key,
+      execution_mode: executionMode,
+      activation_status: publishResult.activation_status,
+      published: publishResult.ok,
+      no_op: false,
+      delivery_state: persisted.delivery_state,
+      delivery_attempts: persisted.delivery_attempts,
+      delivery_acknowledged: persisted.delivery_acknowledged,
+      delivery_receipt_id: persisted.delivery_receipt_id,
+      delivery_error: persisted.delivery_error,
+      delivery_channel: persisted.delivery_channel || DEFAULT_EXTERNAL_DELIVERY_CHANNEL,
+      external_reference_url: persisted.external_reference_url || null,
+      request_preview: publishResult.request_preview || null,
+      response_preview: publishResult.response_preview || null,
+      updated_at: persisted.updated_at,
+      note: persisted.note || null
+    }, {
+      entity: 'external_delivery_queue',
+      sync_mode: 'local_shadow',
+      queue_action: action,
+      execution_mode: executionMode,
+      delivery_state: persisted.delivery_state,
+      delivery_attempts: persisted.delivery_attempts,
+      degraded: !publishResult.ok
+    });
+  }
+
   const result = _updateRecordForAction(resolved.record, action, args, referenceDate);
   if (result.error) {
     return result.error;
@@ -558,6 +729,7 @@ async function initialize(initialConfig) {
   if (config.PhotoStudioDataPath) {
     store.configureDataRoot(config.PhotoStudioDataPath);
   }
+  externalPublishAdapter.configure(config);
 }
 
 function shutdown() {}

@@ -1,4 +1,6 @@
 {
-  "action": "list_due",
-  "reference_date": "2026-05-06"
+  "action": "publish_record",
+  "export_key": "sync_to_external_sheet_or_notion:notion:client_board:single_project:proj_20000001:include_closed",
+  "reference_date": "2026-05-06",
+  "execution_mode": "dry_run"
 }
