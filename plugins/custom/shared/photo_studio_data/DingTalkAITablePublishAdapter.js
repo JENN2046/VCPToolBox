@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -390,19 +391,11 @@ class DingTalkAITablePublishAdapter {
     }
 
     return async (command, args, options = {}) => new Promise((resolve, reject) => {
-      const resolvedCommand = this._resolveWindowsDwsCommand(command);
-      const child = process.platform === 'win32'
-        ? spawn(process.execPath, [
-          resolvedCommand,
-          ...args
-        ], {
-          shell: false,
-          windowsHide: true
-        })
-        : spawn(command, args, {
-          shell: false,
-          windowsHide: true
-        });
+      const spawnSpec = this._resolveSpawnSpec(command, args);
+      const child = spawn(spawnSpec.command, spawnSpec.args, {
+        shell: spawnSpec.shell,
+        windowsHide: true
+      });
 
       let stdout = '';
       let stderr = '';
@@ -466,8 +459,59 @@ class DingTalkAITablePublishAdapter {
           ok: true,
           payload
         });
-        });
+      });
     });
+  }
+
+  _resolveSpawnSpec(command, args) {
+    if (process.platform !== 'win32') {
+      return {
+        command,
+        args,
+        shell: false
+      };
+    }
+
+    const resolvedCommand = this._resolveWindowsDwsCommand(command);
+    const extension = path.extname(String(resolvedCommand || '')).toLowerCase();
+
+    if (extension === '.js') {
+      return {
+        command: process.execPath,
+        args: [resolvedCommand, ...args],
+        shell: false
+      };
+    }
+
+    if (extension === '.ps1') {
+      return {
+        command: 'powershell.exe',
+        args: [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          resolvedCommand,
+          ...args
+        ],
+        shell: false
+      };
+    }
+
+    if (extension === '.cmd' || extension === '.bat') {
+      return {
+        command: resolvedCommand,
+        args,
+        shell: true
+      };
+    }
+
+    return {
+      command: resolvedCommand,
+      args,
+      shell: false
+    };
   }
 
   _resolveWindowsDwsCommand(command) {
@@ -476,17 +520,81 @@ class DingTalkAITablePublishAdapter {
       return normalized;
     }
 
+    if (this._isWindowsExplicitCommand(normalized)) {
+      return normalized;
+    }
+
+    const pathResolved = this._findWindowsCommandInPath(normalized);
+    if (pathResolved) {
+      return pathResolved;
+    }
+
     const appData = String(process.env.APPDATA || '').trim();
     if (!appData) {
       return normalized;
     }
 
-    const dwsScriptPath = path.join(appData, 'npm', 'node_modules', 'dingtalk-workspace-cli', 'bin', 'dws.js');
-    if (require('fs').existsSync(dwsScriptPath)) {
-      return dwsScriptPath;
+    const npmCandidates = [
+      path.join(appData, 'npm', `${normalized}.cmd`),
+      path.join(appData, 'npm', `${normalized}.ps1`),
+      path.join(appData, 'npm', 'node_modules', 'dingtalk-workspace-cli', 'bin', `${normalized}.js`)
+    ];
+
+    for (const candidate of npmCandidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
 
     return normalized;
+  }
+
+  _isWindowsExplicitCommand(command) {
+    return (
+      command.includes('\\')
+      || command.includes('/')
+      || /^[A-Za-z]:/.test(command)
+      || command.startsWith('.')
+      || path.extname(command) !== ''
+    );
+  }
+
+  _findWindowsCommandInPath(command) {
+    const rawPath = String(process.env.PATH || '').trim();
+    if (!rawPath) {
+      return null;
+    }
+
+    const pathEntries = rawPath
+      .split(';')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    const rawPathExt = String(process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD;.PS1;.JS').trim();
+    const pathExts = Array.from(new Set(
+      rawPathExt
+        .split(';')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => entry.toLowerCase())
+        .concat(['.com', '.exe', '.bat', '.cmd', '.ps1', '.js'])
+    ));
+
+    const directExtension = path.extname(command).toLowerCase();
+    const candidateNames = directExtension
+      ? [command]
+      : [command, ...pathExts.map((extension) => `${command}${extension}`)];
+
+    for (const directory of pathEntries) {
+      for (const candidateName of candidateNames) {
+        const candidatePath = path.join(directory, candidateName);
+        if (fs.existsSync(candidatePath)) {
+          return candidatePath;
+        }
+      }
+    }
+
+    return null;
   }
 
   _extractReceiptId(payload) {

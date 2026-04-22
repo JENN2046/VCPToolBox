@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const deliveryQueuePlugin = require('../../plugins/custom/delivery/process_external_delivery_queue/src/index.js');
+const dingTalkAITablePublishAdapter = require('../../plugins/custom/shared/photo_studio_data/DingTalkAITablePublishAdapter');
 const { makeTempDataRoot, store } = require('./helpers');
 
 function writeJson(dataRoot, fileName, payload) {
@@ -647,4 +648,71 @@ test('process_external_delivery_queue publish_record live mode no-ops for sheet 
   assert.equal(externalExports.length, 1);
   assert.equal(externalExports[0].delivery_state, 'ready_to_publish');
   assert.equal(externalExports[0].delivery_receipt_id, null);
+});
+
+test('DingTalkAITablePublishAdapter preserves explicit Windows command wrappers instead of forcing node execution', () => {
+  const originalPlatform = process.platform;
+  const originalPath = process.env.PATH;
+  const originalPathExt = process.env.PATHEXT;
+  const originalAppData = process.env.APPDATA;
+
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  process.env.PATH = '';
+  process.env.PATHEXT = '.EXE;.CMD;.BAT;.PS1;.JS';
+  process.env.APPDATA = '';
+
+  try {
+    const spawnSpec = dingTalkAITablePublishAdapter._resolveSpawnSpec(
+      'C:\\tools\\dws.cmd',
+      ['auth', 'status', '--format', 'json']
+    );
+
+    assert.equal(spawnSpec.command, 'C:\\tools\\dws.cmd');
+    assert.equal(spawnSpec.shell, true);
+    assert.deepEqual(spawnSpec.args, ['auth', 'status', '--format', 'json']);
+  } finally {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+    process.env.PATH = originalPath;
+    process.env.PATHEXT = originalPathExt;
+    process.env.APPDATA = originalAppData;
+  }
+});
+
+test('DingTalkAITablePublishAdapter resolves bare dws from PATH before machine-local fallback', (t) => {
+  const tempRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+  const originalPlatform = process.platform;
+  const originalPath = process.env.PATH;
+  const originalPathExt = process.env.PATHEXT;
+  const originalAppData = process.env.APPDATA;
+
+  const pathDir = path.join(tempRoot, 'bin');
+  const appDataDir = path.join(tempRoot, 'appdata');
+  fs.mkdirSync(pathDir, { recursive: true });
+  fs.mkdirSync(path.join(appDataDir, 'npm', 'node_modules', 'dingtalk-workspace-cli', 'bin'), { recursive: true });
+
+  const pathCommand = path.join(pathDir, 'dws.cmd');
+  const fallbackScript = path.join(appDataDir, 'npm', 'node_modules', 'dingtalk-workspace-cli', 'bin', 'dws.js');
+  fs.writeFileSync(pathCommand, '@echo off\r\n', 'utf8');
+  fs.writeFileSync(fallbackScript, 'console.log(\"fallback\");\n', 'utf8');
+
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  process.env.PATH = pathDir;
+  process.env.PATHEXT = '.EXE;.CMD;.BAT;.PS1;.JS';
+  process.env.APPDATA = appDataDir;
+
+  try {
+    const resolved = dingTalkAITablePublishAdapter._resolveWindowsDwsCommand('dws');
+    const spawnSpec = dingTalkAITablePublishAdapter._resolveSpawnSpec('dws', ['auth', 'status']);
+
+    assert.equal(resolved, pathCommand);
+    assert.equal(spawnSpec.command, pathCommand);
+    assert.equal(spawnSpec.shell, true);
+  } finally {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+    process.env.PATH = originalPath;
+    process.env.PATHEXT = originalPathExt;
+    process.env.APPDATA = originalAppData;
+  }
 });
