@@ -1,195 +1,134 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('fs').promises;
+const fs = require('fs');
 const path = require('path');
-const {
-    assertFailureEnvelope,
-    assertSuccessEnvelope,
-    cleanupWorkspace,
-    createTempWorkspace,
-    readStoreJson,
-    runPlugin
-} = require('./helpers');
 
-const CUSTOMER_PLUGIN = 'Plugin/PhotoStudioCustomerRecord/PhotoStudioCustomerRecord.js';
-const PROJECT_PLUGIN = 'Plugin/PhotoStudioProjectRecord/PhotoStudioProjectRecord.js';
-const STATUS_PLUGIN = 'Plugin/PhotoStudioProjectStatus/PhotoStudioProjectStatus.js';
-const CALENDAR_PLUGIN = 'Plugin/PhotoStudioCalendarSync/PhotoStudioCalendarSync.js';
+const calendarSyncPlugin = require('../../plugins/custom/project/sync_calendar_event/src/index.js');
+const { createCoreFixture, initializeCorePlugins, makeTempDataRoot, moveProjectToStatus, store } = require('./helpers');
 
-async function createProjectFixture(env) {
-    const customerResult = await runPlugin(CUSTOMER_PLUGIN, {
-        customer_name: 'Northlight Studio',
-        customer_type: 'individual',
-        contact_wechat: 'northlight-photo'
-    }, env);
-    assertSuccessEnvelope(customerResult);
+test('sync_calendar_event creates a local shadow calendar record for an eligible project', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
-    const projectResult = await runPlugin(PROJECT_PLUGIN, {
-        customer_id: customerResult.json.data.customer_id,
-        project_name: 'May Wedding Story',
-        project_type: 'wedding',
-        start_date: '2026-05-04',
-        due_date: '2026-05-18',
-        budget: 28800
-    }, env);
-    assertSuccessEnvelope(projectResult);
+  const sharedConfig = await initializeCorePlugins(dataRoot);
+  await calendarSyncPlugin.initialize(sharedConfig);
 
-    return {
-        customer_id: customerResult.json.data.customer_id,
-        project_id: projectResult.json.data.project_id
-    };
-}
+  const fixture = await createCoreFixture();
+  await moveProjectToStatus(fixture.project_id, 'retouching');
 
-async function moveProjectToStatus(projectId, targetStatus, env) {
-    const transitionPath = ['quoted', 'confirmed', 'preparing', 'shooting', 'editing', 'reviewing'];
+  const result = await calendarSyncPlugin.processToolCall({
+    project_id: fixture.project_id,
+    event_type: 'follow_up',
+    event_key: 'client-review-1',
+    event_date: '2026-05-16',
+    event_time: '09:30',
+    event_title: 'Client review checkpoint',
+    note: 'Confirm the final selection list before delivery.',
+    calendar_surface: 'local_shadow_calendar'
+  });
 
-    for (const nextStatus of transitionPath) {
-        const result = await runPlugin(STATUS_PLUGIN, {
-            project_id: projectId,
-            new_status: nextStatus
-        }, env);
-        assertSuccessEnvelope(result);
+  assert.equal(result.success, true);
+  assert.equal(result.data.project_id, fixture.project_id);
+  assert.equal(result.data.event_type, 'follow_up');
+  assert.equal(result.data.event_key, 'client-review-1');
+  assert.equal(result.data.event_date, '2026-05-16');
+  assert.equal(result.data.event_time, '09:30');
+  assert.equal(result.data.calendar_surface, 'local_shadow_calendar');
+  assert.equal(result.data.sync_state, 'local_shadow');
+  assert.equal(result.meta.degraded, false);
+  assert.equal(result.meta.duplicate, false);
 
-        if (nextStatus === targetStatus) {
-            return;
-        }
-    }
-
-    throw new Error(`Unsupported target status in test helper: ${targetStatus}`);
-}
-
-test('sync_calendar_event creates a local shadow coordination record for a reviewing project', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
-
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
-
-    const fixture = await createProjectFixture(env);
-    await moveProjectToStatus(fixture.project_id, 'reviewing', env);
-
-    const result = await runPlugin(CALENDAR_PLUGIN, {
-        project_id: fixture.project_id,
-        event_type: 'follow_up',
-        event_key: 'client-review-1',
-        event_date: '2026-05-16',
-        event_time: '09:30',
-        event_title: 'Client review checkpoint',
-        note: 'Confirm the final selection list before delivery.',
-        calendar_surface: 'local_shadow_calendar'
-    }, env);
-
-    assertSuccessEnvelope(result);
-    assert.equal(result.json.data.project_id, fixture.project_id);
-    assert.equal(result.json.data.event_type, 'follow_up');
-    assert.equal(result.json.data.event_key, 'client-review-1');
-    assert.equal(result.json.data.event_date, '2026-05-16');
-    assert.equal(result.json.data.event_time, '09:30');
-    assert.equal(result.json.data.calendar_surface, 'local_shadow_calendar');
-    assert.equal(result.json.data.sync_state, 'local_shadow');
-    assert.equal(result.json.meta.degraded, false);
-    assert.equal(result.json.meta.duplicate, false);
-
-    const calendarStore = await readStoreJson(workspace.dataDir, 'calendar_events.json');
-    assert.equal(calendarStore.records.length, 1);
-    assert.equal(calendarStore.records[0].event_key, 'client-review-1');
-    assert.equal(calendarStore.records[0].event_title, 'Client review checkpoint');
+  const calendarStore = store.getCalendarEventsByProject(fixture.project_id);
+  assert.equal(calendarStore.length, 1);
+  assert.equal(calendarStore[0].event_key, 'client-review-1');
+  assert.equal(calendarStore[0].event_title, 'Client review checkpoint');
 });
 
 test('sync_calendar_event updates the existing shadow record instead of duplicating it', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
+  const sharedConfig = await initializeCorePlugins(dataRoot);
+  await calendarSyncPlugin.initialize(sharedConfig);
 
-    const fixture = await createProjectFixture(env);
-    await moveProjectToStatus(fixture.project_id, 'reviewing', env);
+  const fixture = await createCoreFixture();
+  await moveProjectToStatus(fixture.project_id, 'retouching');
 
-    const firstRun = await runPlugin(CALENDAR_PLUGIN, {
-        project_id: fixture.project_id,
-        event_key: 'shooting-day',
-        event_type: 'milestone',
-        event_date: '2026-05-08'
-    }, env);
-    assertSuccessEnvelope(firstRun);
+  const firstRun = await calendarSyncPlugin.processToolCall({
+    project_id: fixture.project_id,
+    event_key: 'shooting-day',
+    event_type: 'milestone',
+    event_date: '2026-05-08'
+  });
+  assert.equal(firstRun.success, true);
 
-    const secondRun = await runPlugin(CALENDAR_PLUGIN, {
-        project_id: fixture.project_id,
-        event_key: 'shooting-day',
-        event_type: 'milestone',
-        event_date: '2026-05-09',
-        note: 'Shifted one day later.'
-    }, env);
+  const secondRun = await calendarSyncPlugin.processToolCall({
+    project_id: fixture.project_id,
+    event_key: 'shooting-day',
+    event_type: 'milestone',
+    event_date: '2026-05-09',
+    note: 'Shifted one day later.'
+  });
 
-    assertSuccessEnvelope(secondRun);
-    assert.equal(secondRun.json.data.is_new, false);
-    assert.equal(secondRun.json.data.event_date, '2026-05-09');
-    assert.equal(secondRun.json.meta.duplicate, true);
+  assert.equal(secondRun.success, true);
+  assert.equal(secondRun.data.is_new, false);
+  assert.equal(secondRun.data.event_date, '2026-05-09');
+  assert.equal(secondRun.meta.duplicate, true);
 
-    const calendarStore = await readStoreJson(workspace.dataDir, 'calendar_events.json');
-    assert.equal(calendarStore.records.length, 1);
-    assert.equal(calendarStore.records[0].calendar_event_id, firstRun.json.data.calendar_event_id);
-    assert.equal(calendarStore.records[0].event_date, '2026-05-09');
+  const calendarStore = store.getCalendarEventsByProject(fixture.project_id);
+  assert.equal(calendarStore.length, 1);
+  assert.equal(calendarStore[0].calendar_event_id, firstRun.data.calendar_event_id);
+  assert.equal(calendarStore[0].event_date, '2026-05-09');
 });
 
 test('sync_calendar_event rejects projects outside the coordination window', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
+  const sharedConfig = await initializeCorePlugins(dataRoot);
+  await calendarSyncPlugin.initialize(sharedConfig);
 
-    const fixture = await createProjectFixture(env);
-    const result = await runPlugin(CALENDAR_PLUGIN, {
-        project_id: fixture.project_id,
-        event_type: 'deadline'
-    }, env);
+  const fixture = await createCoreFixture();
+  const result = await calendarSyncPlugin.processToolCall({
+    project_id: fixture.project_id,
+    event_type: 'deadline'
+  });
 
-    assertFailureEnvelope(result, 'CONFLICT');
-    assert.equal(result.json.error.field, 'project_id');
-    assert.deepEqual(result.json.error.details.allowed_statuses, [
-        'quoted',
-        'confirmed',
-        'preparing',
-        'shooting',
-        'editing',
-        'reviewing',
-        'delivered',
-        'completed'
-    ]);
+  assert.equal(result.success, false);
+  assert.equal(result.error.code, 'CONFLICT');
+  assert.equal(result.error.field, 'project_id');
+  assert.deepEqual(result.error.details.allowed_statuses, [
+    'quoted',
+    'confirmed',
+    'preparing',
+    'shot',
+    'selection_pending',
+    'retouching',
+    'delivering',
+    'completed'
+  ]);
 });
 
 test('sync_calendar_event keeps degraded mode explicit when customer context is missing', async (t) => {
-    const workspace = await createTempWorkspace();
-    t.after(() => cleanupWorkspace(workspace.workspaceRoot));
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
 
-    const env = {
-        PROJECT_BASE_PATH: workspace.workspaceRoot,
-        PHOTO_STUDIO_DATA_DIR: workspace.dataDir
-    };
+  const sharedConfig = await initializeCorePlugins(dataRoot);
+  await calendarSyncPlugin.initialize(sharedConfig);
 
-    const fixture = await createProjectFixture(env);
-    await moveProjectToStatus(fixture.project_id, 'confirmed', env);
+  const fixture = await createCoreFixture();
+  await moveProjectToStatus(fixture.project_id, 'confirmed');
 
-    const customerStorePath = path.join(workspace.dataDir, 'customers.json');
-    const customerStore = await readStoreJson(workspace.dataDir, 'customers.json');
-    customerStore.records = [];
-    await fs.writeFile(customerStorePath, JSON.stringify(customerStore, null, 2), 'utf8');
+  fs.writeFileSync(path.join(dataRoot, 'customers.json'), JSON.stringify({}, null, 2), 'utf8');
+  store.clearCache().configureDataRoot(dataRoot);
 
-    const result = await runPlugin(CALENDAR_PLUGIN, {
-        project_id: fixture.project_id
-    }, env);
+  const result = await calendarSyncPlugin.processToolCall({
+    project_id: fixture.project_id
+  });
 
-    assertSuccessEnvelope(result);
-    assert.equal(result.json.meta.degraded, true);
-    assert.equal(result.json.data.customer_name, '[客户姓名]');
-    assert.equal(result.json.data.event_type, 'milestone');
-    assert.equal(result.json.data.calendar_surface, 'local_shadow_calendar');
+  assert.equal(result.success, true);
+  assert.equal(result.meta.degraded, true);
+  assert.equal(result.data.customer_name, '[客户姓名]');
+  assert.equal(result.data.event_type, 'milestone');
+  assert.equal(result.data.calendar_surface, 'local_shadow_calendar');
 });

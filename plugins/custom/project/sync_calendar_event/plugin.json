@@ -1,0 +1,66 @@
+{
+  "name": "sync_calendar_event",
+  "display_name": "摄影工作室·日历同步",
+  "version": "2.0.0",
+  "status": "staging",
+  "category": "project",
+  "description": "为项目关键节点写入本地影子日历记录。",
+  "author": "PhotoStudio",
+  "schema_version": "2026-04-22",
+  "compatibility": {
+    "vcp_min": "7.1.2",
+    "vcp_max_tested": "7.1.2"
+  },
+  "timeout_seconds": 15,
+  "retry_policy": "none",
+  "idempotent": true,
+  "requires_context_bridge": false,
+  "input_schema": {
+    "type": "object",
+    "required": ["project_id"],
+    "properties": {
+      "project_id": { "type": "string" },
+      "event_type": { "type": "string", "enum": ["milestone", "follow_up", "deadline"] },
+      "event_key": { "type": "string" },
+      "event_date": { "type": "string" },
+      "event_time": { "type": "string" },
+      "event_title": { "type": "string" },
+      "calendar_surface": { "type": "string" },
+      "timezone": { "type": "string" },
+      "note": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["success", "data", "error", "meta"],
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] },
+      "meta": { "type": "object" }
+    }
+  },
+  "config_schema": {
+    "DebugMode": { "type": "boolean", "default": false },
+    "PhotoStudioDataPath": { "type": "string", "default": "", "description": "摄影工作室数据根目录" }
+  },
+  "runtime": {
+    "plugin_type": "hybridservice",
+    "entry_point": {
+      "script": "src/index.js"
+    },
+    "communication": {
+      "protocol": "direct"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "SyncCalendarEvent",
+        "command": "sync_calendar_event",
+        "description": "为项目节点生成或更新本地影子日历记录。",
+        "example": "tool_name: sync_calendar_event, project_id: proj_001, event_type: milestone"
+      }
+    ]
+  }
+}

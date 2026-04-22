@@ -9,6 +9,7 @@ test('photo_studio rebaseline modern registry points to plugin.json contracts', 
   const pluginNames = registry.plugins.map(plugin => plugin.name).sort();
 
   assert.deepEqual(pluginNames, [
+    'archive_project_assets',
     'create_customer_record',
     'create_delivery_tasks',
     'create_followup_reminder',
@@ -16,6 +17,7 @@ test('photo_studio rebaseline modern registry points to plugin.json contracts', 
     'create_project_tasks',
     'create_selection_notice',
     'generate_client_reply_draft',
+    'sync_calendar_event',
     'update_project_status'
   ]);
 
