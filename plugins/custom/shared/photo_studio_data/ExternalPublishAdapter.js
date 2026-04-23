@@ -3,6 +3,7 @@ const DEFAULT_EXECUTION_MODE = 'dry_run';
 const NOTION_API_BASE_URL = 'https://api.notion.com/v1/pages';
 const TEXT_BLOCK_MAX_LENGTH = 1800;
 const dingTalkAITablePublishAdapter = require('./DingTalkAITablePublishAdapter');
+const baserowPublishAdapter = require('./BaserowPublishAdapter');
 
 class ExternalPublishAdapter {
   constructor() {
@@ -14,6 +15,7 @@ class ExternalPublishAdapter {
       ...nextConfig
     };
     dingTalkAITablePublishAdapter.configure(nextConfig);
+    baserowPublishAdapter.configure(nextConfig);
 
     return this;
   }
@@ -23,6 +25,28 @@ class ExternalPublishAdapter {
     const targetType = String(record.target_type || '').trim();
 
     if (targetType === 'sheet') {
+      const targetProvider = this._resolveSheetTargetProvider(record);
+      if (targetProvider === 'baserow') {
+        return baserowPublishAdapter.publishRecord(record, {
+          execution_mode: executionMode
+        });
+      }
+
+      if (targetProvider !== 'dingtalk_ai_table') {
+        return {
+          ok: false,
+          attempted: false,
+          no_op: true,
+          activation_status: 'unsupported_live_target',
+          adapter: null,
+          execution_mode: executionMode,
+          target_type: targetType,
+          target_name: record.target_name || null,
+          target_provider: targetProvider,
+          reason: `Live publish is not implemented for target_provider "${targetProvider}".`
+        };
+      }
+
       return dingTalkAITablePublishAdapter.publishRecord(record, {
         execution_mode: executionMode
       });
@@ -155,6 +179,11 @@ class ExternalPublishAdapter {
 
   _resolveExecutionMode(value) {
     return value === 'live' ? 'live' : DEFAULT_EXECUTION_MODE;
+  }
+
+  _resolveSheetTargetProvider(record) {
+    const explicitProvider = String(record.target_provider || '').trim();
+    return explicitProvider || 'dingtalk_ai_table';
   }
 
   _resolveNotionConfig() {

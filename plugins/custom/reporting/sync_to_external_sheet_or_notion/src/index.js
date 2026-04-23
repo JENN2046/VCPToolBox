@@ -3,6 +3,7 @@ const path = require('path');
 const store = require(path.join(__dirname, '..', '..', '..', 'shared', 'photo_studio_data', 'PhotoStudioDataStore'));
 
 const EXTERNAL_SYNC_TARGET_TYPES = Object.freeze(['sheet', 'notion']);
+const SHEET_TARGET_PROVIDERS = Object.freeze(['dingtalk_ai_table', 'baserow']);
 const EXTERNAL_DELIVERY_STATES = Object.freeze(['ready_to_publish', 'queued', 'delivered', 'retry_scheduled', 'failed']);
 const CLOSED_STATUSES = new Set(['completed', 'archived', 'cancelled']);
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -10,6 +11,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_EXTERNAL_SYNC_SURFACE = 'local_shadow_external_export';
 const DEFAULT_EXTERNAL_SYNC_TARGET_NAME = 'photo_studio_project_inventory';
 const DEFAULT_EXTERNAL_SYNC_TARGET_TYPE = 'sheet';
+const DEFAULT_SHEET_TARGET_PROVIDER = 'dingtalk_ai_table';
 const DEFAULT_EXTERNAL_DELIVERY_STATE = 'ready_to_publish';
 const DEFAULT_EXTERNAL_DELIVERY_CHANNEL = 'local_shadow_outbox';
 const DEFAULT_EXTERNAL_DELIVERY_RETRY_AFTER_DAYS = 2;
@@ -127,6 +129,27 @@ function _normalizeLookup(value) {
     .replace(/^_+|_+$/g, '') || 'default';
 }
 
+function _resolveTargetProvider(targetType, value) {
+  if (targetType !== 'sheet') {
+    return { value: null, error: null };
+  }
+
+  const candidate = String(value || DEFAULT_SHEET_TARGET_PROVIDER).trim() || DEFAULT_SHEET_TARGET_PROVIDER;
+  if (!SHEET_TARGET_PROVIDERS.includes(candidate)) {
+    return {
+      value: null,
+      error: _error(
+        'INVALID_INPUT',
+        `target_provider must be one of: ${SHEET_TARGET_PROVIDERS.join(', ')}`,
+        'target_provider',
+        { target_type: targetType }
+      )
+    };
+  }
+
+  return { value: candidate, error: null };
+}
+
 function _projectStartDate(project) {
   return project.shoot_date || project.start_date || null;
 }
@@ -135,7 +158,7 @@ function _projectDueDate(project) {
   return project.delivery_deadline || project.due_date || null;
 }
 
-function _buildExportRows(projects, customerMap, referenceDate, upcomingDays, targetType, targetName) {
+function _buildExportRows(projects, customerMap, referenceDate, upcomingDays, targetType, targetName, targetProvider) {
   return projects
     .map((project) => {
       const customer = customerMap.get(project.customer_id) || null;
@@ -168,6 +191,7 @@ function _buildExportRows(projects, customerMap, referenceDate, upcomingDays, ta
         days_until_due: daysUntilDue,
         attention_state: attentionState,
         target_type: targetType,
+        target_provider: targetProvider,
         target_name: targetName,
         export_surface: DEFAULT_EXTERNAL_SYNC_SURFACE,
         sync_state: 'local_shadow'
@@ -201,6 +225,7 @@ function _summarizeExportRows(exportRows) {
 
 function _buildExportText({
   targetType,
+  targetProvider,
   targetName,
   exportScope,
   projectId,
@@ -230,6 +255,10 @@ function _buildExportText({
     `Missing customers: ${summary.missing_customer_count}`,
     `Delivery state: ${deliveryState} | attempts ${deliveryAttempts}`
   ];
+
+  if (targetProvider) {
+    lines.push(`Target provider: ${targetProvider}`);
+  }
 
   if (deliveryReceiptId) {
     lines.push(`Delivery receipt: ${deliveryReceiptId}`);
@@ -298,6 +327,11 @@ async function processToolCall(args) {
   }
 
   const targetName = String(args.target_name || DEFAULT_EXTERNAL_SYNC_TARGET_NAME).trim() || DEFAULT_EXTERNAL_SYNC_TARGET_NAME;
+  const targetProviderResult = _resolveTargetProvider(targetType, args.target_provider);
+  if (targetProviderResult.error) {
+    return targetProviderResult.error;
+  }
+  const targetProvider = targetProviderResult.value;
   const requestedProjectId = args.project_id ? String(args.project_id).trim() : null;
   const deliveryState = String(args.delivery_state || DEFAULT_EXTERNAL_DELIVERY_STATE).trim();
 
@@ -330,13 +364,15 @@ async function processToolCall(args) {
     referenceDate,
     upcomingDaysResult.value,
     targetType,
-    targetName
+    targetName,
+    targetProvider
   );
   const exportSummary = _summarizeExportRows(exportRows);
   const exportScope = requestedProjectId ? 'single_project' : 'all_projects';
   const exportKey = [
     'sync_to_external_sheet_or_notion',
     targetType,
+    ...(targetProvider ? [targetProvider] : []),
     _normalizeLookup(targetName),
     exportScope,
     requestedProjectId || 'all',
@@ -352,6 +388,7 @@ async function processToolCall(args) {
     : null;
   const exportText = _buildExportText({
     targetType,
+    targetProvider,
     targetName,
     exportScope,
     projectId: requestedProjectId,
@@ -370,6 +407,7 @@ async function processToolCall(args) {
   const { record, existing: existingRecord } = store.upsertExternalExport({
     export_key: exportKey,
     target_type: targetType,
+    target_provider: targetProvider,
     target_name: targetName,
     export_scope: exportScope,
     project_id: requestedProjectId,
@@ -397,6 +435,7 @@ async function processToolCall(args) {
     external_export_id: record.external_export_id,
     export_key: record.export_key,
     target_type: record.target_type,
+    target_provider: record.target_provider || null,
     target_name: record.target_name,
     export_scope: record.export_scope,
     project_id: record.project_id,

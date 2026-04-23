@@ -434,6 +434,154 @@ test('process_external_delivery_queue publish_record live mode publishes a notio
   assert.equal(externalExports[0].external_reference_url, 'https://www.notion.so/notion-page-123');
 });
 
+test('process_external_delivery_queue publish_record dry_run supports explicit Baserow provider routing', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  let fetchCalled = false;
+  const fakeFetch = async () => {
+    fetchCalled = true;
+    throw new Error('dry_run should not call fetch');
+  };
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    BaserowApiUrl: 'https://api.baserow.io',
+    BaserowApiToken: 'baserow_token_001',
+    BaserowTableId: '42',
+    BaserowFieldMap: {
+      ProjectCode: 'export_rows.0.project_id',
+      Summary: 'export_text',
+      Provider: 'target_provider'
+    },
+    BaserowFetch: fakeFetch
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_sheet: buildExportRecord({
+      external_export_id: 'export_sheet',
+      export_key: 'queue:baserow_dry_run',
+      target_type: 'sheet',
+      target_provider: 'baserow',
+      target_name: 'Ops Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'dry run baserow export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:baserow_dry_run',
+    reference_date: '2026-05-06',
+    execution_mode: 'dry_run'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'dry_run_preview');
+  assert.equal(result.data.preview_only, true);
+  assert.equal(result.data.record_unchanged, true);
+  assert.equal(result.data.request_preview.provider, 'baserow');
+  assert.equal(result.data.request_preview.table_id, '42');
+  assert.equal(result.data.request_preview.endpoint_url, 'https://api.baserow.io/api/database/rows/table/42/?user_field_names=true');
+  assert.equal(result.data.request_preview.row_preview.ProjectCode, 'proj_20000001');
+  assert.equal(result.data.request_preview.row_preview.Provider, 'baserow');
+  assert.equal(fetchCalled, false);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'ready_to_publish');
+  assert.equal(externalExports[0].delivery_receipt_id, null);
+});
+
+test('process_external_delivery_queue publish_record live mode creates a Baserow row and persists delivery metadata', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  let capturedRequest = null;
+  const fakeFetch = async (url, options) => {
+    capturedRequest = {
+      url,
+      options: {
+        ...options,
+        headers: { ...options.headers },
+        body: JSON.parse(options.body)
+      }
+    };
+
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return {
+          id: 123
+        };
+      }
+    };
+  };
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({
+    DebugMode: false,
+    PhotoStudioDataPath: dataRoot,
+    BaserowApiUrl: 'https://api.baserow.io',
+    BaserowApiToken: 'baserow_token_001',
+    BaserowTableId: '42',
+    BaserowFieldMap: {
+      ProjectCode: 'export_rows.0.project_id',
+      Summary: 'export_text',
+      TargetName: 'target_name'
+    },
+    BaserowFetch: fakeFetch
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_sheet: buildExportRecord({
+      external_export_id: 'export_sheet',
+      export_key: 'queue:baserow_live',
+      target_type: 'sheet',
+      target_provider: 'baserow',
+      target_name: 'Ops Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'live baserow export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:baserow_live',
+    reference_date: '2026-05-06',
+    execution_mode: 'live'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'live_published');
+  assert.equal(result.data.published, true);
+  assert.equal(result.data.delivery_state, 'delivered');
+  assert.equal(result.data.delivery_acknowledged, true);
+  assert.equal(result.data.delivery_receipt_id, 123);
+  assert.equal(result.data.external_reference_url, 'https://api.baserow.io/api/database/rows/table/42/123/?user_field_names=true');
+  assert.equal(result.data.delivery_channel, 'baserow');
+
+  assert.equal(capturedRequest.url, 'https://api.baserow.io/api/database/rows/table/42/?user_field_names=true');
+  assert.equal(capturedRequest.options.method, 'POST');
+  assert.equal(capturedRequest.options.headers.Authorization, 'Token baserow_token_001');
+  assert.equal(capturedRequest.options.headers['Content-Type'], 'application/json');
+  assert.equal(capturedRequest.options.body.ProjectCode, 'proj_20000001');
+  assert.equal(capturedRequest.options.body.TargetName, 'Ops Board');
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'delivered');
+  assert.equal(externalExports[0].delivery_receipt_id, 123);
+  assert.equal(externalExports[0].external_reference_url, 'https://api.baserow.io/api/database/rows/table/42/123/?user_field_names=true');
+});
+
 test('process_external_delivery_queue publish_record live mode creates a DingTalk AI table record and persists delivery metadata', async (t) => {
   const dataRoot = makeTempDataRoot();
   t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
@@ -707,6 +855,47 @@ test('process_external_delivery_queue publish_record live mode no-ops for sheet 
   assert.equal(result.data.no_op, true);
   assert.equal(result.data.record_unchanged, true);
   assert.deepEqual(result.data.missing_fields, ['DingTalkBaseId', 'DingTalkTableId', 'DingTalkFieldMap']);
+  assert.equal(result.meta.degraded, true);
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].delivery_state, 'ready_to_publish');
+  assert.equal(externalExports[0].delivery_receipt_id, null);
+});
+
+test('process_external_delivery_queue publish_record live mode no-ops for Baserow targets when Baserow live config is missing', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await deliveryQueuePlugin.initialize({ DebugMode: false, PhotoStudioDataPath: dataRoot });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_sheet: buildExportRecord({
+      external_export_id: 'export_sheet',
+      export_key: 'queue:baserow_missing_config',
+      target_type: 'sheet',
+      target_provider: 'baserow',
+      target_name: 'Ops Board',
+      delivery_state: 'ready_to_publish',
+      export_text: 'sheet export'
+    })
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await deliveryQueuePlugin.processToolCall({
+    action: 'publish_record',
+    export_key: 'queue:baserow_missing_config',
+    reference_date: '2026-05-06',
+    execution_mode: 'live'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.activation_status, 'missing_live_config');
+  assert.equal(result.data.no_op, true);
+  assert.equal(result.data.record_unchanged, true);
+  assert.deepEqual(result.data.missing_fields, ['BaserowApiUrl', 'BaserowApiToken', 'BaserowTableId', 'BaserowFieldMap']);
   assert.equal(result.meta.degraded, true);
 
   const externalExports = store.getExternalExports();
