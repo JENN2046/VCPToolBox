@@ -158,6 +158,44 @@ function _projectDueDate(project) {
   return project.delivery_deadline || project.due_date || null;
 }
 
+function _buildExportKey({
+  targetType,
+  targetProvider,
+  targetName,
+  exportScope,
+  projectId,
+  includeClosedProjects,
+  includeTargetProvider = true
+}) {
+  return [
+    'sync_to_external_sheet_or_notion',
+    targetType,
+    ...(includeTargetProvider && targetProvider ? [targetProvider] : []),
+    _normalizeLookup(targetName),
+    exportScope,
+    projectId || 'all',
+    includeClosedProjects ? 'include_closed' : 'active_only'
+  ].join(':');
+}
+
+function _findExistingExportRecord({ exportKey, legacyExportKey, targetType, targetProvider }) {
+  const externalExports = store.getExternalExports();
+  const existingRecord = externalExports.find((record) => record.export_key === exportKey) || null;
+  if (existingRecord) {
+    return existingRecord;
+  }
+
+  if (targetType !== 'sheet' || targetProvider !== DEFAULT_SHEET_TARGET_PROVIDER || !legacyExportKey) {
+    return null;
+  }
+
+  return externalExports.find((record) =>
+    record.export_key === legacyExportKey
+    && record.target_type === 'sheet'
+    && !record.target_provider
+  ) || null;
+}
+
 function _buildExportRows(projects, customerMap, referenceDate, upcomingDays, targetType, targetName, targetProvider) {
   return projects
     .map((project) => {
@@ -369,16 +407,31 @@ async function processToolCall(args) {
   );
   const exportSummary = _summarizeExportRows(exportRows);
   const exportScope = requestedProjectId ? 'single_project' : 'all_projects';
-  const exportKey = [
-    'sync_to_external_sheet_or_notion',
+  const exportKey = _buildExportKey({
     targetType,
-    ...(targetProvider ? [targetProvider] : []),
-    _normalizeLookup(targetName),
+    targetProvider,
+    targetName,
     exportScope,
-    requestedProjectId || 'all',
-    includeClosedProjectsResult.value ? 'include_closed' : 'active_only'
-  ].join(':');
-  const existing = store.getExternalExports().find((record) => record.export_key === exportKey) || null;
+    projectId: requestedProjectId,
+    includeClosedProjects: includeClosedProjectsResult.value
+  });
+  const legacyExportKey = targetType === 'sheet' && targetProvider === DEFAULT_SHEET_TARGET_PROVIDER
+    ? _buildExportKey({
+      targetType,
+      targetProvider,
+      targetName,
+      exportScope,
+      projectId: requestedProjectId,
+      includeClosedProjects: includeClosedProjectsResult.value,
+      includeTargetProvider: false
+    })
+    : null;
+  const existing = _findExistingExportRecord({
+    exportKey,
+    legacyExportKey,
+    targetType,
+    targetProvider
+  });
   const hasExplicitDeliveryAttempts = args.delivery_attempts !== undefined && args.delivery_attempts !== null && args.delivery_attempts !== '';
   const resolvedDeliveryAttempts = existing && !hasExplicitDeliveryAttempts
     ? existing.delivery_attempts
@@ -405,6 +458,7 @@ async function processToolCall(args) {
   });
 
   const { record, existing: existingRecord } = store.upsertExternalExport({
+    external_export_id: existing ? existing.external_export_id : null,
     export_key: exportKey,
     target_type: targetType,
     target_provider: targetProvider,

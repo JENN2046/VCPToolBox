@@ -267,6 +267,104 @@ test('sync_to_external_sheet_or_notion keeps sheet export identities separate by
   assert.equal(externalExports.some((record) => record.export_key.includes(':sheet:baserow:ops_board:single_project:proj_20000001:include_closed')), true);
 });
 
+test('sync_to_external_sheet_or_notion preserves legacy sheet export identity on the first provider-aware rerun', async (t) => {
+  const dataRoot = makeTempDataRoot();
+  t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
+
+  store.configureDataRoot(dataRoot).resetAllData();
+  await externalSyncPlugin.initialize({ DebugMode: false, PhotoStudioDataPath: dataRoot });
+
+  writeJson(dataRoot, 'customers.json', {
+    cust_10000001: {
+      customer_id: 'cust_10000001',
+      customer_name: 'Northlight Studio'
+    }
+  });
+
+  writeJson(dataRoot, 'projects.json', {
+    proj_20000001: {
+      project_id: 'proj_20000001',
+      customer_id: 'cust_10000001',
+      project_name: 'May Wedding Story',
+      project_type: 'wedding',
+      shoot_date: '2026-05-01',
+      delivery_deadline: '2026-05-10',
+      budget: 28000,
+      status: 'selection_pending',
+      created_at: '2026-04-21T08:00:00.000Z',
+      updated_at: '2026-04-21T08:00:00.000Z'
+    }
+  });
+
+  writeJson(dataRoot, 'external_exports.json', {
+    export_legacy_sheet: {
+      external_export_id: 'export_legacy_sheet',
+      export_key: 'sync_to_external_sheet_or_notion:sheet:ops_board:single_project:proj_20000001:include_closed',
+      target_type: 'sheet',
+      target_name: 'Ops Board',
+      export_scope: 'single_project',
+      project_id: 'proj_20000001',
+      reference_date: '2026-05-01',
+      upcoming_days: 14,
+      include_closed_projects: true,
+      delivery_state: 'queued',
+      delivery_attempts: 2,
+      delivery_acknowledged: false,
+      delivery_receipt_id: null,
+      delivery_error: null,
+      retry_after_days: 2,
+      retry_after_date: null,
+      delivery_channel: 'local_shadow_outbox',
+      export_row_count: 1,
+      export_summary: {
+        total_projects: 1,
+        active_projects: 1,
+        closed_projects: 0,
+        overdue_projects: 0,
+        due_soon_projects: 1,
+        missing_due_date_count: 0,
+        missing_customer_count: 0
+      },
+      export_rows: [],
+      export_text: 'legacy sheet export',
+      export_surface: 'local_shadow_external_export',
+      normalized_target_name: 'ops_board',
+      sync_state: 'local_shadow',
+      note: null,
+      created_at: '2026-04-21T08:00:00.000Z',
+      updated_at: '2026-04-21T08:00:00.000Z'
+    }
+  });
+
+  store.clearCache().configureDataRoot(dataRoot);
+
+  const result = await externalSyncPlugin.processToolCall({
+    target_type: 'sheet',
+    target_name: 'Ops Board',
+    project_id: 'proj_20000001',
+    reference_date: '2026-05-05'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.external_export_id, 'export_legacy_sheet');
+  assert.equal(result.data.target_provider, 'dingtalk_ai_table');
+  assert.equal(result.data.delivery_attempts, 2);
+  assert.equal(result.data.is_new, false);
+  assert.equal(
+    result.data.export_key,
+    'sync_to_external_sheet_or_notion:sheet:dingtalk_ai_table:ops_board:single_project:proj_20000001:include_closed'
+  );
+
+  const externalExports = store.getExternalExports();
+  assert.equal(externalExports.length, 1);
+  assert.equal(externalExports[0].external_export_id, 'export_legacy_sheet');
+  assert.equal(externalExports[0].target_provider, 'dingtalk_ai_table');
+  assert.equal(
+    externalExports[0].export_key,
+    'sync_to_external_sheet_or_notion:sheet:dingtalk_ai_table:ops_board:single_project:proj_20000001:include_closed'
+  );
+});
+
 test('sync_to_external_sheet_or_notion rejects invalid targets, missing projects, and failed deliveries without errors', async (t) => {
   const dataRoot = makeTempDataRoot();
   t.after(() => fs.rmSync(dataRoot, { recursive: true, force: true }));
