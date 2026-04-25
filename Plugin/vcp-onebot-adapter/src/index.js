@@ -35,13 +35,13 @@ function assertEnv(name) {
 function normalizeChannelHubUrl(input) {
   const rawValue = (input || '').trim();
   if (!rawValue) {
-    return 'http://127.0.0.1:6010/internal/channel-hub/events';
+    return 'http://127.0.0.1:6010/internal/channelHub/events';
   }
 
   try {
     const url = new URL(rawValue);
     if (url.pathname === '/' || url.pathname === '') {
-      url.pathname = '/internal/channel-hub/events';
+      url.pathname = '/internal/channelHub/events';
     } else if (!url.pathname.endsWith('/events')) {
       url.pathname = url.pathname.replace(/\/$/, '') + '/events';
     }

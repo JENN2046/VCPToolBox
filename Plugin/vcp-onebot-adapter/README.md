@@ -44,7 +44,7 @@ cp .env.example .env
 ONEBOT_WS_URL=ws://127.0.0.1:3001
 
 # VCP ChannelHub 地址
-VCP_CHANNEL_HUB_URL=http://127.0.0.1:6010/internal/channel-hub/events
+VCP_CHANNEL_HUB_URL=http://127.0.0.1:6010/internal/channelHub/events
 
 # 适配器 ID
 VCP_ADAPTER_ID=onebot-qq-main
@@ -86,7 +86,7 @@ npm start
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `VCP_CHANNEL_HUB_URL` | ChannelHub B2 事件入口 | `http://127.0.0.1:6010/internal/channel-hub/events` |
+| `VCP_CHANNEL_HUB_URL` | ChannelHub B2 事件入口 | `http://127.0.0.1:6010/internal/channelHub/events` |
 | `VCP_ADAPTER_ID` | 适配器唯一标识 | `onebot-qq-main` |
 | `VCP_CHANNEL_BRIDGE_KEY` | 桥接密钥 | 空 |
 

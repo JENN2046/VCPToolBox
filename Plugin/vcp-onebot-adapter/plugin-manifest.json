@@ -38,7 +38,7 @@
     "VCP_CHANNEL_HUB_URL": {
       "type": "string",
       "description": "VCP ChannelHub B2 event endpoint",
-      "default": "http://127.0.0.1:6010/internal/channel-hub/events"
+      "default": "http://127.0.0.1:6010/internal/channelHub/events"
     },
     "VCP_CHANNEL_BRIDGE_KEY": {
       "type": "string",

@@ -262,7 +262,7 @@ router.post('/adapters', async (req, res) => {
 
     return ok(res, adapter, 'Adapter created successfully', 201, {
       hints: [
-        'B1 compatibility is frozen. New adapters should use B2 endpoint: /internal/channel-hub/events'
+        'B1 compatibility is frozen. New adapters should use B2 endpoint: /internal/channelHub/events'
       ]
     });
   } catch (error) {

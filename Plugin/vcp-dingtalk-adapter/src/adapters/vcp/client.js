@@ -260,7 +260,7 @@ export function createVcpClient({
       ? isB2
       : resolveBridgeVersion(bridgeVersion) === 'b2';
   const b2BridgeUrl = useB2Bridge
-    ? bridgeUrl.replace(/(\/internal\/channel-ingest)$/, '/internal/channel-hub/events')
+    ? bridgeUrl.replace(/(\/internal\/channel-ingest)$/, '/internal/channelHub/events')
     : bridgeUrl;
 
   async function sendViaBridge({

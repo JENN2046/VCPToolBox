@@ -21,7 +21,7 @@ FEISHU_APP_SECRET=your_app_secret
 FEISHU_CALLBACK_URL=http://your-server:6091/webhook
 
 # VCP ChannelHub 配置（优先使用 B2 协议）
-VCP_CHANNEL_HUB_URL=http://127.0.0.1:6010/internal/channel-hub/events
+VCP_CHANNEL_HUB_URL=http://127.0.0.1:6010/internal/channelHub/events
 VCP_CHANNEL_ADAPTER_ID=feishu-main
 VCP_CHANNEL_BRIDGE_KEY=your_adapter_secret
 

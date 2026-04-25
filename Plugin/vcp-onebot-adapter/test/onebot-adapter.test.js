@@ -7,7 +7,7 @@ import assert from 'node:assert';
 
 // 模拟环境变量
 process.env.VCP_ADAPTER_ID = 'onebot-qq-main';
-process.env.VCP_CHANNEL_HUB_URL = 'http://127.0.0.1:6010/internal/channel-hub/events';
+process.env.VCP_CHANNEL_HUB_URL = 'http://127.0.0.1:6010/internal/channelHub/events';
 process.env.VCP_CHANNEL_BRIDGE_KEY = 'test-key';
 process.env.VCP_AGENT_NAME = 'Nova';
 
@@ -19,7 +19,7 @@ describe('VCP ChannelHub Client', () => {
 
   beforeEach(() => {
     vcpClient = createVcpChannelClient({
-      channelHubUrl: 'http://127.0.0.1:6010/internal/channel-hub/events',
+      channelHubUrl: 'http://127.0.0.1:6010/internal/channelHub/events',
       bridgeKey: 'test-key',
       adapterId: 'onebot-qq-main',
       defaultAgentName: 'Nova',

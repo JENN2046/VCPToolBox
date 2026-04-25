@@ -47,7 +47,7 @@ async function main() {
   const agentDisplayName = process.env.VCP_AGENT_DISPLAY_NAME || 'Assistant';
 
   const vcpClient = createVcpClient({
-    channelHubUrl: process.env.VCP_CHANNEL_HUB_URL || 'http://127.0.0.1:6010/internal/channel-hub/events',
+    channelHubUrl: process.env.VCP_CHANNEL_HUB_URL || 'http://127.0.0.1:6010/internal/channelHub/events',
     adapterId: process.env.VCP_CHANNEL_ADAPTER_ID || 'feishu-main',
     adapterKey: process.env.VCP_CHANNEL_BRIDGE_KEY || '',
     useChannelHub: String(process.env.VCP_USE_CHANNEL_HUB || 'true').toLowerCase() !== 'false',

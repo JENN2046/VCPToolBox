@@ -25,7 +25,7 @@ WECOM_CALLBACK_TOKEN=your_callback_token
 WECOM_CALLBACK_ENCODING_AES_KEY=your_encoding_aes_key
 
 # VCP ChannelHub 配置（优先使用 B2 协议）
-VCP_CHANNEL_HUB_URL=http://127.0.0.1:6010/internal/channel-hub/events
+VCP_CHANNEL_HUB_URL=http://127.0.0.1:6010/internal/channelHub/events
 VCP_CHANNEL_ADAPTER_ID=wecom-main
 VCP_CHANNEL_BRIDGE_KEY=your_adapter_secret
 

@@ -65,7 +65,7 @@ async function main() {
   // 创建 VCP 客户端
   const vcpClient = createVcpClient({
     // B2 协议配置
-    channelHubUrl: process.env.VCP_CHANNEL_HUB_URL || 'http://127.0.0.1:6010/internal/channel-hub/events',
+    channelHubUrl: process.env.VCP_CHANNEL_HUB_URL || 'http://127.0.0.1:6010/internal/channelHub/events',
     adapterId: process.env.VCP_CHANNEL_ADAPTER_ID || 'wecom-main',
     adapterKey: process.env.VCP_CHANNEL_BRIDGE_KEY || '',
     useChannelHub: String(process.env.VCP_USE_CHANNEL_HUB || 'true').toLowerCase() !== 'false',

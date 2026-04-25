@@ -30,7 +30,7 @@
             config: {
                 onebotWsUrl: 'ws://127.0.0.1:3001',
                 onebotAccessToken: '',
-                channelHubUrl: 'http://127.0.0.1:6010/internal/channel-hub/events',
+                channelHubUrl: 'http://127.0.0.1:6010/internal/channelHub/events',
                 bridgeKey: '',
                 agentName: 'Nova',
                 agentDisplayName: 'Nova',
@@ -87,7 +87,7 @@
         qq: [
             { key: 'onebotWsUrl', label: 'OneBot WS URL', type: 'text', required: true, example: 'ws://127.0.0.1:3001', help: '从 go-cqhttp / NapCat / LLOneBot 的 WebSocket 配置里获取，填它对外监听的 ws 地址。' },
             { key: 'onebotAccessToken', label: 'OneBot Access Token', type: 'text', example: 'your-onebot-access-token', help: '如果 OneBot 配了 access_token，这里填同一个值；没配就留空。' },
-            { key: 'channelHubUrl', label: 'ChannelHub URL', type: 'text', required: true, example: 'http://127.0.0.1:6010/internal/channel-hub/events', help: '填你这台 VCPToolBox 的正式 B2 入口，QQ 当前建议走 /internal/channel-hub/events。' },
+            { key: 'channelHubUrl', label: 'ChannelHub URL', type: 'text', required: true, example: 'http://127.0.0.1:6010/internal/channelHub/events', help: '填你这台 VCPToolBox 的正式 B2 入口，QQ 当前建议走 /internal/channelHub/events。' },
             { key: 'bridgeKey', label: 'Bridge Key', type: 'text', example: 'your-channel-bridge-key', help: '填 VCPToolBox config.env 里的 VCP_CHANNEL_BRIDGE_KEY；服务端没配可先留空。' },
             { key: 'agentName', label: '默认 Agent 名称', type: 'text', example: 'Nova', help: '填系统里真实存在的 Agent 名称或 ID。' },
             { key: 'agentDisplayName', label: '默认 Agent 显示名', type: 'text', example: 'Nova', help: '仅用于展示，可与默认 Agent 名称相同。' },

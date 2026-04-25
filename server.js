@@ -514,10 +514,18 @@ const app = express();
 app.set('trust proxy', true); // 新增：信任代理，以便正确解析 X-Forwarded-For 头，解决本地IP识别为127.0.0.1的问题
 app.use(cors({ origin: '*' })); // 启用 CORS，允许所有来源的跨域请求，方便本地文件调试
 
+function captureRawBody(req, _res, buf, encoding) {
+    if (!buf || buf.length === 0) {
+        return;
+    }
+
+    req.rawBody = buf.toString(encoding || 'utf8');
+}
+
 // 在路由决策之前解析请求体，以便 req.body 可用
-app.use(express.json({ limit: '300mb' }));
-app.use(express.urlencoded({ limit: '300mb', extended: true }));
-app.use(express.text({ limit: '300mb', type: 'text/plain' })); // 新增：用于处理纯文本请求体
+app.use(express.json({ limit: '300mb', verify: captureRawBody }));
+app.use(express.urlencoded({ limit: '300mb', extended: true, verify: captureRawBody }));
+app.use(express.text({ limit: '300mb', type: 'text/plain', verify: captureRawBody })); // 新增：用于处理纯文本请求体
 
 // 新增：IP追踪中间件
 app.use((req, res, next) => {

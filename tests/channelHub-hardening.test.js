@@ -291,6 +291,14 @@ test('adapter auth middleware records AUTH_OBSERVED_FAIL and allows request', as
   const fakeService = {
     initialized: true,
     metricsCollector: { incrementCounter() {} },
+    adapterRegistry: {
+      async listAdapters(filter = {}) {
+        if (filter.channel === 'dingtalk' && filter.enabled === true) {
+          return [{ adapterId: 'adapter-1', channel: 'dingtalk', status: 'active' }];
+        }
+        return [];
+      }
+    },
     adapterAuthManager: {
       async authenticate() {
         return {
@@ -532,7 +540,7 @@ test('RuntimeGateway forwards agentId placeholder for real VCP agent expansion',
 test('dingtalk vcp client hides duplicate control response text', async () => {
   const { createVcpClient } = await import('../Plugin/vcp-dingtalk-adapter/src/adapters/vcp/client.js');
   const client = createVcpClient({
-    bridgeUrl: 'http://127.0.0.1:6005/internal/channel-hub/events',
+    bridgeUrl: 'http://127.0.0.1:6005/internal/channelHub/events',
     useBridge: true,
     logger: console
   });
@@ -621,7 +629,7 @@ test('dingtalk B2 bridge payload does not recurse into VCP as upstream API overr
   try {
     const { createVcpClient } = await import('../Plugin/vcp-dingtalk-adapter/src/adapters/vcp/client.js');
     const client = createVcpClient({
-      bridgeUrl: 'http://127.0.0.1:6005/internal/channel-hub/events',
+      bridgeUrl: 'http://127.0.0.1:6005/internal/channelHub/events',
       useBridge: true,
       baseUrl: 'http://127.0.0.1:6005',
       apiKey: 'local-vcp-key',
@@ -644,7 +652,7 @@ test('dingtalk B2 bridge payload does not recurse into VCP as upstream API overr
     });
 
     assert.equal(requests.length, 1);
-    assert.equal(requests[0].url, 'http://127.0.0.1:6005/internal/channel-hub/events');
+    assert.equal(requests[0].url, 'http://127.0.0.1:6005/internal/channelHub/events');
     assert.equal(requests[0].body.runtime.overrides.model, 'Nova');
     assert.equal(requests[0].body.runtime.overrides.timeoutMs, 120000);
     assert.equal('apiBase' in requests[0].body.runtime.overrides, false);
@@ -666,7 +674,7 @@ test('dingtalk bridgeVersion option forces B2 payload when env is unset', async 
     }
   });
 
-  assert.equal(request.url, 'http://127.0.0.1:6005/internal/channel-hub/events');
+  assert.equal(request.url, 'http://127.0.0.1:6005/internal/channelHub/events');
   assert.equal(request.body.version, '2.0');
   assert.equal(request.body.client.conversationType, 'group');
   assert.match(request.body.session.bindingKey, /^dingtalk:group:/);
@@ -683,7 +691,7 @@ test('dingtalk B2 bridge payload still works from env fallback', async () => {
     envBridgeVersion: 'b2'
   });
 
-  assert.equal(request.url, 'http://127.0.0.1:6005/internal/channel-hub/events');
+  assert.equal(request.url, 'http://127.0.0.1:6005/internal/channelHub/events');
   assert.equal(request.body.version, '2.0');
   assert.equal(request.body.client.conversationType, 'group');
 });

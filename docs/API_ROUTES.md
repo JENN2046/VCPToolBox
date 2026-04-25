@@ -60,9 +60,9 @@ server.js (主入口)
    └── app.use(cors({ origin: '*' }))
 
 3. 请求体解析器
-   ├── express.json({ limit: '300mb' })
-   ├── express.urlencoded({ limit: '300mb', extended: true })
-   └── express.text({ limit: '300mb', type: 'text/plain' })
+   ├── express.json({ limit: '300mb', verify: captureRawBody })
+   ├── express.urlencoded({ limit: '300mb', extended: true, verify: captureRawBody })
+   └── express.text({ limit: '300mb', type: 'text/plain', verify: captureRawBody })
 
 4. IP 追踪中间件
    └── 记录 POST 请求来源 IP
@@ -92,10 +92,14 @@ app.use(cors({ origin: '*' })); // 允许所有来源
 
 #### 请求体大小限制
 ```javascript
-express.json({ limit: '300mb' });
-express.urlencoded({ limit: '300mb', extended: true });
-express.text({ limit: '300mb', type: 'text/plain' });
+express.json({ limit: '300mb', verify: captureRawBody });
+express.urlencoded({ limit: '300mb', extended: true, verify: captureRawBody });
+express.text({ limit: '300mb', type: 'text/plain', verify: captureRawBody });
 ```
+
+说明：
+- `captureRawBody` 会把原始请求体保存到 `req.rawBody`
+- `ChannelHub` 的签名校验依赖 `req.rawBody`，不能只依赖 `JSON.stringify(req.body)` 的重组结果
 
 #### IP 黑名单
 ```javascript
@@ -311,6 +315,69 @@ param1:「始」value1「末」
 
 ---
 
+### 3.7 ChannelHub 内部回调
+
+#### `POST /internal/channelHub/events`
+
+ChannelHub 的 B2 标准事件入口。
+
+请求要求：
+- 推荐显式提供 `x-channel-adapter-id`
+- 如果请求未显式提供 adapterId，服务会尝试按 `channel` 自动解析唯一启用中的 adapter
+- 如果同一 `channel` 下存在多个启用 adapter，且未提供 `x-channel-adapter-id`，会返回 `ADAPTER_RESOLUTION_FAILED`
+
+请求头：
+```
+x-channel-adapter-id: <adapterId>
+x-channel-bridge-key: <adapter secret>
+Content-Type: application/json
+```
+
+错误响应示例：
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "ADAPTER_RESOLUTION_FAILED",
+    "message": "Multiple active adapters found for channel \"dingtalk\". Please provide x-channel-adapter-id explicitly.",
+    "channel": "dingtalk"
+  }
+}
+```
+
+#### `POST /internal/channelHub/webhook/:channel`
+
+统一 webhook 入口，供平台回调或桥接层复用。
+
+行为说明：
+- 支持按 `:channel` 自动推断 adapter
+- 若只匹配到一个启用 adapter，可直接进入主处理链
+- 若匹配不到 adapter，或同 channel 存在多个启用 adapter 且未显式指定，会返回 `ADAPTER_RESOLUTION_FAILED`
+
+#### `POST /internal/channelHub/dingtalk/callback`
+#### `POST /internal/channelHub/wecom/callback`
+#### `POST /internal/channelHub/feishu/callback`
+#### `POST /internal/channelHub/qq/callback`
+#### `POST /internal/channelHub/wechat/callback`
+
+平台专用回调入口。
+
+注意事项：
+- 这些入口会做 adapter 解析与签名校验
+- 签名校验使用原始请求体 `req.rawBody`
+- adapter 无法唯一解析时不会再静默放过，而是直接返回 400
+
+#### `POST /internal/channelHub/b1/ingest`
+#### `POST /internal/channelHub/channel-ingest`
+
+B1 兼容入口，仍可用，但已冻结。
+
+迁移说明：
+- 推荐迁移到 `/internal/channelHub/events`
+- 响应头 `X-ChannelHub-B1-Recommended-Endpoint` 现在返回真实路径 `/internal/channelHub/events`
+
+---
+
 ## 4. 认证机制
 
 ### 4.1 Bearer Token 认证
@@ -341,6 +408,10 @@ Authorization: Bearer YOUR_KEY_SUCH_AS_aBcDeFgHiJkLmNoP
 - `/pw=*/images/*` - URL 密钥认证
 - `/pw=*/files/*` - URL 密钥认证
 - `/plugin-callback/*` - 无认证（内部回调）
+
+补充：
+- `ChannelHub` 内部入口不走这里的 Bearer Token，而是走 adapter 级认证
+- `ChannelHub` 在 B2/B专用 webhook 模式下建议同时提供 `x-channel-adapter-id` 与 adapter secret
 
 ---
 
