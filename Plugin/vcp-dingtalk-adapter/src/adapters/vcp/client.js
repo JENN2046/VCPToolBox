@@ -232,7 +232,6 @@ function walkNode(node, container, hintKey = '') {
 export function createVcpClient({
   bridgeUrl = '',
   bridgeKey = '',
-  bridgeAuthToken = '',
   useBridge = true,
   bridgeVersion, // 'b1' | 'b2'
 
@@ -246,13 +245,6 @@ export function createVcpClient({
   logger = console,
 }) {
   const endpoint = joinUrl(baseUrl, chatPath);
-  const resolvedBridgeAuthToken = String(
-    bridgeAuthToken ||
-      process.env.VCP_CHANNEL_BRIDGE_BEARER ||
-      process.env.VCP_SERVER_KEY ||
-      apiKey ||
-      ''
-  ).trim();
   // 默认使用 B2 协议
   const bridgeVersionEnv = process.env.VCP_CHANNEL_HUB_VERSION;
   const isB2 = bridgeVersionEnv
@@ -392,10 +384,6 @@ export function createVcpClient({
         'Content-Type': 'application/json',
       };
 
-      if (resolvedBridgeAuthToken) {
-        headers.Authorization = `Bearer ${resolvedBridgeAuthToken}`;
-      }
-
       if (bridgeKey) {
         headers['x-channel-bridge-key'] = bridgeKey;
       }
@@ -525,10 +513,6 @@ export function createVcpClient({
         'Content-Type': 'application/json',
         'x-channel-adapter-id': adapterId,
       };
-
-      if (resolvedBridgeAuthToken) {
-        headers.Authorization = `Bearer ${resolvedBridgeAuthToken}`;
-      }
 
       if (bridgeKey) {
         headers['x-channel-bridge-key'] = bridgeKey;

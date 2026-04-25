@@ -1,0 +1,58 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "DingTalkTable",
+  "version": "1.0.0",
+  "displayName": "钉钉 AI 表格写入器",
+  "description": "将日报/周报数据写入钉钉 AI 表格，支持通过 MCP 协议调用钉钉表格 API",
+  "author": "VCP Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node DingTalkTable.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "configSchema": {
+    "DINGTALK_TABLE_UUID": {
+      "type": "string",
+      "description": "钉钉 AI 表格 UUID"
+    },
+    "DINGTALK_MCP_URL": {
+      "type": "string",
+      "description": "钉钉 MCP 服务器 URL"
+    },
+    "DINGTALK_MCP_KEY": {
+      "type": "string",
+      "description": "钉钉 MCP 服务器 API 密钥"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "write_daily_report",
+        "description": "写入日报到钉钉 AI 表格\n\n**功能**: 将 AI 生成的日报内容写入指定的钉钉 AI 表格\n\n**参数**:\n- **table_uuid** (字符串，可选): 表格 UUID，不传则使用默认配置\n- **report_date** (字符串，可选): 日报日期，格式 YYYY-MM-DD\n- **content** (字符串，必需): 日报内容\n- **maid** (字符串，可选): AI 助手名称\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」write_daily_report「末」,\ncontent:「始」日报内容「末」,\nreport_date:「始」2026-03-30「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 写入结果，包含成功/失败状态和记录 ID",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」write_daily_report「末」,\ncontent:「始」今日完成：1.项目评审 2.功能开发「末」,\nreport_date:「始」2026-03-30「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "write_weekly_report",
+        "description": "写入周报到钉钉 AI 表格\n\n**功能**: 将 AI 生成的周报内容写入指定的钉钉 AI 表格\n\n**参数**:\n- **table_uuid** (字符串，可选): 表格 UUID，不传则使用默认配置\n- **week_start** (字符串，可选): 周开始日期，格式 YYYY-MM-DD\n- **content** (字符串，必需): 周报内容\n- **summary** (字符串，可选): 周报摘要\n- **maid** (字符串，可选): AI 助手名称\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」write_weekly_report「末」,\ncontent:「始」周报详细内容「末」,\nsummary:「始」本周工作总结「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 写入结果，包含成功/失败状态和记录 ID",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」write_weekly_report「末」,\ncontent:「始」本周完成：项目 A 上线，项目 B 开发中...「末」,\nsummary:「始」第 13 周工作总结「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "list_tables",
+        "description": "列出可用的钉钉 AI 表格\n\n**功能**: 获取当前 MCP 服务器中可用的所有表格列表\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」list_tables「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 包含所有可用表格的信息，包括 UUID、名称、子表等",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」list_tables「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "call_mcp_tool",
+        "description": "直接调用底层 MCP 工具\n\n**功能**: 通过 MCP 协议直接调用钉钉 AI 表格的底层工具\n\n**参数**:\n- **tool_name** (字符串，必需): MCP 工具名称\n- **arguments** (JSON 对象，可选): 工具参数\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」call_mcp_tool「末」,\ntool_name:「始」add_record「末」,\narguments:「始」{\"table_uuid\": \"xxx\", \"data\": {}}「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: MCP 工具执行结果",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」DingTalkTable「末」,\naction:「始」call_mcp_tool「末」,\ntool_name:「始」add_record「末」,\narguments:「始」{\"table_uuid\": \"123456\", \"data\": {\"field1\": \"value1\"}}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  },
+  "webSocketPush": {
+    "enabled": false
+  }
+}

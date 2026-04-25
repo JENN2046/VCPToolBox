@@ -1,459 +1,343 @@
 #!/usr/bin/env node
-'use strict';
+/**
+ * WeeklyReportGenerator - 周报生成器插件
+ *
+ * 功能:
+ * 1. 从工作记录生成周报
+ * 2. 从日记系统生成周报
+ * 3. 导出周报到钉钉 AI 表格
+ * 4. 支持多种格式输出 (Markdown/Text/JSON)
+ */
 
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
+// ============ 配置 ============
+
 const CONFIG = {
   VCP_API_URL: process.env.VCP_API_URL || 'http://127.0.0.1:6005',
   VCP_API_KEY: process.env.VCP_API_KEY || 'vcp-secret',
   DEFAULT_MODEL: process.env.DEFAULT_MODEL || 'Nova',
-  WORKLOG_DIR: path.join(__dirname, '..', '..', 'state', 'worklog')
+  WORKLOG_DIR: path.join(__dirname, '..', '..', 'state', 'worklog'),
+  DINGTALK_TABLE_UUID: process.env.DINGTALK_TABLE_UUID || '',
+  DINGTALK_MCP_URL: process.env.DINGTALK_MCP_URL || 'http://127.0.0.1:9000',
+  DINGTALK_MCP_KEY: process.env.DINGTALK_MCP_KEY || 'vcp-mcpo-secret',
 };
+
+// ============ 日志记录 ============
 
 const Logger = {
-  info(message, data = {}) {
-    console.error(`[INFO] ${new Date().toISOString()} ${message}`, JSON.stringify(data));
+  info: (msg, data = {}) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[INFO] ${timestamp} ${msg}`, JSON.stringify(data));
   },
-  warn(message, data = {}) {
-    console.error(`[WARN] ${new Date().toISOString()} ${message}`, JSON.stringify(data));
+  warn: (msg, data = {}) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[WARN] ${timestamp} ${msg}`, JSON.stringify(data));
   },
-  error(message, data = {}) {
-    console.error(`[ERROR] ${new Date().toISOString()} ${message}`, JSON.stringify(data));
-  }
+  error: (msg, data = {}) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[ERROR] ${timestamp} ${msg}`, JSON.stringify(data));
+  },
 };
 
-const GRAY_STAGE = {
-  QUERY_ONLY: 'query_only',
-  LOW_RISK_WRITE: 'low_risk_write',
-  FULL_WRITE: 'full_write'
-};
+// ============ 数据读取 ============
 
-function normalizeGrayStage(value) {
-  const raw = String(value || '')
-    .trim()
-    .toLowerCase();
-
-  if (!raw) {
-    return GRAY_STAGE.FULL_WRITE;
-  }
-
-  const aliases = {
-    query: GRAY_STAGE.QUERY_ONLY,
-    query_only: GRAY_STAGE.QUERY_ONLY,
-    phase1: GRAY_STAGE.QUERY_ONLY,
-    p1: GRAY_STAGE.QUERY_ONLY,
-    low_risk: GRAY_STAGE.LOW_RISK_WRITE,
-    low_risk_write: GRAY_STAGE.LOW_RISK_WRITE,
-    phase2: GRAY_STAGE.LOW_RISK_WRITE,
-    p2: GRAY_STAGE.LOW_RISK_WRITE,
-    full: GRAY_STAGE.FULL_WRITE,
-    full_write: GRAY_STAGE.FULL_WRITE,
-    phase3: GRAY_STAGE.FULL_WRITE,
-    p3: GRAY_STAGE.FULL_WRITE
-  };
-
-  return aliases[raw] || GRAY_STAGE.FULL_WRITE;
-}
-
-function canWriteAITableByGrayStage(stage) {
-  return stage === GRAY_STAGE.FULL_WRITE;
-}
-
-function toDateText(date) {
-  return date.toISOString().split('T')[0];
-}
-
-function getMonday(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getFriday(date) {
-  const monday = getMonday(date);
-  monday.setDate(monday.getDate() + 4);
-  monday.setHours(23, 59, 59, 999);
-  return monday;
-}
-
+/**
+ * 获取指定日期范围的工作记录
+ */
 async function getWorkLogsByDateRange(weekStart, weekEnd) {
   const logs = [];
   const start = new Date(weekStart);
   const end = new Date(weekEnd);
 
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return logs;
-  }
-
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = toDateText(d);
+    const dateStr = d.toISOString().split('T')[0];
     const logFile = path.join(CONFIG.WORKLOG_DIR, `${dateStr}.json`);
 
-    if (!fs.existsSync(logFile)) {
-      continue;
-    }
-
-    try {
-      const data = fs.readFileSync(logFile, 'utf8');
-      const dayLogs = JSON.parse(data);
-      if (Array.isArray(dayLogs) && dayLogs.length > 0) {
-        logs.push({ date: dateStr, logs: dayLogs });
+    if (fs.existsSync(logFile)) {
+      try {
+        const data = fs.readFileSync(logFile, 'utf-8');
+        const dayLogs = JSON.parse(data);
+        if (Array.isArray(dayLogs) && dayLogs.length > 0) {
+          logs.push({
+            date: dateStr,
+            logs: dayLogs
+          });
+        }
+      } catch (error) {
+        Logger.warn('读取工作日志失败', { file: logFile, error: error.message });
       }
-    } catch (error) {
-      Logger.warn('读取工作日志失败', { file: logFile, error: error.message });
     }
   }
 
   return logs;
 }
 
+/**
+ * 获取本周工作记录
+ */
 function getThisWeekLogs() {
   const now = new Date();
-  return getWorkLogsByDateRange(toDateText(getMonday(now)), toDateText(getFriday(now)));
+  const dayOfWeek = now.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  monday.setHours(0, 0, 0, 0);
+
+  const weekStart = monday.toISOString().split('T')[0];
+  const weekEnd = new Date(monday);
+  weekEnd.setDate(monday.getDate() + 4); // 周五
+  weekEnd.setHours(23, 59, 59, 999);
+  const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+  return getWorkLogsByDateRange(weekStart, weekEndStr);
 }
 
-function stringifyLogItem(item) {
-  if (typeof item === 'string') {
-    return item;
-  }
-  if (item && typeof item === 'object') {
-    if (item.content) {
-      return String(item.content);
-    }
-    return JSON.stringify(item, null, 2);
-  }
-  return String(item || '');
+/**
+ * 获取上周工作记录
+ */
+function getLastWeekLogs() {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset - 7); // 上周一
+  monday.setHours(0, 0, 0, 0);
+
+  const weekStart = monday.toISOString().split('T')[0];
+  const weekEnd = new Date(monday);
+  weekEnd.setDate(monday.getDate() + 4); // 上周五
+  weekEnd.setHours(23, 59, 59, 999);
+  const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+  return getWorkLogsByDateRange(weekStart, weekEndStr);
 }
 
-function buildPrompt(logs, format) {
-  const logSummary = logs
-    .map((day) => {
-      const items = (day.logs || []).map((entry) => `- ${stringifyLogItem(entry)}`).join('\n');
-      return `${day.date}\n${items}`;
-    })
-    .join('\n\n');
+// ============ AI 调用 ============
 
-  const formatHint =
-    format === 'json'
-      ? '请输出标准 JSON 字符串。'
-      : format === 'text'
-      ? '请输出纯文本。'
-      : '请输出 Markdown。';
-
-  return [
-    '请根据以下本周工作记录生成结构化周报：',
-    '',
-    logSummary,
-    '',
-    '请包含以下部分：',
-    '1. 本周工作摘要',
-    '2. 完成情况（分项目/分主题）',
-    '3. 关键数据与结果',
-    '4. 风险与问题',
-    '5. 下周计划',
-    '',
-    formatHint,
-    '语气要求：专业、简洁、可执行。'
-  ].join('\n');
-}
-
+/**
+ * 调用 VCP AI 生成周报
+ */
 async function generateReportWithAI(logs, format = 'markdown') {
-  const totalLogs = logs.reduce((sum, day) => sum + ((day.logs && day.logs.length) || 0), 0);
+  const totalLogs = logs.reduce((sum, day) => sum + (day.logs?.length || 0), 0);
+
   if (totalLogs === 0) {
     return {
       status: 'error',
-      error: '本周没有可用工作记录，无法生成周报'
+      error: '本周没有工作记录，无法生成周报'
     };
   }
 
-  const prompt = buildPrompt(logs, format);
-  const url = new URL(CONFIG.VCP_API_URL);
-  const apiPath = '/v1/chat/completions';
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // 构建日志摘要
+  const logSummary = logs.map(day => {
+    const logContents = day.logs.map(log => `  - ${log.content}`).join('\n');
+    return `${day.date}:\n${logContents}`;
+  }).join('\n\n');
 
-  const body = JSON.stringify({
-    model: CONFIG.DEFAULT_MODEL,
-    messages: [
-      {
-        role: 'system',
-        content: '你是专业周报助手，擅长将工作记录整理为结构化周报。'
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ],
-    agentName: CONFIG.DEFAULT_MODEL
-  });
+  // 构建 AI 提示词
+  const prompt = `请根据以下本周工作记录生成一份结构化周报：
 
+${logSummary}
+
+请生成一份专业的周报，包含以下部分：
+1. **本周工作摘要** - 一句话总结本周重点
+2. **完成情况** - 按类别或项目整列完成的工作
+3. **关键数据** - 如有数据支撑请列出
+4. **经验教训** - 本周学到的经验或遇到的问题
+5. **下周计划** - 基于本周进度的下周计划
+
+格式要求：${format === 'json' ? 'JSON 格式' : format === 'text' ? '纯文本格式' : 'Markdown 格式'}
+语气：专业、简洁、有数据支撑`;
+
+  // 调用 VCP API
   return new Promise((resolve, reject) => {
-    const req = http.request(
-      `${baseUrl}${apiPath}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${CONFIG.VCP_API_KEY}`,
-          'Content-Length': Buffer.byteLength(body)
-        }
+    const url = new URL(CONFIG.VCP_API_URL);
+    const apiPath = '/v1/chat/completions';
+    const baseUrl = `${url.protocol}//${url.host}`;
+
+    const body = JSON.stringify({
+      model: CONFIG.DEFAULT_MODEL,
+      messages: [
+        { role: 'system', content: '你是一个专业的周报生成助手，擅长将工作记录整理成结构化、专业的周报。' },
+        { role: 'user', content: prompt }
+      ],
+      agentName: CONFIG.DEFAULT_MODEL,
+    });
+
+    const req = http.request(`${baseUrl}${apiPath}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CONFIG.VCP_API_KEY}`,
+        'Content-Length': Buffer.byteLength(body),
       },
-      (res) => {
-        let responseData = '';
-        res.on('data', (chunk) => {
-          responseData += chunk;
-        });
-        res.on('end', () => {
-          const fallbackText = responseData || '生成失败';
-          try {
-            const parsed = JSON.parse(responseData);
-            const content = parsed.choices && parsed.choices[0] && parsed.choices[0].message
-              ? parsed.choices[0].message.content
-              : parsed.raw || fallbackText;
-
-            if (res.statusCode >= 400) {
-              return resolve({
-                status: 'error',
-                error: `调用 VCP API 失败: HTTP ${res.statusCode}`,
-                details: parsed
-              });
+    }, (res) => {
+      let responseData = '';
+      res.on('data', chunk => responseData += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(responseData);
+          const content = result.choices?.[0]?.message?.content || result.raw || '生成失败';
+          resolve({
+            status: 'success',
+            result: {
+              report: content,
+              format: format,
+              logCount: totalLogs,
+              dayCount: logs.length
             }
-
-            return resolve({
-              status: 'success',
-              result: {
-                report: content,
-                format,
-                logCount: totalLogs,
-                dayCount: logs.length
-              }
-            });
-          } catch (_error) {
-            if (res.statusCode >= 400) {
-              return resolve({
-                status: 'error',
-                error: `调用 VCP API 失败: HTTP ${res.statusCode}`,
-                details: fallbackText
-              });
+          });
+        } catch (e) {
+          resolve({
+            status: 'success',
+            result: {
+              report: responseData,
+              format: format,
+              logCount: totalLogs,
+              dayCount: logs.length
             }
+          });
+        }
+      });
+    });
 
-            return resolve({
-              status: 'success',
-              result: {
-                report: fallbackText,
-                format,
-                logCount: totalLogs,
-                dayCount: logs.length
-              }
-            });
-          }
-        });
-      }
-    );
-
-    req.on('error', reject);
+    req.on('error', (error) => {
+      reject(error);
+    });
     req.write(body);
     req.end();
   });
 }
 
+// ============ 导出功能 ============
+
+/**
+ * 导出周报到钉钉 AI 表格
+ */
 async function exportToTable(content, summary = '', tableUuid = '') {
-  const grayStage = normalizeGrayStage(process.env.DWS_GRAY_STAGE);
-  if (!canWriteAITableByGrayStage(grayStage)) {
-    return {
-      status: 'error',
-      error: `weekly report export blocked by gray stage policy: ${grayStage}`,
-      hint: 'phase-1/phase-2 only allow query or low-risk writes; aitable writes are enabled in full_write only'
-    };
-  }
+  // 这里调用 DingTalkTable 插件
+  // 由于是插件间调用，我们通过 VCP 内部 API 进行
+  const targetTable = tableUuid || CONFIG.DINGTALK_TABLE_UUID;
 
-  const targetTable = tableUuid || process.env.DINGTALK_TABLE_UUID || '';
-  const baseId = process.env.DINGTALK_BASE_ID || '';
-  const tableId = process.env.DINGTALK_TABLE_ID || '';
-  if (!targetTable) {
-    if (!baseId || !tableId) {
-      return {
-        status: 'error',
-        error: 'set DINGTALK_BASE_ID + DINGTALK_TABLE_ID (preferred) or DINGTALK_TABLE_UUID (legacy fallback)'
-      };
+  // 构建 MCP 调用
+  const mcpBody = JSON.stringify({
+    tool_name: 'add_record',
+    table_uuid: targetTable,
+    data: {
+      '周报内容': content,
+      '摘要': summary,
+      '记录类型': '周报',
+      '生成时间': new Date().toISOString()
     }
-  }
+  });
 
-  const pluginManager = require('../../Plugin.js');
-  const payload = {
-    '周报内容': content,
-    摘要: summary,
-    '记录类型': '周报',
-    '生成时间': new Date().toISOString()
-  };
-
-  try {
-    Logger.info('Calling DingTalkCLI execute_tool', { tableUuid: targetTable });
-    const writeTool = process.env.DINGTALK_WEEKLY_TABLE_WRITE_TOOL || 'record create';
-    const useRecordCreate = baseId && tableId && writeTool === 'record create';
-    const cliArgs = useRecordCreate
-      ? {
-          base_id: baseId,
-          table_id: tableId,
-          records: [
-            {
-              cells: payload
+  return new Promise((resolve, reject) => {
+    const req = http.request(`${CONFIG.DINGTALK_MCP_URL}/tools/add_record/invoke`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CONFIG.DINGTALK_MCP_KEY}`,
+        'Content-Length': Buffer.byteLength(mcpBody),
+      },
+    }, (res) => {
+      let responseData = '';
+      res.on('data', chunk => responseData += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(responseData);
+          resolve({
+            status: 'success',
+            result: {
+              message: '周报已导出到钉钉 AI 表格',
+              recordId: result.id,
+              tableUuid: targetTable
             }
-          ]
+          });
+        } catch (e) {
+          resolve({
+            status: 'success',
+            result: {
+              message: '周报导出成功（未获取到记录 ID）',
+              raw: responseData
+            }
+          });
         }
-      : {
-          table_uuid: targetTable,
-          data: payload,
-          fields: payload
-        };
+      });
+    });
 
-    const primary = await pluginManager.executePlugin(
-      'DingTalkCLI',
-      JSON.stringify({
-        action: 'execute_tool',
-        product: 'aitable',
-        tool: writeTool,
-        args: cliArgs,
-        apply: true,
-        dry_run: false,
-        yes: true,
-        format: 'json'
-      }),
-      null,
-      null
-    );
-
-    if (primary && primary.status === 'success') {
-      return {
-        status: 'success',
-        result: {
-          message: 'weekly report exported via DingTalkCLI',
-          provider: 'DingTalkCLI',
-          tableUuid: targetTable,
-          raw: primary.result
-        }
-      };
-    }
-
-    const primaryError = primary && primary.error ? primary.error : null;
-    if (primaryError && primaryError.category === 'security') {
-      return {
+    req.on('error', (error) => {
+      resolve({
         status: 'error',
-        error: primaryError.reason || 'weekly report export blocked by security policy',
-        hint: primaryError.hint || 'adjust gray stage policy before enabling write'
-      };
-    }
-
-    Logger.warn('DingTalkCLI export failed, fallback to DingTalkTable', { error: primaryError || 'unknown_error' });
-  } catch (error) {
-    Logger.warn('DingTalkCLI export threw error, fallback to DingTalkTable', { error: error.message });
-  }
-
-  try {
-    if (!targetTable) {
-      return {
-        status: 'error',
-        error: 'DingTalkCLI write failed and legacy fallback requires DINGTALK_TABLE_UUID'
-      };
-    }
-
-    const fallback = await pluginManager.executePlugin(
-      'DingTalkTable',
-      JSON.stringify({
-        action: 'add_record',
-        table_uuid: targetTable,
-        data: payload,
-        apply: true,
-        dry_run: false,
-        yes: true
-      }),
-      null,
-      null
-    );
-
-    if (fallback && fallback.status === 'success') {
-      return {
-        status: 'success',
-        result: {
-          message: 'weekly report exported via DingTalkTable fallback',
-          provider: 'DingTalkTable',
-          tableUuid: targetTable,
-          raw: fallback.result
-        }
-      };
-    }
-
-    return {
-      status: 'error',
-      error: (fallback && fallback.error) || 'failed to export by DingTalkCLI and DingTalkTable'
-    };
-  } catch (error) {
-    Logger.error('Fallback export failed', { error: error.message });
-    return {
-      status: 'error',
-      error: `export failed: ${error.message}`
-    };
-  }
+        error: `导出失败：${error.message}`
+      });
+    });
+    req.write(mcpBody);
+    req.end();
+  });
 }
+
+// ============ 主处理逻辑 ============
 
 async function handleRequest(request) {
-  const {
-    action,
-    week_start,
-    week_end,
-    weekStart,
-    weekEnd,
-    format = 'markdown',
-    content,
-    summary,
-    table_uuid
-  } = request;
+  const { action, week_start, week_end, weekStart, weekEnd, format = 'markdown', content, summary, table_uuid } = request;
 
   switch (action) {
-    case 'generate_from_logs': {
-      const start = week_start || weekStart || toDateText(getMonday(new Date()));
-      const end = week_end || weekEnd || toDateText(getFriday(new Date()));
+    case 'generate_from_logs':
+      // 从工作记录生成周报
+      const start = week_start || weekStart || getMonday(new Date()).toISOString().split('T')[0];
+      const end = week_end || weekEnd || getFriday(new Date()).toISOString().split('T')[0];
       const logs = await getWorkLogsByDateRange(start, end);
-      return generateReportWithAI(logs, format);
-    }
+      return await generateReportWithAI(logs, format);
 
-    case 'generate_from_diary': {
-      const logs = await getThisWeekLogs();
-      return generateReportWithAI(logs, format);
-    }
+    case 'generate_from_diary':
+      // 从日记系统生成周报（待实现日记系统对接）
+      const diaryLogs = getThisWeekLogs();
+      return await generateReportWithAI(diaryLogs, format);
 
-    case 'export_to_table': {
+    case 'export_to_table':
       if (!content) {
-        return { status: 'error', error: '缺少必需参数: content（周报内容）' };
+        return { status: 'error', error: '缺少必需参数：content（周报内容）' };
       }
-      return exportToTable(content, summary || '', table_uuid || '');
-    }
+      return await exportToTable(content, summary || '', table_uuid || '');
 
     default:
-      return { status: 'error', error: `未知操作: ${action}` };
+      return { status: 'error', error: `未知操作：${action}` };
   }
 }
+
+// 辅助函数：获取周一
+function getMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.setDate(diff));
+}
+
+// 辅助函数：获取周五
+function getFriday(date) {
+  const d = getMonday(date);
+  d.setDate(d.getDate() + 4);
+  return d;
+}
+
+// ============ 主函数 ============
 
 async function main() {
   let inputData = '';
 
-  process.stdin.on('data', (chunk) => {
+  process.stdin.on('data', chunk => {
     inputData += chunk;
   });
 
   process.stdin.on('end', async () => {
     try {
       if (!inputData.trim()) {
-        console.log(
-          JSON.stringify({
-            status: 'error',
-            error: '无输入数据'
-          })
-        );
+        console.log(JSON.stringify({
+          status: 'error',
+          error: '无输入数据'
+        }));
         process.exit(0);
       }
 
@@ -462,19 +346,19 @@ async function main() {
 
       const response = await handleRequest(request);
       console.log(JSON.stringify(response));
-    } catch (error) {
-      Logger.error('处理请求失败', { error: error.message });
-      console.log(
-        JSON.stringify({
-          status: 'error',
-          error: `处理请求失败: ${error.message}`
-        })
-      );
+    } catch (e) {
+      Logger.error('处理请求失败', { error: e.message });
+      console.log(JSON.stringify({
+        status: 'error',
+        error: `处理请求失败：${e.message}`
+      }));
     }
 
     process.exit(0);
   });
 }
 
-Logger.info('WeeklyReportGenerator plugin starting...');
+// 启动时输出信息
+Logger.info('WeeklyReportGenerator 插件启动中...');
+
 main();
