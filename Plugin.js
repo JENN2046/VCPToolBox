@@ -1517,7 +1517,8 @@ class PluginManager extends EventEmitter {
     startPluginWatcher() {
         if (this.debugMode) console.log('[PluginManager] Starting plugin file watcher...');
 
-        const watcher = chokidar.watch(PLUGIN_DIR, {
+        const watchRoots = [LEGACY_PLUGIN_DIR, MODERN_PLUGIN_DIR];
+        const watcher = chokidar.watch(watchRoots, {
             ignored: [
                 '**/node_modules/**',
                 '**/.git/**',
@@ -1536,7 +1537,10 @@ class PluginManager extends EventEmitter {
 
         const filterManifest = (filePath) => {
             const fileName = path.basename(filePath);
-            return fileName === 'plugin-manifest.json' || fileName === 'plugin-manifest.json.block';
+            return fileName === LEGACY_MANIFEST_FILE_NAME
+                || fileName === `${LEGACY_MANIFEST_FILE_NAME}.block`
+                || fileName === MODERN_MANIFEST_FILE_NAME
+                || fileName === path.basename(MODERN_PLUGIN_REGISTRY_FILE);
         };
 
         watcher
@@ -1550,7 +1554,7 @@ class PluginManager extends EventEmitter {
                 if (filterManifest(filePath)) this.handlePluginManifestChange('unlink', filePath);
             });
 
-        console.log(`[PluginManager] Chokidar is now watching ${PLUGIN_DIR} for manifest changes.`);
+        console.log(`[PluginManager] Chokidar is now watching ${watchRoots.join(', ')} for plugin contract changes.`);
     }
 
     handlePluginManifestChange(eventType, filePath) {

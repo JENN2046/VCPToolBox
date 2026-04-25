@@ -249,16 +249,16 @@ function destroyIdleSockets() {
     console.log(`[Server] Destroyed ${destroyedCount} idle socket(s).`);
 }
 
-async function closeHttpServerGracefully() {
+function closeHttpServerGracefully() {
     if (!server || typeof server.close !== 'function') {
-        return;
+        return Promise.resolve();
     }
 
     console.log(`[Server] Preparing to close HTTP server. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
 
     destroyIdleSockets();
 
-    await new Promise((resolve) => {
+    return new Promise((resolve) => {
         try {
             server.close((error) => {
                 if (error) {
@@ -1698,8 +1698,8 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
             }
 
             console.log(`[Server][ShutdownTrace] Phase 2/10 - closing HTTP server listener`);
-            await closeHttpServerGracefully();
-            console.log(`[Server][ShutdownTrace] Phase 2/10 - HTTP server listener closed. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
+            const httpServerClosePromise = closeHttpServerGracefully();
+            console.log(`[Server][ShutdownTrace] Phase 2/10 - HTTP server listener drain initiated. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
 
             console.log(`[Server][ShutdownTrace] Phase 3/10 - waiting active requests to drain (initial=${activeRequests.size})`);
             const drainedNaturally = await waitForActiveRequestsToDrain(30000);
@@ -1714,6 +1714,10 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
             } else {
                 console.log(`[Server][ShutdownTrace] Phase 4/10 - abort skipped, no remaining active requests`);
             }
+
+            console.log(`[Server][ShutdownTrace] Phase 4/10 - awaiting HTTP server close completion`);
+            await httpServerClosePromise;
+            console.log(`[Server][ShutdownTrace] Phase 4/10 - HTTP server listener closed. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
 
             serverLifecycleState = SERVER_LIFECYCLE.SHUTTING_DOWN;
             console.log(`[Server][ShutdownTrace] Phase 5/10 - lifecycle switched to SHUTTING_DOWN`);
