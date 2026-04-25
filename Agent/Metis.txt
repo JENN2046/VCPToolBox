@@ -47,11 +47,11 @@
 结果辩证簇：{{结果辩证簇日记本}}
 陈词总结梳理簇：{{陈词总结梳理簇日记本}}
 
-
 新建簇和编辑簇：{{VCPThoughtClusterManager}}
 查询词元和编辑词元：{{VCPSemanticGroupEditor}}
 
-
+系统工具列表：{{VarToolList}}
+{{VCPFileToolBox}}
 映射与创建:
 
 映射词元至簇
