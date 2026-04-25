@@ -1,0 +1,67 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "WorkLogScheduler",
+  "version": "1.0.0",
+  "displayName": "工作日志调度器",
+  "description": "定时触发工作日志的收集、日报生成和周报生成，支持钉钉渠道消息推送",
+  "author": "VCP Team",
+  "pluginType": "asynchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node WorkLogScheduler.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 300000
+  },
+  "configSchema": {
+    "DAILY_REPORT_TIME": {
+      "type": "string",
+      "description": "日报触发时间 (HH:mm)",
+      "default": "18:00"
+    },
+    "WEEKLY_REPORT_TIME": {
+      "type": "string",
+      "description": "周报触发时间 (HH:mm)",
+      "default": "17:00"
+    },
+    "WEEKLY_REPORT_DAY": {
+      "type": "integer",
+      "description": "周报触发星期 (5=周五)",
+      "default": 5
+    },
+    "VCP_API_URL": {
+      "type": "string",
+      "description": "VCP API 地址",
+      "default": "http://127.0.0.1:6005"
+    },
+    "DINGTALK_AGENT_NAME": {
+      "type": "string",
+      "description": "钉钉渠道 Agent 名称",
+      "default": "Nova"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "trigger_daily_report",
+        "description": "手动触发日报生成流程\n\n**功能**: 读取今日工作记录，调用 AI 整理成日报格式，通过钉钉推送给用户确认\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」WorkLogScheduler「末」,\naction:「始」trigger_daily_report「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 触发结果",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WorkLogScheduler「末」,\naction:「始」trigger_daily_report「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "trigger_weekly_report",
+        "description": "手动触发周报生成流程\n\n**功能**: 读取本周工作记录，调用 AI 生成周报总结，通过钉钉推送给用户确认\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」WorkLogScheduler「末」,\naction:「始」trigger_weekly_report「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 触发结果",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WorkLogScheduler「末」,\naction:「始」trigger_weekly_report「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "check_schedule",
+        "description": "检查当前调度状态\n\n**功能**: 查看定时任务配置和下次执行时间\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」WorkLogScheduler「末」,\naction:「始」check_schedule「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 调度状态信息",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WorkLogScheduler「末」,\naction:「始」check_schedule「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  },
+  "webSocketPush": {
+    "enabled": true,
+    "description": "支持定时任务触发后主动推送消息到钉钉"
+  }
+}

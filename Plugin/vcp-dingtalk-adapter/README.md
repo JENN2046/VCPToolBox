@@ -1,6 +1,4 @@
-﻿# VCP × 钉钉 Adapter
-
-[Docs Index](./docs/00-index.md)
+# VCP × 钉钉 Adapter
 
 一个用于连接 **钉钉企业内部应用机器人（Stream 模式）** 与 **VCPChat / VCP 后端运行时** 的轻量桥接服务。
 
@@ -236,7 +234,6 @@ DING_STREAM_SDK_PACKAGE=dingtalk-stream
 VCP_USE_CHANNEL_BRIDGE=true
 VCP_CHANNEL_BRIDGE_URL=http://127.0.0.1:6010/internal/channel-ingest
 VCP_CHANNEL_BRIDGE_KEY=
-VCP_CHANNEL_BRIDGE_BEARER=your_vcp_server_key
 
 # 真实 agentId（重要：这里应填 VCPChat 内部真实 agentId，而不是显示名）
 VCP_AGENT_NAME=_Agent_1773759150841_1773759150841

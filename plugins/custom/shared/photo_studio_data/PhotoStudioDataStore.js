@@ -457,7 +457,10 @@ class PhotoStudioDataStore {
 
   upsertExternalExport(exportData) {
     const externalExports = this._reload(DATA_FILES.externalExports);
-    const existing = Object.values(externalExports).find((exportRecord) =>
+    const existingById = exportData.external_export_id
+      ? externalExports[exportData.external_export_id] || null
+      : null;
+    const existing = existingById || Object.values(externalExports).find((exportRecord) =>
       exportRecord.export_key === exportData.export_key
     ) || null;
 

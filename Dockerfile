@@ -6,9 +6,6 @@ FROM node:20-alpine AS build
 # 设置工作目录
 WORKDIR /usr/src/app
 
-# 更换为国内镜像源以加速
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
-
 # 安装所有运行时和编译时依赖
 RUN apk add --no-cache \
   tzdata \
@@ -94,8 +91,7 @@ WORKDIR /usr/src/app
 
 # 仅安装运行时的系统依赖
 # 添加 chromium 及其所需依赖，以供 UrlFetch (Puppeteer) 工具使用
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
-  apk add --no-cache \
+RUN apk add --no-cache \
   chromium \
   nss \
   freetype \

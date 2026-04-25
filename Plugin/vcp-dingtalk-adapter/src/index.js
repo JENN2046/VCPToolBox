@@ -37,7 +37,6 @@ async function main() {
     useBridge: process.env.VCP_USE_CHANNEL_BRIDGE === 'true',
     bridgeUrl: process.env.VCP_CHANNEL_BRIDGE_URL,
     bridgeKey: process.env.VCP_CHANNEL_BRIDGE_KEY,
-    bridgeAuthToken: process.env.VCP_CHANNEL_BRIDGE_BEARER || process.env.VCP_SERVER_KEY || '',
     bridgeVersion: process.env.VCP_CHANNEL_HUB_VERSION || 'b2',
     adapterId: process.env.VCP_ADAPTER_ID || 'dingtalk-adapter-01',
     
@@ -80,7 +79,6 @@ async function main() {
     useBridge: config.useBridge,
     bridgeUrl: config.bridgeUrl,
     bridgeKey: config.bridgeKey,
-    bridgeAuthToken: config.bridgeAuthToken,
     bridgeVersion: config.bridgeVersion,
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
@@ -90,12 +88,6 @@ async function main() {
     timeoutMs: config.timeoutMs,
     logger,
   });
-
-  // 调试：输出 token 状态
-  logger.info('[DEBUG] bridgeAuthToken from config:', config.bridgeAuthToken ? 'SET' : 'EMPTY');
-  logger.info('[DEBUG] process.env.VCP_CHANNEL_BRIDGE_BEARER:', process.env.VCP_CHANNEL_BRIDGE_BEARER ? 'SET' : 'EMPTY');
-  logger.info('[DEBUG] config.bridgeAuthToken value:', config.bridgeAuthToken);
-  logger.info('[DEBUG] process.env.VCP_CHANNEL_BRIDGE_BEARER value:', process.env.VCP_CHANNEL_BRIDGE_BEARER);
 
   // 3. 初始化适配器
   logger.info('🔧 Initializing DingTalk Adapter...');

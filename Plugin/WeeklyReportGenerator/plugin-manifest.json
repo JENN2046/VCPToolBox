@@ -1,9 +1,9 @@
 {
   "manifestVersion": "1.0.0",
   "name": "WeeklyReportGenerator",
-  "version": "1.1.0",
-  "displayName": "Weekly Report Generator",
-  "description": "Generate weekly reports from work logs and export to DingTalk AI table via DingTalkCLI.",
+  "version": "1.0.0",
+  "displayName": "周报生成器",
+  "description": "基于本周工作记录，调用 AI 自动生成结构化周报，支持导出到钉钉 AI 表格",
   "author": "VCP Team",
   "pluginType": "synchronous",
   "entryPoint": {
@@ -17,58 +17,36 @@
   "configSchema": {
     "VCP_API_URL": {
       "type": "string",
-      "description": "VCP API base URL",
+      "description": "VCP API 地址",
       "default": "http://127.0.0.1:6005"
     },
     "VCP_API_KEY": {
       "type": "string",
-      "description": "VCP API key",
+      "description": "VCP API 密钥",
       "default": "vcp-secret"
     },
     "DEFAULT_MODEL": {
       "type": "string",
-      "description": "AI model name",
+      "description": "默认 AI 模型名称",
       "default": "Nova"
-    },
-    "DINGTALK_TABLE_UUID": {
-      "type": "string",
-      "description": "Legacy fallback AI table UUID for DingTalkTable export",
-      "default": ""
-    },
-    "DINGTALK_BASE_ID": {
-      "type": "string",
-      "description": "Preferred DWS AI table base_id for DingTalkCLI record create",
-      "default": ""
-    },
-    "DINGTALK_TABLE_ID": {
-      "type": "string",
-      "description": "Preferred DWS AI table table_id for DingTalkCLI record create",
-      "default": ""
-    },
-    "DINGTALK_WEEKLY_TABLE_WRITE_TOOL": {
-      "type": "string",
-      "description": "DWS aitable command path used by export_to_table",
-      "default": "record create"
-    },
-    "DWS_GRAY_STAGE": {
-      "type": "string",
-      "description": "Gray stage policy inherited by weekly export: query_only/low_risk_write/full_write",
-      "default": "full_write"
     }
   },
   "capabilities": {
     "invocationCommands": [
       {
         "commandIdentifier": "generate_from_logs",
-        "description": "Generate weekly report from local work logs."
+        "description": "从工作记录生成周报\n\n**功能**: 读取本周工作记录，调用 AI 生成结构化周报\n\n**参数**:\n- **week_start** (字符串，可选): 周开始日期，格式 YYYY-MM-DD\n- **week_end** (字符串，可选): 周结束日期，格式 YYYY-MM-DD\n- **format** (字符串，可选): 输出格式 (markdown/text/json)\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」WeeklyReportGenerator「末」,\naction:「始」generate_from_logs「末」,\nweek_start:「始」2026-03-24「末」,\nweek_end:「始」2026-03-30「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 生成的周报内容",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WeeklyReportGenerator「末」,\naction:「始」generate_from_logs「末」,\nweek_start:「始」2026-03-24「末」,\nweek_end:「始」2026-03-30「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "commandIdentifier": "generate_from_diary",
-        "description": "Generate weekly report from diary/worklog source."
+        "description": "从日记系统生成周报\n\n**功能**: 从 VCP 日记系统读取本周记录，调用 AI 生成周报\n\n**参数**:\n- **diary_name** (字符串，可选): 日记本名称\n- **week_start** (字符串，可选): 周开始日期\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」WeeklyReportGenerator「末」,\naction:「始」generate_from_diary「末」,\ndiary_name:「始」工作日志「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 生成的周报内容",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WeeklyReportGenerator「末」,\naction:「始」generate_from_diary「末」,\ndiary_name:「始」工作日志「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "commandIdentifier": "export_to_table",
-        "description": "Export report content to DingTalk AI table via DingTalkCLI (fallback DingTalkTable)."
+        "description": "导出周报到钉钉 AI 表格\n\n**功能**: 将生成的周报导出到钉钉 AI 表格\n\n**参数**:\n- **content** (字符串，必需): 周报内容\n- **summary** (字符串，可选): 周报摘要\n- **table_uuid** (字符串，可选): 目标表格 UUID\n\n**调用格式**:\n```\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」WeeklyReportGenerator「末」,\naction:「始」export_to_table「末」,\ncontent:「始」周报内容...「末」,\nsummary:「始」第 13 周工作总结「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n**返回**: 导出结果",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」WeeklyReportGenerator「末」,\naction:「始」export_to_table「末」,\ncontent:「始」本周完成：项目 A 上线...「末」,\nsummary:「始」第 13 周工作总结「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }
