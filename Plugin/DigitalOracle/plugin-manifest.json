@@ -7,8 +7,8 @@
   "author": "VCPToolBox",
   "pluginType": "synchronous",
   "entryPoint": {
-    "type": "python",
-    "command": "python digital_oracle_vcp.py"
+    "type": "command",
+    "command": "node digital_oracle_launcher.js"
   },
   "communication": {
     "protocol": "stdio",
