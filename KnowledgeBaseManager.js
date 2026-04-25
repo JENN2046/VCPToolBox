@@ -28,8 +28,8 @@ class KnowledgeBaseManager {
         this.config = {
             rootPath: config.rootPath || process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(__dirname, 'dailynote'),
             storePath: config.storePath || process.env.KNOWLEDGEBASE_STORE_PATH || path.join(__dirname, 'VectorStore'),
-            apiKey: process.env.API_Key,
-            apiUrl: process.env.API_URL,
+            apiKey: process.env.EMBEDDING_API_KEY || process.env.API_Key,
+            apiUrl: process.env.EMBEDDING_API_URL || process.env.API_URL,
             model: process.env.WhitelistEmbeddingModel || 'google/gemini-embedding-001',
             // ⚠️ 务必确认环境变量 VECTORDB_DIMENSION 与模型一致 (3-small通常为1536)
             dimension: parseInt(process.env.VECTORDB_DIMENSION) || 3072,

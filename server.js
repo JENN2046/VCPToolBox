@@ -15,6 +15,7 @@ const fs = require('fs').promises; // fs.promises for async operations
 const path = require('path');
 const { Writable } = require('stream');
 const fsSync = require('fs'); // Renamed to fsSync for clarity with fs.promises
+const { getEmbeddingFallbackStats } = require('./EmbeddingUtils');
 
 // 🌟 核心修复：彻底解放 Node.js 默认的全局连接池限制，防止底层网络排队导致 AdminPanel 死锁
 const http = require('http');
@@ -708,6 +709,18 @@ app.get('/v1/models', async (req, res) => {
     }
 });
 // 新增：标准化任务创建API端点
+app.get('/v1/embedding/fallback-stats', (req, res) => {
+    try {
+        res.json({
+            status: 'ok',
+            ...getEmbeddingFallbackStats(),
+        });
+    } catch (error) {
+        console.error('[EmbeddingFallbackStats] Failed to read stats:', error);
+        res.status(500).json({ error: 'Failed to read embedding fallback stats', details: error.message });
+    }
+});
+
 const VCP_TIMED_CONTACTS_DIR = path.join(__dirname, 'VCPTimedContacts');
 
 // 辅助函数：将 Date 对象格式化为包含时区偏移的本地时间字符串 (e.g., 2025-06-29T15:00:00+08:00)

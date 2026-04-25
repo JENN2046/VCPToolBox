@@ -3248,12 +3248,12 @@ class RAGDiaryPlugin {
             return null;
         }
 
-        const apiKey = process.env.API_Key;
-        const apiUrl = process.env.API_URL;
+        const apiKey = process.env.EMBEDDING_API_KEY || process.env.API_Key;
+        const apiUrl = process.env.EMBEDDING_API_URL || process.env.API_URL;
         const embeddingModel = process.env.WhitelistEmbeddingModel;
 
-        if (!apiKey || !apiUrl || !embeddingModel) {
-            console.error('[RAGDiaryPlugin] Embedding API credentials or model is not configured in environment variables.');
+        if (!apiUrl || !embeddingModel) {
+            console.error('[RAGDiaryPlugin] Embedding API URL or model is not configured in environment variables.');
             return null;
         }
 
@@ -3385,12 +3385,12 @@ class RAGDiaryPlugin {
     async getBatchEmbeddings(texts) {
         if (!texts || !Array.isArray(texts) || texts.length === 0) return [];
 
-        const apiKey = process.env.API_Key;
-        const apiUrl = process.env.API_URL;
+        const apiKey = process.env.EMBEDDING_API_KEY || process.env.API_Key;
+        const apiUrl = process.env.EMBEDDING_API_URL || process.env.API_URL;
         const embeddingModel = process.env.WhitelistEmbeddingModel;
 
-        if (!apiKey || !apiUrl || !embeddingModel) {
-            console.error('[RAGDiaryPlugin] Embedding API credentials or model is not configured.');
+        if (!apiUrl || !embeddingModel) {
+            console.error('[RAGDiaryPlugin] Embedding API URL or model is not configured.');
             return new Array(texts.length).fill(null);
         }
 
