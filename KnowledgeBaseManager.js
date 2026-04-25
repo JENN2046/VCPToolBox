@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const chokidar = require('chokidar');
 const { chunkText } = require('./TextChunker');
-const { getEmbeddingsBatch } = require('./EmbeddingUtils');
+const { getEmbeddingsBatch, hasEmbeddingBackend } = require('./EmbeddingUtils');
 const ResultDeduplicator = require('./ResultDeduplicator'); // ✅ Tagmemo v4 requirement
 const TagMemoEngine = require('./TagMemoEngine');
 
@@ -847,9 +847,16 @@ class KnowledgeBaseManager {
                 if (this.config.ignoreSuffixes.some(suffix => fileName.endsWith(suffix))) return;
                 if (!filePath.match(/\.(md|txt)$/i)) return;
 
+                const embeddingConfig = { apiKey: this.config.apiKey, apiUrl: this.config.apiUrl, model: this.config.model };
+                const deferEmbeddingProcessing = !hasEmbeddingBackend(embeddingConfig);
+
                 this.pendingFiles.add(filePath);
                 if (this.pendingFiles.size >= this.config.maxBatchSize) {
-                    this._flushBatch();
+                    if (deferEmbeddingProcessing) {
+                        this._scheduleBatch();
+                    } else {
+                        this._flushBatch();
+                    }
                 } else {
                     this._scheduleBatch();
                 }
@@ -900,12 +907,17 @@ class KnowledgeBaseManager {
 
     _scheduleBatch() {
         if (this.batchTimer) clearTimeout(this.batchTimer);
-        this.batchTimer = setTimeout(() => this._flushBatch(), this.config.batchWindow);
+        const embeddingConfig = { apiKey: this.config.apiKey, apiUrl: this.config.apiUrl, model: this.config.model };
+        const delay = hasEmbeddingBackend(embeddingConfig)
+            ? this.config.batchWindow
+            : Math.max(this.config.batchWindow * 6, 60000);
+        this.batchTimer = setTimeout(() => this._flushBatch(), delay);
     }
 
     async _flushBatch() {
         if (this.isProcessing || this.pendingFiles.size === 0) return;
         this.isProcessing = true;
+        let deferredForMissingEmbedding = false;
 
         // 1. 📋 准备批次：先从队列中取出，但不立即永久删除
         const batchFiles = Array.from(this.pendingFiles).slice(0, this.config.maxBatchSize);
@@ -915,6 +927,13 @@ class KnowledgeBaseManager {
 
         try {
             // 1. 解析文件并按日记本分组
+            const embeddingConfig = { apiKey: this.config.apiKey, apiUrl: this.config.apiUrl, model: this.config.model };
+            if (!hasEmbeddingBackend(embeddingConfig)) {
+                deferredForMissingEmbedding = true;
+                console.warn('[KnowledgeBase] Embedding backend is not configured yet; deferring batch processing without dropping pending files.');
+                return;
+            }
+
             const docsByDiary = new Map(); // Map<DiaryName, Array<Doc>>
             const checkFile = this.db.prepare('SELECT checksum, mtime, size FROM files WHERE path = ?');
 
@@ -985,8 +1004,6 @@ class KnowledgeBaseManager {
 
             const newTags = Array.from(newTagsSet);
             // 3. Embedding API Calls
-            const embeddingConfig = { apiKey: this.config.apiKey, apiUrl: this.config.apiUrl, model: this.config.model };
-
             let chunkVectors = [];
             if (allChunksWithMeta.length > 0) {
                 const texts = allChunksWithMeta.map(i => i.text);
@@ -1186,7 +1203,11 @@ class KnowledgeBaseManager {
         }
         finally {
             this.isProcessing = false;
-            if (this.pendingFiles.size > 0) setImmediate(() => this._flushBatch());
+            if (this.pendingFiles.size > 0 && !deferredForMissingEmbedding) {
+                setImmediate(() => this._flushBatch());
+            } else if (this.pendingFiles.size > 0 && deferredForMissingEmbedding) {
+                this.batchTimer = setTimeout(() => this._flushBatch(), Math.max(this.config.batchWindow * 6, 60000));
+            }
         }
     }
 

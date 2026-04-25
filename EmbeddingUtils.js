@@ -102,6 +102,10 @@ function buildEmbeddingBackends(config) {
     return backends;
 }
 
+function hasEmbeddingBackend(config) {
+    return buildEmbeddingBackends(config).length > 0;
+}
+
 async function _sendBatch(batchTexts, config, batchNumber) {
     const { default: fetch } = await import("node-fetch");
     const retryAttempts = 3;
@@ -332,4 +336,4 @@ function cosineSimilarity(a, b) {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
-module.exports = { getEmbeddingsBatch, cosineSimilarity, getEmbeddingFallbackStats };
+module.exports = { getEmbeddingsBatch, cosineSimilarity, getEmbeddingFallbackStats, hasEmbeddingBackend };
