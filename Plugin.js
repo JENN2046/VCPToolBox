@@ -723,6 +723,7 @@ class PluginManager extends EventEmitter {
             }
 
             this.buildVCPDescription();
+            this.emit('tools_changed', { reason: 'local_reload' });
             console.log(`[PluginManager] Plugin discovery finished. Loaded ${this.plugins.size} plugins.`);
         } catch (error) {
             if (error.code === 'ENOENT') console.error(`[PluginManager] Plugin directories ${MODERN_PLUGIN_DIR} / ${LEGACY_PLUGIN_DIR} not found.`);
@@ -1385,14 +1386,25 @@ class PluginManager extends EventEmitter {
         }
         // 注册后重建描述，以包含新插件
         this.buildVCPDescription();
+        this.emit('tools_changed', { reason: 'distributed_register', serverId });
     }
 
     unregisterAllDistributedTools(serverId) {
         if (this.debugMode) console.log(`[PluginManager] Unregistering all tools from distributed server: ${serverId}`);
         let unregisteredCount = 0;
+        const unregisteredPluginNames = [];
+        const unregisteredManifests = [];
         for (const [name, manifest] of this.plugins.entries()) {
             if (manifest.isDistributed && manifest.serverId === serverId) {
-                this.plugins.delete(name);
+                unregisteredPluginNames.push(name);
+                unregisteredManifests.push(JSON.parse(JSON.stringify(manifest)));
+            }
+        }
+        if (unregisteredPluginNames.length > 0) {
+            this.emit('distributed_tools_offline', { serverId, pluginNames: unregisteredPluginNames, manifests: unregisteredManifests });
+        }
+        for (const name of unregisteredPluginNames) {
+            if (this.plugins.delete(name)) {
                 unregisteredCount++;
                 if (this.debugMode) console.log(`  - Unregistered: ${name}`);
             }
@@ -1404,6 +1416,9 @@ class PluginManager extends EventEmitter {
         }
 
         // 新增：清理分布式静态占位符
+        if (unregisteredCount > 0) {
+            this.emit('tools_changed', { reason: 'distributed_unregister', serverId, pluginNames: unregisteredPluginNames });
+        }
         this.clearDistributedStaticPlaceholders(serverId);
     }
 
@@ -1502,7 +1517,8 @@ class PluginManager extends EventEmitter {
     startPluginWatcher() {
         if (this.debugMode) console.log('[PluginManager] Starting plugin file watcher...');
 
-        const watcher = chokidar.watch(PLUGIN_DIR, {
+        const watchRoots = [LEGACY_PLUGIN_DIR, MODERN_PLUGIN_DIR];
+        const watcher = chokidar.watch(watchRoots, {
             ignored: [
                 '**/node_modules/**',
                 '**/.git/**',
@@ -1521,7 +1537,10 @@ class PluginManager extends EventEmitter {
 
         const filterManifest = (filePath) => {
             const fileName = path.basename(filePath);
-            return fileName === 'plugin-manifest.json' || fileName === 'plugin-manifest.json.block';
+            return fileName === LEGACY_MANIFEST_FILE_NAME
+                || fileName === `${LEGACY_MANIFEST_FILE_NAME}.block`
+                || fileName === MODERN_MANIFEST_FILE_NAME
+                || fileName === path.basename(MODERN_PLUGIN_REGISTRY_FILE);
         };
 
         watcher
@@ -1535,7 +1554,7 @@ class PluginManager extends EventEmitter {
                 if (filterManifest(filePath)) this.handlePluginManifestChange('unlink', filePath);
             });
 
-        console.log(`[PluginManager] Chokidar is now watching ${PLUGIN_DIR} for manifest changes.`);
+        console.log(`[PluginManager] Chokidar is now watching ${watchRoots.join(', ')} for plugin contract changes.`);
     }
 
     handlePluginManifestChange(eventType, filePath) {
