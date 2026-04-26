@@ -76,17 +76,10 @@ class AdapterAuthManager {
    * @returns {Promise<{authenticated: boolean, adapterId?: string, error?: string}>}
    */
   async authenticate(headers, sourceIp = null, adapterIdHint = null) {
-    // TODO: 实现认证逻辑
-    // 1. 从 headers 中提取 adapterId 和签名
-    // 2. 查询 adapter 配置
-    // 3. 验证密钥
-    // 4. 验证 IP 白名单
-    // 5. 检查 adapter 是否启用
-
     const normalizedHeaders = headers || {};
-    const adapterId = normalizedHeaders['x-channel-adapter-id'] || adapterIdHint || null;
-    const bridgeKey = normalizedHeaders['x-channel-bridge-key'];
-    const authorization = normalizedHeaders['authorization'];
+    const adapterId = this._getHeader(normalizedHeaders, 'x-channel-adapter-id') || adapterIdHint || null;
+    const bridgeKey = this._getHeader(normalizedHeaders, 'x-channel-bridge-key');
+    const authorization = this._getHeader(normalizedHeaders, 'authorization');
     const authMode = this._getAuthMode();
 
     // B1 兼容模式：使用全局 Key
@@ -157,6 +150,21 @@ class AdapterAuthManager {
     return mode === 'enforce' ? 'enforce' : 'observe';
   }
 
+  _getHeader(headers, name) {
+    if (!headers || !name) return undefined;
+
+    if (typeof headers.get === 'function') {
+      return headers.get(name) || headers.get(name.toLowerCase()) || headers.get(name.toUpperCase()) || undefined;
+    }
+
+    const direct = headers[name] || headers[name.toLowerCase()];
+    if (direct !== undefined) return direct;
+
+    const target = name.toLowerCase();
+    const matchedKey = Object.keys(headers).find((key) => key.toLowerCase() === target);
+    return matchedKey ? headers[matchedKey] : undefined;
+  }
+
   _handleObservedFailure(authMode, adapterId, error, reasonCode) {
     if (authMode === 'enforce') {
       return { authenticated: false, adapterId, error, reasonCode, mode: authMode };
@@ -198,6 +206,12 @@ class AdapterAuthManager {
     if (Array.isArray(adapter?.authConfig?.ipWhitelist)) {
       return adapter.authConfig.ipWhitelist;
     }
+    if (Array.isArray(adapter?.credentials?.ipWhitelist)) {
+      return adapter.credentials.ipWhitelist;
+    }
+    if (Array.isArray(adapter?.webhook?.ipWhitelist)) {
+      return adapter.webhook.ipWhitelist;
+    }
     if (Array.isArray(adapter?.config?.ipWhitelist)) {
       return adapter.config.ipWhitelist;
     }
@@ -210,6 +224,11 @@ class AdapterAuthManager {
       adapter?.config?.bridgeKey,
       adapter?.config?.adapterKey,
       adapter?.authConfig?.secret,
+      adapter?.authConfig?.token,
+      adapter?.credentials?.bridgeKey,
+      adapter?.credentials?.adapterKey,
+      adapter?.credentials?.secret,
+      adapter?.credentials?.token,
       adapter?.bridgeKey
     ];
 
