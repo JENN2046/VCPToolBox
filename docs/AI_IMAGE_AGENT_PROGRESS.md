@@ -1,8 +1,10 @@
 # AI 生图 Agent 项目进度
 
 **项目创建**: 2026-04-15  
-**最后更新**: 2026-04-15  
-**整体状态**: ✅ 阶段二已完成
+**最后更新**: 2026-04-26  
+**整体状态**: ✅ 阶段二已完成，2026-04-26 仓内复核通过
+
+> 2026-04-26 复核范围：本仓 `Plugin/AIGentPrompt`、`Plugin/AIGentWorkflow`、`Plugin/ComfyUIGen` 与 `AdminPanel-Vue/public/ai-workflows.html`。文档中早期提到的 VCPDesktop 挂件文件（如 `builtinWidgets/AIImageGenWidget.js`、`desktop.html`）不在当前 `VCPToolBox-prod-stable` 工作树内，后续如需继续桌面端挂件，应到对应 VCPDesktop/VCPChat 工作树复核。
 
 ---
 
@@ -263,7 +265,7 @@ test_AIImageGenWidget.js # 测试脚本
 4. [x] VCPDesktop 生图挂件 + Dock 栏图标 ✅
 
 ### 中期规划（2 周内）
-1. [ ] 完善 WorkflowOrchestrator 参数映射
+1. [x] 完善 WorkflowOrchestrator 核心参数映射（2026-04-26 已修复工作流目录解析、连衣裙/白底与英文电商关键词映射）
 2. [ ] 收集用户反馈并优化
 3. [ ] 准备阶段三：StyleTrainer 环境
 

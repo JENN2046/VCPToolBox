@@ -96,14 +96,23 @@ class WorkflowOrchestratorAgent {
     this.parameterMapping = {
       // 服装相关
       '连衣裙': { clothing_type: 'dress' },
+      '裙装': { clothing_type: 'dress' },
       '衬衫': { clothing_type: 'shirt' },
+      '女装': { clothing_type: 'women fashion outfit' },
+      '男装': { clothing_type: 'men fashion outfit' },
       '外套': { clothing_type: 'jacket' },
       '裤装': { clothing_type: 'pants' },
       '运动装': { clothing_type: 'sportswear' },
       '泳装': { clothing_type: 'swimsuit' },
+      'dress': { clothing_type: 'dress' },
+      'shirt': { clothing_type: 'shirt' },
+      'jacket': { clothing_type: 'jacket' },
+      'pants': { clothing_type: 'pants' },
 
       // 场景相关
       '纯色': { scene: 'studio' },
+      'white background': { scene: 'studio' },
+      'studio': { scene: 'studio' },
       '街头': { scene: 'street' },
       '咖啡厅': { scene: 'cafe' },
       '办公室': { scene: 'office' },
@@ -135,7 +144,7 @@ class WorkflowOrchestratorAgent {
    * 加载工作流模板
    */
   async _loadWorkflowTemplates() {
-    const workflowsDir = path.join(__dirname, 'ComfyUIGen', 'workflows');
+    const workflowsDir = path.join(__dirname, '..', 'ComfyUIGen', 'workflows');
 
     try {
       const files = await fs.readdir(workflowsDir);
@@ -237,27 +246,47 @@ class WorkflowOrchestratorAgent {
     };
 
     // 分类判断
-    if (lowerInput.includes('电商') || lowerInput.includes('服装') || lowerInput.includes('模特')) {
+    if (
+      lowerInput.includes('电商') ||
+      lowerInput.includes('服装') ||
+      lowerInput.includes('模特') ||
+      lowerInput.includes('ecommerce') ||
+      lowerInput.includes('fashion') ||
+      lowerInput.includes('model')
+    ) {
       requirements.category = 'ecommerce';
-    } else if (lowerInput.includes('人像') || lowerInput.includes('写真')) {
+    } else if (lowerInput.includes('人像') || lowerInput.includes('写真') || lowerInput.includes('portrait')) {
       requirements.category = 'portrait';
-    } else if (lowerInput.includes('海报') || lowerInput.includes('促销') || lowerInput.includes('营销')) {
+    } else if (
+      lowerInput.includes('海报') ||
+      lowerInput.includes('促销') ||
+      lowerInput.includes('营销') ||
+      lowerInput.includes('poster') ||
+      lowerInput.includes('promotion') ||
+      lowerInput.includes('marketing')
+    ) {
       requirements.category = 'marketing';
-    } else if (lowerInput.includes('动漫') || lowerInput.includes('二次元') || lowerInput.includes('游戏')) {
+    } else if (
+      lowerInput.includes('动漫') ||
+      lowerInput.includes('二次元') ||
+      lowerInput.includes('游戏') ||
+      lowerInput.includes('anime') ||
+      lowerInput.includes('game')
+    ) {
       requirements.category = 'anime';
     }
 
     // 服装类型提取
     for (const [keyword, mapping] of Object.entries(this.parameterMapping)) {
       if (lowerInput.includes(keyword)) {
-        if (mapping.clothing_type) {
-          requirements.clothing = keyword;
+        if (mapping.clothing_type && !requirements.clothing) {
+          requirements.clothing = mapping.clothing_type;
         }
-        if (mapping.scene) {
-          requirements.scene = keyword;
+        if (mapping.scene && !requirements.scene) {
+          requirements.scene = mapping.scene;
         }
-        if (mapping.style) {
-          requirements.style = keyword;
+        if (mapping.style && !requirements.style) {
+          requirements.style = mapping.style;
         }
       }
     }
