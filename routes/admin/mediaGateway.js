@@ -26,14 +26,15 @@ function ensureGateway(req, res, next) {
   next();
 }
 
-function ok(res, data = null, message = null) {
+function ok(res, data = null, message = null, statusCode = 200, extra = {}) {
   const payload = {
     success: true,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    ...extra
   };
   if (data !== null) payload.data = data;
   if (message) payload.message = message;
-  return res.status(200).json(payload);
+  return res.status(statusCode).json(payload);
 }
 
 function fail(res, error, statusCode = 500) {
@@ -85,7 +86,7 @@ router.get('/media', async (req, res) => {
     const total = mediaList.length;
     const paginated = mediaList.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
 
-    return ok(res, paginated, null, {
+    return ok(res, paginated, null, 200, {
       pagination: { total, limit: parseInt(limit), offset: parseInt(offset) }
     });
   } catch (error) {

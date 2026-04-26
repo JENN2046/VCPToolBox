@@ -260,6 +260,17 @@ export const APP_ROUTE_MANIFEST = [
     component: () => import("@/views/DynamicToolsManager.vue"),
   },
   {
+    id: "channel-hub-manager",
+    routeName: "ChannelHubManager",
+    path: "/channel-hub-manager",
+    title: "ChannelHub 管理",
+    icon: "hub",
+    requiresAuth: true,
+    navGroup: "tools",
+    showInSidebar: true,
+    component: () => import("@/views/ChannelHubManager.vue"),
+  },
+  {
     id: "preprocessor-order-manager",
     routeName: "PreprocessorOrderManager",
     path: "/preprocessor-order-manager",

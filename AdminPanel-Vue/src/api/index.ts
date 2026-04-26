@@ -76,6 +76,9 @@ export type * from './toolList'
 export { dynamicToolsApi } from './dynamicTools'
 export type * from './dynamicTools'
 
+export { channelHubApi } from './channelHub'
+export type * from './channelHub'
+
 export { vcptavernApi } from './vcptavern'
 export type * from './vcptavern'
 
