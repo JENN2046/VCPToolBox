@@ -175,6 +175,81 @@ function verdictFromScore(score) {
   return 'reject';
 }
 
+function dimensionScoresFromFindings(findings) {
+  const dimensions = {
+    technical_quality: [],
+    composition: [],
+    compliance: [],
+    file_integrity: [],
+    validation_limit: []
+  };
+
+  for (const finding of findings) {
+    const bucket = dimensions[finding.dimension] || [];
+    bucket.push(finding);
+    dimensions[finding.dimension] = bucket;
+  }
+
+  return Object.fromEntries(Object.entries(dimensions).map(([dimension, items]) => {
+    return [dimension, {
+      score: scoreFromFindings(items),
+      finding_count: items.length,
+      status: verdictFromScore(scoreFromFindings(items))
+    }];
+  }));
+}
+
+function buildWorkflowAdvice(report) {
+  const findingIds = new Set(report.findings.map((finding) => finding.id));
+  const actions = [];
+
+  if (findingIds.has('unsupported_extension') || findingIds.has('unreadable_dimensions')) {
+    actions.push({
+      action: 'manual_review',
+      priority: 'high',
+      reason: 'image file integrity must be verified before retrying generation'
+    });
+  }
+  if (findingIds.has('low_resolution')) {
+    actions.push({
+      action: 'retry_generation',
+      priority: 'medium',
+      reason: 'regenerate or upscale with a higher target resolution',
+      suggested_overrides: {
+        width: Math.max(CONFIG.minimumWidth, report.dimensions.width || CONFIG.minimumWidth),
+        height: Math.max(CONFIG.minimumHeight, report.dimensions.height || CONFIG.minimumHeight)
+      }
+    });
+  }
+  if (findingIds.has('extreme_aspect_ratio')) {
+    actions.push({
+      action: 'adjust_workflow',
+      priority: 'medium',
+      reason: 'review crop, bucket or canvas settings before retry'
+    });
+  }
+  if (findingIds.has('compliance_keyword_review')) {
+    actions.push({
+      action: 'manual_compliance_review',
+      priority: 'high',
+      reason: 'prompt or caption includes brand/copyright keywords'
+    });
+  }
+
+  if (actions.length === 0 && report.verdict === 'pass') {
+    actions.push({
+      action: 'accept',
+      priority: 'low',
+      reason: 'rule-based checks passed'
+    });
+  }
+
+  return {
+    route: report.verdict === 'pass' ? 'accept' : report.verdict === 'review' ? 'manual_review' : 'retry_or_reject',
+    actions
+  };
+}
+
 function inspectImage(request) {
   const imagePath = path.resolve(String(request.image_path || request.path || ''));
   const findings = [];
@@ -256,7 +331,7 @@ function inspectImage(request) {
   }
 
   const score = scoreFromFindings(findings);
-  return {
+  const report = {
     image_path: imagePath,
     filename: path.basename(imagePath),
     dry_run: true,
@@ -264,9 +339,12 @@ function inspectImage(request) {
     size_bytes: stat.size,
     score,
     verdict: verdictFromScore(score),
+    dimension_scores: dimensionScoresFromFindings(findings),
     findings,
     recommendations: buildRecommendations(findings)
   };
+  report.workflow_advice = buildWorkflowAdvice(report);
+  return report;
 }
 
 function buildRecommendations(findings) {
@@ -301,6 +379,16 @@ function inspectBatch(request) {
     counts[report.verdict] = (counts[report.verdict] || 0) + 1;
     return counts;
   }, {});
+  const retryQueue = reports
+    .filter((report) => report.verdict !== 'pass')
+    .map((report) => ({
+      image_path: report.image_path,
+      filename: report.filename,
+      verdict: report.verdict,
+      score: report.score,
+      route: report.workflow_advice.route,
+      actions: report.workflow_advice.actions
+    }));
 
   return {
     directory,
@@ -309,7 +397,41 @@ function inspectBatch(request) {
     average_score: score,
     verdict: verdictFromScore(score),
     verdict_counts: verdictCounts,
+    retry_queue: retryQueue,
     reports
+  };
+}
+
+function buildRetryPlan(request) {
+  const report = request.image_path || request.path
+    ? inspectImage(request)
+    : inspectBatch(request);
+  const isBatch = Boolean(report.reports);
+  const retryQueue = isBatch
+    ? report.retry_queue
+    : report.verdict === 'pass'
+      ? []
+      : [{
+          image_path: report.image_path,
+          filename: report.filename,
+          verdict: report.verdict,
+          score: report.score,
+          route: report.workflow_advice.route,
+          actions: report.workflow_advice.actions
+        }];
+
+  return {
+    dry_run: true,
+    source: isBatch ? 'batch' : 'single_image',
+    overall_verdict: report.verdict,
+    retry_count: retryQueue.length,
+    retry_queue: retryQueue,
+    safety: {
+      real_generation_retried: false,
+      workflow_invoked: false,
+      external_service_called: false
+    },
+    report
   };
 }
 
@@ -331,6 +453,13 @@ async function handleRequest(request) {
         result: inspectBatch(request)
       };
 
+    case 'build_retry_plan':
+    case 'BuildRetryPlan':
+      return {
+        status: 'success',
+        result: buildRetryPlan(request)
+      };
+
     case 'health_check':
     case 'HealthCheck':
       return {
@@ -348,7 +477,7 @@ async function handleRequest(request) {
       return {
         status: 'error',
         error: `unknown action: ${action || '(empty)'}`,
-        supported_actions: ['inspect_image', 'inspect_batch', 'health_check']
+        supported_actions: ['inspect_image', 'inspect_batch', 'build_retry_plan', 'health_check']
       };
   }
 }
@@ -371,6 +500,9 @@ module.exports = {
   handleRequest,
   inspectImage,
   inspectBatch,
+  buildRetryPlan,
+  buildWorkflowAdvice,
+  dimensionScoresFromFindings,
   readImageDimensions,
   scoreFromFindings,
   verdictFromScore

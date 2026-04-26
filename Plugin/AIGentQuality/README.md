@@ -18,6 +18,7 @@ Current prototype checks:
 - brand/copyright review keywords in prompt or caption
 
 It returns a score, verdict and recommendations. It does not claim to detect anatomy, OCR, watermark pixels or aesthetic quality with model accuracy yet.
+Reports now include dimension scores for `technical_quality`, `composition`, `compliance`, `file_integrity` and `validation_limit`, plus workflow advice for accept/retry/manual-review routing.
 
 ## Commands
 
@@ -38,6 +39,18 @@ caption:「始」product photo, clean background「末」
 <<<[TOOL_REQUEST]>>>
 maid:「始」AIGentQuality「末」
 tool_name:「始」InspectBatch「末」
+directory:「始」A:/path/to/generated-images「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+### BuildRetryPlan
+
+Build a dry-run retry/manual-review plan from a single image or a directory. This does not invoke `AIGentWorkflow` or regenerate anything.
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentQuality「末」
+tool_name:「始」BuildRetryPlan「末」
 directory:「始」A:/path/to/generated-images「末」
 <<<[END_TOOL_REQUEST]>>>
 ```

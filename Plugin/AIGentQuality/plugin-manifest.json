@@ -47,6 +47,10 @@
         "description": "Inspect all supported images under a directory and return average score, verdict counts and per-image reports."
       },
       {
+        "commandIdentifier": "BuildRetryPlan",
+        "description": "Build a dry-run retry/manual-review routing plan from InspectImage or InspectBatch results. No generation workflow is invoked."
+      },
+      {
         "commandIdentifier": "HealthCheck",
         "description": "Report QualityInspector thresholds, supported extensions and external vision safety gate state."
       }

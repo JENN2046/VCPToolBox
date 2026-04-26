@@ -347,3 +347,10 @@ test_AIImageGenWidget.js # 测试脚本
 - Current checks are local and rule-based: file type, readable dimensions, minimum resolution, aspect ratio, file size and compliance review keywords.
 - Returns score, verdict and recommendations for retry/manual-review routing.
 - No CLIP, OCR, OpenPose, moderation API or external vision model is called in this stage.
+
+## 2026-04-26 Stage 4 Increment: Structured Retry Routing
+
+- Added dimension scores for technical quality, composition, compliance, file integrity and validation limits.
+- Added workflow advice to each inspection report.
+- Added `BuildRetryPlan` to produce dry-run retry/manual-review queues for single-image or batch inspection.
+- The retry planner does not invoke generation workflows and does not call external services.
