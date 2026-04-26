@@ -29,6 +29,31 @@
       "type": "string",
       "description": "默认 AI 模型名称",
       "default": "Nova"
+    },
+    "DWS_GRAY_STAGE": {
+      "type": "string",
+      "description": "DingTalkCLI 灰度阶段：query_only/low_risk_write/full_write",
+      "default": "query_only"
+    },
+    "WEEKLYREPORT_EXPORT_BACKEND": {
+      "type": "string",
+      "description": "周报导出后端：dingtalkcli/legacy_mcp",
+      "default": "dingtalkcli"
+    },
+    "WEEKLYREPORT_LEGACY_FALLBACK": {
+      "type": "boolean",
+      "description": "DingTalkCLI 失败后是否允许回退 legacy MCP；仍受 DWS_GRAY_STAGE 限制",
+      "default": false
+    },
+    "DINGTALKCLI_WEEKLY_PRODUCT": {
+      "type": "string",
+      "description": "DingTalkCLI 周报导出 product",
+      "default": "aitable"
+    },
+    "DINGTALKCLI_WEEKLY_TOOL": {
+      "type": "string",
+      "description": "DingTalkCLI 周报导出 tool，可通过 capability map 映射",
+      "default": "add_record"
     }
   },
   "capabilities": {

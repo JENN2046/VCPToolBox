@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const { DingTalkCLIRuntime } = require('../DingTalkCLI/lib/runtime');
 
 // ============ 配置 ============
 
@@ -24,6 +25,10 @@ const CONFIG = {
   DINGTALK_MCP_URL: process.env.DINGTALK_MCP_URL || 'http://127.0.0.1:9000',
   DINGTALK_MCP_KEY: process.env.DINGTALK_MCP_KEY || 'vcp-mcpo-secret',
   DWS_GRAY_STAGE: process.env.DWS_GRAY_STAGE || 'query_only',
+  WEEKLYREPORT_EXPORT_BACKEND: process.env.WEEKLYREPORT_EXPORT_BACKEND || 'dingtalkcli',
+  WEEKLYREPORT_LEGACY_FALLBACK: process.env.WEEKLYREPORT_LEGACY_FALLBACK || 'false',
+  DINGTALKCLI_WEEKLY_PRODUCT: process.env.DINGTALKCLI_WEEKLY_PRODUCT || 'aitable',
+  DINGTALKCLI_WEEKLY_TOOL: process.env.DINGTALKCLI_WEEKLY_TOOL || 'add_record',
 };
 
 // ============ 日志记录 ============
@@ -217,7 +222,61 @@ ${logSummary}
 /**
  * 导出周报到钉钉 AI 表格
  */
-async function exportToTable(content, summary = '', tableUuid = '') {
+function asBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+  return String(value).trim().toLowerCase() === 'true';
+}
+
+function buildWeeklyReportRecord(content, summary = '') {
+  return {
+    '周报内容': content,
+    '摘要': summary,
+    '记录类型': '周报',
+    '生成时间': new Date().toISOString()
+  };
+}
+
+async function exportViaDingTalkCLI({ content, summary, tableUuid, apply = false, dryRun = true, runtime } = {}) {
+  const activeRuntime = runtime || new DingTalkCLIRuntime({
+    basePath: path.join(__dirname, '..', 'DingTalkCLI')
+  });
+  const targetTable = tableUuid || CONFIG.DINGTALK_TABLE_UUID;
+  const response = await activeRuntime.handleRequest({
+    action: 'execute_tool',
+    product: CONFIG.DINGTALKCLI_WEEKLY_PRODUCT,
+    tool: CONFIG.DINGTALKCLI_WEEKLY_TOOL,
+    args: {
+      table_uuid: targetTable,
+      data: buildWeeklyReportRecord(content, summary)
+    },
+    apply,
+    dry_run: dryRun,
+    yes: apply,
+    format: 'json'
+  });
+
+  if (response.status !== 'success') {
+    return {
+      status: 'error',
+      error: 'DingTalkCLI 导出失败',
+      detail: response.error || response
+    };
+  }
+
+  return {
+    status: 'success',
+    result: {
+      message: dryRun ? '周报导出 dry-run 已通过 DingTalkCLI' : '周报已通过 DingTalkCLI 导出到钉钉 AI 表格',
+      backend: 'DingTalkCLI',
+      tableUuid: targetTable,
+      dingtalkcli: response.result
+    }
+  };
+}
+
+async function exportViaLegacyMcp(content, summary = '', tableUuid = '') {
   const grayStage = String(CONFIG.DWS_GRAY_STAGE || '').trim().toLowerCase();
   if (grayStage !== 'full_write') {
     return {
@@ -234,12 +293,7 @@ async function exportToTable(content, summary = '', tableUuid = '') {
   const mcpBody = JSON.stringify({
     tool_name: 'add_record',
     table_uuid: targetTable,
-    data: {
-      '周报内容': content,
-      '摘要': summary,
-      '记录类型': '周报',
-      '生成时间': new Date().toISOString()
-    }
+    data: buildWeeklyReportRecord(content, summary)
   });
 
   return new Promise((resolve, reject) => {
@@ -287,10 +341,49 @@ async function exportToTable(content, summary = '', tableUuid = '') {
   });
 }
 
+async function exportToTable(content, summary = '', tableUuid = '', options = {}) {
+  const backend = String(options.backend || CONFIG.WEEKLYREPORT_EXPORT_BACKEND || 'dingtalkcli').trim().toLowerCase();
+  const apply = options.apply === true;
+  const dryRun = typeof options.dryRun === 'boolean' ? options.dryRun : !apply;
+  const legacyFallback = options.legacyFallback === true || asBoolean(CONFIG.WEEKLYREPORT_LEGACY_FALLBACK, false);
+
+  if (backend !== 'legacy_mcp') {
+    const dingtalkResult = await exportViaDingTalkCLI({ content, summary, tableUuid, apply, dryRun });
+    const blockedByPolicy = dingtalkResult.detail && dingtalkResult.detail.category === 'security';
+    if (dingtalkResult.status === 'success' || !legacyFallback) {
+      return dingtalkResult;
+    }
+    if (blockedByPolicy) {
+      return dingtalkResult;
+    }
+
+    Logger.warn('DingTalkCLI 导出失败，尝试 legacy MCP fallback', {
+      error: dingtalkResult.error,
+      detail: dingtalkResult.detail
+    });
+  }
+
+  return await exportViaLegacyMcp(content, summary, tableUuid);
+}
+
 // ============ 主处理逻辑 ============
 
 async function handleRequest(request) {
-  const { action, week_start, week_end, weekStart, weekEnd, format = 'markdown', content, summary, table_uuid } = request;
+  const {
+    action,
+    week_start,
+    week_end,
+    weekStart,
+    weekEnd,
+    format = 'markdown',
+    content,
+    summary,
+    table_uuid,
+    apply,
+    dry_run,
+    export_backend,
+    legacy_fallback
+  } = request;
 
   switch (action) {
     case 'generate_from_logs':
@@ -309,7 +402,12 @@ async function handleRequest(request) {
       if (!content) {
         return { status: 'error', error: '缺少必需参数：content（周报内容）' };
       }
-      return await exportToTable(content, summary || '', table_uuid || '');
+      return await exportToTable(content, summary || '', table_uuid || '', {
+        apply: apply === true,
+        dryRun: typeof dry_run === 'boolean' ? dry_run : undefined,
+        backend: export_backend,
+        legacyFallback: legacy_fallback === true
+      });
 
     default:
       return { status: 'error', error: `未知操作：${action}` };
@@ -368,6 +466,16 @@ async function main() {
 }
 
 // 启动时输出信息
-Logger.info('WeeklyReportGenerator 插件启动中...');
+if (require.main === module) {
+  Logger.info('WeeklyReportGenerator 插件启动中...');
 
-main();
+  main();
+}
+
+module.exports = {
+  handleRequest,
+  exportToTable,
+  exportViaDingTalkCLI,
+  exportViaLegacyMcp,
+  buildWeeklyReportRecord
+};

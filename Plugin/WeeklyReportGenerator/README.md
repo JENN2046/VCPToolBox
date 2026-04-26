@@ -31,10 +31,17 @@ VCP_API_KEY=your_vcp_api_key
 DEFAULT_MODEL=Nova
 
 # 钉钉 AI 表格配置（可选）
+DWS_GRAY_STAGE=query_only
 DINGTALK_TABLE_UUID=your_table_uuid
+WEEKLYREPORT_EXPORT_BACKEND=dingtalkcli
+WEEKLYREPORT_LEGACY_FALLBACK=false
+DINGTALKCLI_WEEKLY_PRODUCT=aitable
+DINGTALKCLI_WEEKLY_TOOL=add_record
 DINGTALK_MCP_URL=http://127.0.0.1:9000
 DINGTALK_MCP_KEY=vcp-mcpo-secret
 ```
+
+默认导出后端为 `DingTalkCLI`，并由 `DWS_GRAY_STAGE` 统一执行灰度门禁。`query_only` 和 `low_risk_write` 会阻断 AI 表格写入；只有显式切到 `full_write` 且请求 `apply=true` 时，才会进入真实写入路径。`legacy_mcp` 仅作为临时兼容 fallback，默认关闭。
 
 ---
 
@@ -81,9 +88,18 @@ diary_name:「始」工作日志「末」
 tool_name:「始」WeeklyReportGenerator「末」,
 action:「始」export_to_table「末」,
 content:「始」# 第 13 周周报\n\n本周完成...\n\n## 完成情况\n1. ...\n\n## 经验教训\n- ...\n\n## 下周计划\n- ...「末」,
-summary:「始」第 13 周工作总结「末」
+summary:「始」第 13 周工作总结「末」,
+dry_run:「始」true「末」,
+apply:「始」false「末」
 <<<[END_TOOL_REQUEST]>>>
 ```
+
+参数说明：
+
+- `dry_run`: 默认 `true`，用于验证 DingTalkCLI 调用链。
+- `apply`: 默认 `false`。只有 `apply=true` 才允许真实写入尝试。
+- `export_backend`: 可选，`dingtalkcli` 或 `legacy_mcp`。
+- `legacy_fallback`: 可选，是否允许 DingTalkCLI 失败后尝试 legacy MCP fallback。
 
 ---
 
@@ -130,9 +146,11 @@ summary:「始」第 13 周工作总结「末」
    ↓
 2. WeeklyReportGenerator 生成周报
    ↓
-3. DingTalkTable 导出到钉钉表格
+3. DingTalkCLI dry-run/灰度门禁验证
    ↓
-4. 用户确认并推送
+4. full_write + apply=true 后导出到钉钉表格
+   ↓
+5. 用户确认并推送
 ```
 
 ---
@@ -140,7 +158,7 @@ summary:「始」第 13 周工作总结「末」
 ## 相关文档
 
 - [WorkLogScheduler 插件](../WorkLogScheduler/README.md)
-- [DingTalkTable 插件](../DingTalkTable/README.md)
+- [DingTalkCLI 插件](../DingTalkCLI/README.md)
 - [工作日志系统实现方案](../../docs/VCP 交互联通钉钉文档系统/01-工作日志系统实现方案.md)
 
 ---
