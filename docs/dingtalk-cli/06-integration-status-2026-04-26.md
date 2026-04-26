@@ -6,6 +6,7 @@
 - Added a local gray-stage guard to `WeeklyReportGenerator.export_to_table` so legacy direct MCP export cannot bypass the DingTalk rollout policy.
 - `DWS_GRAY_STAGE=query_only` and `DWS_GRAY_STAGE=low_risk_write` block WeeklyReport AI table export before any write attempt.
 - `DWS_GRAY_STAGE=full_write` remains the only stage that may attempt the legacy MCP write path.
+- Updated DingTalkCLI and WeeklyReport defaults to `query_only` so missing runtime config fails closed instead of allowing writes.
 
 ## Validation
 
@@ -15,6 +16,11 @@
 - Probe with `DWS_GRAY_STAGE=full_write` and `DINGTALK_MCP_URL=http://127.0.0.1:9`:
   - result: attempted MCP connection and failed with local connection refusal
   - no real DingTalk write was performed
+- Probe without `DWS_GRAY_STAGE`:
+  - DingTalkCLI default: `query_only`
+  - write gate: blocked
+  - read gate: allowed
+  - WeeklyReport export: blocked before write execution
 
 ## Current Boundary
 

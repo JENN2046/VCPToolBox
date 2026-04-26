@@ -33,7 +33,7 @@
     "DWS_GRAY_STAGE": {
       "type": "string",
       "description": "Gray stage policy: query_only/low_risk_write/full_write",
-      "default": "full_write"
+      "default": "query_only"
     },
     "DWS_CLIENT_ID": {
       "type": "string",

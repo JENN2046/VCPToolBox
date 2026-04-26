@@ -23,7 +23,7 @@ const CONFIG = {
   DINGTALK_TABLE_UUID: process.env.DINGTALK_TABLE_UUID || '',
   DINGTALK_MCP_URL: process.env.DINGTALK_MCP_URL || 'http://127.0.0.1:9000',
   DINGTALK_MCP_KEY: process.env.DINGTALK_MCP_KEY || 'vcp-mcpo-secret',
-  DWS_GRAY_STAGE: process.env.DWS_GRAY_STAGE || 'full_write',
+  DWS_GRAY_STAGE: process.env.DWS_GRAY_STAGE || 'query_only',
 };
 
 // ============ 日志记录 ============

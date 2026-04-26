@@ -54,7 +54,7 @@ const DEFAULTS = {
   DWS_BIN: 'dws',
   DWS_MIN_VERSION: '1.0.8',
   AUTH_MODE: 'auto',
-  DWS_GRAY_STAGE: 'full_write',
+  DWS_GRAY_STAGE: 'query_only',
   DWS_CLIENT_ID: '',
   DWS_CLIENT_SECRET: '',
   DWS_TRUSTED_DOMAINS: '',

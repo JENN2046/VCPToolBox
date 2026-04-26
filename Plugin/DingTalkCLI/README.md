@@ -46,6 +46,7 @@ Rules:
   - `query_only`: block all writes
   - `low_risk_write`: allow writes on `todo/ding/chat` only
   - `full_write`: allow all writes (subject to `apply` gate)
+- The default gray stage is `query_only`. Production write stages must be enabled explicitly.
 - `format` default is `json`.
 - `tool` supports multi-level command path, e.g. `record create`, `task list`, `message send`.
 - Runtime emits DWS `--format json` (not `--json`) for structured output.
