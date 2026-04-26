@@ -165,6 +165,8 @@ ip_blacklist.json
 /VectorStore
 
 # 插件缓存文件
+Plugin/AIGentStyle/datasets/
+Plugin/AIGentStyle/outputs/
 Plugin/ArtistMatcher/artist_cache.json
 Plugin/DailyHot/dailyhot_cache.md
 Plugin/EmojiListGenerator/generated_lists/

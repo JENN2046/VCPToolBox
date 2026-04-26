@@ -1,0 +1,68 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "AIGentStyle",
+  "displayName": "AI 生图风格训练师",
+  "version": "0.1.0",
+  "description": "StyleTrainer Agent preparation plugin for LoRA dataset planning, parameter recommendation and dry-run training plans. It does not execute real training unless a later stage explicitly enables it.",
+  "author": "VCPToolBox Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node AIGentStyle.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "configSchema": {
+    "AIGENT_STYLE_DATASET_ROOT": {
+      "type": "string",
+      "description": "Root directory for StyleTrainer datasets",
+      "default": "Plugin/AIGentStyle/datasets"
+    },
+    "AIGENT_STYLE_OUTPUT_ROOT": {
+      "type": "string",
+      "description": "Root directory for generated training plans and future model outputs",
+      "default": "Plugin/AIGentStyle/outputs"
+    },
+    "AIGENT_STYLE_BACKEND": {
+      "type": "string",
+      "description": "Training backend label for plan generation",
+      "default": "sd-scripts"
+    },
+    "AIGENT_STYLE_BASE_MODEL": {
+      "type": "string",
+      "description": "Default base model label",
+      "default": "flux-dev"
+    },
+    "AIGENT_STYLE_ALLOW_TRAINING": {
+      "type": "boolean",
+      "description": "Safety gate for future real training execution. Stage 2 keeps this false.",
+      "default": false
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "PrepareDataset",
+        "description": "Scan a dataset directory and build a StyleTrainer readiness plan without executing training."
+      },
+      {
+        "commandIdentifier": "RecommendParams",
+        "description": "Recommend LoRA training parameters from scenario, base model and image count."
+      },
+      {
+        "commandIdentifier": "DryRunTrain",
+        "description": "Generate a dry-run training command plan. No real training is executed."
+      },
+      {
+        "commandIdentifier": "HealthCheck",
+        "description": "Report StyleTrainer configuration and safety gate state."
+      }
+    ]
+  },
+  "compatibility": {
+    "vcpVersion": ">=1.0.0",
+    "nodeVersion": ">=14.0.0"
+  }
+}

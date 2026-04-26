@@ -158,15 +158,27 @@
 
 ## 阶段三：StyleTrainer Agent（4-8 周）
 
-**状态**: ⚪ 待开始
+**状态**: 🟡 准备期已完成，原型实现待开始
+**准备期完成日期**: 2026-04-26
+
+### 2026-04-26 准备期产出
+
+- 新增 `Plugin/AIGentStyle/` StyleTrainer 准备插件。
+- 新增 `PrepareDataset`：扫描素材目录并生成 readiness 计划。
+- 新增 `RecommendParams`：按场景和素材数量推荐 LoRA 参数。
+- 新增 `DryRunTrain`：生成 dry-run 训练命令计划，不执行真实训练。
+- 新增 `HealthCheck`：输出配置、后端标签和安全门禁状态。
+- 默认 `AIGENT_STYLE_ALLOW_TRAINING=false`，阶段三准备期不安装依赖、不启动训练、不写外部服务。
+- `.gitignore` 已忽略 `Plugin/AIGentStyle/datasets/` 与 `Plugin/AIGentStyle/outputs/`，避免误提交真实素材和训练产物。
 
 ### 任务清单
 
 | 编号 | 任务 | 状态 | 优先级 | 说明 |
 |------|------|------|--------|------|
-| 3.1 | 搭建 LoRA 训练环境 | ⏳ 待开始 | P0 | SD-Scripts/Flux-Dev |
+| 3.0 | StyleTrainer 准备插件与安全边界 | ✅ 已完成 | P0 | dry-run only，真实训练禁用 |
+| 3.1 | 搭建 LoRA 训练环境 | ⏳ 待开始 | P0 | SD-Scripts/Flux-Dev，需单独确认依赖安装 |
 | 3.2 | 素材预处理自动化 | ⏳ 待开始 | P1 | 裁剪/打标/分组 |
-| 3.3 | 训练参数推荐引擎 | ⏳ 待开始 | P1 | 基于样本特征 |
+| 3.3 | 训练参数推荐引擎 | ✅ 已完成（初版） | P1 | 基于场景与样本数推荐 |
 | 3.4 | 风格一致性评分 | ⏳ 待开始 | P1 | CLIP 相似度 |
 
 ---
@@ -241,6 +253,10 @@ Plugin/AIGentPrompt/README.md # 使用说明
 Plugin/AIGentPrompt/test_rag_result.md # RAG 测试报告
 Plugin/AIGentWorkflow/WorkflowOrchestrator.js # WorkflowOrchestrator 主程序
 Plugin/AIGentWorkflow/plugin-manifest.json # WorkflowOrchestrator 清单
+Plugin/AIGentStyle/AIGentStyle.js # StyleTrainer 准备期主程序
+Plugin/AIGentStyle/plugin-manifest.json # StyleTrainer 清单
+Plugin/AIGentStyle/config.env.example # StyleTrainer 配置模板
+Plugin/AIGentStyle/README.md # StyleTrainer 准备期说明
 test_AIImageGenWidget.js # 测试脚本
 ```
 
@@ -253,6 +269,8 @@ test_AIImageGenWidget.js # 测试脚本
 | ComfyUI 后端不可用 | 影响阶段二 | 准备云端 API 备选方案 | 🟡 关注 |
 | 提示词样本质量 | 影响检索效果 | 持续优化与人工校验 | 🟢 低 |
 | RAG 检索准确性 | 影响生成质量 | 多轮测试与调优 | 🟢 低 |
+| 真实训练误触发 | 可能消耗算力/写入大模型产物 | 默认 dry-run，`AIGENT_STYLE_ALLOW_TRAINING=false` | 🟢 已控 |
+| 真实素材误提交 | 泄露用户图片/版权素材 | `.gitignore` 忽略 StyleTrainer datasets/outputs | 🟢 已控 |
 
 ---
 
@@ -267,7 +285,8 @@ test_AIImageGenWidget.js # 测试脚本
 ### 中期规划（2 周内）
 1. [x] 完善 WorkflowOrchestrator 核心参数映射（2026-04-26 已修复工作流目录解析、连衣裙/白底与英文电商关键词映射）
 2. [ ] 收集用户反馈并优化
-3. [ ] 准备阶段三：StyleTrainer 环境
+3. [x] 准备阶段三：StyleTrainer dry-run 环境与安全边界
+4. [ ] 阶段三原型：素材预处理、caption 校验、训练 job manifest
 
 ---
 
