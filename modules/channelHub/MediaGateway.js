@@ -15,6 +15,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
+const mime = require('mime-types');
 const { MediaError } = require('./errors');
 
 /**
@@ -627,13 +629,118 @@ class MediaGateway {
       throw new MediaError(`媒体不存在: ${mediaId}`);
     }
 
-    const { format, quality } = options;
+    const targetFormat = this._normalizeTranscodeFormat(options?.format);
+    const quality = options?.quality || this.transcodeOptions.imageQuality || 85;
 
-    // TODO: 实现转码逻辑
-    // 需要根据媒体类型调用不同的转码器
-    console.log(`[MediaGateway] 转码媒体: ${mediaId} -> ${format}`);
+    if (!targetFormat) {
+      throw new MediaError('转码目标格式不能为空');
+    }
 
-    throw new MediaError('转码功能尚未实现');
+    this._assertTranscodeSupported(mediaInfo.mediaType, targetFormat);
+
+    const sourcePath = path.join(this.storagePath, mediaInfo.path);
+    const outputMediaId = this._generateMediaId(mediaInfo.adapterId, `${mediaId}:${targetFormat}`);
+    const outputSubPath = path.join(mediaInfo.mediaType, `${outputMediaId}.${targetFormat}`);
+    const outputPath = path.join(this.storagePath, outputSubPath);
+    const sourceFormat = path.extname(mediaInfo.filename || mediaInfo.path).toLowerCase().slice(1);
+
+    console.log(`[MediaGateway] 转码媒体: ${mediaId} -> ${targetFormat}`);
+
+    if (sourceFormat === targetFormat) {
+      await fs.copyFile(sourcePath, outputPath);
+    } else if (mediaInfo.mediaType === MediaType.IMAGE) {
+      await this._transcodeImage(sourcePath, outputPath, targetFormat, quality);
+    } else if (mediaInfo.mediaType === MediaType.AUDIO || mediaInfo.mediaType === MediaType.VIDEO) {
+      await this._transcodeWithFfmpeg(sourcePath, outputPath);
+    } else {
+      throw new MediaError(`不支持转码媒体类型: ${mediaInfo.mediaType}`);
+    }
+
+    const stats = await fs.stat(outputPath);
+    const transcodedInfo = {
+      ...mediaInfo,
+      mediaId: outputMediaId,
+      platformMediaId: undefined,
+      filename: this._replaceExtension(mediaInfo.filename || `${mediaId}.${sourceFormat || targetFormat}`, targetFormat),
+      mimeType: mime.lookup(targetFormat) || mediaInfo.mimeType || 'application/octet-stream',
+      size: stats.size,
+      path: outputSubPath,
+      url: `${this.baseUrl}/${this._toUrlPath(outputSubPath)}`,
+      createdAt: new Date().toISOString(),
+      metadata: {
+        ...(mediaInfo.metadata || {}),
+        transcodedFrom: mediaId,
+        transcodeFormat: targetFormat,
+        transcodeQuality: quality
+      }
+    };
+
+    this.mediaIndex.set(outputMediaId, transcodedInfo);
+    await this._saveMediaIndex();
+
+    return transcodedInfo;
+  }
+
+  _normalizeTranscodeFormat(format) {
+    if (typeof format !== 'string') return '';
+    return format.trim().toLowerCase().replace(/^\./, '');
+  }
+
+  _assertTranscodeSupported(mediaType, format) {
+    if (mediaType === MediaType.IMAGE && SUPPORTED_IMAGE_FORMATS.includes(format)) return;
+    if (mediaType === MediaType.AUDIO && SUPPORTED_AUDIO_FORMATS.includes(format)) return;
+    if (mediaType === MediaType.VIDEO && SUPPORTED_VIDEO_FORMATS.includes(format)) return;
+    throw new MediaError(`不支持将 ${mediaType} 转码为 ${format}`);
+  }
+
+  async _transcodeImage(sourcePath, outputPath, format, quality) {
+    let sharp;
+    try {
+      sharp = require('sharp');
+    } catch (error) {
+      throw new MediaError('图片转码需要安装 sharp: npm install sharp');
+    }
+
+    await sharp(sourcePath)
+      .toFormat(format, { quality })
+      .toFile(outputPath);
+  }
+
+  async _transcodeWithFfmpeg(sourcePath, outputPath) {
+    const ffmpegPath = this.transcodeOptions.ffmpegPath || process.env.FFMPEG_PATH || 'ffmpeg';
+
+    await new Promise((resolve, reject) => {
+      const ffmpeg = spawn(ffmpegPath, ['-y', '-i', sourcePath, outputPath], {
+        windowsHide: true,
+        stdio: ['ignore', 'ignore', 'pipe']
+      });
+
+      let stderr = '';
+      ffmpeg.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
+      ffmpeg.on('error', (error) => {
+        reject(new MediaError(`音视频转码需要可用的 ffmpeg: ${error.message}`));
+      });
+
+      ffmpeg.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(new MediaError(`ffmpeg 转码失败(code=${code}): ${stderr.slice(-500)}`));
+      });
+    });
+  }
+
+  _replaceExtension(filename, format) {
+    const parsed = path.parse(filename);
+    return `${parsed.name}.${format}`;
+  }
+
+  _toUrlPath(filePath) {
+    return String(filePath).split(path.sep).join('/');
   }
 
   /**
