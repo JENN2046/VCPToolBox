@@ -11,6 +11,7 @@ AIGentStyle 是 AI 生图 Agent 阶段三的准备插件，负责把“训练一
 - 扫描素材目录
 - 统计训练图片
 - 判断是否达到最小素材量
+- 校验图片旁边的 caption 文件
 - 根据场景推荐 LoRA 参数
 - 生成 dry-run 训练计划
 
@@ -77,6 +78,20 @@ scenario:「始」ecommerce「末」
 <<<[END_TOOL_REQUEST]>>>
 ```
 
+### BuildManifest
+
+生成 dataset manifest，包含图片、caption、缺失 caption 统计和预处理计划。默认只返回 JSON；如显式 `write_manifest=true`，只会写入被 `.gitignore` 忽略的 `outputs/<dataset>/dataset-manifest.json`。
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentStyle「末」,
+tool_name:「始」BuildManifest「末」,
+dataset_name:「始」ecommerce-dress-v1「末」,
+scenario:「始」ecommerce「末」,
+write_manifest:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
 ## 安全边界
 
 - `AIGENT_STYLE_ALLOW_TRAINING=false` 是阶段 2 的固定默认值。
@@ -89,7 +104,7 @@ scenario:「始」ecommerce「末」
 下一阶段可以在此基础上继续实现：
 
 - 素材裁剪与尺寸统计
-- caption 自动生成或校验
-- dataset manifest 写入
+- caption 自动生成
+- dataset manifest 扩展为可恢复 job manifest
 - training job dry-run 文件落盘
 - 真实训练执行器的显式安全门禁

@@ -85,6 +85,30 @@ function walkImages(directory) {
   return results.sort((a, b) => a.path.localeCompare(b.path));
 }
 
+function getCaptionPath(imagePath, captionExtension = '.txt') {
+  return path.join(
+    path.dirname(imagePath),
+    `${path.basename(imagePath, path.extname(imagePath))}${captionExtension}`
+  );
+}
+
+function readCaption(imagePath, captionExtension = '.txt') {
+  const captionPath = getCaptionPath(imagePath, captionExtension);
+  if (!fs.existsSync(captionPath)) {
+    return {
+      path: captionPath,
+      exists: false,
+      text: ''
+    };
+  }
+
+  return {
+    path: captionPath,
+    exists: true,
+    text: fs.readFileSync(captionPath, 'utf8').trim()
+  };
+}
+
 function inferScenario(text) {
   const value = String(text || '').toLowerCase();
   if (/anime|二次元|角色|game|游戏/.test(value)) {
@@ -173,6 +197,88 @@ function buildDryRunCommand(plan) {
   };
 }
 
+function buildPreprocessPlan(plan) {
+  const targetResolution = plan.recommended_params.resolution;
+  return {
+    dry_run: true,
+    target_resolution: targetResolution,
+    operations: [
+      {
+        name: 'validate_images',
+        description: 'Check supported image extensions and readable files',
+        status: 'planned'
+      },
+      {
+        name: 'caption_check',
+        description: `Check caption files with extension ${plan.recommended_params.caption_extension}`,
+        status: 'planned'
+      },
+      {
+        name: 'resize_or_bucket',
+        description: `Prepare resize/bucket plan for ${targetResolution}px training`,
+        status: 'planned'
+      }
+    ]
+  };
+}
+
+function buildDatasetManifest(request) {
+  const plan = buildDatasetPlan(request);
+  const captionExtension = plan.recommended_params.caption_extension;
+  const items = plan.images.map((image, index) => {
+    const caption = readCaption(image.path, captionExtension);
+    return {
+      id: `${plan.dataset_name}-${String(index + 1).padStart(4, '0')}`,
+      image_path: image.path,
+      filename: image.filename,
+      size_bytes: image.size_bytes,
+      caption_path: caption.path,
+      caption_exists: caption.exists,
+      caption: caption.text
+    };
+  });
+  const missingCaptions = items.filter((item) => !item.caption_exists || !item.caption);
+
+  return {
+    dataset_name: plan.dataset_name,
+    scenario: plan.scenario,
+    dataset_path: plan.dataset_path,
+    output_path: plan.output_path,
+    image_count: plan.image_count,
+    caption_extension: captionExtension,
+    missing_caption_count: missingCaptions.length,
+    readiness: {
+      ...plan.readiness,
+      ok: plan.readiness.ok && missingCaptions.length === 0,
+      warnings: [
+        ...plan.readiness.warnings,
+        ...(missingCaptions.length > 0 ? [`${missingCaptions.length} images are missing captions`] : [])
+      ]
+    },
+    preprocess_plan: buildPreprocessPlan(plan),
+    recommended_params: plan.recommended_params,
+    items
+  };
+}
+
+function maybeWriteManifest(manifest, request) {
+  if (request.write_manifest !== true) {
+    return {
+      written: false,
+      path: null
+    };
+  }
+
+  const outputPath = resolveInside(CONFIG.outputRoot, manifest.dataset_name);
+  fs.mkdirSync(outputPath, { recursive: true });
+  const manifestPath = path.join(outputPath, 'dataset-manifest.json');
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return {
+    written: true,
+    path: manifestPath
+  };
+}
+
 async function handleRequest(request) {
   const action = String(request.action || request.tool_name || '').trim();
 
@@ -216,6 +322,19 @@ async function handleRequest(request) {
       };
     }
 
+    case 'build_manifest':
+    case 'BuildManifest': {
+      const manifest = buildDatasetManifest(request);
+      const write = maybeWriteManifest(manifest, request);
+      return {
+        status: 'success',
+        result: {
+          manifest,
+          write
+        }
+      };
+    }
+
     case 'health_check':
     case 'HealthCheck':
       return {
@@ -234,7 +353,7 @@ async function handleRequest(request) {
       return {
         status: 'error',
         error: `unknown action: ${action || '(empty)'}`,
-        supported_actions: ['prepare_dataset', 'recommend_params', 'dry_run_train', 'health_check']
+        supported_actions: ['prepare_dataset', 'recommend_params', 'dry_run_train', 'build_manifest', 'health_check']
       };
   }
 }
@@ -257,6 +376,8 @@ module.exports = {
   handleRequest,
   buildDatasetPlan,
   buildDryRunCommand,
+  buildDatasetManifest,
+  buildPreprocessPlan,
   recommendTrainingParams,
   inferScenario
 };

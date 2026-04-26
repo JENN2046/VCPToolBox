@@ -56,6 +56,10 @@
         "description": "Generate a dry-run training command plan. No real training is executed."
       },
       {
+        "commandIdentifier": "BuildManifest",
+        "description": "Build a dataset manifest with image/caption readiness and preprocessing plan. Optional write_manifest writes only under the ignored outputs root."
+      },
+      {
         "commandIdentifier": "HealthCheck",
         "description": "Report StyleTrainer configuration and safety gate state."
       }
