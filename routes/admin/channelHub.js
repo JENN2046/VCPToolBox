@@ -82,6 +82,43 @@ function ensureService(req, res, next) {
   next();
 }
 
+function isAdapterHealthy(adapter) {
+  return adapter?.status === 'active' || adapter?.enabled === true;
+}
+
+function getAdapterHealthSummary(adapters = []) {
+  const summary = {
+    total: adapters.length,
+    healthy: 0,
+    unhealthy: 0,
+    unknown: 0,
+    active: 0,
+    inactive: 0
+  };
+
+  for (const adapter of adapters) {
+    if (isAdapterHealthy(adapter)) {
+      summary.healthy += 1;
+      summary.active += 1;
+      continue;
+    }
+
+    if (adapter?.status === 'error') {
+      summary.unhealthy += 1;
+      continue;
+    }
+
+    if (adapter?.status === 'inactive' || adapter?.enabled === false) {
+      summary.inactive += 1;
+      continue;
+    }
+
+    summary.unknown += 1;
+  }
+
+  return summary;
+}
+
 // Apply service check to all routes (except health check)
 router.use(ensureService);
 
@@ -156,11 +193,7 @@ router.get('/health', async (req, res) => {
       const registry = getServiceModule('adapterRegistry');
       if (registry) {
         const adapters = await registry.listAdapters();
-        health.metrics.adapters = {
-          total: adapters.length,
-          active: adapters.filter(a => a.enabled).length,
-          inactive: adapters.filter(a => !a.enabled).length
-        };
+        health.metrics.adapters = getAdapterHealthSummary(adapters);
       }
     } catch (e) {
       health.metrics.adapters = { error: e.message };
@@ -420,7 +453,7 @@ router.get('/adapters/:id/health', async (req, res) => {
     }
 
     const health = {
-      healthy: adapter.status === 'active',
+      healthy: isAdapterHealthy(adapter),
       adapterId: adapter.adapterId,
       status: adapter.status,
       lastCheck: new Date().toISOString(),
@@ -927,8 +960,7 @@ router.get('/health', async (req, res) => {
       uptime: healthStatus.uptime,
       adapters: {
         total: healthStatus.adapters,
-        healthy: healthStatus.adapters, // TODO: implement per-adapter health
-        unhealthy: 0
+        ...getAdapterHealthSummary(await getServiceModule('adapterRegistry')?.listAdapters?.())
       },
       outbox: healthStatus.outbox,
       modules: healthStatus.modules,
