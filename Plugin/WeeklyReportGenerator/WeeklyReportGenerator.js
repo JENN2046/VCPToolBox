@@ -23,6 +23,7 @@ const CONFIG = {
   DINGTALK_TABLE_UUID: process.env.DINGTALK_TABLE_UUID || '',
   DINGTALK_MCP_URL: process.env.DINGTALK_MCP_URL || 'http://127.0.0.1:9000',
   DINGTALK_MCP_KEY: process.env.DINGTALK_MCP_KEY || 'vcp-mcpo-secret',
+  DWS_GRAY_STAGE: process.env.DWS_GRAY_STAGE || 'full_write',
 };
 
 // ============ 日志记录 ============
@@ -217,6 +218,14 @@ ${logSummary}
  * 导出周报到钉钉 AI 表格
  */
 async function exportToTable(content, summary = '', tableUuid = '') {
+  const grayStage = String(CONFIG.DWS_GRAY_STAGE || '').trim().toLowerCase();
+  if (grayStage !== 'full_write') {
+    return {
+      status: 'error',
+      error: `周报导出被灰度策略阻断：DWS_GRAY_STAGE=${grayStage || 'unset'}。仅 full_write 阶段允许写入钉钉 AI 表格。`
+    };
+  }
+
   // 这里调用 DingTalkTable 插件
   // 由于是插件间调用，我们通过 VCP 内部 API 进行
   const targetTable = tableUuid || CONFIG.DINGTALK_TABLE_UUID;
