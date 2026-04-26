@@ -938,46 +938,6 @@ router.get('/metrics/errors', async (req, res) => {
   }
 });
 
-/**
- * GET /admin_api/channelHub/health
- * Health check endpoint
- */
-router.get('/health', async (req, res) => {
-  try {
-    const healthStatus = channelHubService.getHealthStatus();
-
-    // Determine overall status
-    let status = 'healthy';
-    if (!healthStatus.initialized) {
-      status = 'unhealthy';
-    } else if (healthStatus.outbox.pending > 100) {
-      status = 'degraded';
-    }
-
-    const response = {
-      status,
-      initialized: healthStatus.initialized,
-      uptime: healthStatus.uptime,
-      adapters: {
-        total: healthStatus.adapters,
-        ...getAdapterHealthSummary(await getServiceModule('adapterRegistry')?.listAdapters?.())
-      },
-      outbox: healthStatus.outbox,
-      modules: healthStatus.modules,
-      timestamp: new Date().toISOString()
-    };
-
-    const statusCode = status === 'healthy' ? 200 : (status === 'degraded' ? 200 : 503);
-    return res.status(statusCode).json({
-      success: status !== 'unhealthy',
-      data: response,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    return fail(res, error, 503);
-  }
-});
-
 router.get('/health/detailed', async (req, res) => {
   try {
     const healthStatus = channelHubService.getHealthStatus();
