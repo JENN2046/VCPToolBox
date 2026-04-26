@@ -354,3 +354,10 @@ test_AIImageGenWidget.js # 测试脚本
 - Added workflow advice to each inspection report.
 - Added `BuildRetryPlan` to produce dry-run retry/manual-review queues for single-image or batch inspection.
 - The retry planner does not invoke generation workflows and does not call external services.
+
+## 2026-04-26 Stage 4 Increment: Quality Contract
+
+- Added `docs/AI_IMAGE_QUALITY_CONTRACT.md`.
+- Formalized `InspectImage`, `InspectBatch` and `BuildRetryPlan` output shapes.
+- Defined stable verdicts, dimension scores, findings, workflow advice, retry queue semantics and consumer rules.
+- Contract explicitly keeps retry advice separate from real generation execution.

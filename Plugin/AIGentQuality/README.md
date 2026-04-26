@@ -20,6 +20,8 @@ Current prototype checks:
 It returns a score, verdict and recommendations. It does not claim to detect anatomy, OCR, watermark pixels or aesthetic quality with model accuracy yet.
 Reports now include dimension scores for `technical_quality`, `composition`, `compliance`, `file_integrity` and `validation_limit`, plus workflow advice for accept/retry/manual-review routing.
 
+Stable output semantics for downstream workflow and multi-agent consumers are documented in `docs/AI_IMAGE_QUALITY_CONTRACT.md`.
+
 ## Commands
 
 ### InspectImage
