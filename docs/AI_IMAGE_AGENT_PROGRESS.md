@@ -339,3 +339,11 @@ test_AIImageGenWidget.js # 测试脚本
 - Builds a dry-run executor plan from the training job manifest.
 - Preflight blocks real execution unless dataset readiness, `AIGENT_STYLE_ALLOW_TRAINING=true`, `execute_training=true` and `confirm_real_training=true` all pass.
 - This stage still never spawns a training process and never calls external services.
+
+## 2026-04-26 Stage 4 Increment: QualityInspector Prototype
+
+- Added `Plugin/AIGentQuality/` as the QualityInspector Agent prototype.
+- Added `InspectImage`, `InspectBatch` and `HealthCheck`.
+- Current checks are local and rule-based: file type, readable dimensions, minimum resolution, aspect ratio, file size and compliance review keywords.
+- Returns score, verdict and recommendations for retry/manual-review routing.
+- No CLIP, OCR, OpenPose, moderation API or external vision model is called in this stage.

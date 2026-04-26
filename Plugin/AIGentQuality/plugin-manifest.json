@@ -1,0 +1,59 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "AIGentQuality",
+  "displayName": "AI Image QualityInspector",
+  "version": "0.1.0",
+  "description": "QualityInspector Agent prototype for rule-based image quality, compliance and readiness inspection. Stage 4 is dry-run only and does not call external vision models.",
+  "author": "VCPToolBox Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node AIGentQuality.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "configSchema": {
+    "AIGENT_QUALITY_MIN_WIDTH": {
+      "type": "number",
+      "description": "Minimum acceptable image width for rule-based quality checks",
+      "default": 512
+    },
+    "AIGENT_QUALITY_MIN_HEIGHT": {
+      "type": "number",
+      "description": "Minimum acceptable image height for rule-based quality checks",
+      "default": 512
+    },
+    "AIGENT_QUALITY_MAX_FILE_SIZE_MB": {
+      "type": "number",
+      "description": "Maximum image file size before manual review is recommended",
+      "default": 50
+    },
+    "AIGENT_QUALITY_EXTERNAL_VISION": {
+      "type": "boolean",
+      "description": "Reserved safety gate for future external vision-model inspection. Stage 4 keeps this false.",
+      "default": false
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "InspectImage",
+        "description": "Inspect a single image with rule-based file, dimension, composition and compliance checks. No external model is called."
+      },
+      {
+        "commandIdentifier": "InspectBatch",
+        "description": "Inspect all supported images under a directory and return average score, verdict counts and per-image reports."
+      },
+      {
+        "commandIdentifier": "HealthCheck",
+        "description": "Report QualityInspector thresholds, supported extensions and external vision safety gate state."
+      }
+    ]
+  },
+  "compatibility": {
+    "vcpVersion": ">=1.0.0",
+    "nodeVersion": ">=14.0.0"
+  }
+}
