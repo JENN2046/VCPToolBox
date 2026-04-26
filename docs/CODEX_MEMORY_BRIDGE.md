@@ -1,7 +1,7 @@
 ﻿# CodexMemoryBridge
 
-**Version:** 1.1.0  
-**Last Updated:** 2026-04-13  
+**Version:** 1.1.1
+**Last Updated:** 2026-04-26
 **Scope:** `Plugin/CodexMemoryBridge/`
 
 ---
@@ -99,12 +99,28 @@ This alignment prevents "accepted write but search miss" caused by mismatched di
 
 ## 7. Admin Monitoring
 
-Bridge runtime observability is available in AdminPanel:
+Bridge runtime observability has a backend overview route:
 
-- menu entry: `Codex Memory Bridge`
 - overview API: `GET /admin_api/codex-memory/overview`
-- frontend module: `AdminPanel/js/codex-memory-monitor.js`
 - backend route: `routes/admin/codexMemory.js`
+
+Current wiring:
+
+- `adminServer.js` mounts `codexMemory` as a local admin module.
+- `server.js` mounts the Codex memory MCP route at `/mcp/codex-memory`.
+- `server.js` does not directly mount `routes/admin/codexMemory.js` into the
+  main `adminPanelRoutes` router.
+
+Current UI status:
+
+- The legacy `AdminPanel/js/codex-memory-monitor.js` surface is not present in
+  current `prod/stable`.
+- The current admin frontend is Vue under `AdminPanel-Vue`.
+- A native Vue Codex memory monitoring page has not been implemented yet.
+
+If frontend monitoring is added, implement it in `AdminPanel-Vue` and call the
+existing `GET /admin_api/codex-memory/overview` endpoint. Do not restore the old
+`AdminPanel/js` module shape.
 
 ---
 
@@ -117,7 +133,8 @@ Bridge runtime observability is available in AdminPanel:
 - `modules/vcpLoop/toolExecutor.js`
 - `routes/codexMemoryMcp.js`
 - `routes/admin/codexMemory.js`
-- `AdminPanel/js/codex-memory-monitor.js`
+- `adminServer.js`
+- `AdminPanel-Vue/`
 
 ---
 
