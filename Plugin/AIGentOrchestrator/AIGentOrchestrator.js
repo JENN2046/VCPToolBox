@@ -81,6 +81,45 @@ function safetyBlockers(request) {
   ];
 }
 
+function buildAuditPlan(pipelineId, steps, request) {
+  return {
+    dry_run: true,
+    audit_id: stableId('ai-image-audit', {
+      pipeline_id: pipelineId,
+      step_count: steps.length
+    }),
+    write_audit_log: false,
+    requested_by: request.requested_by || 'unknown',
+    fields_to_preserve: [
+      'pipeline_id',
+      'scenario',
+      'steps',
+      'handoff_contracts',
+      'safety',
+      'final_verdict',
+      'operator_decision'
+    ],
+    redaction_rules: [
+      'do not persist secrets or raw env values',
+      'do not persist binary image payloads',
+      'store file paths and hashes instead of image bytes'
+    ]
+  };
+}
+
+function buildStatePlan(steps) {
+  return {
+    dry_run: true,
+    initial_state: 'planned',
+    terminal_states: ['accepted', 'rejected', 'cancelled', 'failed'],
+    step_states: steps.map((step) => ({
+      step_id: step.id,
+      state: 'planned',
+      depends_on: step.depends_on
+    }))
+  };
+}
+
 function planImagePipeline(request) {
   const scenario = inferScenario(request);
   const pipelineId = stableId('ai-image-pipeline', {
@@ -146,6 +185,8 @@ function planImagePipeline(request) {
   }
 
   const blockers = safetyBlockers(request);
+  const auditPlan = buildAuditPlan(pipelineId, steps, request);
+  const statePlan = buildStatePlan(steps);
   return {
     pipeline_id: pipelineId,
     scenario,
@@ -156,6 +197,8 @@ function planImagePipeline(request) {
       'docs/AI_IMAGE_QUALITY_CONTRACT.md',
       'docs/AI_IMAGE_ORCHESTRATION_CONTRACT.md'
     ],
+    state_plan: statePlan,
+    audit_plan: auditPlan,
     safety: {
       executable: blockers.length === 0,
       blockers,
@@ -171,6 +214,20 @@ function planRetryPipeline(request) {
   const retryQueue = Array.isArray(retryPlan.retry_queue) ? retryPlan.retry_queue : [];
   const pipelineId = stableId('ai-image-retry', retryQueue);
   const blockers = safetyBlockers(request);
+  const steps = retryQueue.map((item, index) => buildStep({
+    id: `retry.${String(index + 1).padStart(3, '0')}`,
+    agent: AGENTS.workflow,
+    command: 'ExecuteWorkflow',
+    purpose: `Prepare retry proposal for ${item.filename || item.image_path || 'image'}`,
+    input: {
+      source_image: item.image_path,
+      route: item.route,
+      actions: item.actions || [],
+      simulate: true
+    }
+  }));
+  const auditPlan = buildAuditPlan(pipelineId, steps, request);
+  const statePlan = buildStatePlan(steps);
 
   return {
     pipeline_id: pipelineId,
@@ -181,18 +238,9 @@ function planRetryPipeline(request) {
       'docs/AI_IMAGE_QUALITY_CONTRACT.md',
       'docs/AI_IMAGE_ORCHESTRATION_CONTRACT.md'
     ],
-    steps: retryQueue.map((item, index) => buildStep({
-      id: `retry.${String(index + 1).padStart(3, '0')}`,
-      agent: AGENTS.workflow,
-      command: 'ExecuteWorkflow',
-      purpose: `Prepare retry proposal for ${item.filename || item.image_path || 'image'}`,
-      input: {
-        source_image: item.image_path,
-        route: item.route,
-        actions: item.actions || [],
-        simulate: true
-      }
-    })),
+    steps,
+    state_plan: statePlan,
+    audit_plan: auditPlan,
     safety: {
       executable: blockers.length === 0,
       blockers,
@@ -260,6 +308,8 @@ module.exports = {
   handleRequest,
   planImagePipeline,
   planRetryPipeline,
+  buildAuditPlan,
+  buildStatePlan,
   inferScenario,
   safetyBlockers
 };

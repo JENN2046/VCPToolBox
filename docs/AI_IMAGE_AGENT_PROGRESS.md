@@ -376,3 +376,9 @@ test_AIImageGenWidget.js # 测试脚本
 - Defined cross-agent roles, plan shapes, step contract, retry handoff and future execution gates.
 - Updated orchestrator plans to reference both quality and orchestration handoff contracts.
 - Contract keeps planned steps separate from real downstream plugin execution.
+
+## 2026-04-26 Stage 5 Increment: State and Audit Plans
+
+- Added `state_plan` to orchestrator outputs for future UI/executor lifecycle display.
+- Added `audit_plan` to define future audit fields and redaction rules.
+- Audit planning is dry-run only; no audit log is written in this stage.

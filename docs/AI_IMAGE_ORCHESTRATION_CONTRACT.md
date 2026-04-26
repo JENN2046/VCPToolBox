@@ -66,6 +66,8 @@ Output shape:
   "dry_run": true,
   "status": "planned",
   "steps": [],
+  "state_plan": {},
+  "audit_plan": {},
   "handoff_contracts": [],
   "safety": {
     "executable": false,
@@ -109,6 +111,8 @@ Output shape:
   "status": "planned",
   "retry_count": 1,
   "steps": [],
+  "state_plan": {},
+  "audit_plan": {},
   "safety": {
     "executable": false,
     "blockers": [],
@@ -148,6 +152,53 @@ Stable fields:
 - `input`: proposed downstream input.
 
 Future executor implementations must validate `depends_on` before running any step.
+
+## State Plan
+
+`state_plan` describes the dry-run lifecycle shape that a future executor or UI may persist.
+
+Shape:
+
+```json
+{
+  "dry_run": true,
+  "initial_state": "planned",
+  "terminal_states": ["accepted", "rejected", "cancelled", "failed"],
+  "step_states": [
+    {
+      "step_id": "prompt.generate",
+      "state": "planned",
+      "depends_on": []
+    }
+  ]
+}
+```
+
+This is not persisted by the current stage.
+
+## Audit Plan
+
+`audit_plan` describes what should be preserved if a future stage adds real orchestration execution.
+
+Shape:
+
+```json
+{
+  "dry_run": true,
+  "audit_id": "ai-image-audit-...",
+  "write_audit_log": false,
+  "requested_by": "unknown",
+  "fields_to_preserve": [],
+  "redaction_rules": []
+}
+```
+
+Rules:
+
+- Do not persist secrets or raw environment values.
+- Do not persist binary image payloads.
+- Store file paths and hashes instead of image bytes.
+- Store operator decisions separately from generated model outputs.
 
 ## Handoff Contracts
 
