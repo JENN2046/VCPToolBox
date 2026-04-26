@@ -60,6 +60,10 @@
         "description": "Build a dataset manifest with image/caption readiness and preprocessing plan. Optional write_manifest writes only under the ignored outputs root."
       },
       {
+        "commandIdentifier": "BuildTrainingJob",
+        "description": "Build a resumable dry-run training job manifest with preprocess/train/evaluate stages. No real training is executed."
+      },
+      {
         "commandIdentifier": "HealthCheck",
         "description": "Report StyleTrainer configuration and safety gate state."
       }

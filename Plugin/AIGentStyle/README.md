@@ -92,6 +92,20 @@ write_manifest:「始」false「末」
 <<<[END_TOOL_REQUEST]>>>
 ```
 
+### BuildTrainingJob
+
+生成可恢复的 training job manifest，包含 dataset manifest、dry-run command、preprocess/train/evaluate 阶段。默认只返回 JSON；如显式 `write_job_manifest=true`，只会写入被 `.gitignore` 忽略的 `outputs/<dataset>/training-job-manifest.json`。
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentStyle「末」,
+tool_name:「始」BuildTrainingJob「末」,
+dataset_name:「始」ecommerce-dress-v1「末」,
+scenario:「始」ecommerce「末」,
+write_job_manifest:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
 ## 安全边界
 
 - `AIGENT_STYLE_ALLOW_TRAINING=false` 是阶段 2 的固定默认值。
@@ -105,6 +119,5 @@ write_manifest:「始」false「末」
 
 - 素材裁剪与尺寸统计
 - caption 自动生成
-- dataset manifest 扩展为可恢复 job manifest
 - training job dry-run 文件落盘
 - 真实训练执行器的显式安全门禁
