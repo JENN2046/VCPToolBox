@@ -212,6 +212,16 @@ image/fluxgen/
 
 # Windows 缩略图缓存
 Thumbs.db
+desktop.ini
+
+# Python bytecode / cache directories
+__pycache__/
+*.py[cod]
+
+# Local Codex workspace/runtime artifacts
+.codex
+.codex/
+.codex-runtime/
 
 # ===== 编译产物 =====
 rust-vexus-lite/target/
@@ -220,3 +230,11 @@ rust-vexus-lite/target/
 VCPDistributedServer
 # XiaohongshuFetch config
 Plugin/XiaohongshuFetch/config.env
+
+# Local runtime state and generated indexes
+/state/
+/data/candidate-cache.json
+/data/chat-history-index.json
+/data/memory-vectors.json
+/Plugin/VCPTaskAssistant/task-center-data.json
+/sarprompt.json
