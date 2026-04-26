@@ -64,6 +64,10 @@
         "description": "Build a resumable dry-run training job manifest with preprocess/train/evaluate stages. No real training is executed."
       },
       {
+        "commandIdentifier": "GenerateCaptionDrafts",
+        "description": "Generate rule-based caption/tag drafts from filename, scenario and image dimensions. Optional writes require write_captions=true."
+      },
+      {
         "commandIdentifier": "HealthCheck",
         "description": "Report StyleTrainer configuration and safety gate state."
       }

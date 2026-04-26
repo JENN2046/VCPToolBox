@@ -121,3 +121,19 @@ write_job_manifest:「始」false「末」
 - caption 自动生成
 - training job dry-run 文件落盘
 - 真实训练执行器的显式安全门禁
+
+## GenerateCaptionDrafts
+
+Generate rule-based caption/tag drafts from dataset name, file name, scenario and image dimensions. This does not call any external vision model. By default it only returns JSON and does not write caption files.
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentStyle「末」
+tool_name:「始」GenerateCaptionDrafts「末」
+dataset_name:「始」ecommerce-dress-v1「末」
+scenario:「始」ecommerce「末」
+write_captions:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+Optional local writes require `write_captions=true`. Existing captions are preserved unless `overwrite_existing_captions=true`.

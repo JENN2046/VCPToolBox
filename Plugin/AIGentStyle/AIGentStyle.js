@@ -320,6 +320,137 @@ function buildPreprocessPlan(plan) {
   };
 }
 
+function tokenizeCaptionSource(...values) {
+  const stopwords = new Set([
+    'img', 'image', 'photo', 'picture', 'pic', 'copy', 'final', 'edit', 'new', 'raw',
+    'dsc', 'jpg', 'jpeg', 'png', 'webp', 'bmp', 'v', 'ver'
+  ]);
+  const tokens = [];
+
+  for (const value of values) {
+    const normalized = String(value || '')
+      .replace(/\.[^.]+$/u, '')
+      .replace(/[_()[\]{}.,]+/g, ' ')
+      .replace(/[-]+/g, ' ')
+      .toLowerCase();
+    for (const token of normalized.split(/\s+/u)) {
+      const clean = token.trim();
+      if (!clean || clean.length < 2 || /^\d+$/u.test(clean) || stopwords.has(clean)) {
+        continue;
+      }
+      tokens.push(clean);
+    }
+  }
+
+  return Array.from(new Set(tokens)).slice(0, 12);
+}
+
+function scenarioTags(scenario) {
+  switch (scenario) {
+    case 'anime':
+      return ['anime style', 'character design', 'illustration'];
+    case 'portrait':
+      return ['portrait', 'face focus', 'natural lighting'];
+    case 'ecommerce':
+      return ['product photo', 'clean background', 'commercial style'];
+    default:
+      return ['style reference', 'consistent visual style'];
+  }
+}
+
+function dimensionTags(dimensions) {
+  if (!dimensions || !dimensions.width || !dimensions.height) {
+    return [];
+  }
+
+  if (dimensions.width === dimensions.height) {
+    return ['square composition'];
+  }
+  if (dimensions.width > dimensions.height) {
+    return ['landscape composition'];
+  }
+  return ['portrait composition'];
+}
+
+function buildCaptionDraft(item, manifest, request) {
+  const manualPrefix = String(request.caption_prefix || '').trim();
+  const manualSuffix = String(request.caption_suffix || '').trim();
+  const filenameTags = tokenizeCaptionSource(manifest.dataset_name, item.filename);
+  const tags = Array.from(new Set([
+    ...scenarioTags(manifest.scenario),
+    ...dimensionTags(item.dimensions),
+    ...filenameTags
+  ])).slice(0, 18);
+  const parts = [
+    manualPrefix,
+    ...tags,
+    manualSuffix
+  ].filter(Boolean);
+
+  return {
+    id: item.id,
+    image_path: item.image_path,
+    caption_path: item.caption_path,
+    caption_exists: item.caption_exists,
+    existing_caption: item.caption,
+    generated_tags: tags,
+    proposed_caption: parts.join(', '),
+    source: 'rule_based_filename_scenario_dimensions'
+  };
+}
+
+function generateCaptionDrafts(request) {
+  const manifest = buildDatasetManifest(request);
+  const regenerateExisting = request.regenerate_existing === true;
+  const drafts = manifest.items
+    .filter((item) => regenerateExisting || !item.caption_exists || !item.caption)
+    .map((item) => buildCaptionDraft(item, manifest, request));
+
+  return {
+    dataset_name: manifest.dataset_name,
+    scenario: manifest.scenario,
+    dry_run: request.write_captions !== true,
+    image_count: manifest.image_count,
+    missing_caption_count: manifest.missing_caption_count,
+    draft_count: drafts.length,
+    caption_extension: manifest.caption_extension,
+    generator: {
+      mode: 'rule_based',
+      external_model_used: false,
+      writes_require_write_captions_true: true,
+      overwrite_existing: request.overwrite_existing_captions === true
+    },
+    drafts
+  };
+}
+
+function maybeWriteCaptionDrafts(captionPlan, request) {
+  if (request.write_captions !== true) {
+    return {
+      written: false,
+      count: 0,
+      paths: []
+    };
+  }
+
+  const overwriteExisting = request.overwrite_existing_captions === true;
+  const writtenPaths = [];
+  for (const draft of captionPlan.drafts) {
+    if (!overwriteExisting && fs.existsSync(draft.caption_path)) {
+      continue;
+    }
+
+    fs.writeFileSync(draft.caption_path, `${draft.proposed_caption}\n`, 'utf8');
+    writtenPaths.push(draft.caption_path);
+  }
+
+  return {
+    written: true,
+    count: writtenPaths.length,
+    paths: writtenPaths
+  };
+}
+
 function buildDatasetManifest(request) {
   const plan = buildDatasetPlan(request);
   const captionExtension = plan.recommended_params.caption_extension;
@@ -524,6 +655,19 @@ async function handleRequest(request) {
       };
     }
 
+    case 'generate_caption_drafts':
+    case 'GenerateCaptionDrafts': {
+      const captionPlan = generateCaptionDrafts(request);
+      const write = maybeWriteCaptionDrafts(captionPlan, request);
+      return {
+        status: 'success',
+        result: {
+          caption_plan: captionPlan,
+          write
+        }
+      };
+    }
+
     case 'health_check':
     case 'HealthCheck':
       return {
@@ -542,7 +686,7 @@ async function handleRequest(request) {
       return {
         status: 'error',
         error: `unknown action: ${action || '(empty)'}`,
-        supported_actions: ['prepare_dataset', 'recommend_params', 'dry_run_train', 'build_manifest', 'build_training_job', 'health_check']
+        supported_actions: ['prepare_dataset', 'recommend_params', 'dry_run_train', 'build_manifest', 'build_training_job', 'generate_caption_drafts', 'health_check']
       };
   }
 }
@@ -568,6 +712,7 @@ module.exports = {
   buildDatasetManifest,
   buildPreprocessPlan,
   buildTrainingJobManifest,
+  generateCaptionDrafts,
   readImageDimensions,
   recommendTrainingParams,
   inferScenario

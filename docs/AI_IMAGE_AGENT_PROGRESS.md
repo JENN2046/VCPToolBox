@@ -324,3 +324,11 @@ test_AIImageGenWidget.js # 测试脚本
 ---
 
 **最后更新**: 2026-04-15
+
+## 2026-04-26 Stage 3 Increment: Caption Drafts
+
+- Added `GenerateCaptionDrafts` to `Plugin/AIGentStyle`.
+- Generates rule-based caption/tag drafts from dataset name, filename, scenario and image dimensions.
+- Default mode is JSON-only dry-run; no external vision model is called.
+- Optional local caption writes require `write_captions=true`; existing caption files are preserved unless `overwrite_existing_captions=true`.
+- Real LoRA training remains disabled behind `AIGENT_STYLE_ALLOW_TRAINING=false`.
