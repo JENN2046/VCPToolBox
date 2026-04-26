@@ -8,6 +8,26 @@
 
 旧 `AdminPanel` 的 `ChannelHub` 管理入口已经完成迁移到 `AdminPanel-Vue`，并已删除旧静态入口。2026-04-26 续接期间同时完成 ChannelHub 后端健康检查、认证、MediaGateway 转码、NewAPI Monitor 验证、AI Image workflow 复核修复，以及 DingTalk WeeklyReport 灰度门禁收口。
 
+## 总体进度
+
+本轮续接任务整体进度：**约 98% 完成**。
+
+已完成并推送：
+
+- ChannelHub AdminPanel-Vue 迁移与旧入口清理
+- ChannelHub health/auth/route 清理补强
+- MediaGateway 转码实现与验证
+- NewAPI Monitor 配置与 mock 链路验证
+- AI Image Agent workflow 修复与文档复核
+- DingTalk WeeklyReport 灰度门禁补强
+- 续接收口文档更新
+
+未纳入本轮完成率的后续事项：
+
+- `Plugin/UserAuth/code.bin` 为用户确认保留的本地运行态/认证态文件，不恢复、不提交。
+- AI Image 阶段三（StyleTrainer）、阶段四（QualityInspector）、阶段五（多 Agent 协作）属于后续新阶段。
+- DingTalk WeeklyReport 真正切换为 `DingTalkCLI` 主路径需单独开任务，因为会影响插件间调用与真实写表行为。
+
 - `AdminPanel/channelHub.html`
 - `AdminPanel/js/channelHub/*`
 
@@ -26,6 +46,7 @@ Vue 版入口已注册为：
 - `29df708 feat: implement ChannelHub media transcode`
 - `dd98b00 fix: align AI image workflow orchestration`
 - `a9d0ebc fix: guard WeeklyReport DingTalk export by gray stage`
+- `5a9945b docs: update ChannelHub handoff completion record`
 
 推送目标：
 
