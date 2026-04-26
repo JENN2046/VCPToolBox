@@ -1,0 +1,49 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "AIGentOrchestrator",
+  "displayName": "AI Image Multi-Agent Orchestrator",
+  "version": "0.1.0",
+  "description": "Dry-run orchestration planner for AI image agents. It builds cross-agent pipeline and retry plans without invoking downstream plugins, generation workflows, training or external services.",
+  "author": "VCPToolBox Team",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node AIGentOrchestrator.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "configSchema": {
+    "AIGENT_ORCHESTRATOR_ALLOW_EXECUTION": {
+      "type": "boolean",
+      "description": "Reserved safety gate for future real downstream execution. Stage 5 keeps this false.",
+      "default": false
+    },
+    "AIGENT_ORCHESTRATOR_DEFAULT_MODE": {
+      "type": "string",
+      "description": "Default orchestration mode",
+      "default": "dry-run"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "PlanImagePipeline",
+        "description": "Build a dry-run Prompt -> Workflow -> Quality pipeline plan. Optional StyleTrainer prep step can be included without training."
+      },
+      {
+        "commandIdentifier": "PlanRetryPipeline",
+        "description": "Build a dry-run retry workflow plan from a QualityInspector retry_queue. No regeneration is executed."
+      },
+      {
+        "commandIdentifier": "HealthCheck",
+        "description": "Report orchestration safety gate state and known agent roles."
+      }
+    ]
+  },
+  "compatibility": {
+    "vcpVersion": ">=1.0.0",
+    "nodeVersion": ">=14.0.0"
+  }
+}

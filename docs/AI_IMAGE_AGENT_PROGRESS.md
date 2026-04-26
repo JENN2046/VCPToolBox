@@ -361,3 +361,11 @@ test_AIImageGenWidget.js # 测试脚本
 - Formalized `InspectImage`, `InspectBatch` and `BuildRetryPlan` output shapes.
 - Defined stable verdicts, dimension scores, findings, workflow advice, retry queue semantics and consumer rules.
 - Contract explicitly keeps retry advice separate from real generation execution.
+
+## 2026-04-26 Stage 5 Increment: Multi-Agent Orchestrator Prototype
+
+- Added `Plugin/AIGentOrchestrator/`.
+- Added `PlanImagePipeline`, `PlanRetryPipeline` and `HealthCheck`.
+- The orchestrator creates dry-run Prompt -> Workflow -> Quality plans, with optional StyleTrainer prep.
+- Retry plans consume QualityInspector `retry_queue` shape but do not invoke regeneration.
+- `AIGENT_ORCHESTRATOR_ALLOW_EXECUTION=false` keeps this stage as planning-only.
