@@ -369,3 +369,10 @@ test_AIImageGenWidget.js # 测试脚本
 - The orchestrator creates dry-run Prompt -> Workflow -> Quality plans, with optional StyleTrainer prep.
 - Retry plans consume QualityInspector `retry_queue` shape but do not invoke regeneration.
 - `AIGENT_ORCHESTRATOR_ALLOW_EXECUTION=false` keeps this stage as planning-only.
+
+## 2026-04-26 Stage 5 Increment: Orchestration Contract
+
+- Added `docs/AI_IMAGE_ORCHESTRATION_CONTRACT.md`.
+- Defined cross-agent roles, plan shapes, step contract, retry handoff and future execution gates.
+- Updated orchestrator plans to reference both quality and orchestration handoff contracts.
+- Contract keeps planned steps separate from real downstream plugin execution.

@@ -153,7 +153,8 @@ function planImagePipeline(request) {
     status: 'planned',
     steps,
     handoff_contracts: [
-      'docs/AI_IMAGE_QUALITY_CONTRACT.md'
+      'docs/AI_IMAGE_QUALITY_CONTRACT.md',
+      'docs/AI_IMAGE_ORCHESTRATION_CONTRACT.md'
     ],
     safety: {
       executable: blockers.length === 0,
@@ -176,6 +177,10 @@ function planRetryPipeline(request) {
     dry_run: true,
     status: 'planned',
     retry_count: retryQueue.length,
+    handoff_contracts: [
+      'docs/AI_IMAGE_QUALITY_CONTRACT.md',
+      'docs/AI_IMAGE_ORCHESTRATION_CONTRACT.md'
+    ],
     steps: retryQueue.map((item, index) => buildStep({
       id: `retry.${String(index + 1).padStart(3, '0')}`,
       agent: AGENTS.workflow,

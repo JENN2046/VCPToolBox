@@ -15,6 +15,8 @@ AIGentOrchestrator starts stage 5 of the AI image agent plan. It coordinates the
 
 The current implementation returns JSON plans. It is deliberately not an executor.
 
+Stable output semantics and future execution safety gates are documented in `docs/AI_IMAGE_ORCHESTRATION_CONTRACT.md`.
+
 ## Commands
 
 ### PlanImagePipeline
