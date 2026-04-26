@@ -332,3 +332,10 @@ test_AIImageGenWidget.js # 测试脚本
 - Default mode is JSON-only dry-run; no external vision model is called.
 - Optional local caption writes require `write_captions=true`; existing caption files are preserved unless `overwrite_existing_captions=true`.
 - Real LoRA training remains disabled behind `AIGENT_STYLE_ALLOW_TRAINING=false`.
+
+## 2026-04-26 Stage 3 Increment: Training Executor Safety Gate
+
+- Added `ExecuteTrainingJob` to `Plugin/AIGentStyle`.
+- Builds a dry-run executor plan from the training job manifest.
+- Preflight blocks real execution unless dataset readiness, `AIGENT_STYLE_ALLOW_TRAINING=true`, `execute_training=true` and `confirm_real_training=true` all pass.
+- This stage still never spawns a training process and never calls external services.

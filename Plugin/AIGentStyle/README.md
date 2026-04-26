@@ -137,3 +137,24 @@ write_captions:「始」false「末」
 ```
 
 Optional local writes require `write_captions=true`. Existing captions are preserved unless `overwrite_existing_captions=true`.
+
+## ExecuteTrainingJob
+
+Run the training execution preflight and return a dry-run executor plan. This stage never spawns a real training process. Real execution remains blocked unless all safety gates pass, and even then this implementation only reports what would run.
+
+Required safety gates for a future real runner:
+
+- dataset manifest readiness must be `ok`
+- `AIGENT_STYLE_ALLOW_TRAINING=true`
+- request must include `execute_training=true`
+- request must include `confirm_real_training=true`
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentStyle「末」
+tool_name:「始」ExecuteTrainingJob「末」
+dataset_name:「始」ecommerce-dress-v1「末」
+scenario:「始」ecommerce「末」
+execute_training:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+```

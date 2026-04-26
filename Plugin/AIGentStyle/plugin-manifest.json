@@ -68,6 +68,10 @@
         "description": "Generate rule-based caption/tag drafts from filename, scenario and image dimensions. Optional writes require write_captions=true."
       },
       {
+        "commandIdentifier": "ExecuteTrainingJob",
+        "description": "Run training execution preflight and return a dry-run executor plan. This stage never spawns a real training process."
+      },
+      {
         "commandIdentifier": "HealthCheck",
         "description": "Report StyleTrainer configuration and safety gate state."
       }

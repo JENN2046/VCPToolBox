@@ -586,6 +586,50 @@ function maybeWriteJobManifest(job, request) {
   };
 }
 
+function buildTrainingExecutionPlan(request) {
+  const job = buildTrainingJobManifest(request);
+  const requestedExecution = request.execute_training === true;
+  const explicitConfirm = request.confirm_real_training === true;
+  const datasetReady = job.dataset_manifest.readiness.ok;
+  const blockers = [
+    ...(!datasetReady ? ['dataset manifest is not ready'] : []),
+    ...(!CONFIG.allowTraining ? ['AIGENT_STYLE_ALLOW_TRAINING is false'] : []),
+    ...(!requestedExecution ? ['execute_training is not true'] : []),
+    ...(!explicitConfirm ? ['confirm_real_training is not true'] : [])
+  ];
+  const canExecute = blockers.length === 0;
+
+  return {
+    job,
+    requested_execution: requestedExecution,
+    dry_run: true,
+    executable_plan: {
+      can_execute: canExecute,
+      would_execute: canExecute,
+      command: job.command,
+      working_directory: job.dataset_manifest.output_path,
+      runner: CONFIG.backend
+    },
+    preflight: {
+      dataset_ready: datasetReady,
+      image_count: job.dataset_manifest.image_count,
+      missing_caption_count: job.dataset_manifest.missing_caption_count,
+      allow_training: CONFIG.allowTraining,
+      explicit_execute_training: requestedExecution,
+      explicit_confirm_real_training: explicitConfirm,
+      blockers
+    },
+    safety: {
+      real_training_executed: false,
+      process_spawned: false,
+      external_service_called: false,
+      note: canExecute
+        ? 'Execution is still dry-run in this stage; a later confirmed stage must add the real process runner.'
+        : 'Training execution blocked by preflight safety gates.'
+    }
+  };
+}
+
 async function handleRequest(request) {
   const action = String(request.action || request.tool_name || '').trim();
 
@@ -668,6 +712,14 @@ async function handleRequest(request) {
       };
     }
 
+    case 'execute_training_job':
+    case 'ExecuteTrainingJob': {
+      return {
+        status: 'success',
+        result: buildTrainingExecutionPlan(request)
+      };
+    }
+
     case 'health_check':
     case 'HealthCheck':
       return {
@@ -686,7 +738,7 @@ async function handleRequest(request) {
       return {
         status: 'error',
         error: `unknown action: ${action || '(empty)'}`,
-        supported_actions: ['prepare_dataset', 'recommend_params', 'dry_run_train', 'build_manifest', 'build_training_job', 'generate_caption_drafts', 'health_check']
+        supported_actions: ['prepare_dataset', 'recommend_params', 'dry_run_train', 'build_manifest', 'build_training_job', 'generate_caption_drafts', 'execute_training_job', 'health_check']
       };
   }
 }
@@ -712,6 +764,7 @@ module.exports = {
   buildDatasetManifest,
   buildPreprocessPlan,
   buildTrainingJobManifest,
+  buildTrainingExecutionPlan,
   generateCaptionDrafts,
   readImageDimensions,
   recommendTrainingParams,
