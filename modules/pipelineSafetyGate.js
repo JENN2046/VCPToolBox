@@ -142,7 +142,13 @@ function evaluatePipelineSafety(input = {}) {
     action = SAFETY_ACTION.DRY_RUN_ONLY;
     level = RISK_LEVEL.MEDIUM;
   }
-  // 5g. LOW: reasons 列表非空但无触发条件 → allow (保守)
+  // 5g. MEDIUM: reasons 非空但未被 5a-5f 处理 → dry_run_only (兜底保护)
+  else if (reasons.length > 0) {
+    action = SAFETY_ACTION.DRY_RUN_ONLY;
+    level = RISK_LEVEL.MEDIUM;
+    reasons.push('safety:unhandled_safety_reason_fallback');
+    requiredApprovals.push('safety_fallback_review');
+  }
   // 5h. LOW: 完全无问题 → allow
 
   return {
