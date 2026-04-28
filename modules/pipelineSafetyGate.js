@@ -32,6 +32,25 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+// ── 已知外部图像生成插件（小写）──────────────────────────────────────
+// 对应 Pipeline plan 中 step.plugin 字段，用于风险分类。
+const EXTERNAL_IMAGE_PLUGINS = new Set([
+  'doubaogen',
+  'dmxdoubaogen',
+  'geminiimagegen',
+  'nanobananagen2',
+  'nanobananagenor',
+  'fluxgen',
+  'comfyuigen',
+  'comfycloudgen',
+  'qwenimagegen',
+  'webuigen',
+  'novelaigen',
+  'zimagegen',
+  'zimagegen2',
+  'zimageturbogen',
+]);
+
 // ── 门禁主函数 ───────────────────────────────────────────────────────
 
 /**
@@ -85,8 +104,13 @@ function evaluatePipelineSafety(input = {}) {
     return cmd.includes('execute') || cmd.includes('generate') || cmd.includes('train');
   });
   const hasExternalCalls = steps.some((s) => {
-    const agent = (s.agent || '').toLowerCase();
-    return agent.includes('comfyui') || agent.includes('cloudgen');
+    const agent = String(s.agent || '').toLowerCase();
+    const plugin = String(s.plugin || '').toLowerCase();
+    return (
+      agent.includes('comfyui') ||
+      agent.includes('cloudgen') ||
+      EXTERNAL_IMAGE_PLUGINS.has(plugin)
+    );
   });
 
   if (hasExternalCalls) {
@@ -142,14 +166,19 @@ function evaluatePipelineSafety(input = {}) {
     action = SAFETY_ACTION.DRY_RUN_ONLY;
     level = RISK_LEVEL.MEDIUM;
   }
-  // 5g. MEDIUM: reasons 非空但未被 5a-5f 处理 → dry_run_only (兜底保护)
+  // 5g. LOW: 全部门禁通过（含外部调用已登记到 reasons/requiredApprovals）→ allow
+  else if (envEnabled && flags.execute_pipeline && flags.confirm_external_effects) {
+    action = SAFETY_ACTION.ALLOW;
+    level = RISK_LEVEL.LOW;
+  }
+  // 5h. MEDIUM: reasons 非空但未被 5a-5g 处理 → dry_run_only (兜底保护)
   else if (reasons.length > 0) {
     action = SAFETY_ACTION.DRY_RUN_ONLY;
     level = RISK_LEVEL.MEDIUM;
     reasons.push('safety:unhandled_safety_reason_fallback');
     requiredApprovals.push('safety_fallback_review');
   }
-  // 5h. LOW: 完全无问题 → allow
+  // 5i. LOW: 完全无问题 → allow
 
   return {
     decisionId: `safety-${nowIso()}-${Math.random().toString(36).slice(2, 6)}`,
