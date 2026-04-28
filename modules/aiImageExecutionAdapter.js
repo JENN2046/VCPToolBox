@@ -37,6 +37,59 @@ const KNOWN_STEP_TYPES = Object.freeze([
   'compose_image',
 ]);
 
+const DOUBAO_COMMAND_BY_STEP_TYPE = Object.freeze({
+  generate_image: 'generate',
+  edit_image: 'edit',
+  compose_image: 'compose',
+});
+
+function resolveSourceImages(step) {
+  if (!step || typeof step !== 'object') return null;
+
+  const candidates = [
+    step.image,
+    step.images,
+    step.sourceImage,
+    step.sourceImages,
+    step.source_image,
+    step.source_images,
+    step.referenceImage,
+    step.referenceImages,
+    step.reference_image,
+    step.reference_images,
+    step.inputImage,
+    step.inputImages,
+    step.input_image,
+    step.input_images,
+  ];
+
+  for (const value of candidates) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      if (value.length > 0) return value;
+      continue;
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (_) {
+          // 非 JSON 数组字符串时按单图处理
+        }
+      }
+
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // normalizeImageStep(step) → { ok, step, error }
 // ---------------------------------------------------------------------------
@@ -78,6 +131,7 @@ function normalizeImageStep(step) {
       resolution: step.resolution || null,
       seed: Number.isFinite(step.seed) ? step.seed : null,
       negativePrompt: step.negativePrompt || null,
+      sourceImages: resolveSourceImages(step),
     },
   };
 }
@@ -93,6 +147,9 @@ function mapStepToPlugin(step) {
 
   const s = normalized.step;
   const route = PLUGIN_ROUTE_MAP[s.plugin];
+  const command = s.plugin === 'DoubaoGen'
+    ? DOUBAO_COMMAND_BY_STEP_TYPE[s.type] || route.command
+    : route.command;
 
   const args = {
     prompt: s.prompt,
@@ -107,11 +164,14 @@ function mapStepToPlugin(step) {
   if (s.negativePrompt) {
     args.negative_prompt = s.negativePrompt;
   }
+  if (s.sourceImages) {
+    args.image = s.sourceImages;
+  }
 
   return {
     ok: true,
     toolName: route.toolName,
-    command: route.command,
+    command,
     args,
   };
 }
@@ -298,4 +358,6 @@ module.exports = {
   // 路由表（只读引用，不期望外部修改）
   PLUGIN_ROUTE_MAP,
   KNOWN_STEP_TYPES,
+  DOUBAO_COMMAND_BY_STEP_TYPE,
+  resolveSourceImages,
 };
