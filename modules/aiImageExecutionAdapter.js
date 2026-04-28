@@ -15,7 +15,7 @@ const PLUGIN_ROUTE_MAP = Object.freeze({
   FluxGen:          { toolName: 'FluxGen',          command: 'FluxGenerateImage' },
   ComfyUIGen:       { toolName: 'ComfyUIGen',       command: 'ComfyUIGenerateImage' },
   ComfyCloudGen:    { toolName: 'ComfyCloudGen',    command: 'GenerateImage' },
-  DoubaoGen:        { toolName: 'DoubaoGen',        command: 'DoubaoGenerateImage' },
+  DoubaoGen:        { toolName: 'DoubaoGen',        command: 'generate' },            // 子命令: generate/edit/compose/group
   DMXDoubaoGen:     { toolName: 'DMXDoubaoGen',     command: 'DoubaoGenerateImage' },
   GeminiImageGen:   { toolName: 'GeminiImageGen',   command: 'GeminiGenerateImage' },
   ZImageGen:        { toolName: 'ZImageGen',        command: 'ZImageGenerate' },
@@ -119,37 +119,80 @@ function mapStepToPlugin(step) {
 // ---------------------------------------------------------------------------
 // parsePluginResult(result) → { ok, image, error }
 // ---------------------------------------------------------------------------
+/**
+ * 从任意嵌套对象中提取图片信息。
+ * processToolCall 已 unwrap 子进程的 { status, result } 包装，返回的是内层 result 对象。
+ * 不同插件的内层结构差异大：有些平铺 url/path，有些嵌套在 details/data/result 下。
+ */
+function extractImageFromBody(body) {
+  if (!body || typeof body !== 'object') return null;
+
+  // 顶层直铺字段 + 常见变体
+  const urlArr   = Array.isArray(body.imageUrls) ? body.imageUrls : null;
+  const url      = body.url      || body.imageUrl  || (urlArr && urlArr[0]) || null;
+  const path     = body.path     || body.imagePath || body.filePath || body.serverPath || null;
+  const filename = body.filename || body.fileName  || null;
+
+  if (url || path || filename) {
+    return { url, path, filename };
+  }
+
+  // DoubaoGen 风格：{ details: { imageUrls, serverPath, fileName } }
+  const details = body.details || body.data || body.result || {};
+  if (details && typeof details === 'object' && !Array.isArray(details)) {
+    return extractImageFromBody(details);
+  }
+
+  // 数组风格：{ data: [{ url, ... }] }（如 ComfyUI / Flux）
+  const arr = Array.isArray(body.data) ? body.data : null;
+  if (arr && arr.length > 0 && arr[0] && typeof arr[0] === 'object') {
+    const first = arr[0];
+    if (first.url || first.imageUrl || first.path || first.filePath || first.filename) {
+      return extractImageFromBody(first);
+    }
+  }
+
+  return null;
+}
+
 function parsePluginResult(result) {
   if (!result || typeof result !== 'object') {
     return { ok: false, image: null, error: 'plugin_result_not_object' };
   }
 
-  // 标准 stdio 插件格式：{ status: "success"|"error", result/error }
-  if (result.status === 'error') {
-    return {
-      ok: false,
-      image: null,
-      error: result.error || 'plugin_returned_error',
-    };
+  // 原始 stdio 格式（未被 processToolCall unwrap）：{ status, result/error }
+  if (result.hasOwnProperty('status')) {
+    if (result.status === 'error') {
+      return {
+        ok: false,
+        image: null,
+        error: result.error || 'plugin_returned_error',
+      };
+    }
+
+    if (result.status !== 'success') {
+      return {
+        ok: false,
+        image: null,
+        error: `unknown_plugin_status:${result.status}`,
+      };
+    }
+
+    // 递归提取 result.result
+    const image = extractImageFromBody(result.result || {});
+    if (image) return { ok: true, image };
+
+    return { ok: false, image: null, error: 'plugin_result_no_image_data' };
   }
 
-  if (result.status !== 'success') {
-    return {
-      ok: false,
-      image: null,
-      error: `unknown_plugin_status:${result.status}`,
-    };
-  }
-
-  const body = result.result || {};
+  // processToolCall 已 unwrap 的格式
+  const image = extractImageFromBody(result);
+  if (image) return { ok: true, image };
 
   return {
-    ok: true,
-    image: {
-      url:      body.url      || body.imageUrl || null,
-      path:     body.path     || body.imagePath || null,
-      filename: body.filename || body.fileName  || null,
-    },
+    ok: false,
+    image: null,
+    error: 'plugin_result_no_image_data',
   };
 }
 
