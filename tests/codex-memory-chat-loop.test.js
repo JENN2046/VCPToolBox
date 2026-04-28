@@ -5,7 +5,6 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
-const Database = require('better-sqlite3');
 
 const ROOT_DIR = path.join(__dirname, '..');
 const BRIDGE_PLUGIN_DIR = path.join(ROOT_DIR, 'Plugin', 'CodexMemoryBridge');
@@ -218,16 +217,14 @@ function isTransientSqliteReadError(error) {
         /disk I\/O error/i.test(error?.message || '');
 }
 
-async function waitUntilIndexed(storePath, pattern, timeoutMs = 8000) {
-    const dbPath = path.join(storePath, 'knowledge_base.sqlite');
+async function waitUntilIndexed(vectorDBManager, pattern, timeoutMs = 8000) {
     const startedAt = Date.now();
     let lastTransientError = null;
 
     while (Date.now() - startedAt < timeoutMs) {
-        if (fs.existsSync(dbPath)) {
-            let db = null;
+        const db = vectorDBManager?.db;
+        if (db && db.open !== false) {
             try {
-                db = new Database(dbPath, { readonly: true, fileMustExist: true });
                 const row = db.prepare('SELECT path FROM files WHERE path LIKE ? LIMIT 1').get(pattern);
                 if (row?.path) {
                     return row.path;
@@ -237,8 +234,6 @@ async function waitUntilIndexed(storePath, pattern, timeoutMs = 8000) {
                     throw error;
                 }
                 lastTransientError = error;
-            } finally {
-                if (db) db.close();
             }
         }
         await wait(100);
@@ -526,7 +521,7 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
         const writeContent = writeJson.choices[0].message.content;
         assert.match(writeContent, /WRITE_COMPLETE/);
 
-        const indexedPath = await waitUntilIndexed(storeRoot, '%E2E process anchor memory%');
+        const indexedPath = await waitUntilIndexed(knowledgeBaseManager, '%E2E process anchor memory%');
         assert.match(indexedPath, /E2E process anchor memory/);
 
         const recallReq = {
