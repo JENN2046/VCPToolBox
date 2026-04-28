@@ -158,10 +158,13 @@ docker compose build
 pm2 list
 ```
 
-启动或重启前确认 `config.env` 已就位：
+启动或重启前确认 `config.env` 已就位，并按已登记进程名执行受控启动/重启：
 
 ```powershell
-npm start
+pm2 start server.js --name <EXISTING_PM2_PROCESS_NAME>
+# 或（进程已存在时）
+pm2 restart <EXISTING_PM2_PROCESS_NAME>
+pm2 list
 ```
 
 生产环境如果使用 PM2，应按服务区已有进程名执行受控重启，并保留旧版本回滚目录。不要在不知道进程名的情况下批量停止所有 PM2 进程。
@@ -224,6 +227,7 @@ npm ci
 然后按原部署形态恢复：
 
 ```powershell
+pm2 restart <EXISTING_PM2_PROCESS_NAME>
 pm2 list
 ```
 
