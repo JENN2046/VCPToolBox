@@ -29,7 +29,7 @@ function hasLine(text, pattern) {
 const trackedFiles = listTrackedFiles();
 const denyRules = [
   { label: 'actual config.env', pattern: /(^|\/)config\.env$/ },
-  { label: 'root env files', pattern: /^\.env(\.|$)|^config\.env\.local$/ },
+  { label: 'env files', pattern: /(^|\/)\.env(\.|$)|(^|\/)config\.env\.local$/ },
   { label: 'chat/debug logs', pattern: /(^|\/)DebugLog\/|(^|\/)logs\/|\.log$/ },
   { label: 'runtime sqlite/db files', pattern: /\.(sqlite|sqlite-shm|sqlite-wal|db)$/ },
   { label: 'runtime vector stores', pattern: /(^|\/)VectorStore\/|^data\/(candidate-cache|chat-history-index|memory-vectors)\.json$/ },
@@ -40,14 +40,21 @@ const denyRules = [
   { label: 'generated Flux images', pattern: /^image\/fluxgen\// },
 ];
 
+const allowedEnvTemplatePattern = /(^|\/)\.env\.(example|sample|template)$/;
+
+function findDenyRule(file) {
+  const normalized = file.replace(/\\/g, '/');
+  if (allowedEnvTemplatePattern.test(normalized)) {
+    return null;
+  }
+  return denyRules.find(rule => rule.pattern.test(normalized)) || null;
+}
+
 const violations = [];
 for (const file of trackedFiles) {
-  const normalized = file.replace(/\\/g, '/');
-  for (const rule of denyRules) {
-    if (rule.pattern.test(normalized)) {
-      violations.push(`${rule.label}: ${file}`);
-      break;
-    }
+  const rule = findDenyRule(file);
+  if (rule) {
+    violations.push(`${rule.label}: ${file}`);
   }
 }
 
@@ -89,6 +96,23 @@ const safetyGate = readText('modules/pipelineSafetyGate.js');
 requiredChecks.push({
   label: 'pipeline safety gate requires AIGENT_PIPELINE_ALLOW_EXECUTION',
   ok: safetyGate.includes('AIGENT_PIPELINE_ALLOW_EXECUTION'),
+});
+
+requiredChecks.push({
+  label: 'baseline deny rules catch nested env files',
+  ok: [
+    'AdminPanel-Vue/.env.production',
+    'Plugin/Example/.env',
+    'Plugin/Example/config.env.local',
+  ].every(file => findDenyRule(file)?.label === 'env files'),
+});
+requiredChecks.push({
+  label: 'baseline deny rules allow env templates',
+  ok: [
+    'Plugin/Example/.env.example',
+    'Plugin/Example/.env.sample',
+    'Plugin/Example/.env.template',
+  ].every(file => findDenyRule(file) === null),
 });
 
 const aiImageRoute = readText('routes/admin/aiImageAgents.js');
