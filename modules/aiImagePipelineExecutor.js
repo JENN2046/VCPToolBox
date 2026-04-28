@@ -147,7 +147,66 @@ async function executeAiImagePipelineV2(input = {}, options = {}) {
     };
   }
 
-  // 7. dryRun=false 但本阶段不实现真实执行
+  // 7. dryRun=false 路径
+  // 7a. 安全门禁 ALLOW + pluginManager 已注入 → 进入 adapter
+  if (safety.action === SAFETY_ACTION.ALLOW) {
+    const pluginManager = options.pluginManager;
+
+    if (!pluginManager || typeof pluginManager.processToolCall !== 'function') {
+      return {
+        ok: false,
+        status: 'plugin_manager_not_provided',
+        mode: 'dry_run',
+        state,
+        safety,
+        audit,
+        error: 'plugin_manager_required_for_real_execution',
+      };
+    }
+
+    // 7a-ii. 注入 adapter 执行真实 plan
+    const { executeImagePlan } = require('./aiImageExecutionAdapter');
+
+    const execResult = await executeImagePlan(normalizedInput.plan, {
+      pluginManager,
+    });
+
+    // 7a-iii. 审计
+    const execAuditEvent = createAuditEvent({
+      pipelineId: state.pipelineId,
+      taskId: state.taskId,
+      phase: state.phase,
+      action: execResult.ok ? 'execution_completed' : 'execution_failed',
+      level: execResult.ok ? 'info' : 'error',
+      message: execResult.ok
+        ? `completed: ${execResult.images.length} images`
+        : `failed: ${execResult.errors.join('; ')}`,
+      payload: {
+        images: execResult.images.map((img) => ({
+          plugin: img.plugin,
+          path: img.path,
+        })),
+        errors: execResult.errors,
+      },
+    });
+
+    await appendAuditEvent(execAuditEvent, {
+      auditFilePath: options.auditFilePath,
+    });
+
+    return {
+      ok: execResult.ok,
+      status: execResult.ok ? 'completed' : 'partial',
+      mode: 'real_execution',
+      state,
+      safety,
+      audit,
+      images: execResult.images,
+      errors: execResult.errors,
+    };
+  }
+
+  // 7b. safety 不是 ALLOW（DRY_RUN_ONLY / REQUIRE_APPROVAL）→ 仍不可执行
   return {
     ok: false,
     status: 'pending_execution_not_implemented',
