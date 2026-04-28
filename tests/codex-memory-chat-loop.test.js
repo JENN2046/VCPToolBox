@@ -211,26 +211,43 @@ function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function isTransientSqliteReadError(error) {
+    return error?.code === 'SQLITE_IOERR_SHORT_READ' ||
+        error?.code === 'SQLITE_BUSY' ||
+        error?.code === 'SQLITE_LOCKED' ||
+        /disk I\/O error/i.test(error?.message || '');
+}
+
 async function waitUntilIndexed(storePath, pattern, timeoutMs = 8000) {
     const dbPath = path.join(storePath, 'knowledge_base.sqlite');
     const startedAt = Date.now();
+    let lastTransientError = null;
 
     while (Date.now() - startedAt < timeoutMs) {
         if (fs.existsSync(dbPath)) {
-            const db = new Database(dbPath, { readonly: true });
+            let db = null;
             try {
+                db = new Database(dbPath, { readonly: true, fileMustExist: true });
                 const row = db.prepare('SELECT path FROM files WHERE path LIKE ? LIMIT 1').get(pattern);
                 if (row?.path) {
                     return row.path;
                 }
+            } catch (error) {
+                if (!isTransientSqliteReadError(error)) {
+                    throw error;
+                }
+                lastTransientError = error;
             } finally {
-                db.close();
+                if (db) db.close();
             }
         }
         await wait(100);
     }
 
-    throw new Error(`Timed out waiting for indexed file: ${pattern}`);
+    const transientDetail = lastTransientError
+        ? ` Last SQLite read error: ${lastTransientError.code || 'unknown'} ${lastTransientError.message}`
+        : '';
+    throw new Error(`Timed out waiting for indexed file: ${pattern}.${transientDetail}`);
 }
 
 function loadFreshModule(modulePath) {
