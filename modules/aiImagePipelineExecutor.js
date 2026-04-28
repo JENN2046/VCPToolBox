@@ -164,14 +164,55 @@ async function executeAiImagePipelineV2(input = {}, options = {}) {
       };
     }
 
-    // 7a-ii. 注入 adapter 执行真实 plan
+    // 7a-ii. allowlist 准入：只允许已认证的插件真实执行
+    const REAL_EXECUTION_PLUGIN_ALLOWLIST = new Set([
+      'DoubaoGen',
+    ]);
+
+    const steps = Array.isArray(normalizedInput.plan && normalizedInput.plan.steps)
+      ? normalizedInput.plan.steps
+      : [];
+
+    const disallowedPlugin = steps.find((step) => {
+      return step && step.plugin && !REAL_EXECUTION_PLUGIN_ALLOWLIST.has(step.plugin);
+    });
+
+    if (disallowedPlugin) {
+      const blockAuditEvent = createAuditEvent({
+        pipelineId: state.pipelineId,
+        taskId: state.taskId,
+        phase: state.phase,
+        action: 'execution_blocked_by_allowlist',
+        level: 'warn',
+        message: `plugin_not_allowed:${disallowedPlugin.plugin}`,
+        payload: {
+          plugin: disallowedPlugin.plugin,
+        },
+      });
+
+      const blockAudit = await appendAuditEvent(blockAuditEvent, {
+        auditFilePath: options.auditFilePath,
+      });
+
+      return {
+        ok: false,
+        status: 'plugin_not_in_allowlist',
+        mode: 'dry_run',
+        state,
+        safety,
+        audit: blockAudit,
+        error: `plugin_not_allowed:${disallowedPlugin.plugin}`,
+      };
+    }
+
+    // 7a-iii. 注入 adapter 执行真实 plan
     const { executeImagePlan } = require('./aiImageExecutionAdapter');
 
     const execResult = await executeImagePlan(normalizedInput.plan, {
       pluginManager,
     });
 
-    // 7a-iii. 审计
+    // 7a-iv. 审计
     const execAuditEvent = createAuditEvent({
       pipelineId: state.pipelineId,
       taskId: state.taskId,

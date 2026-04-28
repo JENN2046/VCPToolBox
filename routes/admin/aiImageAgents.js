@@ -66,10 +66,29 @@ async function handleAiImagePipelineRequest(req, options = {}) {
     const routeInput = normalizeRouteInput(body);
     const dryRun = resolveDryRunMode(body, options);
 
-    const result = await executeAiImagePipelineV2(routeInput, {
+    // 真实执行：仅当 dryRun=false 且 server 已注入 pluginManager 时
+    const allowRealExecution = !dryRun && options.pluginManager;
+
+    if (allowRealExecution) {
+      // route 内部覆盖 requestFlags — 不信任前端自由传入
+      routeInput.requestFlags = {
+        execute_pipeline: true,
+        confirm_external_effects: true,
+        reason: body.requestFlags && body.requestFlags.reason,
+        ticket: body.requestFlags && body.requestFlags.ticket,
+      };
+    }
+
+    const executorOptions = {
       dryRun,
       auditFilePath: options.auditFilePath,
-    });
+    };
+
+    if (allowRealExecution) {
+      executorOptions.pluginManager = options.pluginManager;
+    }
+
+    const result = await executeAiImagePipelineV2(routeInput, executorOptions);
 
     return {
       ok: result.ok === true,

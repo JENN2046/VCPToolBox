@@ -1501,9 +1501,17 @@ app.use("/api/image-rating", imageRatingApiRoutes);
     // 条件挂载 AI Image Agents route — 默认关闭，env flag 开启
     if (process.env.ENABLE_AI_IMAGE_AGENTS_ROUTE === 'true') {
       const { createAiImageAgentsRouter } = require('./routes/admin/aiImageAgents');
-      app.use('/admin_api/ai-image-agents', createAiImageAgentsRouter({
+
+      const routeOptions = {
         auditFilePath: path.join(__dirname, 'state', 'ai-image-pipelines', 'audit.jsonl'),
-      }));
+      };
+
+      if (process.env.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true') {
+        routeOptions.pluginManager = pluginManager;
+        console.log('[server] AI Image Agent real execution ENABLED (pluginManager injected)');
+      }
+
+      app.use('/admin_api/ai-image-agents', createAiImageAgentsRouter(routeOptions));
     }
     console.log('服务类插件初始化完成，管理面板 API 路由、VCP 论坛 API 路由和 ChannelHub 路由已挂载。');
 
