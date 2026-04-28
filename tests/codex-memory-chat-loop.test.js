@@ -458,6 +458,12 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
                 broadcast() {}
             },
             DEBUG_MODE: false,
+            // Trusted process-owned context; request body fields must not grant Codex writes.
+            executionContext: {
+                agentAlias: 'Codex',
+                agentId: null,
+                requestSource: 'codex-memory-chat-loop-test'
+            },
             SHOW_VCP_OUTPUT: false,
             VCPToolCode: false,
             maxVCPLoopStream: 2,
@@ -484,7 +490,6 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
             body: {
                 model: 'fake-model',
                 stream: false,
-                systemPrompt: 'Agent:{{Codex}}',
                 messages: [
                     {
                         role: 'system',
@@ -513,7 +518,6 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
             body: {
                 model: 'fake-model',
                 stream: false,
-                systemPrompt: 'Agent:{{Codex}}',
                 messages: [
                     {
                         role: 'system',

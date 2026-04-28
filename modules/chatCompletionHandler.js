@@ -348,6 +348,7 @@ class ChatCompletionHandler {
       roleDividerRemoveDisabledTags, // 新增
       chinaModel1, // 新增
       chinaModel1Cot, // 新增
+      executionContext: configuredExecutionContext,
     } = this.config;
 
     const shouldShowVCP = SHOW_VCP_OUTPUT || forceShowVCP;
@@ -619,6 +620,17 @@ class ChatCompletionHandler {
       // 经过改造后，processedMessages 已经是最终版本，无需再调用 replaceOtherVariables
 
       originalBody.messages = processedMessages;
+      const configuredAgentAlias = typeof configuredExecutionContext?.agentAlias === 'string'
+        ? configuredExecutionContext.agentAlias.trim()
+        : null;
+      const configuredRequestSource = typeof configuredExecutionContext?.requestSource === 'string'
+        ? configuredExecutionContext.requestSource.trim()
+        : null;
+      const executionContext = {
+        agentAlias: processingContext.expandedAgentName || configuredAgentAlias || null,
+        agentId: configuredExecutionContext?.agentId || null,
+        requestSource: configuredRequestSource || 'chatCompletionHandler'
+      };
       await writeDebugLog('LogOutputAfterProcessing', originalBody);
 
       const willStreamResponse = isOriginalRequestStreaming;
@@ -744,6 +756,7 @@ class ChatCompletionHandler {
         abortController,
         originalBody,
         clientIp,
+        executionContext,
         forceShowVCP,
         _refreshRagBlocksIfNeeded,
         fetchWithRetry,
