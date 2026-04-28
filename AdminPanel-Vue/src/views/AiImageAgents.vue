@@ -1,8 +1,9 @@
 <template>
   <section class="config-section active-section">
     <div class="ai-image-page">
-      <h2 class="page-title">AI Image Agent Dry-Run</h2>
+      <h2 class="page-title">AI Image Agent</h2>
 
+      <!-- Dry-Run -->
       <form class="dry-run-form" @submit.prevent="handleDryRun">
         <div class="form-group">
           <label for="pipeline-id">Pipeline ID</label>
@@ -32,13 +33,13 @@
             rows="6"
             placeholder='{ "steps": [] }'
           ></textarea>
-          <span v-if="planParseError" class="field-error">{{ planParseError }}</span>
+          <span v-if="planError" class="field-error">{{ planError }}</span>
         </div>
 
         <button
           type="submit"
-          class="dry-run-btn"
-          :disabled="isLoading || planParseError !== null"
+          class="action-btn"
+          :disabled="isLoading || planError !== null"
         >
           <span v-if="isLoading" class="loading-spinner-sm"></span>
           <span v-else class="material-symbols-outlined">play_arrow</span>
@@ -46,11 +47,55 @@
         </button>
       </form>
 
+      <!-- Real Execute 危险区域 -->
+      <div class="execute-section">
+        <div class="execute-warning">
+          <span class="material-symbols-outlined">warning</span>
+          Real Execute：真实调用外部 API，可能产生费用
+        </div>
+
+        <form class="execute-form" @submit.prevent="handleExecute">
+          <div class="form-group">
+            <label for="operator">Operator（谁在执行）</label>
+            <input
+              id="operator"
+              v-model="operator"
+              type="text"
+              placeholder="输入操作者名称"
+            />
+          </div>
+
+          <div class="form-group-check">
+            <label>
+              <input v-model="confirmed" type="checkbox" />
+              我确认要真实生成图片
+            </label>
+          </div>
+
+          <div class="execute-actions">
+            <button
+              type="submit"
+              class="action-btn action-btn-danger"
+              :disabled="isLoading || !operator.trim() || !confirmed || planError !== null || stepCount !== 1"
+            >
+              <span v-if="isLoading" class="loading-spinner-sm"></span>
+              <span v-else class="material-symbols-outlined">bolt</span>
+              Execute DoubaoGen
+            </button>
+            <span v-if="stepCount !== 1" class="field-error">
+              真实执行只允许 1 个 step，当前 plan 有 {{ stepCount }} 个
+            </span>
+          </div>
+        </form>
+      </div>
+
+      <!-- 错误提示 -->
       <div v-if="errorMessage" class="result-error">
         <span class="material-symbols-outlined">error</span>
         {{ errorMessage }}
       </div>
 
+      <!-- 结果区 -->
       <div v-if="result" class="result-panel">
         <h3>返回结果</h3>
 
@@ -66,6 +111,42 @@
             <span class="result-value">{{ result.mode || '-' }}</span>
           </div>
         </div>
+
+        <!-- Images（真实执行） -->
+        <div v-if="resultImages.length > 0" class="result-section">
+          <details open>
+            <summary>Images ({{ resultImages.length }})</summary>
+            <div class="images-list">
+              <div v-for="(img, i) in resultImages" :key="i" class="image-item">
+                <div class="image-field">
+                  <span class="image-label">Plugin:</span>
+                  <span>{{ img.plugin || '-' }}</span>
+                </div>
+                <div class="image-field">
+                  <span class="image-label">Path:</span>
+                  <code>{{ img.path || '-' }}</code>
+                </div>
+                <div class="image-field">
+                  <span class="image-label">URL:</span>
+                  <a v-if="img.url" :href="img.url" target="_blank" rel="noopener">{{ img.url }}</a>
+                  <span v-else>-</span>
+                </div>
+                <div class="image-field">
+                  <span class="image-label">Filename:</span>
+                  <code>{{ img.filename || '-' }}</code>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Errors（失败） -->
+        <details v-if="resultErrors.length > 0" class="result-section result-section-error" open>
+          <summary>Errors ({{ resultErrors.length }})</summary>
+          <ul class="errors-list">
+            <li v-for="(e, i) in resultErrors" :key="i">{{ e }}</li>
+          </ul>
+        </details>
 
         <details v-if="result.state" class="result-section">
           <summary>State</summary>
@@ -93,7 +174,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { aiImageAgentsApi, type AiImageDryRunResult } from "@/api/aiImageAgents";
+import { aiImageAgentsApi, type AiImageDryRunResult, type AiImageExecuteImage } from "@/api/aiImageAgents";
 
 const pipelineId = ref("");
 const taskId = ref("");
@@ -102,13 +183,29 @@ const isLoading = ref(false);
 const result = ref<AiImageDryRunResult | null>(null);
 const errorMessage = ref("");
 
-const planParseError = computed(() => {
+// Execute 专属
+const operator = ref("");
+const confirmed = ref(false);
+const resultImages = ref<AiImageExecuteImage[]>([]);
+const resultErrors = ref<string[]>([]);
+
+const planError = computed(() => {
   if (!planJson.value.trim()) return null;
   try {
     JSON.parse(planJson.value);
     return null;
   } catch (e) {
     return (e as Error).message;
+  }
+});
+
+const stepCount = computed(() => {
+  try {
+    const plan = JSON.parse(planJson.value);
+    const steps = plan && Array.isArray(plan.steps) ? plan.steps : [];
+    return steps.length;
+  } catch {
+    return -1;
   }
 });
 
@@ -120,9 +217,15 @@ function formatJson(value: unknown): string {
   }
 }
 
-async function handleDryRun() {
-  errorMessage.value = "";
+function resetResult() {
   result.value = null;
+  resultImages.value = [];
+  resultErrors.value = [];
+  errorMessage.value = "";
+}
+
+async function handleDryRun() {
+  resetResult();
 
   let plan: Record<string, unknown>;
   try {
@@ -150,6 +253,51 @@ async function handleDryRun() {
     isLoading.value = false;
   }
 }
+
+async function handleExecute() {
+  resetResult();
+
+  if (!operator.value.trim() || !confirmed.value) return;
+  if (planError.value) return;
+  if (stepCount.value !== 1) return;
+
+  let plan: Record<string, unknown>;
+  try {
+    plan = JSON.parse(planJson.value);
+  } catch {
+    errorMessage.value = "Plan JSON 格式无效";
+    return;
+  }
+
+  isLoading.value = true;
+  try {
+    const res = await aiImageAgentsApi.execute(
+      pipelineId.value || "execute-pipeline",
+      taskId.value || "execute-task",
+      plan,
+      operator.value.trim(),
+      {},
+      { showLoader: false }
+    );
+
+    result.value = {
+      ok: res.ok,
+      mode: res.mode || "",
+      status: res.result?.status || "",
+      state: (res.result?.state as Record<string, unknown>) || null,
+      safety: (res.result?.safety as Record<string, unknown>) || null,
+      audit: (res.result?.audit as Record<string, unknown>) || null,
+      error: res.error || res.result?.error || null,
+    };
+
+    resultImages.value = res.result?.images || [];
+    resultErrors.value = res.result?.errors || [];
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    isLoading.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -171,6 +319,8 @@ async function handleDryRun() {
   flex-direction: column;
   gap: var(--space-4);
   margin-bottom: var(--space-6);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .form-group {
@@ -209,7 +359,7 @@ async function handleDryRun() {
   color: #fca5a5;
 }
 
-.dry-run-btn {
+.action-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -225,15 +375,74 @@ async function handleDryRun() {
   transition: background-color var(--transition-fast);
 }
 
-.dry-run-btn:hover:not(:disabled) {
+.action-btn:hover:not(:disabled) {
   background: var(--button-hover-bg);
 }
 
-.dry-run-btn:disabled {
+.action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
+/* Execute 危险区域 */
+.execute-section {
+  margin-bottom: var(--space-6);
+}
+
+.execute-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  font-size: var(--font-size-body);
+  margin-bottom: var(--space-4);
+}
+
+.execute-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.form-group-check {
+  display: flex;
+  align-items: center;
+}
+
+.form-group-check label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-body);
+  color: var(--primary-text);
+  cursor: pointer;
+}
+
+.form-group-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--highlight-text);
+}
+
+.execute-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.action-btn-danger {
+  background: #dc2626;
+}
+
+.action-btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+/* 结果区 */
 .result-error {
   display: flex;
   align-items: center;
@@ -297,6 +506,56 @@ async function handleDryRun() {
 .badge-fail {
   background: rgba(239, 68, 68, 0.15);
   color: #fca5a5;
+}
+
+/* Images */
+.images-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.image-item {
+  padding: var(--space-3);
+  background: var(--tertiary-bg);
+  border-radius: 6px;
+}
+
+.image-field {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: var(--font-size-body);
+  color: var(--primary-text);
+  word-break: break-all;
+}
+
+.image-label {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--secondary-text);
+}
+
+.image-field a {
+  color: var(--highlight-text);
+}
+
+.image-field code {
+  font-size: var(--font-size-code);
+  color: var(--secondary-text);
+}
+
+/* Errors */
+.errors-list {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-5);
+}
+
+.errors-list li {
+  font-size: var(--font-size-body);
+  color: #fca5a5;
+  margin-bottom: 4px;
+  word-break: break-all;
 }
 
 .result-section {
