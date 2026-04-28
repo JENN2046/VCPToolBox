@@ -2,9 +2,9 @@ name: Node.js CI & Docker Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, prod/stable ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, prod/stable ]
 
 jobs:
   build_and_test:
@@ -26,6 +26,18 @@ jobs:
 
     - name: Install dependencies
       run: npm ci
+
+    - name: Check production baseline
+      run: npm run test:baseline
+
+    - name: Run core tests
+      run: npm test
+
+    - name: Run Photo Studio tests
+      run: npm run test:photo-studio
+
+    - name: Run DingTalk CLI tests
+      run: npm run test:dingtalk-cli
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3

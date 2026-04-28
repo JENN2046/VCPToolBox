@@ -93,6 +93,9 @@ dist
 # 但保留 AdminPanel-Vue 构建产物，让用户开箱即用
 !AdminPanel-Vue/dist/
 !AdminPanel-Vue/dist/**
+# DailyHot 的 dist 是插件运行源码，不是本仓根层构建产物
+!Plugin/DailyHot/dist/
+!Plugin/DailyHot/dist/**
 
 # Gatsby files
 .cache/
@@ -161,6 +164,7 @@ tag-processor-config.env
 DebugLog/
 dailynote/*
 !dailynote/VCP桌面知识/
+!dailynote/VCP桌面知识/**
 ip_blacklist.json
 /VectorStore
 
@@ -190,6 +194,7 @@ Plugin/WeatherReporter/weather_cache.txt
 Plugin/WeatherReporter/city_cache.txt
 ToolConfigs/dynamic_tool_catalog.json
 ToolConfigs/dynamic_tool_categories.json
+Plugin/**/state/
 
 # ===== 图片 / 媒体 =====
 # 忽略通用表情包目录下的所有内容...
