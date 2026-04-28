@@ -5,7 +5,6 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
-const Database = require('better-sqlite3');
 
 const ROOT_DIR = path.join(__dirname, '..');
 const BRIDGE_PLUGIN_DIR = path.join(ROOT_DIR, 'Plugin', 'CodexMemoryBridge');
@@ -211,26 +210,39 @@ function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function waitUntilIndexed(storePath, pattern, timeoutMs = 8000) {
-    const dbPath = path.join(storePath, 'knowledge_base.sqlite');
+function isTransientSqliteReadError(error) {
+    return error?.code === 'SQLITE_IOERR_SHORT_READ' ||
+        error?.code === 'SQLITE_BUSY' ||
+        error?.code === 'SQLITE_LOCKED' ||
+        /disk I\/O error/i.test(error?.message || '');
+}
+
+async function waitUntilIndexed(vectorDBManager, pattern, timeoutMs = 8000) {
     const startedAt = Date.now();
+    let lastTransientError = null;
 
     while (Date.now() - startedAt < timeoutMs) {
-        if (fs.existsSync(dbPath)) {
-            const db = new Database(dbPath, { readonly: true });
+        const db = vectorDBManager?.db;
+        if (db && db.open !== false) {
             try {
                 const row = db.prepare('SELECT path FROM files WHERE path LIKE ? LIMIT 1').get(pattern);
                 if (row?.path) {
                     return row.path;
                 }
-            } finally {
-                db.close();
+            } catch (error) {
+                if (!isTransientSqliteReadError(error)) {
+                    throw error;
+                }
+                lastTransientError = error;
             }
         }
         await wait(100);
     }
 
-    throw new Error(`Timed out waiting for indexed file: ${pattern}`);
+    const transientDetail = lastTransientError
+        ? ` Last SQLite read error: ${lastTransientError.code || 'unknown'} ${lastTransientError.message}`
+        : '';
+    throw new Error(`Timed out waiting for indexed file: ${pattern}.${transientDetail}`);
 }
 
 function loadFreshModule(modulePath) {
@@ -458,6 +470,12 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
                 broadcast() {}
             },
             DEBUG_MODE: false,
+            // Trusted process-owned context; request body fields must not grant Codex writes.
+            executionContext: {
+                agentAlias: 'Codex',
+                agentId: null,
+                requestSource: 'codex-memory-chat-loop-test'
+            },
             SHOW_VCP_OUTPUT: false,
             VCPToolCode: false,
             maxVCPLoopStream: 2,
@@ -484,7 +502,6 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
             body: {
                 model: 'fake-model',
                 stream: false,
-                systemPrompt: 'Agent:{{Codex}}',
                 messages: [
                     {
                         role: 'system',
@@ -504,7 +521,7 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
         const writeContent = writeJson.choices[0].message.content;
         assert.match(writeContent, /WRITE_COMPLETE/);
 
-        const indexedPath = await waitUntilIndexed(storeRoot, '%E2E process anchor memory%');
+        const indexedPath = await waitUntilIndexed(knowledgeBaseManager, '%E2E process anchor memory%');
         assert.match(indexedPath, /E2E process anchor memory/);
 
         const recallReq = {
@@ -513,7 +530,6 @@ test('chatCompletionHandler completes tool loop write and subsequent RAG recall'
             body: {
                 model: 'fake-model',
                 stream: false,
-                systemPrompt: 'Agent:{{Codex}}',
                 messages: [
                     {
                         role: 'system',
