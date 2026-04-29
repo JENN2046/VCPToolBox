@@ -61,6 +61,24 @@ test('legacy PowerShellExecutor rule protects canonical ServerPowerShellExecutor
     });
 });
 
+test('registered plugin names that match legacy aliases remain exact', () => {
+    withManager({ approvalList: ['ServerPowerShellExecutor'] }, (manager) => {
+        const pluginRegistry = new Map([
+            ['PowerShellExecutor', {}],
+            ['ServerPowerShellExecutor', {}]
+        ]);
+
+        const decision = manager.getApprovalDecision('PowerShellExecutor', {
+            command: 'Get-ChildItem'
+        }, { pluginRegistry });
+
+        assert.equal(decision.requiresApproval, false);
+        assert.equal(decision.requestedToolName, 'PowerShellExecutor');
+        assert.equal(decision.canonicalToolName, 'PowerShellExecutor');
+        assert.equal(decision.wasAlias, false);
+    });
+});
+
 test('canonical ServerPowerShellExecutor rule protects legacy PowerShellExecutor calls', () => {
     withManager({ approvalList: ['ServerPowerShellExecutor'] }, (manager) => {
         const decision = manager.getApprovalDecision('PowerShellExecutor', {

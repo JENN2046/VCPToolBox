@@ -126,10 +126,14 @@ class ToolApprovalManager {
         return [...new Set(names.filter(Boolean))];
     }
 
-    getApprovalDecision(toolName, toolArgs = {}) {
+    getApprovalDecision(toolName, toolArgs = {}, options = {}) {
+        const pluginRegistry = options && typeof options.has === 'function'
+            ? options
+            : options.pluginRegistry;
         const identity = resolveToolIdentity({
             requestedToolName: toolName,
-            toolArgs
+            toolArgs,
+            pluginRegistry
         });
 
         const defaultDecision = {
@@ -226,8 +230,8 @@ class ToolApprovalManager {
         return defaultDecision;
     }
 
-    shouldApprove(toolName, toolArgs = {}) {
-        return this.getApprovalDecision(toolName, toolArgs).requiresApproval;
+    shouldApprove(toolName, toolArgs = {}, options = {}) {
+        return this.getApprovalDecision(toolName, toolArgs, options).requiresApproval;
     }
 
     getTimeoutMs() {
