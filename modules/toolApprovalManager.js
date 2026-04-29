@@ -1,6 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const chokidar = require('chokidar');
+const {
+    getAliasesForCanonical,
+    resolveToolIdentity
+} = require('./toolIdentityResolver');
 
 class ToolApprovalManager {
     constructor(configPath) {
@@ -111,12 +115,31 @@ class ToolApprovalManager {
         };
     }
 
+    getApprovalMatchToolNames(identity) {
+        const names = [
+            identity.requestedToolName,
+            identity.canonicalToolName,
+            ...getAliasesForCanonical(identity.canonicalToolName),
+            ...(Array.isArray(identity.aliases) ? identity.aliases : [])
+        ];
+
+        return [...new Set(names.filter(Boolean))];
+    }
+
     getApprovalDecision(toolName, toolArgs = {}) {
+        const identity = resolveToolIdentity({
+            requestedToolName: toolName,
+            toolArgs
+        });
+
         const defaultDecision = {
             requiresApproval: false,
             notifyAiOnReject: true,
             matchedRule: null,
-            matchedCommand: null
+            matchedCommand: null,
+            requestedToolName: identity.requestedToolName,
+            canonicalToolName: identity.canonicalToolName,
+            wasAlias: identity.wasAlias
         };
 
         if (!this.config.enabled) {
@@ -129,7 +152,10 @@ class ToolApprovalManager {
                 requiresApproval: true,
                 notifyAiOnReject: true,
                 matchedRule: '__APPROVE_ALL__',
-                matchedCommand: null
+                matchedCommand: null,
+                requestedToolName: identity.requestedToolName,
+                canonicalToolName: identity.canonicalToolName,
+                wasAlias: identity.wasAlias
             };
         }
 
@@ -139,6 +165,7 @@ class ToolApprovalManager {
             .filter(Boolean);
 
         const commands = this.extractCommands(toolArgs);
+        const matchToolNames = this.getApprovalMatchToolNames(identity);
         let bestMatch = null;
 
         const considerMatch = (rule, specificity, matchedCommand = null) => {
@@ -162,14 +189,16 @@ class ToolApprovalManager {
         };
 
         for (const rule of parsedRules) {
-            if (rule.baseRule === toolName) {
-                considerMatch(rule, 1, null);
-            }
+            for (const matchToolName of matchToolNames) {
+                if (rule.baseRule === matchToolName) {
+                    considerMatch(rule, 1, null);
+                }
 
-            for (const command of commands) {
-                const commandRule = `${toolName}:${command}`;
-                if (rule.baseRule === commandRule) {
-                    considerMatch(rule, 2, command);
+                for (const command of commands) {
+                    const commandRule = `${matchToolName}:${command}`;
+                    if (rule.baseRule === commandRule) {
+                        considerMatch(rule, 2, command);
+                    }
                 }
             }
         }
@@ -182,7 +211,10 @@ class ToolApprovalManager {
                 requiresApproval: true,
                 notifyAiOnReject: bestMatch.notifyAiOnReject,
                 matchedRule: bestMatch.rawRule,
-                matchedCommand: bestMatch.matchedCommand || null
+                matchedCommand: bestMatch.matchedCommand || null,
+                requestedToolName: identity.requestedToolName,
+                canonicalToolName: identity.canonicalToolName,
+                wasAlias: identity.wasAlias
             };
         }
 
