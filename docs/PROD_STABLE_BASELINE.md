@@ -147,14 +147,19 @@ Docker build 是慢验证，策略如下：
 
 ## 7. 后续治理计划
 
+已完成治理：
+
+1. `prod/stable` 已配置分支保护，要求 PR 路径、`build_and_test (20.x)` 通过、conversation resolved，禁止 force push 和删除分支。
+2. 当前稳定锚点已打 tag：`prod-stable-2026-04-28-baseline`。
+3. 服务区部署流程已沉淀到 [PROD_STABLE_DEPLOYMENT_RUNBOOK.md](./PROD_STABLE_DEPLOYMENT_RUNBOOK.md)。
+
 近期优先级：
 
 1. 将 `scripts/check-prod-baseline.js` 作为 `prod/stable` PR 必过门禁。
-2. 为 `prod/stable` 配置分支保护：要求 CI 通过、禁止直接推送、禁止绕过 review。
-3. 将真实配置迁移到部署环境或密钥管理，不再跟随源码目录流转。
-4. 定期复查 `dailynote/` 白名单，确认哪些内容是真正稳定知识，哪些只是运行记忆。
-5. 把 Docker 大范围 bind mount 和 root 用户运行风险列入生产部署复盘，不在基线 PR 中扩大变更范围。
-6. 在发布流程中复用 PR 模板和人工 preflight，覆盖 Flag、外部写入、回滚和验证证据。
+2. 将真实配置迁移到部署环境或密钥管理，不再跟随源码目录流转。
+3. 定期复查 `dailynote/` 白名单，确认哪些内容是真正稳定知识，哪些只是运行记忆。
+4. 把 Docker 大范围 bind mount 和 root 用户运行风险列入生产部署复盘，不在基线 PR 中扩大变更范围。
+5. 在发布流程中复用 PR 模板和人工 preflight，覆盖 Flag、外部写入、回滚和验证证据。
 
 剩余风险：
 
