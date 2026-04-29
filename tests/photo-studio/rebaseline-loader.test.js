@@ -53,7 +53,7 @@ test('photo_studio rebaseline modern registry points to plugin.json contracts', 
     'update_project_status'
   ]);
 
-  assert.equal(registry.prod_stable_gate.phase, 'photo_studio_guide_contract_phase1');
+  assert.equal(registry.prod_stable_gate.phase, 'photo_studio_guide_contract_phase2_first_batch');
   assert.deepEqual(
     registry.plugins.filter(plugin => plugin.enabled === true).map(plugin => plugin.name).sort(),
     ENABLED_PHASE1_PLUGIN_NAMES

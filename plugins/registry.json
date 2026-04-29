@@ -2,7 +2,7 @@
   "schema_version": "2026-04-22",
   "source_guide": "A:\\docs\\VCP_Photo_Studio_Implementation_Guide.md",
   "prod_stable_gate": {
-    "phase": "photo_studio_guide_contract_phase1",
+    "phase": "photo_studio_guide_contract_phase2_first_batch",
     "enabled_scope": "P0/P1/P2 local-only guide-contract plugins",
     "deferred_scope": "P3/P5/P6/P7 external sync, delivery queue, reporting, and scheduling plugins",
     "default_policy": "deferred plugins stay present for tests and review but are not runtime-discovered on prod/stable"
