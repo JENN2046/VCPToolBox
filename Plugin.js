@@ -893,7 +893,9 @@ class PluginManager extends EventEmitter {
         // --- 透明化处理结束 ---
 
         // --- 人工审核逻辑 (新增) ---
-        const approvalDecision = this.toolApprovalManager.getApprovalDecision(toolName, pluginSpecificArgs);
+        const approvalDecision = this.toolApprovalManager.getApprovalDecision(toolName, pluginSpecificArgs, {
+            pluginRegistry: this.plugins
+        });
         if (approvalDecision.requiresApproval) {
             const requestId = `approve-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
             if (this.debugMode) {
