@@ -1245,10 +1245,10 @@ class RAGDiaryPlugin {
                 // 安全起见，移除所有占位符
                 const newMessages = JSON.parse(JSON.stringify(messages));
                 for (const index of targetSystemMessageIndices) {
-                    newMessages[index].content = newMessages[index].content
+                    newMessages[index].content = this._replaceTextInContent(newMessages[index].content, (text) => text
                         .replace(/\[\[.*日记本.*\]\]/g, '')
                         .replace(/<<.*日记本>>/g, '')
-                        .replace(/《《.*日记本.*》》/g, '');
+                        .replace(/《《.*日记本.*》》/g, ''));
                 }
                 return newMessages;
             }
