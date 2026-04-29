@@ -540,32 +540,21 @@ class RAGDiaryPlugin {
         }
 
         if (Array.isArray(content)) {
-            const textIndices = [];
-            const textValues = [];
-
-            content.forEach((part, index) => {
+            let hasTextSegment = false;
+            const newContent = content.map((part) => {
                 if (part && part.type === 'text' && typeof part.text === 'string') {
-                    textIndices.push(index);
-                    textValues.push(part.text);
+                    hasTextSegment = true;
+                    return { ...part, text: replacer(part.text) };
                 }
+                return part;
             });
 
-            const mergedText = textValues.join('\n').trim();
-            const replacedText = replacer(mergedText);
-
-            if (textIndices.length > 0) {
-                const firstIndex = textIndices[0];
-                const newContent = content.map((part, index) => {
-                    if (!textIndices.includes(index)) return part;
-                    if (index === firstIndex) {
-                        return { ...part, text: replacedText };
-                    }
-                    return null;
-                }).filter(Boolean);
+            if (hasTextSegment) {
                 return newContent;
             }
 
-            return [...content, { type: 'text', text: replacedText }];
+            const replacedText = replacer('');
+            return [...newContent, { type: 'text', text: replacedText }];
         }
 
         if (content && typeof content === 'object' && typeof content.text === 'string') {
