@@ -85,3 +85,34 @@ test('RAGDiaryPlugin should append Codex recall audit entries only for Codex dia
         await fs.rm(tempBasePath, { recursive: true, force: true });
     }
 });
+
+test('RAGDiaryPlugin cache key should include Codex adaptive tuning snapshot', () => {
+    const baseParams = {
+        userContent: '需要回忆上次稳定线治理计划',
+        aiContent: '继续推进',
+        dbName: PROCESS_DIARY_NAME,
+        modifiers: '::TagMemo',
+        dynamicK: 3,
+        ghostTags: [{ name: 'codex', isCore: true }],
+        isFreshTimeConversationStart: false
+    };
+
+    const baselineKey = ragDiaryPlugin._generateCacheKey(baseParams);
+    const zeroSnapshotKey = ragDiaryPlugin._generateCacheKey({
+        ...baseParams,
+        adaptiveKDelta: 0,
+        adaptiveTagWeightDelta: 0,
+        adaptiveTruncationDelta: 0,
+        adaptiveThresholdDelta: 0
+    });
+    const boostedSnapshotKey = ragDiaryPlugin._generateCacheKey({
+        ...baseParams,
+        adaptiveKDelta: 1,
+        adaptiveTagWeightDelta: 0.05,
+        adaptiveTruncationDelta: 0.1,
+        adaptiveThresholdDelta: -0.03
+    });
+
+    assert.equal(zeroSnapshotKey, baselineKey);
+    assert.notEqual(boostedSnapshotKey, baselineKey);
+});

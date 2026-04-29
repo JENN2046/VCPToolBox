@@ -3863,7 +3863,11 @@ class RAGDiaryPlugin {
             useGroup = false,
             isAutoMode = false,
             ghostTags = [],
-            isFreshTimeConversationStart = false
+            isFreshTimeConversationStart = false,
+            adaptiveKDelta = 0,
+            adaptiveTagWeightDelta = 0,
+            adaptiveTruncationDelta = 0,
+            adaptiveThresholdDelta = 0
         } = params;
 
         const currentDate = modifiers.includes('::Time')
@@ -3884,7 +3888,11 @@ class RAGDiaryPlugin {
             auto: isAutoMode,
             date: currentDate,
             ghosts: ghostTagString,
-            fresh_time_start: isFreshTimeConversationStart
+            fresh_time_start: isFreshTimeConversationStart,
+            adaptive_k_delta: adaptiveKDelta,
+            adaptive_tag_weight_delta: adaptiveTagWeightDelta,
+            adaptive_truncation_delta: adaptiveTruncationDelta,
+            adaptive_threshold_delta: adaptiveThresholdDelta
         });
     }
 
