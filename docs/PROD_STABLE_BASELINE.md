@@ -89,14 +89,20 @@
 
 ## 5. CI 验证矩阵
 
-面向 `main` 和 `prod/stable` 的 push / PR 应执行：
+面向 `main` 和 `prod/stable` 的 push / PR 必须先通过快门禁：
 
 1. `npm ci`
 2. `npm run test:baseline`
 3. `npm test`
 4. `npm run test:photo-studio`
 5. `npm run test:dingtalk-cli`
-6. Docker build with `push: false`
+
+Docker build 是慢验证，策略如下：
+
+- `push` 到 `main` 或 `prod/stable` 后必须执行 Docker build，且 `push: false`，只验证可构建性。
+- PR 中只要包含非文档/非 PR 模板变更，就执行 Docker build。
+- docs-only PR 可以跳过 Docker build，但仍必须通过快门禁。
+- `prod/stable` 分支保护要求快门禁 check 通过，不要求人工等待 Docker 慢验证结束。
 
 本地发布前建议补充：
 
