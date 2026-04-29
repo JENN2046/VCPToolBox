@@ -36,7 +36,7 @@ class PluginManager extends EventEmitter {
         this.reloadTimeout = null;
         this.vectorDBManager = null; // 修复：不再自己创建，等待注入
         this.toolApprovalManager = new ToolApprovalManager(path.join(__dirname, 'toolApprovalConfig.json'));
-        this.pendingApprovals = new Map(); // requestId -> { resolve, reject, timeoutId }
+        this.pendingApprovals = new Map(); // requestId -> { resolve, reject, timeoutId, notifyAiOnReject }
     }
 
     setWebSocketServer(wss) {
@@ -893,9 +893,14 @@ class PluginManager extends EventEmitter {
         // --- 透明化处理结束 ---
 
         // --- 人工审核逻辑 (新增) ---
-        if (this.toolApprovalManager.shouldApprove(toolName, pluginSpecificArgs)) {
+        const approvalDecision = this.toolApprovalManager.getApprovalDecision(toolName, pluginSpecificArgs);
+        if (approvalDecision.requiresApproval) {
             const requestId = `approve-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-            if (this.debugMode) console.log(`[PluginManager] Tool call for "${toolName}" requires manual approval. Request ID: ${requestId}`);
+            if (this.debugMode) {
+                console.log(
+                    `[PluginManager] Tool call for "${toolName}" requires manual approval. Request ID: ${requestId}. notifyAiOnReject=${approvalDecision.notifyAiOnReject !== false}`
+                );
+            }
 
             const approvalPromise = new Promise((resolve, reject) => {
                 const timeoutDuration = this.toolApprovalManager.getTimeoutMs();
@@ -906,7 +911,12 @@ class PluginManager extends EventEmitter {
                     }
                 }, timeoutDuration);
 
-                this.pendingApprovals.set(requestId, { resolve, reject, timeoutId });
+                this.pendingApprovals.set(requestId, {
+                    resolve,
+                    reject,
+                    timeoutId,
+                    notifyAiOnReject: approvalDecision.notifyAiOnReject !== false
+                });
             });
 
             // 发送审核请求到管理面板
@@ -929,7 +939,13 @@ class PluginManager extends EventEmitter {
             }
 
             try {
-                await approvalPromise;
+                const approvalResult = await approvalPromise;
+                if (approvalResult && approvalResult.silentRejected === true) {
+                    if (this.debugMode) {
+                        console.log(`[PluginManager] Tool call for "${toolName}" (ID: ${requestId}) was rejected silently. Returning empty result to AI.`);
+                    }
+                    return undefined;
+                }
                 if (this.debugMode) console.log(`[PluginManager] Tool call for "${toolName}" (ID: ${requestId}) approved.`);
             } catch (error) {
                 if (this.debugMode) console.warn(`[PluginManager] Tool call for "${toolName}" (ID: ${requestId}) rejected: ${error.message}`);
@@ -1294,6 +1310,8 @@ class PluginManager extends EventEmitter {
             clearTimeout(approval.timeoutId);
             if (approved) {
                 approval.resolve();
+            } else if (approval.notifyAiOnReject === false) {
+                approval.resolve({ silentRejected: true });
             } else {
                 approval.reject(new Error(JSON.stringify({ plugin_error: 'Manual approval was REJECTED by user.' })));
             }
