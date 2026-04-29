@@ -27,9 +27,43 @@ test('GPTImageGen blocks obvious local/private URL image inputs', () => {
   const source = fs.readFileSync(pluginScript, 'utf8');
 
   assert.match(source, /isBlockedLocalHostname/);
+  assert.match(source, /resolveImageDownloadUrl/);
   assert.match(source, /localhost/);
   assert.equal(source.includes('192\\.168'), true);
   assert.match(source, /downloadImage\(input, MAX_IMAGE_SIZE\)/);
+});
+
+test('GPTImageGen validates redirect targets and preserves download limits', () => {
+  const source = fs.readFileSync(pluginScript, 'utf8');
+
+  assert.match(source, /resolveImageDownloadUrl\(res\.headers\.location, parsedUrl\.href\)/);
+  assert.match(source, /downloadImage\(redirectUrl\.href, maxBytes, redirectCount \+ 1\)/);
+  assert.match(source, /图片下载重定向次数过多/);
+});
+
+test('GPTImageGen rejects private URL edit inputs before network calls', () => {
+  const child = spawnSync(process.execPath, [pluginScript], {
+    cwd: repoRoot,
+    input: JSON.stringify({
+      command: 'GPTEditImage',
+      prompt: 'offline safety check',
+      image: 'http://127.0.0.1/latest/meta-data',
+      size: '1024x1024'
+    }),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      OPENAI_API_KEY: 'test-only-key',
+      PROJECT_BASE_PATH: repoRoot,
+      DebugMode: 'false'
+    }
+  });
+
+  assert.notEqual(child.status, 0);
+  const parsed = JSON.parse(child.stdout);
+  assert.equal(parsed.status, 'error');
+  assert.match(parsed.error, /不允许指向本机、链路本地或私有网段地址/);
+  assert.equal(child.stderr, '');
 });
 
 test('GPTImageGen exits before any API call when API key is absent', () => {

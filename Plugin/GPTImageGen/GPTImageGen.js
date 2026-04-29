@@ -85,6 +85,17 @@ function isBlockedLocalHostname(hostname) {
     return private172 ? Number(private172[1]) >= 16 && Number(private172[1]) <= 31 : false;
 }
 
+function resolveImageDownloadUrl(rawUrl, baseUrl = '') {
+    const parsedUrl = baseUrl ? new URL(rawUrl, baseUrl) : new URL(rawUrl);
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        throw new Error('图片 URL 仅支持 http 或 https 协议');
+    }
+    if (isBlockedLocalHostname(parsedUrl.hostname)) {
+        throw new Error('图片 URL 不允许指向本机、链路本地或私有网段地址');
+    }
+    return parsedUrl;
+}
+
 /**
  * 验证尺寸参数
  * gpt-image-2 支持灵活尺寸，规则：最长边 ≤ 3840，格式为 WIDTHxHEIGHT
@@ -240,9 +251,15 @@ async function httpRequestWithRetry(url, options = {}, body = null) {
  * @param {string} url - 图片 URL
  * @returns {Promise<{data: Buffer, contentType: string}>}
  */
-function downloadImage(url, maxBytes = 0) {
+function downloadImage(url, maxBytes = 0, redirectCount = 0) {
     return new Promise((resolve, reject) => {
-        const parsedUrl = new URL(url);
+        let parsedUrl;
+        try {
+            parsedUrl = resolveImageDownloadUrl(url);
+        } catch (err) {
+            reject(err);
+            return;
+        }
         const transport = parsedUrl.protocol === 'https:' ? https : http;
 
         const reqOptions = {
@@ -256,7 +273,20 @@ function downloadImage(url, maxBytes = 0) {
         const req = transport.request(reqOptions, (res) => {
             // 处理重定向
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                downloadImage(res.headers.location).then(resolve).catch(reject);
+                if (redirectCount >= 5) {
+                    reject(new Error('图片下载重定向次数过多'));
+                    return;
+                }
+
+                let redirectUrl;
+                try {
+                    redirectUrl = resolveImageDownloadUrl(res.headers.location, parsedUrl.href);
+                } catch (err) {
+                    reject(err);
+                    return;
+                }
+
+                downloadImage(redirectUrl.href, maxBytes, redirectCount + 1).then(resolve).catch(reject);
                 return;
             }
 
@@ -330,10 +360,7 @@ async function processImageInput(imageInput) {
 
     // HTTP/HTTPS URL
     if (input.startsWith('http://') || input.startsWith('https://')) {
-        const parsedInputUrl = new URL(input);
-        if (isBlockedLocalHostname(parsedInputUrl.hostname)) {
-            throw new Error('图片 URL 不允许指向本机、链路本地或私有网段地址');
-        }
+        resolveImageDownloadUrl(input);
         debugLog('Image input: URL, downloading...', input.substring(0, 100));
         const { data: buffer, contentType } = await downloadImage(input, MAX_IMAGE_SIZE);
         // 校验下载后的文件大小
