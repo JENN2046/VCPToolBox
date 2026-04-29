@@ -38,6 +38,7 @@ const denyRules = [
   { label: 'runtime auth code', pattern: /^Plugin\/UserAuth\/code\.bin$/ },
   { label: 'plugin generated caches', pattern: /^Plugin\/ArtistMatcher\/artist_cache\.json$/ },
   { label: 'generated Flux images', pattern: /^image\/fluxgen\// },
+  { label: 'generated GPTImageGen images', pattern: /^image\/gptimagegen\// },
 ];
 
 const allowedEnvTemplatePattern = /(^|\/)\.env\.(example|sample|template)$/;
@@ -119,6 +120,12 @@ const aiImageRoute = readText('routes/admin/aiImageAgents.js');
 requiredChecks.push({
   label: 'AI image route keeps dry-run forcing path',
   ok: aiImageRoute.includes('forceDryRun: true') && aiImageRoute.includes('resolveDryRunMode'),
+});
+
+requiredChecks.push({
+  label: 'GPTImageGen stays disabled by default on prod stable',
+  ok: trackedFiles.includes('Plugin/GPTImageGen/plugin-manifest.json.block')
+    && !trackedFiles.includes('Plugin/GPTImageGen/plugin-manifest.json'),
 });
 
 const failedChecks = requiredChecks.filter((check) => !check.ok);

@@ -205,6 +205,8 @@ image/通用表情包/*
 
 # 忽略 FluxGen 生成的图片
 image/fluxgen/
+# 忽略 GPTImageGen 生成的图片
+image/gptimagegen/
 
 # ===== IDE / OS 文件 =====
 .vscode/
