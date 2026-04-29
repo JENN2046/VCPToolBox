@@ -2362,7 +2362,10 @@ class RAGDiaryPlugin {
             isFreshTimeConversationStart = false // 🌟 Time 新对话补充召回
         } = options;
 
-        // 1️⃣ 生成缓存键
+        // 1️⃣ 获取自适应调优参数（用于缓存键和召回参数计算）
+        const adaptiveTuning = await this._getCodexAdaptiveTuning(dbName);
+
+        // 2️⃣ 生成缓存键（包含自适应调优快照，避免缓存命中时忽略新调优）
         const cacheKey = this._generateCacheKey({
             userContent,
             aiContent: aiContent || '',
@@ -2370,10 +2373,14 @@ class RAGDiaryPlugin {
             modifiers,
             dynamicK,
             ghostTags, // 🌟 修复 2.4：将外部的 ghostTags 传入生成器
-            isFreshTimeConversationStart
+            isFreshTimeConversationStart,
+            adaptiveKDelta: adaptiveTuning?.kDelta || 0,
+            adaptiveTagWeightDelta: adaptiveTuning?.tagWeightDelta || 0,
+            adaptiveTruncationDelta: adaptiveTuning?.truncationDelta || 0,
+            adaptiveThresholdDelta: adaptiveTuning?.thresholdDelta || 0
         });
 
-        // 2️⃣ 尝试从缓存获取
+        // 3️⃣ 尝试从缓存获取
         const cachedResult = this._getCachedResult(cacheKey);
         if (cachedResult) {
             if (cachedResult.codexRecallAudit) {
@@ -2393,7 +2400,7 @@ class RAGDiaryPlugin {
             return cachedResult.content;
         }
 
-        // 3️⃣ 缓存未命中，执行原有逻辑
+        // 4️⃣ 缓存未命中，执行原有逻辑
 
         const kMultiplier = this._extractKMultiplier(modifiers);
         const useTime = allowTimeAndGroup && modifiers.includes('::Time');
@@ -2422,7 +2429,6 @@ class RAGDiaryPlugin {
         const config = this.ragParams?.RAGDiaryPlugin || {};
         const tagWeightRange = config.tagWeightRange || [0.05, 0.45];
         const truncationRange = config.tagTruncationRange || [0.5, 0.9];
-        const adaptiveTuning = await this._getCodexAdaptiveTuning(dbName);
         const effectiveDynamicK = Math.max(1, dynamicK + (adaptiveTuning?.kDelta || 0));
         if (tagWeight !== null && adaptiveTuning?.tagWeightDelta) {
             tagWeight = Math.max(tagWeightRange[0], Math.min(tagWeightRange[1], tagWeight + adaptiveTuning.tagWeightDelta));
