@@ -49,3 +49,36 @@ test('normalizeExecutionContext supports an explicit default requestSource', () 
         requestSource: 'task-scheduler'
     });
 });
+
+test('normalizeExecutionContext preserves optional execution metadata when present', () => {
+    assert.deepEqual(normalizeExecutionContext({
+        agentAlias: ' Codex ',
+        agentId: ' codex-desktop ',
+        requestSource: ' task-scheduler ',
+        operatorId: ' operator-1 ',
+        bridgeId: ' bridge-main ',
+        taskId: ' task-123 ',
+        invocationId: ' invocation-abc '
+    }), {
+        agentAlias: 'Codex',
+        agentId: 'codex-desktop',
+        requestSource: 'task-scheduler',
+        operatorId: 'operator-1',
+        bridgeId: 'bridge-main',
+        taskId: 'task-123',
+        invocationId: 'invocation-abc'
+    });
+});
+
+test('normalizeExecutionContext omits blank optional execution metadata', () => {
+    const context = normalizeExecutionContext({
+        requestSource: 'snowbridge',
+        bridgeId: '   ',
+        taskId: 42,
+        invocationId: null
+    });
+
+    assert.equal(Object.prototype.hasOwnProperty.call(context, 'bridgeId'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(context, 'taskId'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(context, 'invocationId'), false);
+});

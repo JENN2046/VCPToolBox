@@ -43,7 +43,10 @@ async function executeTimedContact(task, filePath) {
             tool_name,
             toolArgs,
             null,
-            { requestSource: 'task-scheduler' }
+            {
+                requestSource: 'task-scheduler',
+                taskId: task.taskId
+            }
         );
         
         console.log(`[TaskScheduler] 任务 ${task.taskId} (${tool_name}) 已处理。`);
