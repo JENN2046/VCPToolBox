@@ -67,7 +67,7 @@ function joinArgKeyPath(parentPath, key) {
 }
 
 function collectArgKeys(value, preview, parentPath = '', seen = new WeakSet()) {
-    if (!value || typeof value !== 'object' || preview.truncated) {
+    if (!value || typeof value !== 'object') {
         return;
     }
 
@@ -107,10 +107,6 @@ function collectArgKeys(value, preview, parentPath = '', seen = new WeakSet()) {
             preview.containsSensitiveKeys = true;
         } else {
             collectArgKeys(nestedValue, preview, keyPath, seen);
-        }
-
-        if (preview.truncated) {
-            break;
         }
     }
 

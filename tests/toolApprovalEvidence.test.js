@@ -179,6 +179,27 @@ test('buildApprovalArgsPreview handles circular values safely', () => {
     });
 });
 
+test('buildApprovalArgsPreview keeps scanning sibling keys after truncating arrays', () => {
+    const args = {
+        rows: [
+            { name: 'a' },
+            { name: 'b' },
+            { name: 'c' },
+            { name: 'd' },
+            { name: 'e' },
+            { name: 'f' }
+        ],
+        password: 'SECRET_VALUE_SHOULD_NOT_APPEAR'
+    };
+
+    const preview = buildApprovalArgsPreview(args);
+
+    assert.equal(preview.truncated, true);
+    assert.equal(preview.containsSensitiveKeys, true);
+    assert.deepEqual(preview.redactedArgKeys, ['password']);
+    assert.equal(JSON.stringify(preview).includes('SECRET_VALUE_SHOULD_NOT_APPEAR'), false);
+});
+
 test('isSensitiveArgKey detects common secret-like arg keys', () => {
     assert.equal(isSensitiveArgKey('api_key'), true);
     assert.equal(isSensitiveArgKey('access_token'), true);
