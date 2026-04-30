@@ -87,6 +87,187 @@ test('ServerFileOperator command overrides classify known operations explicitly'
     assert.equal(deleteResult.effectClass, 'delete_or_destructive');
 });
 
+test('ServerFileOperator read-oriented commands keep explicit read classifications', () => {
+    const listAllowedDirectoriesResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'ListAllowedDirectories'
+        }
+    });
+    const listDirectoryResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'ListDirectory'
+        }
+    });
+    const fileInfoResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'FileInfo'
+        }
+    });
+    const searchFilesResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'SearchFiles'
+        }
+    });
+
+    assert.equal(listAllowedDirectoriesResult.effectClass, 'read_local');
+    assert.equal(listDirectoryResult.effectClass, 'read_local');
+    assert.equal(fileInfoResult.effectClass, 'read_local');
+    assert.equal(searchFilesResult.effectClass, 'read_local');
+});
+
+test('ServerFileOperator WebReadFile is treated as write_local because it persists downloaded content', () => {
+    const result = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'WebReadFile'
+        }
+    });
+
+    assert.equal(result.effectClass, 'write_local');
+    assert.equal(result.effectConfidence, 'explicit');
+    assert.deepEqual(result.effectEvidenceSources, ['command_override:ServerFileOperator:WebReadFile']);
+});
+
+test('ServerFileOperator write-oriented commands keep explicit write classifications', () => {
+    const appendFileResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'AppendFile'
+        }
+    });
+    const editFileResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'EditFile'
+        }
+    });
+    const createDirectoryResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'CreateDirectory'
+        }
+    });
+    const downloadFileResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'DownloadFile'
+        }
+    });
+
+    assert.equal(appendFileResult.effectClass, 'write_local');
+    assert.equal(editFileResult.effectClass, 'write_local');
+    assert.equal(createDirectoryResult.effectClass, 'write_local');
+    assert.equal(downloadFileResult.effectClass, 'write_local');
+});
+
+test('ServerFileOperator rename and move commands stay destructive', () => {
+    const moveFileResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'MoveFile'
+        }
+    });
+    const renameFileResult = classifyToolEffect({
+        toolName: 'ServerFileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command: 'RenameFile'
+        }
+    });
+
+    assert.equal(moveFileResult.effectClass, 'delete_or_destructive');
+    assert.equal(renameFileResult.effectClass, 'delete_or_destructive');
+});
+
+test('ServerFileOperator explicit command matrix stays stable across covered commands', () => {
+    const cases = [
+        ['ListAllowedDirectories', 'read_local'],
+        ['ReadFile', 'read_local'],
+        ['WebReadFile', 'write_local'],
+        ['ListDirectory', 'read_local'],
+        ['FileInfo', 'read_local'],
+        ['SearchFiles', 'read_local'],
+        ['WriteFile', 'write_local'],
+        ['WriteEscapedFile', 'write_local'],
+        ['AppendFile', 'write_local'],
+        ['EditFile', 'write_local'],
+        ['CopyFile', 'write_local'],
+        ['CreateDirectory', 'write_local'],
+        ['DownloadFile', 'write_local'],
+        ['ApplyDiff', 'write_local'],
+        ['UpdateHistory', 'write_local'],
+        ['CreateCanvas', 'write_local'],
+        ['MoveFile', 'delete_or_destructive'],
+        ['RenameFile', 'delete_or_destructive'],
+        ['DeleteFile', 'delete_or_destructive']
+    ];
+
+    for (const [command, expectedEffectClass] of cases) {
+        const result = classifyToolEffect({
+            toolName: 'FileOperator',
+            approvalDecision: {
+                requestedToolName: 'FileOperator',
+                canonicalToolName: 'ServerFileOperator'
+            },
+            toolArgs: {
+                command
+            }
+        });
+
+        assert.equal(result.command, command);
+        assert.equal(result.effectClass, expectedEffectClass);
+        assert.equal(result.effectConfidence, 'explicit');
+        assert.deepEqual(result.effectEvidenceSources, [`command_override:ServerFileOperator:${command}`]);
+    }
+});
+
 test('unmapped ServerFileOperator commands stay conservative', () => {
     const result = classifyToolEffect({
         toolName: 'ServerFileOperator',
@@ -121,6 +302,25 @@ test('numbered commands are classified and keep destructive batch operations con
     assert.equal(result.effectClass, 'delete_or_destructive');
     assert.equal(result.effectConfidence, 'explicit');
     assert.deepEqual(result.effectEvidenceSources, ['command_override:ServerFileOperator:DeleteFile']);
+});
+
+test('numbered FileOperator commands keep explicit write mapping when covered commands tie on effect class', () => {
+    const result = classifyToolEffect({
+        toolName: 'FileOperator',
+        approvalDecision: {
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator'
+        },
+        toolArgs: {
+            command1: 'WebReadFile',
+            command2: 'WriteFile'
+        }
+    });
+
+    assert.equal(result.command, 'WebReadFile');
+    assert.equal(result.effectClass, 'write_local');
+    assert.equal(result.effectConfidence, 'explicit');
+    assert.deepEqual(result.effectEvidenceSources, ['command_override:ServerFileOperator:WebReadFile']);
 });
 
 test('numbered PowerShell commands still classify as execute_shell', () => {

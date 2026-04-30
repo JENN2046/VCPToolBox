@@ -230,6 +230,72 @@ test('buildToolApprovalEvidence classifies numbered batch commands conservativel
     assert.equal(JSON.stringify(evidence).includes('C:\\safe.txt'), false);
 });
 
+test('buildToolApprovalEvidence classifies WebReadFile as write_local without leaking URL values', () => {
+    const evidence = buildToolApprovalEvidence({
+        toolName: 'FileOperator',
+        approvalDecision: {
+            requiresApproval: true,
+            matchedRule: 'ServerFileOperator:WebReadFile',
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator',
+            wasAlias: true
+        },
+        executionContext: {
+            requestSource: 'human-tool-route'
+        },
+        toolArgs: {
+            command: 'WebReadFile',
+            url: 'https://example.com/private/report.pdf'
+        }
+    });
+
+    assert.deepEqual(evidence.effect, {
+        requestedToolName: 'FileOperator',
+        canonicalToolName: 'ServerFileOperator',
+        command: 'WebReadFile',
+        effectClass: 'write_local',
+        effectConfidence: 'explicit',
+        effectReasons: ['explicit command override for network-backed fetch that persists content onto local disk'],
+        effectEvidenceSources: ['command_override:ServerFileOperator:WebReadFile']
+    });
+    assert.equal(JSON.stringify(evidence).includes('https://example.com/private/report.pdf'), false);
+});
+
+test('buildToolApprovalEvidence preserves explicit effect mapping for UpdateHistory without leaking payload text', () => {
+    const evidence = buildToolApprovalEvidence({
+        toolName: 'FileOperator',
+        approvalDecision: {
+            requiresApproval: true,
+            matchedRule: 'ServerFileOperator:UpdateHistory',
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator',
+            wasAlias: true
+        },
+        executionContext: {
+            requestSource: 'task-scheduler'
+        },
+        toolArgs: {
+            command: 'UpdateHistory',
+            filePath: 'C:\\history.json',
+            searchString: 'OLD_ASSISTANT_TEXT_SHOULD_NOT_APPEAR',
+            replaceString: 'NEW_ASSISTANT_TEXT_SHOULD_NOT_APPEAR'
+        }
+    });
+
+    assert.deepEqual(evidence.effect, {
+        requestedToolName: 'FileOperator',
+        canonicalToolName: 'ServerFileOperator',
+        command: 'UpdateHistory',
+        effectClass: 'write_local',
+        effectConfidence: 'explicit',
+        effectReasons: ['explicit command override for local chat history mutation'],
+        effectEvidenceSources: ['command_override:ServerFileOperator:UpdateHistory']
+    });
+    assert.equal(JSON.stringify(evidence).includes('OLD_ASSISTANT_TEXT_SHOULD_NOT_APPEAR'), false);
+    assert.equal(JSON.stringify(evidence).includes('NEW_ASSISTANT_TEXT_SHOULD_NOT_APPEAR'), false);
+    assert.equal(JSON.stringify(evidence).includes('C:\\history.json'), false);
+});
+
 test('buildApprovalArgsPreview summarizes arg shape without mutating input', () => {
     const args = {
         command: 'DeleteFile',
