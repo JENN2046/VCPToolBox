@@ -891,7 +891,8 @@ class PluginManager extends EventEmitter {
             const approvalEvidence = buildToolApprovalEvidence({
                 toolName,
                 approvalDecision,
-                executionContext: normalizedExecutionContext
+                executionContext: normalizedExecutionContext,
+                toolArgs: pluginSpecificArgs
             });
             if (this.debugMode) {
                 console.log(
