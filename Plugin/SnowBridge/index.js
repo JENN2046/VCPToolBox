@@ -1038,7 +1038,11 @@ class SnowBridge {
 				toolName,
 				toolArgs,
 				null,
-				{requestSource: 'snowbridge'},
+				{
+					requestSource: 'snowbridge',
+					bridgeId: serverId,
+					invocationId,
+				},
 			);
 			const latestContext = this.activeInvocations.get(invocationId);
 

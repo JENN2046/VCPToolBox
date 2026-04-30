@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const vcpToolBridgePath = path.join(__dirname, '..', 'Plugin', 'VCPToolBridge', 'index.js');
 
-test('VCPToolBridge tags bridged tool calls with vcp-tool-bridge requestSource', () => {
+test('VCPToolBridge tags bridged tool calls with vcp-tool-bridge execution context', () => {
     const source = fs.readFileSync(vcpToolBridgePath, 'utf8');
     const methodStart = source.indexOf('async handleExecuteTool(serverId, message, pluginManager)');
     assert.notEqual(methodStart, -1, 'handleExecuteTool should exist');
@@ -14,5 +14,5 @@ test('VCPToolBridge tags bridged tool calls with vcp-tool-bridge requestSource',
     assert.notEqual(methodEnd, -1, 'handleExecuteTool should end before processToolCall');
 
     const methodSource = source.slice(methodStart, methodEnd);
-    assert.match(methodSource, /pluginManager\.processToolCall\(\s*toolName,\s*toolArgs,\s*null,\s*\{\s*requestSource:\s*'vcp-tool-bridge'\s*\}\s*\)/);
+    assert.match(methodSource, /pluginManager\.processToolCall\(\s*toolName,\s*toolArgs,\s*null,\s*\{\s*requestSource:\s*'vcp-tool-bridge',\s*bridgeId:\s*serverId,\s*invocationId:\s*requestId\s*\}\s*\)/);
 });

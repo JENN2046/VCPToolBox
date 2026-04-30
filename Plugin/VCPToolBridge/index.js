@@ -221,7 +221,11 @@ class VCPToolBridge {
                 toolName,
                 toolArgs,
                 null,
-                { requestSource: 'vcp-tool-bridge' }
+                {
+                    requestSource: 'vcp-tool-bridge',
+                    bridgeId: serverId,
+                    invocationId: requestId
+                }
             );
 
             // 如果是异步任务（返回了 taskId），记录映射关系
