@@ -1,17 +1,113 @@
 'use strict';
 
 const COMMAND_EFFECT_OVERRIDES = Object.freeze({
+    'ServerFileOperator:ListAllowedDirectories': {
+        effectClass: 'read_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local directory capability discovery'],
+        evidenceSources: ['command_override:ServerFileOperator:ListAllowedDirectories']
+    },
     'ServerFileOperator:ReadFile': {
         effectClass: 'read_local',
         confidence: 'explicit',
         reasons: ['explicit command override for local file read'],
         evidenceSources: ['command_override:ServerFileOperator:ReadFile']
     },
+    'ServerFileOperator:WebReadFile': {
+        effectClass: 'read_external',
+        confidence: 'explicit',
+        reasons: ['explicit command override for network-backed file fetch and read'],
+        evidenceSources: ['command_override:ServerFileOperator:WebReadFile']
+    },
+    'ServerFileOperator:ListDirectory': {
+        effectClass: 'read_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local directory listing'],
+        evidenceSources: ['command_override:ServerFileOperator:ListDirectory']
+    },
+    'ServerFileOperator:FileInfo': {
+        effectClass: 'read_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local file metadata read'],
+        evidenceSources: ['command_override:ServerFileOperator:FileInfo']
+    },
+    'ServerFileOperator:SearchFiles': {
+        effectClass: 'read_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local file search'],
+        evidenceSources: ['command_override:ServerFileOperator:SearchFiles']
+    },
     'ServerFileOperator:WriteFile': {
         effectClass: 'write_local',
         confidence: 'explicit',
         reasons: ['explicit command override for local file write'],
         evidenceSources: ['command_override:ServerFileOperator:WriteFile']
+    },
+    'ServerFileOperator:WriteEscapedFile': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for escaped local file write'],
+        evidenceSources: ['command_override:ServerFileOperator:WriteEscapedFile']
+    },
+    'ServerFileOperator:AppendFile': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local file append'],
+        evidenceSources: ['command_override:ServerFileOperator:AppendFile']
+    },
+    'ServerFileOperator:EditFile': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local file overwrite'],
+        evidenceSources: ['command_override:ServerFileOperator:EditFile']
+    },
+    'ServerFileOperator:CopyFile': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local file copy'],
+        evidenceSources: ['command_override:ServerFileOperator:CopyFile']
+    },
+    'ServerFileOperator:CreateDirectory': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local directory creation'],
+        evidenceSources: ['command_override:ServerFileOperator:CreateDirectory']
+    },
+    'ServerFileOperator:DownloadFile': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for downloading content onto local disk'],
+        evidenceSources: ['command_override:ServerFileOperator:DownloadFile']
+    },
+    'ServerFileOperator:ApplyDiff': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local file diff application'],
+        evidenceSources: ['command_override:ServerFileOperator:ApplyDiff']
+    },
+    'ServerFileOperator:UpdateHistory': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local chat history mutation'],
+        evidenceSources: ['command_override:ServerFileOperator:UpdateHistory']
+    },
+    'ServerFileOperator:CreateCanvas': {
+        effectClass: 'write_local',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local canvas file creation'],
+        evidenceSources: ['command_override:ServerFileOperator:CreateCanvas']
+    },
+    'ServerFileOperator:MoveFile': {
+        effectClass: 'delete_or_destructive',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local move that removes the source location'],
+        evidenceSources: ['command_override:ServerFileOperator:MoveFile']
+    },
+    'ServerFileOperator:RenameFile': {
+        effectClass: 'delete_or_destructive',
+        confidence: 'explicit',
+        reasons: ['explicit command override for local rename that mutates the source path identity'],
+        evidenceSources: ['command_override:ServerFileOperator:RenameFile']
     },
     'ServerFileOperator:DeleteFile': {
         effectClass: 'delete_or_destructive',

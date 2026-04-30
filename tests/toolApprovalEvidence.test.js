@@ -230,6 +230,37 @@ test('buildToolApprovalEvidence classifies numbered batch commands conservativel
     assert.equal(JSON.stringify(evidence).includes('C:\\safe.txt'), false);
 });
 
+test('buildToolApprovalEvidence classifies WebReadFile as read_external without leaking URL values', () => {
+    const evidence = buildToolApprovalEvidence({
+        toolName: 'FileOperator',
+        approvalDecision: {
+            requiresApproval: true,
+            matchedRule: 'ServerFileOperator:WebReadFile',
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator',
+            wasAlias: true
+        },
+        executionContext: {
+            requestSource: 'human-tool-route'
+        },
+        toolArgs: {
+            command: 'WebReadFile',
+            url: 'https://example.com/private/report.pdf'
+        }
+    });
+
+    assert.deepEqual(evidence.effect, {
+        requestedToolName: 'FileOperator',
+        canonicalToolName: 'ServerFileOperator',
+        command: 'WebReadFile',
+        effectClass: 'read_external',
+        effectConfidence: 'explicit',
+        effectReasons: ['explicit command override for network-backed file fetch and read'],
+        effectEvidenceSources: ['command_override:ServerFileOperator:WebReadFile']
+    });
+    assert.equal(JSON.stringify(evidence).includes('https://example.com/private/report.pdf'), false);
+});
+
 test('buildApprovalArgsPreview summarizes arg shape without mutating input', () => {
     const args = {
         command: 'DeleteFile',
