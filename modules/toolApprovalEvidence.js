@@ -19,6 +19,8 @@ function buildToolApprovalEvidence(input = {}) {
     return {
         requestedToolName,
         canonicalToolName,
+        registeredPluginName: normalizeString(approvalDecision.registeredPluginName),
+        identityConfidence: normalizeString(approvalDecision.identityConfidence),
         matchedRule: normalizeString(approvalDecision.matchedRule),
         matchedCommand: normalizeString(approvalDecision.matchedCommand),
         wasAlias: approvalDecision.wasAlias === true,
