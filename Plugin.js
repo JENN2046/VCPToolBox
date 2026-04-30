@@ -12,6 +12,7 @@ const { getAuthCode } = require('./modules/captchaDecoder'); // 导入统一的�
 const ToolApprovalManager = require('./modules/toolApprovalManager');
 const { hasFoldMarkers, buildDynamicFoldObject } = require('./modules/foldProtocol');
 const { normalizeExecutionContext } = require('./modules/toolExecutionContext');
+const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
@@ -887,6 +888,11 @@ class PluginManager extends EventEmitter {
         });
         if (approvalDecision.requiresApproval) {
             const requestId = `approve-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const approvalEvidence = buildToolApprovalEvidence({
+                toolName,
+                approvalDecision,
+                executionContext: normalizedExecutionContext
+            });
             if (this.debugMode) {
                 console.log(
                     `[PluginManager] Tool call for "${toolName}" requires manual approval. Request ID: ${requestId}. notifyAiOnReject=${approvalDecision.notifyAiOnReject !== false}`
@@ -919,6 +925,7 @@ class PluginManager extends EventEmitter {
                         toolName,
                         maid: maidNameFromArgs,
                         args: pluginSpecificArgs,
+                        approvalEvidence,
                         timestamp: _getFormattedLocalTimestamp()
                     }
                 };
