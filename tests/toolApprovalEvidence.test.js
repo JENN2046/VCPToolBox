@@ -198,6 +198,38 @@ test('buildToolApprovalEvidence classifies FileOperator deletes conservatively',
     assert.equal(JSON.stringify(evidence).includes('C:\\safe.txt'), false);
 });
 
+test('buildToolApprovalEvidence classifies numbered batch commands conservatively', () => {
+    const evidence = buildToolApprovalEvidence({
+        toolName: 'FileOperator',
+        approvalDecision: {
+            requiresApproval: true,
+            matchedRule: 'ServerFileOperator:DeleteFile',
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator',
+            wasAlias: true
+        },
+        executionContext: {
+            requestSource: 'task-scheduler'
+        },
+        toolArgs: {
+            command1: 'ReadFile',
+            command2: 'DeleteFile',
+            path: 'C:\\safe.txt'
+        }
+    });
+
+    assert.deepEqual(evidence.effect, {
+        requestedToolName: 'FileOperator',
+        canonicalToolName: 'ServerFileOperator',
+        command: 'DeleteFile',
+        effectClass: 'delete_or_destructive',
+        effectConfidence: 'explicit',
+        effectReasons: ['explicit command override for destructive file delete'],
+        effectEvidenceSources: ['command_override:ServerFileOperator:DeleteFile']
+    });
+    assert.equal(JSON.stringify(evidence).includes('C:\\safe.txt'), false);
+});
+
 test('buildApprovalArgsPreview summarizes arg shape without mutating input', () => {
     const args = {
         command: 'DeleteFile',

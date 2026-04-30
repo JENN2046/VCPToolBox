@@ -42,6 +42,19 @@ const TOOL_EFFECT_DEFAULTS = Object.freeze({
     }
 });
 
+const EFFECT_CLASS_PRIORITY = Object.freeze({
+    unknown: 0,
+    ui_or_notification: 1,
+    read_local: 2,
+    read_external: 3,
+    write_local: 4,
+    write_external: 5,
+    network_publish: 6,
+    execute_shell: 7,
+    credential_or_secret_touch: 8,
+    delete_or_destructive: 9
+});
+
 function normalizeString(value) {
     return typeof value === 'string' && value.trim()
         ? value.trim()
@@ -68,6 +81,50 @@ function buildResult(input = {}) {
     };
 }
 
+function extractCommands(toolArgs = {}) {
+    if (!toolArgs || typeof toolArgs !== 'object') {
+        return [];
+    }
+
+    const commands = [];
+    const primaryCommand = normalizeString(toolArgs.command);
+    if (primaryCommand) {
+        commands.push(primaryCommand);
+    }
+
+    const numberedCommandKeys = Object.keys(toolArgs)
+        .filter((key) => /^command\d+$/.test(key))
+        .sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)));
+
+    for (const key of numberedCommandKeys) {
+        const normalizedCommand = normalizeString(toolArgs[key]);
+        if (normalizedCommand) {
+            commands.push(normalizedCommand);
+        }
+    }
+
+    return [...new Set(commands)];
+}
+
+function getEffectPriority(effectClass) {
+    return EFFECT_CLASS_PRIORITY[effectClass] ?? -1;
+}
+
+function chooseMoreRestrictiveResult(current, candidate) {
+    if (!current) {
+        return candidate;
+    }
+
+    const currentPriority = getEffectPriority(current.effectClass);
+    const candidatePriority = getEffectPriority(candidate.effectClass);
+
+    if (candidatePriority > currentPriority) {
+        return candidate;
+    }
+
+    return current;
+}
+
 function classifyToolEffect(input = {}) {
     const approvalDecision = input.approvalDecision || {};
     const requestedToolName = normalizeString(approvalDecision.requestedToolName)
@@ -75,32 +132,46 @@ function classifyToolEffect(input = {}) {
         || '';
     const canonicalToolName = normalizeString(approvalDecision.canonicalToolName)
         || requestedToolName;
-    const command = normalizeString(input.toolArgs?.command);
+    const commands = extractCommands(input.toolArgs);
+    let strongestCommandResult = null;
 
-    const commandKey = command ? `${canonicalToolName}:${command}` : null;
-    if (commandKey && Object.prototype.hasOwnProperty.call(COMMAND_EFFECT_OVERRIDES, commandKey)) {
-        const match = COMMAND_EFFECT_OVERRIDES[commandKey];
-        return buildResult({
-            requestedToolName,
-            canonicalToolName,
-            command,
-            effectClass: match.effectClass,
-            confidence: match.confidence,
-            reasons: match.reasons,
-            evidenceSources: match.evidenceSources
-        });
+    for (const command of commands) {
+        const commandKey = `${canonicalToolName}:${command}`;
+        if (Object.prototype.hasOwnProperty.call(COMMAND_EFFECT_OVERRIDES, commandKey)) {
+            const match = COMMAND_EFFECT_OVERRIDES[commandKey];
+            strongestCommandResult = chooseMoreRestrictiveResult(
+                strongestCommandResult,
+                buildResult({
+                    requestedToolName,
+                    canonicalToolName,
+                    command,
+                    effectClass: match.effectClass,
+                    confidence: match.confidence,
+                    reasons: match.reasons,
+                    evidenceSources: match.evidenceSources
+                })
+            );
+            continue;
+        }
+
+        if (canonicalToolName === 'ServerFileOperator') {
+            strongestCommandResult = chooseMoreRestrictiveResult(
+                strongestCommandResult,
+                buildResult({
+                    requestedToolName,
+                    canonicalToolName,
+                    command,
+                    effectClass: 'delete_or_destructive',
+                    confidence: 'derived',
+                    reasons: ['unmapped ServerFileOperator command remains conservative by default'],
+                    evidenceSources: ['tool_family_default:ServerFileOperator']
+                })
+            );
+        }
     }
 
-    if (canonicalToolName === 'ServerFileOperator' && command) {
-        return buildResult({
-            requestedToolName,
-            canonicalToolName,
-            command,
-            effectClass: 'delete_or_destructive',
-            confidence: 'derived',
-            reasons: ['unmapped ServerFileOperator command remains conservative by default'],
-            evidenceSources: ['tool_family_default:ServerFileOperator']
-        });
+    if (strongestCommandResult) {
+        return strongestCommandResult;
     }
 
     if (Object.prototype.hasOwnProperty.call(TOOL_EFFECT_DEFAULTS, canonicalToolName)) {
@@ -108,7 +179,7 @@ function classifyToolEffect(input = {}) {
         return buildResult({
             requestedToolName,
             canonicalToolName,
-            command,
+            command: commands[0] || null,
             effectClass: match.effectClass,
             confidence: match.confidence,
             reasons: match.reasons,
@@ -119,7 +190,7 @@ function classifyToolEffect(input = {}) {
     return buildResult({
         requestedToolName,
         canonicalToolName,
-        command,
+        command: commands[0] || null,
         effectClass: 'unknown',
         confidence: 'unknown',
         reasons: ['no explicit effect mapping for canonical tool or command'],
