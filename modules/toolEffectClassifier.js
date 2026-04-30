@@ -14,9 +14,9 @@ const COMMAND_EFFECT_OVERRIDES = Object.freeze({
         evidenceSources: ['command_override:ServerFileOperator:ReadFile']
     },
     'ServerFileOperator:WebReadFile': {
-        effectClass: 'read_external',
+        effectClass: 'write_local',
         confidence: 'explicit',
-        reasons: ['explicit command override for network-backed file fetch and read'],
+        reasons: ['explicit command override for network-backed fetch that persists content onto local disk'],
         evidenceSources: ['command_override:ServerFileOperator:WebReadFile']
     },
     'ServerFileOperator:ListDirectory': {

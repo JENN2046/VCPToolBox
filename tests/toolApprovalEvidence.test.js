@@ -230,7 +230,7 @@ test('buildToolApprovalEvidence classifies numbered batch commands conservativel
     assert.equal(JSON.stringify(evidence).includes('C:\\safe.txt'), false);
 });
 
-test('buildToolApprovalEvidence classifies WebReadFile as read_external without leaking URL values', () => {
+test('buildToolApprovalEvidence classifies WebReadFile as write_local without leaking URL values', () => {
     const evidence = buildToolApprovalEvidence({
         toolName: 'FileOperator',
         approvalDecision: {
@@ -253,9 +253,9 @@ test('buildToolApprovalEvidence classifies WebReadFile as read_external without 
         requestedToolName: 'FileOperator',
         canonicalToolName: 'ServerFileOperator',
         command: 'WebReadFile',
-        effectClass: 'read_external',
+        effectClass: 'write_local',
         effectConfidence: 'explicit',
-        effectReasons: ['explicit command override for network-backed file fetch and read'],
+        effectReasons: ['explicit command override for network-backed fetch that persists content onto local disk'],
         effectEvidenceSources: ['command_override:ServerFileOperator:WebReadFile']
     });
     assert.equal(JSON.stringify(evidence).includes('https://example.com/private/report.pdf'), false);

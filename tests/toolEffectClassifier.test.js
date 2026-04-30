@@ -135,7 +135,7 @@ test('ServerFileOperator read-oriented commands keep explicit read classificatio
     assert.equal(searchFilesResult.effectClass, 'read_local');
 });
 
-test('ServerFileOperator WebReadFile is treated as read_external', () => {
+test('ServerFileOperator WebReadFile is treated as write_local because it persists downloaded content', () => {
     const result = classifyToolEffect({
         toolName: 'ServerFileOperator',
         approvalDecision: {
@@ -147,7 +147,7 @@ test('ServerFileOperator WebReadFile is treated as read_external', () => {
         }
     });
 
-    assert.equal(result.effectClass, 'read_external');
+    assert.equal(result.effectClass, 'write_local');
     assert.equal(result.effectConfidence, 'explicit');
     assert.deepEqual(result.effectEvidenceSources, ['command_override:ServerFileOperator:WebReadFile']);
 });
@@ -230,7 +230,7 @@ test('ServerFileOperator explicit command matrix stays stable across covered com
     const cases = [
         ['ListAllowedDirectories', 'read_local'],
         ['ReadFile', 'read_local'],
-        ['WebReadFile', 'read_external'],
+        ['WebReadFile', 'write_local'],
         ['ListDirectory', 'read_local'],
         ['FileInfo', 'read_local'],
         ['SearchFiles', 'read_local'],
@@ -304,7 +304,7 @@ test('numbered commands are classified and keep destructive batch operations con
     assert.deepEqual(result.effectEvidenceSources, ['command_override:ServerFileOperator:DeleteFile']);
 });
 
-test('numbered FileOperator commands choose the more restrictive explicit mapping', () => {
+test('numbered FileOperator commands keep explicit write mapping when covered commands tie on effect class', () => {
     const result = classifyToolEffect({
         toolName: 'FileOperator',
         approvalDecision: {
@@ -317,10 +317,10 @@ test('numbered FileOperator commands choose the more restrictive explicit mappin
         }
     });
 
-    assert.equal(result.command, 'WriteFile');
+    assert.equal(result.command, 'WebReadFile');
     assert.equal(result.effectClass, 'write_local');
     assert.equal(result.effectConfidence, 'explicit');
-    assert.deepEqual(result.effectEvidenceSources, ['command_override:ServerFileOperator:WriteFile']);
+    assert.deepEqual(result.effectEvidenceSources, ['command_override:ServerFileOperator:WebReadFile']);
 });
 
 test('numbered PowerShell commands still classify as execute_shell', () => {
