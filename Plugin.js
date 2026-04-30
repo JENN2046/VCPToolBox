@@ -11,6 +11,7 @@ const chokidar = require('chokidar');
 const { getAuthCode } = require('./modules/captchaDecoder'); // 导入统一的解码函数
 const ToolApprovalManager = require('./modules/toolApprovalManager');
 const { hasFoldMarkers, buildDynamicFoldObject } = require('./modules/foldProtocol');
+const { normalizeExecutionContext } = require('./modules/toolExecutionContext');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
@@ -814,19 +815,7 @@ class PluginManager extends EventEmitter {
         if (!plugin) {
             throw new Error(`[PluginManager] Plugin "${toolName}" not found for tool call.`);
         }
-        const normalizedExecutionContext = (executionContext && typeof executionContext === 'object')
-            ? {
-                agentAlias: typeof executionContext.agentAlias === 'string' && executionContext.agentAlias.trim()
-                    ? executionContext.agentAlias.trim()
-                    : null,
-                agentId: typeof executionContext.agentId === 'string' && executionContext.agentId.trim()
-                    ? executionContext.agentId.trim()
-                    : null,
-                requestSource: typeof executionContext.requestSource === 'string' && executionContext.requestSource.trim()
-                    ? executionContext.requestSource.trim()
-                    : 'unknown'
-            }
-            : null;
+        const normalizedExecutionContext = normalizeExecutionContext(executionContext, { nullWhenMissing: true });
 
         // Helper function to generate a timestamp string
         const _getFormattedLocalTimestamp = () => {
@@ -1106,19 +1095,8 @@ class PluginManager extends EventEmitter {
         if (fileServerKey) {
             additionalEnv.IMAGESERVER_FILE_KEY = fileServerKey;
         }
-        if (executionContext && typeof executionContext === 'object') {
-            const normalizedExecutionContext = {
-                agentAlias: typeof executionContext.agentAlias === 'string' && executionContext.agentAlias.trim()
-                    ? executionContext.agentAlias.trim()
-                    : null,
-                agentId: typeof executionContext.agentId === 'string' && executionContext.agentId.trim()
-                    ? executionContext.agentId.trim()
-                    : null,
-                requestSource: typeof executionContext.requestSource === 'string' && executionContext.requestSource.trim()
-                    ? executionContext.requestSource.trim()
-                    : 'unknown'
-            };
-
+        const normalizedExecutionContext = normalizeExecutionContext(executionContext, { nullWhenMissing: true });
+        if (normalizedExecutionContext) {
             additionalEnv.VCP_EXECUTION_CONTEXT = JSON.stringify(normalizedExecutionContext);
             additionalEnv.VCP_REQUEST_SOURCE = normalizedExecutionContext.requestSource;
             if (normalizedExecutionContext.agentAlias) {
