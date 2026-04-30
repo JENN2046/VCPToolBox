@@ -1239,7 +1239,12 @@ app.post('/v1/human/tool', async (req, res) => {
         if (clientIp && clientIp.substr(0, 7) === "::ffff:") {
             clientIp = clientIp.substr(7);
         }
-        const result = await pluginManager.processToolCall(requestedToolName, parsedToolArgs, clientIp);
+        const result = await pluginManager.processToolCall(
+            requestedToolName,
+            parsedToolArgs,
+            clientIp,
+            { requestSource: 'human-tool-route' }
+        );
 
         // processToolCall 的结果已经是正确的对象格式
         res.status(200).json(result);
