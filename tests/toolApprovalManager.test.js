@@ -57,6 +57,8 @@ test('legacy PowerShellExecutor rule protects canonical ServerPowerShellExecutor
         assert.equal(decision.requiresApproval, true);
         assert.equal(decision.matchedRule, 'PowerShellExecutor');
         assert.equal(decision.canonicalToolName, 'ServerPowerShellExecutor');
+        assert.equal(decision.registeredPluginName, 'ServerPowerShellExecutor');
+        assert.equal(decision.identityConfidence, 'exact');
         assert.equal(decision.wasAlias, false);
     });
 });
@@ -75,6 +77,8 @@ test('registered plugin names that match legacy aliases remain exact', () => {
         assert.equal(decision.requiresApproval, false);
         assert.equal(decision.requestedToolName, 'PowerShellExecutor');
         assert.equal(decision.canonicalToolName, 'PowerShellExecutor');
+        assert.equal(decision.registeredPluginName, 'PowerShellExecutor');
+        assert.equal(decision.identityConfidence, 'exact');
         assert.equal(decision.wasAlias, false);
     });
 });
@@ -89,6 +93,8 @@ test('canonical ServerPowerShellExecutor rule protects legacy PowerShellExecutor
         assert.equal(decision.matchedRule, 'ServerPowerShellExecutor');
         assert.equal(decision.requestedToolName, 'PowerShellExecutor');
         assert.equal(decision.canonicalToolName, 'ServerPowerShellExecutor');
+        assert.equal(decision.registeredPluginName, 'ServerPowerShellExecutor');
+        assert.equal(decision.identityConfidence, 'alias');
         assert.equal(decision.wasAlias, true);
     });
 });
@@ -195,6 +201,8 @@ test('unknown tool behavior remains exact-match only', () => {
         });
         assert.equal(exactDecision.requiresApproval, true);
         assert.equal(exactDecision.matchedRule, 'UnknownTool');
+        assert.equal(exactDecision.registeredPluginName, null);
+        assert.equal(exactDecision.identityConfidence, 'unknown');
 
         const unrelatedDecision = manager.getApprovalDecision('AnotherUnknownTool', {
             command: 'Whatever'
