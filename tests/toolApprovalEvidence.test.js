@@ -15,8 +15,6 @@ test('buildToolApprovalEvidence carries resolved identity and normalized context
             matchedCommand: 'Get-ChildItem',
             requestedToolName: 'PowerShellExecutor',
             canonicalToolName: 'ServerPowerShellExecutor',
-            registeredPluginName: 'ServerPowerShellExecutor',
-            identityConfidence: 'alias',
             wasAlias: true
         },
         executionContext: {
@@ -29,8 +27,6 @@ test('buildToolApprovalEvidence carries resolved identity and normalized context
     assert.deepEqual(evidence, {
         requestedToolName: 'PowerShellExecutor',
         canonicalToolName: 'ServerPowerShellExecutor',
-        registeredPluginName: 'ServerPowerShellExecutor',
-        identityConfidence: 'alias',
         matchedRule: 'ServerPowerShellExecutor:Get-ChildItem',
         matchedCommand: 'Get-ChildItem',
         wasAlias: true,
@@ -53,8 +49,6 @@ test('buildToolApprovalEvidence defaults missing context conservatively', () => 
 
     assert.equal(evidence.requestedToolName, 'SciCalculator');
     assert.equal(evidence.canonicalToolName, 'SciCalculator');
-    assert.equal(evidence.registeredPluginName, null);
-    assert.equal(evidence.identityConfidence, null);
     assert.equal(evidence.requestSource, 'unknown');
     assert.equal(evidence.agentAlias, null);
     assert.equal(evidence.agentId, null);

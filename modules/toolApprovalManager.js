@@ -135,20 +135,15 @@ class ToolApprovalManager {
             toolArgs,
             pluginRegistry
         });
-        const identityEvidence = {
-            requestedToolName: identity.requestedToolName,
-            canonicalToolName: identity.canonicalToolName,
-            registeredPluginName: identity.registeredPluginName,
-            identityConfidence: identity.confidence,
-            wasAlias: identity.wasAlias
-        };
 
         const defaultDecision = {
             requiresApproval: false,
             notifyAiOnReject: true,
             matchedRule: null,
             matchedCommand: null,
-            ...identityEvidence
+            requestedToolName: identity.requestedToolName,
+            canonicalToolName: identity.canonicalToolName,
+            wasAlias: identity.wasAlias
         };
 
         if (!this.config.enabled) {
@@ -162,7 +157,9 @@ class ToolApprovalManager {
                 notifyAiOnReject: true,
                 matchedRule: '__APPROVE_ALL__',
                 matchedCommand: null,
-                ...identityEvidence
+                requestedToolName: identity.requestedToolName,
+                canonicalToolName: identity.canonicalToolName,
+                wasAlias: identity.wasAlias
             };
         }
 
@@ -219,7 +216,9 @@ class ToolApprovalManager {
                 notifyAiOnReject: bestMatch.notifyAiOnReject,
                 matchedRule: bestMatch.rawRule,
                 matchedCommand: bestMatch.matchedCommand || null,
-                ...identityEvidence
+                requestedToolName: identity.requestedToolName,
+                canonicalToolName: identity.canonicalToolName,
+                wasAlias: identity.wasAlias
             };
         }
 
