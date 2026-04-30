@@ -226,6 +226,48 @@ test('ServerFileOperator rename and move commands stay destructive', () => {
     assert.equal(renameFileResult.effectClass, 'delete_or_destructive');
 });
 
+test('ServerFileOperator explicit command matrix stays stable across covered commands', () => {
+    const cases = [
+        ['ListAllowedDirectories', 'read_local'],
+        ['ReadFile', 'read_local'],
+        ['WebReadFile', 'read_external'],
+        ['ListDirectory', 'read_local'],
+        ['FileInfo', 'read_local'],
+        ['SearchFiles', 'read_local'],
+        ['WriteFile', 'write_local'],
+        ['WriteEscapedFile', 'write_local'],
+        ['AppendFile', 'write_local'],
+        ['EditFile', 'write_local'],
+        ['CopyFile', 'write_local'],
+        ['CreateDirectory', 'write_local'],
+        ['DownloadFile', 'write_local'],
+        ['ApplyDiff', 'write_local'],
+        ['UpdateHistory', 'write_local'],
+        ['CreateCanvas', 'write_local'],
+        ['MoveFile', 'delete_or_destructive'],
+        ['RenameFile', 'delete_or_destructive'],
+        ['DeleteFile', 'delete_or_destructive']
+    ];
+
+    for (const [command, expectedEffectClass] of cases) {
+        const result = classifyToolEffect({
+            toolName: 'FileOperator',
+            approvalDecision: {
+                requestedToolName: 'FileOperator',
+                canonicalToolName: 'ServerFileOperator'
+            },
+            toolArgs: {
+                command
+            }
+        });
+
+        assert.equal(result.command, command);
+        assert.equal(result.effectClass, expectedEffectClass);
+        assert.equal(result.effectConfidence, 'explicit');
+        assert.deepEqual(result.effectEvidenceSources, [`command_override:ServerFileOperator:${command}`]);
+    }
+});
+
 test('unmapped ServerFileOperator commands stay conservative', () => {
     const result = classifyToolEffect({
         toolName: 'ServerFileOperator',
