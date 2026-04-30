@@ -315,7 +315,7 @@ async function executeImagePlan(plan, options = {}) {
         mapped.toolName,
         toolArgs,
         '127.0.0.1',            // requestIp
-        { source: 'ai-image-pipeline' }  // executionContext
+        { requestSource: 'ai-image-pipeline' }  // executionContext
       );
 
       const parsed = parsePluginResult(rawResult);
