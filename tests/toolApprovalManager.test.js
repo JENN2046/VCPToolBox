@@ -48,6 +48,21 @@ function withManager(config, run) {
     }
 }
 
+function assertDecisionShape(decision) {
+    assert.deepEqual(Object.keys(decision).sort(), [
+        'canonicalToolName',
+        'matchedCommand',
+        'matchedRule',
+        'notifyAiOnReject',
+        'requestedToolName',
+        'requiresApproval',
+        'wasAlias'
+    ]);
+    assert.equal(Object.prototype.hasOwnProperty.call(decision, 'effect'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(decision, 'effectClass'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(decision, 'argsPreview'), false);
+}
+
 test('legacy PowerShellExecutor rule protects canonical ServerPowerShellExecutor calls', () => {
     withManager({ approvalList: ['PowerShellExecutor'] }, (manager) => {
         const decision = manager.getApprovalDecision('ServerPowerShellExecutor', {
@@ -212,5 +227,52 @@ test('DeleteFile is not treated as a standalone FileOperator alias', () => {
 
         assert.equal(decision.requiresApproval, false);
         assert.equal(decision.matchedRule, null);
+    });
+});
+
+test('approval decision shape stays unchanged after effect evidence integration', () => {
+    withManager({ approvalList: ['ServerPowerShellExecutor:Get-ChildItem'] }, (manager) => {
+        const decision = manager.getApprovalDecision('PowerShellExecutor', {
+            command: 'Get-ChildItem',
+            targetPath: 'C:\\safe',
+            password: 'SECRET_VALUE_SHOULD_NOT_APPEAR'
+        });
+
+        assertDecisionShape(decision);
+        assert.equal(decision.requiresApproval, true);
+        assert.equal(decision.matchedRule, 'ServerPowerShellExecutor:Get-ChildItem');
+        assert.equal(decision.matchedCommand, 'Get-ChildItem');
+        assert.equal(decision.requestedToolName, 'PowerShellExecutor');
+        assert.equal(decision.canonicalToolName, 'ServerPowerShellExecutor');
+        assert.equal(decision.wasAlias, true);
+    });
+});
+
+test('shouldApprove remains driven only by approval rules, not approval evidence enrichment', () => {
+    withManager({ approvalList: ['ServerFileOperator:DeleteFile'] }, (manager) => {
+        const deleteDecision = manager.getApprovalDecision('FileOperator', {
+            command: 'DeleteFile',
+            path: 'C:\\safe.txt',
+            apiKey: 'SECRET_VALUE_SHOULD_NOT_APPEAR'
+        });
+        const writeDecision = manager.getApprovalDecision('FileOperator', {
+            command: 'WriteFile',
+            path: 'C:\\safe.txt'
+        });
+
+        assertDecisionShape(deleteDecision);
+        assertDecisionShape(writeDecision);
+        assert.equal(manager.shouldApprove('FileOperator', {
+            command: 'DeleteFile',
+            path: 'C:\\safe.txt'
+        }), true);
+        assert.equal(manager.shouldApprove('FileOperator', {
+            command: 'WriteFile',
+            path: 'C:\\safe.txt'
+        }), false);
+        assert.equal(deleteDecision.requiresApproval, true);
+        assert.equal(deleteDecision.matchedRule, 'ServerFileOperator:DeleteFile');
+        assert.equal(writeDecision.requiresApproval, false);
+        assert.equal(writeDecision.matchedRule, null);
     });
 });

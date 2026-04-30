@@ -1,5 +1,6 @@
 'use strict';
 
+const { classifyToolEffect } = require('./toolEffectClassifier');
 const { normalizeExecutionContext } = require('./toolExecutionContext');
 
 const MAX_ARG_KEY_COUNT = 50;
@@ -157,11 +158,18 @@ function buildToolApprovalEvidence(input = {}) {
         requiresApproval: approvalDecision.requiresApproval === true,
         notifyAiOnReject: approvalDecision.notifyAiOnReject !== false
     };
+    const effect = classifyToolEffect({
+        toolName: requestedToolName,
+        toolArgs: input.toolArgs,
+        approvalDecision,
+        executionContext
+    });
 
     appendOptionalEvidenceField(evidence, executionContext, 'operatorId');
     appendOptionalEvidenceField(evidence, executionContext, 'bridgeId');
     appendOptionalEvidenceField(evidence, executionContext, 'taskId');
     appendOptionalEvidenceField(evidence, executionContext, 'invocationId');
+    evidence.effect = effect;
 
     if (Object.prototype.hasOwnProperty.call(input, 'toolArgs')) {
         evidence.argsPreview = buildApprovalArgsPreview(input.toolArgs);
