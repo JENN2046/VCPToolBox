@@ -23,6 +23,12 @@ function normalizeString(value) {
         : null;
 }
 
+function appendOptionalEvidenceField(target, source, key) {
+    if (source && Object.prototype.hasOwnProperty.call(source, key)) {
+        target[key] = source[key];
+    }
+}
+
 function normalizeArgKey(key) {
     return String(key).replace(/[\s_-]/g, '').toLowerCase();
 }
@@ -151,6 +157,11 @@ function buildToolApprovalEvidence(input = {}) {
         requiresApproval: approvalDecision.requiresApproval === true,
         notifyAiOnReject: approvalDecision.notifyAiOnReject !== false
     };
+
+    appendOptionalEvidenceField(evidence, executionContext, 'operatorId');
+    appendOptionalEvidenceField(evidence, executionContext, 'bridgeId');
+    appendOptionalEvidenceField(evidence, executionContext, 'taskId');
+    appendOptionalEvidenceField(evidence, executionContext, 'invocationId');
 
     if (Object.prototype.hasOwnProperty.call(input, 'toolArgs')) {
         evidence.argsPreview = buildApprovalArgsPreview(input.toolArgs);

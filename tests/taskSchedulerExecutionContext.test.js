@@ -64,7 +64,7 @@ async function withTaskSchedulerStubs(callback) {
     }
 }
 
-test('taskScheduler tags plugin tool calls with task-scheduler requestSource', async () => {
+test('taskScheduler tags plugin tool calls with task-scheduler context', async () => {
     await withTaskSchedulerStubs(async (taskScheduler) => {
         let resolveCall;
         const callPromise = new Promise((resolve) => {
@@ -90,6 +90,7 @@ test('taskScheduler tags plugin tool calls with task-scheduler requestSource', a
         assert.equal(capturedCalls[0].toolName, 'AgentAssistant');
         assert.equal(capturedCalls[0].requestIp, null);
         assert.equal(capturedCalls[0].executionContext.requestSource, 'task-scheduler');
+        assert.equal(capturedCalls[0].executionContext.taskId, 'task-scheduler-context-test');
         assert.match(capturedCalls[0].toolArgs.prompt, /^\[预定通讯: /u);
         assert.match(capturedCalls[0].toolArgs.prompt, /scheduled hello$/u);
     });

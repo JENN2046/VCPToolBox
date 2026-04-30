@@ -59,6 +59,31 @@ test('buildToolApprovalEvidence defaults missing context conservatively', () => 
     assert.equal(evidence.notifyAiOnReject, true);
 });
 
+test('buildToolApprovalEvidence carries optional execution metadata', () => {
+    const evidence = buildToolApprovalEvidence({
+        toolName: 'ServerPowerShellExecutor',
+        approvalDecision: {
+            requiresApproval: true,
+            matchedRule: 'ServerPowerShellExecutor',
+            requestedToolName: 'ServerPowerShellExecutor',
+            canonicalToolName: 'ServerPowerShellExecutor'
+        },
+        executionContext: {
+            requestSource: 'task-scheduler',
+            operatorId: 'operator-1',
+            bridgeId: 'bridge-main',
+            taskId: 'task-123',
+            invocationId: 'invocation-abc'
+        }
+    });
+
+    assert.equal(evidence.requestSource, 'task-scheduler');
+    assert.equal(evidence.operatorId, 'operator-1');
+    assert.equal(evidence.bridgeId, 'bridge-main');
+    assert.equal(evidence.taskId, 'task-123');
+    assert.equal(evidence.invocationId, 'invocation-abc');
+});
+
 test('buildToolApprovalEvidence does not carry raw args or secret-like values', () => {
     const toolArgs = {
         command: 'Get-ChildItem',
