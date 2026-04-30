@@ -38,7 +38,16 @@ test('buildToolApprovalEvidence carries resolved identity and normalized context
         agentAlias: 'Codex',
         agentId: 'codex-desktop',
         requiresApproval: true,
-        notifyAiOnReject: false
+        notifyAiOnReject: false,
+        effect: {
+            requestedToolName: 'PowerShellExecutor',
+            canonicalToolName: 'ServerPowerShellExecutor',
+            command: null,
+            effectClass: 'execute_shell',
+            effectConfidence: 'explicit',
+            effectReasons: ['shell execution surface remains powerful even for read-like commands'],
+            effectEvidenceSources: ['tool_default:ServerPowerShellExecutor']
+        }
     });
 });
 
@@ -57,6 +66,8 @@ test('buildToolApprovalEvidence defaults missing context conservatively', () => 
     assert.equal(evidence.agentAlias, null);
     assert.equal(evidence.agentId, null);
     assert.equal(evidence.notifyAiOnReject, true);
+    assert.equal(evidence.effect.effectClass, 'unknown');
+    assert.equal(evidence.effect.effectConfidence, 'unknown');
 });
 
 test('buildToolApprovalEvidence carries optional execution metadata', () => {
@@ -82,6 +93,7 @@ test('buildToolApprovalEvidence carries optional execution metadata', () => {
     assert.equal(evidence.bridgeId, 'bridge-main');
     assert.equal(evidence.taskId, 'task-123');
     assert.equal(evidence.invocationId, 'invocation-abc');
+    assert.equal(evidence.effect.effectClass, 'execute_shell');
 });
 
 test('buildToolApprovalEvidence does not carry raw args or secret-like values', () => {
@@ -116,6 +128,15 @@ test('buildToolApprovalEvidence does not carry raw args or secret-like values', 
 
     assert.equal(Object.prototype.hasOwnProperty.call(evidence, 'args'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(evidence, 'toolArgs'), false);
+    assert.deepEqual(evidence.effect, {
+        requestedToolName: 'ServerPowerShellExecutor',
+        canonicalToolName: 'ServerPowerShellExecutor',
+        command: 'Get-ChildItem',
+        effectClass: 'execute_shell',
+        effectConfidence: 'explicit',
+        effectReasons: ['shell execution surface remains powerful even for read-like commands'],
+        effectEvidenceSources: ['tool_default:ServerPowerShellExecutor']
+    });
     assert.deepEqual(evidence.argsPreview, {
         argumentType: 'object',
         argKeys: [
@@ -144,6 +165,69 @@ test('buildToolApprovalEvidence does not carry raw args or secret-like values', 
     assert.equal(JSON.stringify(evidence).includes('visible-entry'), false);
     assert.equal(toolArgs.tool_password, 'SECRET_VALUE_SHOULD_NOT_APPEAR');
     assert.equal(toolArgs.nested.apiKey, 'NESTED_SECRET_VALUE_SHOULD_NOT_APPEAR');
+});
+
+test('buildToolApprovalEvidence classifies FileOperator deletes conservatively', () => {
+    const evidence = buildToolApprovalEvidence({
+        toolName: 'FileOperator',
+        approvalDecision: {
+            requiresApproval: true,
+            matchedRule: 'ServerFileOperator:DeleteFile',
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator',
+            wasAlias: true
+        },
+        executionContext: {
+            requestSource: 'human-tool-route'
+        },
+        toolArgs: {
+            command: 'DeleteFile',
+            path: 'C:\\safe.txt'
+        }
+    });
+
+    assert.deepEqual(evidence.effect, {
+        requestedToolName: 'FileOperator',
+        canonicalToolName: 'ServerFileOperator',
+        command: 'DeleteFile',
+        effectClass: 'delete_or_destructive',
+        effectConfidence: 'explicit',
+        effectReasons: ['explicit command override for destructive file delete'],
+        effectEvidenceSources: ['command_override:ServerFileOperator:DeleteFile']
+    });
+    assert.equal(JSON.stringify(evidence).includes('C:\\safe.txt'), false);
+});
+
+test('buildToolApprovalEvidence classifies numbered batch commands conservatively', () => {
+    const evidence = buildToolApprovalEvidence({
+        toolName: 'FileOperator',
+        approvalDecision: {
+            requiresApproval: true,
+            matchedRule: 'ServerFileOperator:DeleteFile',
+            requestedToolName: 'FileOperator',
+            canonicalToolName: 'ServerFileOperator',
+            wasAlias: true
+        },
+        executionContext: {
+            requestSource: 'task-scheduler'
+        },
+        toolArgs: {
+            command1: 'ReadFile',
+            command2: 'DeleteFile',
+            path: 'C:\\safe.txt'
+        }
+    });
+
+    assert.deepEqual(evidence.effect, {
+        requestedToolName: 'FileOperator',
+        canonicalToolName: 'ServerFileOperator',
+        command: 'DeleteFile',
+        effectClass: 'delete_or_destructive',
+        effectConfidence: 'explicit',
+        effectReasons: ['explicit command override for destructive file delete'],
+        effectEvidenceSources: ['command_override:ServerFileOperator:DeleteFile']
+    });
+    assert.equal(JSON.stringify(evidence).includes('C:\\safe.txt'), false);
 });
 
 test('buildApprovalArgsPreview summarizes arg shape without mutating input', () => {
