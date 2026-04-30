@@ -4,8 +4,8 @@
 > Status: strategy design, not implementation
 > Scope: first governance hardening patch for VCPToolBox
 > Constraint: no code changes authorized by this document
-> Parent strategy: `docs/strategy/vcp-agent-automation-governance-strategy-20260429.md`
-> Evidence memo: `docs/strategy/vcp-agent-automation-molecular-recon-20260429.md`
+> Parent strategy: `docs/vcp-agent-automation/vcp-agent-automation-governance-strategy-20260429.md`
+> Evidence memo: `docs/vcp-agent-automation/vcp-agent-automation-molecular-recon-20260429.md`
 
 ## Purpose
 

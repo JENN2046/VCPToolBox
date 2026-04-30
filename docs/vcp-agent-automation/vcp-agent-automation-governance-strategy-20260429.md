@@ -4,7 +4,7 @@
 > Status: strategy draft
 > Scope: VCPToolBox agent automation governance direction
 > Constraint: strategy only; no implementation authorization
-> Evidence base: `docs/strategy/vcp-agent-automation-molecular-recon-20260429.md`
+> Evidence base: `docs/vcp-agent-automation/vcp-agent-automation-molecular-recon-20260429.md`
 
 ## Decision
 
