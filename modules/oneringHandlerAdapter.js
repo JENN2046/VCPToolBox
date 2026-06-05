@@ -57,7 +57,7 @@ function normalizeStreamOutcome(streamResult) {
     return 'stream-error';
   }
 
-  return streamResult.outcome || streamResult.status || 'success';
+  return streamResult.outcome || streamResult.status || 'missing-stream-success';
 }
 
 function normalizeNonStreamOutcome(nonStreamResult) {

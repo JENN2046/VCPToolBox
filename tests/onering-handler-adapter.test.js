@@ -11,6 +11,7 @@ const {
 
 test('stream success records only visible assistant content', () => {
   const result = buildStreamAssistantRecordCandidate({
+    outcome: 'success',
     message: {
       content: 'visible answer',
       reasoning_content: 'hidden reasoning',
@@ -43,6 +44,24 @@ test('stream success supports multimodal visible text and ignores reasoning part
     role: 'assistant',
     content: 'first\nsecond',
     reason: null,
+  });
+});
+
+test('stream result requires explicit success before recording visible content', () => {
+  const result = buildStreamAssistantRecordCandidate({
+    content: 'legacy collected text',
+    raw: 'legacy raw stream',
+    message: {
+      content: 'partial visible answer',
+      reasoning_content: 'hidden reasoning',
+    },
+  });
+
+  assert.deepEqual(result, {
+    shouldRecord: false,
+    role: 'assistant',
+    content: '',
+    reason: 'missing-stream-success',
   });
 });
 
