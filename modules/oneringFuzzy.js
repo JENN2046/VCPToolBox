@@ -205,9 +205,10 @@ function normalizeBlocks(blocks, textField) {
   return blocks
     .filter((block) => block && typeof block === 'object')
     .map((block) => {
-      const rawText = typeof block[textField] === 'string'
-        ? block[textField]
-        : getVisibleMessageText(block[textField]);
+      const textCandidate = getBlockTextCandidate(block, textField);
+      const rawText = typeof textCandidate === 'string'
+        ? textCandidate
+        : getVisibleMessageText(textCandidate);
 
       return {
         id: block.id,
@@ -217,6 +218,14 @@ function normalizeBlocks(blocks, textField) {
         original: block,
       };
     });
+}
+
+function getBlockTextCandidate(block, preferredField) {
+  if (Object.prototype.hasOwnProperty.call(block, preferredField)) {
+    return block[preferredField];
+  }
+
+  return preferredField === 'text' ? block.content : block.text;
 }
 
 function normalizeThreshold(value, fallback) {

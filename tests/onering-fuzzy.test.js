@@ -77,6 +77,38 @@ test('diffContextBlocks matches a replayed tail window instead of the oldest rec
   });
 });
 
+test('diffContextBlocks reads current post content when text is absent', () => {
+  const result = diffContextBlocks(
+    [{ role: 'user', content: 'hello' }],
+    [{ id: 10, role: 'user', content: 'hello' }],
+  );
+
+  assert.equal(result.matchedCount, 1);
+  assert.equal(result.unknownCount, 0);
+  assert.equal(result.reliable, true);
+  assert.deepEqual(result.editedBlocks, []);
+  assert.deepEqual(result.newBlocks, []);
+});
+
+test('diffContextBlocks reads multimodal current post content when text is absent', () => {
+  const result = diffContextBlocks(
+    [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'hello' },
+          { type: 'text', value: 'world' },
+        ],
+      },
+    ],
+    [{ id: 11, role: 'user', content: 'hello world' }],
+  );
+
+  assert.equal(result.matchedCount, 1);
+  assert.equal(result.unknownCount, 0);
+  assert.equal(result.reliable, true);
+});
+
 test('diffContextBlocks classifies moderately similar same-role blocks as edits', () => {
   const result = diffContextBlocks(
     [{ role: 'user', text: 'please summarize chapter two' }],
