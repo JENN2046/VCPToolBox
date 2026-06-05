@@ -41,6 +41,13 @@ test('calculateTextSimilarity short-circuits large length gaps', () => {
   assert.equal(calculateTextSimilarity('short', 'short plus a very long suffix'), 5 / 29);
 });
 
+test('calculateTextSimilarity bounds long same-length comparisons', () => {
+  const longLeft = 'a'.repeat(50000);
+  const longRight = 'b'.repeat(50000);
+
+  assert.equal(calculateTextSimilarity(longLeft, longRight), 0);
+});
+
 test('extractComparableText keeps visible text and ignores reasoning fields', () => {
   assert.equal(
     extractComparableText({
@@ -134,6 +141,18 @@ test('diffContextBlocks marks role mismatches as unreliable unknowns', () => {
   assert.equal(result.unknownCount, 1);
   assert.equal(result.reliable, false);
   assert.equal(result.matchStartIndex, 0);
+});
+
+test('diffContextBlocks marks bounded long different blocks as unknown', () => {
+  const result = diffContextBlocks(
+    [{ role: 'user', content: 'a'.repeat(50000) }],
+    [{ id: 12, role: 'user', content: 'b'.repeat(50000) }],
+  );
+
+  assert.equal(result.matchedCount, 0);
+  assert.equal(result.unknownCount, 1);
+  assert.equal(result.editedBlocks.length, 0);
+  assert.equal(result.reliable, false);
 });
 
 test('diffContextBlocks emits new blocks when stored history is empty or exhausted', () => {

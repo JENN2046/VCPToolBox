@@ -7,6 +7,8 @@ const {
 } = require('./oneringParser');
 
 const SYSTEM_NOTICE_REGEX = /\[系统通知\][\s\S]*?\[系统通知结束\]/g;
+const MAX_LEVENSHTEIN_INPUT_LENGTH = 4096;
+const MAX_LEVENSHTEIN_CELLS = 1000000;
 
 function normalizeComparableText(input) {
   if (typeof input !== 'string') {
@@ -81,11 +83,23 @@ function calculateTextSimilarity(leftInput, rightInput) {
     return lengthRatio;
   }
 
+  if (isLevenshteinTooExpensive(left.length, right.length)) {
+    return 0;
+  }
+
   return 1 - levenshteinDistance(left, right) / maxLength;
 }
 
 function extractComparableText(messageOrContent) {
   return normalizeComparableText(getVisibleMessageText(messageOrContent));
+}
+
+function isLevenshteinTooExpensive(leftLength, rightLength) {
+  if (leftLength > MAX_LEVENSHTEIN_INPUT_LENGTH || rightLength > MAX_LEVENSHTEIN_INPUT_LENGTH) {
+    return true;
+  }
+
+  return leftLength * rightLength > MAX_LEVENSHTEIN_CELLS;
 }
 
 function diffContextBlocks(postBlocks, storedBlocks, options = {}) {
