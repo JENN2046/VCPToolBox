@@ -27,7 +27,6 @@
 
 | 建议包 | upstream commits | 范围 | 原因 |
 |--------|------------------|------|------|
-| R16E RAGDiary 用户输入块向量化流程 | `46250ad7` | `Plugin/RAGDiaryPlugin/RAGDiaryPlugin.js` | 单文件但影响 RAGDiary 召回/向量化语义，需先审行为和测试入口。 |
 | R16F Bridge function tool 兼容 | `cca1c915`, `e01d05fb` | `Plugin/VCPBridgeServer/bridgeserver.js`, `routes/protocolBridge.js` | 主题集中但 diff 较大，协议桥接敏感，先 preflight。 |
 | R16G 配置样例补齐 | `e9c98eaa`, possibly `70a49e08` | `config.env.example`, plugin `.example` | 只改 example 较安全，但需确认变量已有代码消费，避免文档过度承诺。 |
 | R16H Agent 编辑器右侧栏 | `c2f3b1a9` | `AdminPanel-Vue/src/*`, `AdminPanel-Vue/dist/*` | 只能考虑源码部分，必须排除 `AdminPanel-Vue/dist/*`，需要前端验证。 |
@@ -37,6 +36,7 @@
 | upstream commits | 结论 |
 |------------------|------|
 | `79764f12`, `7702a533`, `d3f58c7e` | R16A 已拆包吸收 ignore 安全子集并合并到 `main`。`Plugin/SkillBridge/skill-index.txt` 删除没有执行，需要单独确认。 |
+| `46250ad7` | R16E 已拆成 #127 和 #128 吸收并合并到 `main`：#127 引入 split single embedding 的 token-weighted merge；#128 补 single embedding 输入 trim/normalization。保留本地更严格的 partial failure 拒绝策略，不吸收上游对部分 chunk 失败仍返回向量的宽松行为。合并提交：`cd2f68f0`, `291802e0`。 |
 | `ef4a458d`, `fcfcc918`, `d6f051f5` | R15A/R15B/R15C 已通过本地安全改写吸收。`git cherry` 仍显示 `+` 是 hash 不同，不代表未吸收。 |
 | `567cf29b` | R13 已核销目录整理安全子集，剩余不继续按目录整理吸收。 |
 | `631076b4` | 删除临时文件。若本地没有该文件，可台账核销，不需要代码包。 |
@@ -56,7 +56,7 @@
 1. R16C VCPToolBridge manifest version。
 2. R16B TagMemo 启动/自检轻量优化。
 3. R16D NanoBananaGen2 public URL switch 的本地修正版。
-4. R16E/R16F 先做 preflight。
+4. R16F 先做 preflight。
 
 ## 7. 验证建议
 
