@@ -137,11 +137,16 @@ class TagMemoEngine {
         }
 
         // 加载矩阵依赖的持久化底座：边相似度 + 节点内生残差
-        this.loadPairwiseSimilarities();
+        const pairwiseCount = this.loadPairwiseSimilarities();
         this.loadIntrinsicResiduals();
 
-        // 启动时构建共现矩阵：确保 reverseAnchorBoost 能吃到已加载残差
-        this.buildDirectedCooccurrenceMatrix();
+        // 启动时只在 pairwise 底座可用时构建矩阵，避免冷启动延期期间暴露 fallback-built matrix。
+        if (pairwiseCount > 0) {
+            this.buildDirectedCooccurrenceMatrix();
+        } else {
+            this.tagCooccurrenceMatrix = null;
+            console.log('[TagMemoEngine] 🧊 V8.2 matrix build deferred: pairwise similarity cache is empty.');
+        }
     }
 
     /**
@@ -761,6 +766,12 @@ class TagMemoEngine {
     buildDirectedCooccurrenceMatrix() {
         console.log('[TagMemoEngine] 🧠 V8.2 Building ORDERED-BIDIRECTIONAL tag co-occurrence matrix (γ)...');
         try {
+            if (!(this.tagPairSimilarities instanceof Map) || this.tagPairSimilarities.size === 0) {
+                this.tagCooccurrenceMatrix = null;
+                console.log('[TagMemoEngine] 🧊 V8.2 matrix build skipped: pairwise similarity cache is empty.');
+                return false;
+            }
+
             // 势能参数
             const PHI_MAX = 0.9;
             const PHI_MIN = 0.5;
@@ -962,7 +973,10 @@ class TagMemoEngine {
         } catch (e) {
             console.error('[TagMemoEngine] ❌ Failed to build V8.2 ordered-bidirectional matrix:', e);
             this.tagCooccurrenceMatrix = new Map();
+            return false;
         }
+
+        return true;
     }
 
     // 🌟 V8.2-γ: 加载持久化的 Tag 对语义相似度到内存 Map
@@ -978,9 +992,11 @@ class TagMemoEngine {
                 this.tagPairSimilarities.set(`${row.tag_a}:${row.tag_b}`, row.similarity);
             }
             console.log(`[TagMemoEngine] ✅ V8.2 Loaded ${this.tagPairSimilarities.size} pairwise similarities (model_sig=${this.modelSig})`);
+            return this.tagPairSimilarities.size;
         } catch (e) {
             console.warn('[TagMemoEngine] ⚠️ V8.2 pairwise similarity table not yet available:', e.message);
             this.tagPairSimilarities = new Map();
+            return 0;
         }
     }
 
@@ -1151,7 +1167,12 @@ class TagMemoEngine {
             // 🌟 V8.2-γ: 先补齐底座，再构建矩阵
             // 顺序：sim 预计算 → 加载 sim Map → 内生残差预计算/加载 → 构建 V8.2 双向矩阵
             await this.recomputePairwiseSimilarities({ blocking: true });
-            this.loadPairwiseSimilarities();
+            const pairwiseCount = this.loadPairwiseSimilarities();
+            if (pairwiseCount <= 0) {
+                this.tagCooccurrenceMatrix = null;
+                console.warn('[TagMemoEngine] ⚠️ Matrix rebuild deferred: pairwise similarity cache is still empty after recompute.');
+                return;
+            }
             await this.recomputeIntrinsicResiduals();
             this.loadIntrinsicResiduals();
             this.buildDirectedCooccurrenceMatrix();
