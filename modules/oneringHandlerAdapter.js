@@ -24,15 +24,18 @@ function buildAssistantRecordCandidate({ outcome = 'success', message } = {}) {
 
 function buildStreamAssistantRecordCandidate(streamResult = {}) {
   const outcome = normalizeStreamOutcome(streamResult);
+  const safeStreamResult = asResultObject(streamResult);
+
   return buildAssistantRecordCandidate({
     outcome,
-    message: streamResult.message,
+    message: safeStreamResult.message,
   });
 }
 
 function buildNonStreamAssistantRecordCandidate(nonStreamResult = {}) {
   const outcome = normalizeNonStreamOutcome(nonStreamResult);
-  const message = nonStreamResult.message || nonStreamResult.payload?.choices?.[0]?.message;
+  const safeNonStreamResult = asResultObject(nonStreamResult);
+  const message = safeNonStreamResult.message || safeNonStreamResult.payload?.choices?.[0]?.message;
 
   return buildAssistantRecordCandidate({
     outcome,
@@ -58,6 +61,10 @@ function normalizeStreamOutcome(streamResult) {
   }
 
   return streamResult.outcome || streamResult.status || 'missing-stream-success';
+}
+
+function asResultObject(result) {
+  return result && typeof result === 'object' ? result : {};
 }
 
 function normalizeNonStreamOutcome(nonStreamResult) {

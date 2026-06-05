@@ -96,6 +96,22 @@ test('stream abort, idle timeout, and read errors are not recorded', () => {
   );
 });
 
+test('stream invalid inputs return skip candidates without throwing', () => {
+  assert.deepEqual(buildStreamAssistantRecordCandidate(null), {
+    shouldRecord: false,
+    role: 'assistant',
+    content: '',
+    reason: 'invalid-stream-result',
+  });
+
+  assert.deepEqual(buildStreamAssistantRecordCandidate('bad input'), {
+    shouldRecord: false,
+    role: 'assistant',
+    content: '',
+    reason: 'invalid-stream-result',
+  });
+});
+
 test('non-stream success records only parsed message content', () => {
   const result = buildNonStreamAssistantRecordCandidate({
     ok: true,
@@ -164,6 +180,22 @@ test('non-stream upstream errors and raw fallback bodies are skipped', () => {
       reason: 'empty-visible-content',
     },
   );
+});
+
+test('non-stream invalid inputs return skip candidates without throwing', () => {
+  assert.deepEqual(buildNonStreamAssistantRecordCandidate(null), {
+    shouldRecord: false,
+    role: 'assistant',
+    content: '',
+    reason: 'invalid-nonstream-result',
+  });
+
+  assert.deepEqual(buildNonStreamAssistantRecordCandidate('bad input'), {
+    shouldRecord: false,
+    role: 'assistant',
+    content: '',
+    reason: 'invalid-nonstream-result',
+  });
 });
 
 test('empty visible content is skipped', () => {
