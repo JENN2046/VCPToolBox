@@ -3,6 +3,28 @@ const { StringDecoder } = require('string_decoder');
 const vcpInfoHandler = require('../../vcpInfoHandler.js');
 const roleDivider = require('../roleDivider.js');
 
+function buildStreamHelperResult({ content = '', raw = '', message = { content: '', reasoning_content: '' }, outcome = 'stream-error', error = null } = {}) {
+  const recordable = outcome === 'success';
+  const result = {
+    content,
+    raw,
+    message,
+    outcome,
+    recordable,
+    partial: !recordable,
+  };
+
+  if (error) {
+    result.error = {
+      name: error.name || null,
+      message: error.message || String(error),
+      type: error.type || null,
+    };
+  }
+
+  return result;
+}
+
 class StreamHandler {
   constructor(context) {
     this.context = context;
@@ -114,7 +136,12 @@ class StreamHandler {
             }
             if (keepAliveTimer) clearInterval(keepAliveTimer);
             if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
-            resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
+            resolve(buildStreamHelperResult({
+              content: collectedContentThisTurn,
+              raw: rawResponseDataThisTurn,
+              message,
+              outcome: 'idle-timeout',
+            }));
           }, CHUNK_IDLE_TIMEOUT);
         };
         resetChunkIdleTimer(); // 启动首次空闲计时
@@ -124,7 +151,12 @@ class StreamHandler {
           if (DEBUG_MODE) console.log('[Stream Abort] Abort signal received, stopping stream processing.');
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (aiResponse.body && !aiResponse.body.destroyed) aiResponse.body.destroy();
-          resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
+          resolve(buildStreamHelperResult({
+            content: collectedContentThisTurn,
+            raw: rawResponseDataThisTurn,
+            message,
+            outcome: 'client-abort',
+          }));
         };
 
         if (abortController?.signal) {
@@ -206,7 +238,12 @@ class StreamHandler {
           }
 
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
-          resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
+          resolve(buildStreamHelperResult({
+            content: collectedContentThisTurn,
+            raw: rawResponseDataThisTurn,
+            message,
+            outcome: streamAborted ? 'stream-abort' : 'success',
+          }));
         });
 
         aiResponse.body.on('error', streamError => {
@@ -214,7 +251,13 @@ class StreamHandler {
           if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (streamAborted || streamError.name === 'AbortError' || streamError.type === 'aborted') {
-            resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
+            resolve(buildStreamHelperResult({
+              content: collectedContentThisTurn,
+              raw: rawResponseDataThisTurn,
+              message,
+              outcome: 'stream-abort',
+              error: streamError,
+            }));
             return;
           }
           console.error('Error reading AI response stream:', streamError);
@@ -500,5 +543,7 @@ class StreamHandler {
     }
   }
 }
+
+StreamHandler._buildStreamHelperResult = buildStreamHelperResult;
 
 module.exports = StreamHandler;
