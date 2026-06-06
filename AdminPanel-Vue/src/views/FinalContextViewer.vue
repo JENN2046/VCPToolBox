@@ -102,10 +102,10 @@
             :key="`jump-${block.index}`"
             type="button"
             class="jump-chip"
-            :class="[roleClass(block.role), { matched: isBlockMatched(block.index), active: activeBlockIndex === block.index }]"
+            :class="[roleClass(block.role), userBlockJumpClass(block), { matched: isBlockMatched(block.index), active: activeBlockIndex === block.index }]"
             @click="scrollToBlock(block.index)"
           >
-            #{{ block.index }} {{ normalizeRoleLabel(block.role) }}
+            #{{ block.index }} {{ jumpBlockLabel(block) }}
           </button>
         </nav>
 
@@ -121,6 +121,9 @@
               <div class="block-identity">
                 <span class="block-index">#{{ block.index }}</span>
                 <span class="block-role">{{ normalizeRoleLabel(block.role) }}</span>
+                <span v-if="getUserBlockBadge(block)" class="block-badge" :class="getUserBlockBadge(block)?.className">
+                  {{ getUserBlockBadge(block)?.label }}
+                </span>
                 <span class="block-type">{{ block.contentType }}</span>
               </div>
               <div class="block-meta">
@@ -225,6 +228,31 @@ function normalizeRoleLabel(role: string): string {
 
 function roleClass(role: string): string {
   return `role-${String(role || 'unknown').toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`
+}
+
+function getUserBlockBadge(block: FinalContextBlockSummary): { label: string; className: string } | null {
+  if (block.role !== 'user') return null
+
+  const text = String(block.text || '').trimStart()
+  if (text.startsWith('[系统提示')) {
+    return { label: '伪系统块', className: 'badge-pseudo-system' }
+  }
+  if (text.startsWith('[系统通知')) {
+    return { label: '携带通知栏', className: 'badge-system-notice' }
+  }
+
+  return null
+}
+
+function jumpBlockLabel(block: FinalContextBlockSummary): string {
+  const badge = getUserBlockBadge(block)
+  if (badge) return badge.label
+  return normalizeRoleLabel(block.role)
+}
+
+function userBlockJumpClass(block: FinalContextBlockSummary): string | null {
+  const badge = getUserBlockBadge(block)
+  return badge ? `jump-${badge.className}` : null
 }
 
 function attachmentCountsText(block: FinalContextBlockSummary): string {
@@ -461,6 +489,18 @@ onMounted(() => {
   border-color: var(--highlight-text);
 }
 
+.jump-chip.jump-badge-pseudo-system {
+  border-color: var(--info-text);
+  background: color-mix(in srgb, var(--info-bg) 70%, var(--tertiary-bg));
+  color: var(--info-text);
+}
+
+.jump-chip.jump-badge-system-notice {
+  border-color: var(--warning-text);
+  background: color-mix(in srgb, var(--warning-bg) 70%, var(--tertiary-bg));
+  color: var(--warning-text);
+}
+
 .jump-chip.active {
   background: var(--button-bg);
   color: var(--on-accent-text);
@@ -506,6 +546,28 @@ onMounted(() => {
 
 .block-role {
   font-weight: 700;
+}
+
+.block-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-helper);
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.badge-pseudo-system {
+  color: var(--info-text);
+  background: var(--info-bg);
+  border-color: var(--info-text);
+}
+
+.badge-system-notice {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border-color: var(--warning-text);
 }
 
 .block-type,
