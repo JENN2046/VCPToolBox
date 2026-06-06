@@ -210,3 +210,13 @@ git cherry -v origin/main upstream/main
 | 时间 | upstream 范围 | 本地分支 | 状态 | 验证记录 | 准确说明 |
 |------|---------------|----------|------|----------|----------|
 | 2026-06-06 | `567cf29b` remaining script relocations | `codex/r13-remaining-scripts-migration-20260606` | 本地验证通过，待提交/PR | `node --check` migrated JS scripts/wrappers; Python AST parse; `node --test tests\upstream-diff-closeout.test.js` 4 pass; `git diff --check` | 迁移 `diary-tag-batch-processor.js`、`rebuild_vector_indexes.js`、`rebuild_tag_index_custom.js`、`repair_database.js`、`sync_missing_tags.js`、`test-units.js`、`timeline整理器.py` 到 `scripts/`，根目录保留 wrapper；不执行真实写入/SSH/插件流程。 |
+
+## 10. 2026-06-06 `18728628` FileOperator/VSearch 快速吸收台账
+
+`18728628` 在本地主要已由 `6d6121f4` 覆盖，但 patch-id 不同：
+本地保留了 EmojiListGenerator README 的本地化段落整理，且没有吸收
+`Plugin/VSearch/VSearch.js` 的“移除文件末尾换行”格式倒退。
+
+| 时间 | upstream commit / 范围 | 本地 PR / commit | 状态 | 验证记录 | 准确说明 |
+|------|------------------------|------------------|------|----------|----------|
+| 2026-06-06 | `18728628` FileOperator/VSearch/EmojiListGenerator subset | `6d6121f4` + `codex/absorb-18728628-20260606` | 本地验证通过，待提交/PR | `node --check Plugin\FileOperator\FileOperator.js`; `node --check Plugin\VSearch\VSearch.js`; `git diff --check` | `FileOperator` 默认 `WEB_FILE_DIR` fallback、README、`config.env.example` 以及 `VSearch` 缺参文案已由 `6d6121f4` 覆盖；本分支只补齐 EmojiListGenerator README 多余空行清理和台账记录。不吸收 upstream 对 `VSearch.js` 的 no-final-newline 格式差异。 |
