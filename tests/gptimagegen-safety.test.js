@@ -313,6 +313,17 @@ test('DailyNote adds structured success metadata while preserving legacy fields'
   assert.match(source, /targetFile: modifiedFilePath/);
 });
 
+test('DailyNote infers clear command shape when command is missing or invalid', () => {
+  const source = fs.readFileSync(path.join(repoRoot, 'Plugin', 'DailyNote', 'dailynote.js'), 'utf8');
+
+  assert.match(source, /const rawCommand = typeof command === 'string' \? command\.trim\(\)\.toLowerCase\(\) : command;/);
+  assert.match(source, /if \(rawCommand !== 'create' && rawCommand !== 'update'\) \{/);
+  assert.match(source, /normalizedCommand = 'update';/);
+  assert.match(source, /target\/replace arguments/);
+  assert.match(source, /normalizedCommand = 'create';/);
+  assert.match(source, /content arguments/);
+});
+
 test('ZImageTurboGen keeps edit image inputs bounded before Gitee upload', () => {
   const source = fs.readFileSync(zImagePluginScript, 'utf8');
 
