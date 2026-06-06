@@ -611,3 +611,125 @@ test('SemanticModelRouter stops route fallback expansion when primary failoverPo
     'fallback-model',
   ]);
 });
+
+test('SemanticModelRouter ignores notification-only latest user when building route context', async () => {
+  const router = new SemanticModelRouter();
+  router.config = router.normalizeConfig({
+    enabled: true,
+    autoModelName: 'VCPModelAuto',
+    defaultPreset: 'default',
+    matchThreshold: 0.8,
+    contextWeights: [1, 0],
+    presets: {
+      default: {
+        defaultModel: 'default-model',
+        fallbackModels: [],
+        routes: [
+          {
+            name: 'real',
+            model: 'real-model',
+            description: 'real route',
+          },
+          {
+            name: 'other',
+            model: 'other-model',
+            description: 'other route',
+          },
+        ],
+      },
+    },
+  });
+
+  const embeddedTexts = [];
+  const vectors = new Map([
+    ['real user query', [1, 0]],
+    ['real route', [1, 0]],
+    ['other route', [0, 1]],
+  ]);
+  const ragPlugin = {
+    sanitizeForEmbedding(text) {
+      return String(text || '').trim();
+    },
+    async getSingleEmbeddingCached(text) {
+      embeddedTexts.push(String(text));
+      return vectors.get(String(text)) || null;
+    },
+    _getWeightedAverageVector(vectorsToMerge) {
+      return vectorsToMerge.find(Boolean) || null;
+    },
+    vectorDBManager: {
+      async getPluginDescriptionVector(description, fallback) {
+        return fallback(description);
+      },
+    },
+  };
+
+  const plan = await router.resolveRoute({
+    requestedModel: 'VCPModelAuto',
+    messages: [
+      { role: 'user', content: 'real user query' },
+      { role: 'user', content: '[系统通知]\nstatus only\n[系统通知结束]' },
+    ],
+    pluginManager: createPluginManager(ragPlugin),
+  });
+
+  assert.equal(plan.reason, 'semantic_match');
+  assert.equal(plan.selectedModel, 'real-model');
+  assert.ok(embeddedTexts.includes('real user query'));
+  assert.equal(embeddedTexts.some(text => text.includes('系统通知')), false);
+});
+
+test('SemanticModelRouter does not reuse stale user query when latest real user sanitizes empty', async () => {
+  const router = new SemanticModelRouter();
+  router.config = router.normalizeConfig({
+    enabled: true,
+    autoModelName: 'VCPModelAuto',
+    defaultPreset: 'default',
+    matchThreshold: 0.8,
+    contextWeights: [1, 0],
+    presets: {
+      default: {
+        defaultModel: 'default-model',
+        fallbackModels: ['fallback-model'],
+        routes: [
+          {
+            name: 'stale',
+            model: 'stale-model',
+            description: 'stale route',
+          },
+        ],
+      },
+    },
+  });
+
+  const embeddedTexts = [];
+  const ragPlugin = {
+    sanitizeForEmbedding(text) {
+      return String(text || '').includes('data-tool-marker')
+        ? ''
+        : String(text || '').trim();
+    },
+    async getSingleEmbeddingCached(text) {
+      embeddedTexts.push(String(text));
+      if (text === 'stale user query' || text === 'stale route') return [1, 0];
+      return null;
+    },
+    _getWeightedAverageVector(vectorsToMerge) {
+      return vectorsToMerge.find(Boolean) || null;
+    },
+  };
+
+  const plan = await router.resolveRoute({
+    requestedModel: 'VCPModelAuto',
+    messages: [
+      { role: 'user', content: 'stale user query' },
+      { role: 'user', content: '<span data-tool-marker="true"></span>' },
+    ],
+    pluginManager: createPluginManager(ragPlugin),
+  });
+
+  assert.equal(plan.reason, 'context_embedding_unavailable');
+  assert.equal(plan.selectedModel, 'default-model');
+  assert.deepEqual(plan.candidates, ['default-model', 'fallback-model']);
+  assert.deepEqual(embeddedTexts, []);
+});

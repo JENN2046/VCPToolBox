@@ -9,6 +9,7 @@ const EventEmitter = require('node:events');
 const dynamicToolRegistryModule = require('../modules/dynamicToolRegistry.js');
 const { DynamicToolRegistry } = dynamicToolRegistryModule;
 const messageProcessor = require('../modules/messageProcessor.js');
+const toolboxManager = require('../modules/toolboxManager.js');
 
 async function makeProjectRoot() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-dynamic-tools-'));
@@ -1236,6 +1237,105 @@ test('dynamic injection expands matching fold blocks with stub embeddings', asyn
   assert.match(injection, /BROWSER SEARCH DETAILS/);
   assert.equal(injection.includes('IMAGE MEDIA DETAILS'), false);
   assert.equal(injection.includes('[===vcp_fold:'), false);
+});
+
+test('messageProcessor dynamic fold ignores notification-only latest user blocks', async () => {
+  const tempDir = await makeProjectRoot();
+  const originalTvsDir = toolboxManager.tvsDir;
+  const originalToolboxMap = new Map(toolboxManager.toolboxMap);
+  const originalContentCache = new Map(toolboxManager.contentCache);
+  const toolboxFile = path.join(tempDir, 'user-tracking-fold.txt');
+
+  await fs.writeFile(
+    toolboxFile,
+    [
+      '[===vcp_fold: 0 ===]',
+      'DYNAMIC FOLD BASELINE',
+      '[===vcp_fold: 0.8 ::desc: real user route ===]',
+      'DYNAMIC FOLD REAL USER DETAILS',
+      '[===vcp_fold: 0.95 ::desc: unrelated route ===]',
+      'DYNAMIC FOLD UNRELATED DETAILS'
+    ].join('\n'),
+    'utf-8'
+  );
+
+  const embeddedTexts = [];
+  const ragPlugin = {
+    ragParams: {
+      RAGDiaryPlugin: {
+        mainSearchWeights: [1, 0]
+      }
+    },
+    sanitizeForEmbedding(text) {
+      return String(text || '').trim();
+    },
+    async getSingleEmbeddingCached(text) {
+      const normalized = String(text || '');
+      embeddedTexts.push(normalized);
+      return normalized.includes('real user')
+        ? [1, 0]
+        : [0, 1];
+    },
+    _getWeightedAverageVector(vectors) {
+      return vectors.find(Boolean) || null;
+    },
+    vectorDBManager: {
+      async getPluginDescriptionVector(description, fallback) {
+        return fallback(description);
+      }
+    }
+  };
+  const pluginManager = {
+    messagePreprocessors: new Map([['RAGDiaryPlugin', ragPlugin]]),
+    getIndividualPluginDescriptions() {
+      return new Map();
+    },
+    getAllPlaceholderValues() {
+      return new Map();
+    },
+    getResolvedPluginConfigValue() {
+      return undefined;
+    }
+  };
+
+  try {
+    toolboxManager.setTvsDir(tempDir);
+    toolboxManager.toolboxMap = new Map([
+      ['UserTrackingFold', {
+        file: 'user-tracking-fold.txt',
+        description: 'real user route'
+      }]
+    ]);
+    toolboxManager.contentCache.clear();
+
+    const expanded = await messageProcessor.replaceAgentVariables(
+      '{{UserTrackingFold}}',
+      'test-model',
+      'system',
+      {
+        pluginManager,
+        messages: [
+          { role: 'user', content: 'real user query' },
+          { role: 'user', content: '[系统通知]\nstatus only\n[系统通知结束]' }
+        ],
+        cachedEmojiLists: new Map(),
+        detectors: [],
+        superDetectors: [],
+        expandedToolboxes: new Set(),
+        DEBUG_MODE: false
+      }
+    );
+
+    assert.match(expanded, /DYNAMIC FOLD BASELINE/);
+    assert.match(expanded, /DYNAMIC FOLD REAL USER DETAILS/);
+    assert.equal(expanded.includes('DYNAMIC FOLD UNRELATED DETAILS'), false);
+    assert.ok(embeddedTexts.includes('real user query'));
+    assert.equal(embeddedTexts.some(text => text.includes('系统通知')), false);
+  } finally {
+    toolboxManager.tvsDir = originalTvsDir;
+    toolboxManager.toolboxMap = originalToolboxMap;
+    toolboxManager.contentCache = originalContentCache;
+  }
 });
 
 test('dynamic fold expansion uses persistent vector cache keys for block descriptions', async () => {

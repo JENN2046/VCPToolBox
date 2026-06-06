@@ -298,30 +298,19 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
         }
 
         const contextMessages = context.messages || [];
-        const lastUserMessageIndex = contextMessages.findLastIndex(m => {
-            if (m.role !== 'user') return false;
-            const content = typeof m.content === 'string'
-                ? m.content
-                : (Array.isArray(m.content) ? (m.content.find(p => p.type === 'text')?.text || '') : '');
-            return !content.startsWith('[系统邀请指令:]') && !content.trim().startsWith('[系统提示:]无内容');
+        const lastUserMessage = findLastRealUserMessage(contextMessages, {
+            sanitize: typeof ragPlugin.sanitizeForEmbedding === 'function'
+                ? ragPlugin.sanitizeForEmbedding.bind(ragPlugin)
+                : null
         });
         const lastAiMessageIndex = contextMessages.findLastIndex(m => m.role === 'assistant');
 
-        let userContent = '';
+        let userContent = lastUserMessage.sanitizedContent || '';
         let aiContent = null;
-
-        if (lastUserMessageIndex > -1) {
-            const m = contextMessages[lastUserMessageIndex];
-            userContent = typeof m.content === 'string'
-                ? m.content
-                : (Array.isArray(m.content) ? (m.content.find(p => p.type === 'text')?.text || '') : '');
-        }
 
         if (lastAiMessageIndex > -1) {
             const m = contextMessages[lastAiMessageIndex];
-            aiContent = typeof m.content === 'string'
-                ? m.content
-                : (Array.isArray(m.content) ? (m.content.find(p => p.type === 'text')?.text || '') : '');
+            aiContent = extractTextFromMessageContent(m.content);
         }
 
         if (!userContent) {
@@ -330,13 +319,6 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
         }
 
         if (typeof ragPlugin.sanitizeForEmbedding === 'function') {
-            if (userContent) {
-                const originalUserContent = userContent;
-                userContent = ragPlugin.sanitizeForEmbedding(userContent, 'user');
-                if (context.DEBUG_MODE && originalUserContent.length !== userContent.length) {
-                    console.log('[DynamicFold] User content was sanitized via unified sanitizer.');
-                }
-            }
             if (aiContent) {
                 const originalAiContent = aiContent;
                 aiContent = ragPlugin.sanitizeForEmbedding(aiContent, 'assistant');
