@@ -164,3 +164,39 @@ git diff --name-status main..upstream/main
 2. wrapper 只调用本地 `modules/onering*.js`。
 3. 默认关闭或 record-only。
 4. 继续不接 admin write API、frontend UI、`dist` 或默认 `preprocessor_order.json`。
+
+## 8. 2026-06-06 快速吸收追加台账
+
+本节追加记录 `b3f5840c` 附近作者上游差异在 JENN2046 `main`
+快吸收策略下的处理结果。
+
+本节同样不是 raw merge 记录。判断是否已吸收必须以本台账、PR/commit、
+文件行为和验证记录为准，不得只看 `git cherry -v` 的 `+`。
+
+| 时间 | upstream commit / 范围 | 本地 PR / commit | 状态 | 验证记录 | 准确说明 |
+|------|------------------------|------------------|------|----------|----------|
+| 2026-06-06 | `457470c0` partial | #164 / `6fd00970`, review fixes `1175966e`, `07985c28` | 已吸收并已推送 | `node --check Plugin\VolcSearch\VolcSearch.js`; `node --check Plugin\DailyNote\dailynote.js`; `Plugin/VolcSearch/plugin-manifest.json` JSON parse; PR CI | 只吸收 VolcSearch `full_content` 支持和 DailyNote 缺失 command 时的 create/update 参数形态推断。review 后修正 full-content 兼容和 snippet-mode Summary 保留。 |
+| 2026-06-06 | `5d6dc451` docs-only | #165 / `cc644b69` | 已吸收并已推送 | PR CI; staged `VCP.md` diff review | 吸收 `VCP.md` 演讲稿 front matter/title、`SystemPromptHacker` 与 `OneRing` 文档段落。`VCP.md` 仍为 CRLF 文件，未在该小包内做整文件换行规范化。 |
+| 2026-06-06 | `b3f5840c` DailyNote review-safe subset | #167 / `4562e77f`, review fix pending | PR 已打开，未合并 | `node --check Plugin\DailyNote\dailynote.js`; `node --test tests\gptimagegen-safety.test.js` 25 pass; `git diff --check` 仅有既有 CRLF 转换提示 | 保留 #164 的“缺失/空白 command 可按明确参数形态推断”行为；review 后不吸收上游“显式但无效 command 也可由参数形态纠正”的宽松行为，显式未知 command 继续返回 unknown-command，避免 `delete` / `search` / malformed parser value 携带写入参数时触发 DailyNote 写入。 |
+
+### 8.1 本轮明确没有吸收的内容
+
+| upstream 内容 | 当前状态 | 原因 / 后续动作 |
+|---------------|----------|-----------------|
+| `Plugin/OneRing/config.env.example` from `92a1e80d` | 不单独吸收 | 当前本地 `main` 不存在 `Plugin/OneRing/` 插件包；本地策略是模块化实现，已在第 7 节决定不 raw-import upstream `Plugin/OneRing/*`。配置样例会指向不存在的插件包，需等待 thin plugin wrapper 专项。 |
+| `Plugin/OneRing/README.md` docs snippets from `31064f3f` | 不单独吸收 | 同上。文档描述 upstream plugin wrapper / snapshot / output dedup 形态，但当前本地主线没有该插件目录，不能先提交超前文档。 |
+| upstream `Plugin/OneRing/OneRing.js` changes from `7855f8ae`, `31064f3f`, `4ef1517f`, `f34e5ca2`, `f456575f` and later fixes | 继续归入 OneRing 专项 | 已由第 7 节明确：上游 OneRing 整包只作为参考材料，不 raw-import；后续应做 thin plugin wrapper 设计/实现包，默认关闭或 record-only，不接 admin write API、frontend UI、`dist` 或默认 `preprocessor_order.json`。 |
+
+### 8.2 后续吸收固定补充规则
+
+继续吸收作者上游时，必须先读本台账最新章节，再执行只读扫描：
+
+```powershell
+git fetch upstream
+git status --short --branch
+git cherry -v origin/main upstream/main
+```
+
+如果 `git cherry` 显示 `+`，必须先在本台账中查找是否已有
+`covered` / `defer` / `reject` / 专项归类记录。只有台账没有覆盖、文件范围
+仍小、且不触及核心边界时，才进入快速吸收。

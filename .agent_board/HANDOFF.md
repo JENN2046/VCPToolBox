@@ -1,6 +1,54 @@
 # Handoff
 
 Goal: continue fast author-upstream intake after local `main` aligned with
+`origin/main` at `06a2c908`.
+
+Current active intake:
+
+- Work is in `A:/VCP/apps/VCPToolBox`.
+- Branch is `codex/dailynote-command-normalize-20260606`.
+- Base is `origin/main` / local `main` at
+  `06a2c908 Merge pull request #165 from JENN2046/codex/upstream-vcp-doc-20260606`.
+- `git fetch upstream` succeeded.
+- `upstream/main` is still `b3f5840c`; there are no new author commits after
+  the previously scanned point.
+- Direct `origin/main..upstream/main` remains a noisy whole-history comparison,
+  so this stage continued the last-known author-upstream range.
+- `Plugin/OneRing/*` docs/config snippets from early upstream commits were
+  not absorbed because the local `main` does not currently carry
+  `Plugin/OneRing/`; only local split modules such as `modules/oneringParser.js`
+  exist. Absorbing those docs/config examples now would document a package that
+  is absent in this mainline shape.
+- Current stage selected the DailyNote command robustness piece from
+  `b3f5840c`, then narrowed it after PR review.
+- `Plugin/DailyNote/dailynote.js` only infers `update` (`target` + `replace`)
+  or `create` (`contentText` / `Content` / `content`) when `command` is missing
+  or blank. Explicit unknown commands such as `delete`, `search`, or malformed
+  parser output continue to return unknown-command instead of reaching
+  write-capable handlers.
+- Added a static regression in `tests/gptimagegen-safety.test.js` to keep this
+  command inference boundary from regressing.
+
+Validation:
+
+- `node --check Plugin\DailyNote\dailynote.js` passed.
+- `node --test tests\gptimagegen-safety.test.js` passed 25 tests.
+- `git diff --check -- Plugin\DailyNote\dailynote.js tests\gptimagegen-safety.test.js`
+  reported only the existing Git CRLF conversion warning for the test file.
+- No real DailyNote write, plugin execution with user data, bridge call,
+  production service start, env/secret edit, runtime/state/cache/log/image
+  write, push, PR, or deployment was performed.
+
+Next safe action:
+
+- Commit this local DailyNote stage if final diff remains limited to
+  `Plugin/DailyNote/dailynote.js`, `tests/gptimagegen-safety.test.js`, and
+  `.agent_board/HANDOFF.md`.
+- Push / PR remains a remote write and needs explicit approval.
+
+---
+
+Goal: continue fast author-upstream intake after local `main` aligned with
 `origin/main` at `9e153af0`.
 
 Current active intake:
