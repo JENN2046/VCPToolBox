@@ -53,10 +53,10 @@ function replaceFirstAliasPlaceholder(text, alias, replacementText, prefix = '')
     });
 }
 
-const SYSTEM_USER_PREFIX_REGEX = /^\s*\[系统[^\]]*\]/;
+const SYSTEM_PROMPT_PREFIX_REGEX = /^\s*\[系统提示[:：]\]/;
 const SYSTEM_NOTIFICATION_PREFIX_REGEX = /^\s*\[系统通知[:：]?\]/;
-const SYSTEM_EMPTY_PROMPT_PREFIX_REGEX = /^\s*\[系统提示:\]无内容/;
-const SYSTEM_INVITATION_PREFIX_REGEX = /^\s*\[系统邀请指令[:：]?\]/;
+const SYSTEM_EMPTY_PROMPT_PREFIX_REGEX = /^\s*\[系统提示[:：]\]无内容/;
+const SYSTEM_INVITATION_PREFIX_REGEX = /^\s*\[系统邀请指令[:：]\]/;
 const VCP_TOOL_PAYLOAD_PREFIX_REGEX = /^\s*<!-- VCP_TOOL_PAYLOAD -->/;
 
 function extractTextFromMessageContent(content) {
@@ -85,7 +85,8 @@ function isBetaSystemUserText(text) {
     const normalizedText = String(text || '');
     if (!normalizedText) return false;
     if (isSystemNotificationText(normalizedText)) return false;
-    return SYSTEM_USER_PREFIX_REGEX.test(normalizedText);
+    return SYSTEM_PROMPT_PREFIX_REGEX.test(normalizedText) ||
+        SYSTEM_INVITATION_PREFIX_REGEX.test(normalizedText);
 }
 
 function stripSystemNotificationBlocks(text) {

@@ -32,6 +32,8 @@ test('system notification text is not classified as beta system user text', () =
     assert.equal(isBetaSystemUserText('[系统通知]当前时间'), false);
     assert.equal(isBetaSystemUserText('[系统提示:]工具占位符承载体'), true);
     assert.equal(isBetaSystemUserText('[系统邀请指令:]现在轮到你发言'), true);
+    assert.equal(isBetaSystemUserText('[系统设计]请分析这个架构'), false);
+    assert.equal(isBetaSystemUserText('[系统错误]这是用户正在描述的错误'), false);
 });
 
 test('stripSystemNotificationBlocks removes notification spans without removing visible text', () => {
@@ -75,6 +77,19 @@ test('findLastRealUserMessage skips system invitation, empty system prompt, beta
     assert.equal(result.index, 0);
     assert.equal(result.rawContent, 'real query');
     assert.equal(result.sanitizedContent, 'real query');
+});
+
+test('findLastRealUserMessage keeps real user messages that only look system-related', () => {
+    const messages = [
+        { role: 'user', content: 'older query' },
+        { role: 'user', content: '[系统设计]请分析这个架构为什么会超时' }
+    ];
+
+    const result = findLastRealUserMessage(messages);
+
+    assert.equal(result.index, 1);
+    assert.equal(result.rawContent, '[系统设计]请分析这个架构为什么会超时');
+    assert.equal(result.sanitizedContent, '[系统设计]请分析这个架构为什么会超时');
 });
 
 test('findLastRealUserMessage strips notification blocks and keeps visible notification-tail content', () => {
