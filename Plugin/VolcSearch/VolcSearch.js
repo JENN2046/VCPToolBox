@@ -72,7 +72,7 @@ async function main() {
             const industry = data.industry;
 
             const authInfoLevel = data.auth_info_level;
-            const fullContent = data.full_content === true || data.full_content === 'true';
+            const fullContent = parseBoolean(data.full_content ?? data.fullContent, !snippetsOnly);
 
             if (!query) {
                 throw new Error("Missing required argument: query");
@@ -134,7 +134,7 @@ async function main() {
                     hasFilter = true;
 
                 }
-                if (!snippetsOnly) {
+                if (!snippetsOnly || fullContent) {
                     filter.NeedContent = true;
                     hasFilter = true;
                 }

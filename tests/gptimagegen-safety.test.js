@@ -501,12 +501,16 @@ test('VolcSearch keeps summary or snippet text when full content is absent', () 
   const manifest = fs.readFileSync(path.join(repoRoot, 'Plugin', 'VolcSearch', 'plugin-manifest.json'), 'utf8');
 
   assert.match(source, /const snippetsOnly = parseBoolean\(data\.snippets_only \?\? data\.snippetsOnly, true\);/);
+  assert.match(source, /const fullContent = parseBoolean\(data\.full_content \?\? data\.fullContent, !snippetsOnly\);/);
+  assert.match(source, /if \(!snippetsOnly \|\| fullContent\) \{/);
   assert.match(source, /filter\.NeedContent = true;/);
   assert.match(source, /const summary = item\.Summary \|\| '';/);
   assert.match(source, /const snippet = item\.Snippet \|\| '';/);
-  assert.match(source, /const displayText = content \|\| summary \|\| snippet;/);
-  assert.match(source, /const \{ LogoUrl, \.\.\.rest \} = item;/);
+  assert.match(source, /const displayText = fullContent \? \(content \|\| summary \|\| snippet\) : \(summary \|\| snippet \|\| content\);/);
+  assert.match(source, /const \{ LogoUrl, Summary, Snippet, \.\.\.rest \} = item;/);
+  assert.match(source, /const \{ LogoUrl, Summary, Content, \.\.\.rest \} = item;/);
   assert.match(manifest, /snippets_only/);
+  assert.match(manifest, /snippets_only=false 会优先返回 Content/);
 });
 
 test('LightMemo scoped maid searches still filter by signature', () => {
