@@ -119,6 +119,39 @@ test('findLastRealUserMessage continues searching when newest user becomes empty
     assert.equal(result.sanitizedContent, 'earlier real query');
 });
 
+test('findLastRealUserMessage does not fall back when latest real user sanitizes to empty', () => {
+    const messages = [
+        { role: 'user', content: 'earlier real query' },
+        { role: 'user', content: '<span data-tool-marker="true"></span>' }
+    ];
+
+    const result = findLastRealUserMessage(messages, {
+        sanitize: () => ''
+    });
+
+    assert.equal(result.index, 1);
+    assert.equal(result.rawContent, '<span data-tool-marker="true"></span>');
+    assert.equal(result.sanitizedContent, '');
+});
+
+test('findLastRealUserMessage does not fall back from image-only latest user turns', () => {
+    const messages = [
+        { role: 'user', content: 'earlier real query' },
+        {
+            role: 'user',
+            content: [
+                { type: 'image_url', image_url: { url: 'https://example.test/image.png' } }
+            ]
+        }
+    ];
+
+    const result = findLastRealUserMessage(messages);
+
+    assert.equal(result.index, 1);
+    assert.equal(result.rawContent, '');
+    assert.equal(result.sanitizedContent, '');
+});
+
 test('findLastRealUserMessage uses optional sanitizer callback for the returned candidate', () => {
     const calls = [];
     const messages = [
