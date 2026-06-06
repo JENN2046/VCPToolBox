@@ -1,6 +1,11 @@
 // modules/handlers/nonStreamHandler.js
 const vcpInfoHandler = require('../../vcpInfoHandler.js');
 const roleDivider = require('../roleDivider.js');
+const {
+  buildCombinedAssistantRecordCandidate,
+  buildNonStreamAssistantRecordCandidate,
+} = require('../oneringHandlerAdapter.js');
+const { dispatchOneRingAssistantRecordCandidate } = require('../oneringHandlerWiring.js');
 
 class NonStreamHandler {
   constructor(context) {
@@ -47,6 +52,23 @@ class NonStreamHandler {
     const aiResponseText = responseBuffer.toString('utf-8');
     let firstResponseRawDataForClientAndDiary = aiResponseText;
     let chatLogs = [];
+    let oneRingFinalAssistantRecordCandidate = null;
+    const collectOneRingNonStreamCandidate = (nonStreamResult) => {
+      const candidate = buildNonStreamAssistantRecordCandidate(nonStreamResult);
+      oneRingFinalAssistantRecordCandidate = candidate.shouldRecord ? candidate : null;
+    };
+    const clearOneRingNonStreamCandidate = () => {
+      oneRingFinalAssistantRecordCandidate = null;
+    };
+    const flushOneRingAssistantRecordCandidates = () => {
+      const candidate = buildCombinedAssistantRecordCandidate(
+        oneRingFinalAssistantRecordCandidate ? [oneRingFinalAssistantRecordCandidate] : [],
+      );
+      return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
+        phaseLabel: 'final_turn',
+        logPrefix: '[OneRing NonStream]',
+      });
+    };
 
     let fullContentFromAI = '';
     const extractedMessage = (rawResponseText) => {
@@ -67,6 +89,7 @@ class NonStreamHandler {
       fullContentFromAI = aiResponseText;
     }
     if (writeChatLog) chatLogs.push({ request: originalBody, response: initMessage || fullContentFromAI});
+    collectOneRingNonStreamCandidate({ ok: true, message: initMessage });
 
     let recursionDepth = 0;
     const maxRecursion = maxVCPLoopNonStream || 5;
@@ -143,34 +166,41 @@ class NonStreamHandler {
             { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
           );
 
-          if (recursionAiResponse.ok) {
-            const recursionArrayBuffer = await recursionAiResponse.arrayBuffer();
-            const recursionBuffer = Buffer.from(recursionArrayBuffer);
-            const recursionText = recursionBuffer.toString('utf-8');
-            const recursionMessage = extractedMessage(recursionText);
-            if (recursionMessage) {
-              currentAIContentForLoop = '\n' + (recursionMessage.content || '');
-            } else {
-              currentAIContentForLoop = '\n' + recursionText;
-            }
-            if (writeChatLog) {
-              chatLogs.push({
-                request: currentMessagesForNonStreamLoop,
-                toolCalls: archeryLogs,
-                response: recursionMessage || recursionText,
-              });
-            }
-            // 记录日志
-            handleDiaryFromAIResponse(recursionText).catch(e =>
-              console.error(`[VCP NonStream Loop] Error in diary handling for depth ${recursionDepth}:`, e),
-            );
-
-            recursionDepth++;
-            continue;
+          if (!recursionAiResponse.ok) {
+            clearOneRingNonStreamCandidate();
+            break;
           }
+
+          const recursionArrayBuffer = await recursionAiResponse.arrayBuffer();
+          const recursionBuffer = Buffer.from(recursionArrayBuffer);
+          const recursionText = recursionBuffer.toString('utf-8');
+          const recursionMessage = extractedMessage(recursionText);
+          if (recursionMessage) {
+            currentAIContentForLoop = '\n' + (recursionMessage.content || '');
+          } else {
+            currentAIContentForLoop = '\n' + recursionText;
+          }
+          collectOneRingNonStreamCandidate({ ok: true, message: recursionMessage });
+          if (writeChatLog) {
+            chatLogs.push({
+              request: currentMessagesForNonStreamLoop,
+              toolCalls: archeryLogs,
+              response: recursionMessage || recursionText,
+            });
+          }
+          // 记录日志
+          handleDiaryFromAIResponse(recursionText).catch(e =>
+            console.error(`[VCP NonStream Loop] Error in diary handling for depth ${recursionDepth}:`, e),
+          );
+
+          recursionDepth++;
+          continue;
         }
 
-        if (normalCalls.length === 0) break;
+        if (normalCalls.length === 0) {
+          clearOneRingNonStreamCandidate();
+          break;
+        }
 
         // 执行普通调用
         let assistantMessages = [{ role: 'assistant', content: currentAIContentForLoop }];
@@ -250,7 +280,10 @@ class NonStreamHandler {
           { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
         );
 
-        if (!recursionAiResponse.ok) break;
+        if (!recursionAiResponse.ok) {
+          clearOneRingNonStreamCandidate();
+          break;
+        }
 
         const recursionArrayBuffer = await recursionAiResponse.arrayBuffer();
         const recursionBuffer = Buffer.from(recursionArrayBuffer);
@@ -261,6 +294,7 @@ class NonStreamHandler {
         } else {
           currentAIContentForLoop = '\n' + recursionText;
         }
+        collectOneRingNonStreamCandidate({ ok: true, message: recursionMessage });
         if (writeChatLog) {
           chatLogs.push({
             request: currentMessagesForNonStreamLoop,
@@ -298,6 +332,7 @@ class NonStreamHandler {
     }
 
     if (writeChatLog) writeChatLog(originalBody, chatLogs);
+    flushOneRingAssistantRecordCandidates();
     if (!res.writableEnded && !res.destroyed) {
       res.send(Buffer.from(JSON.stringify(finalJsonResponse)));
     }

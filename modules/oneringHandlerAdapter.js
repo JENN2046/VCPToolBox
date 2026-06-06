@@ -49,6 +49,27 @@ function buildNonStreamAssistantRecordCandidate(nonStreamResult = {}) {
   });
 }
 
+function buildCombinedAssistantRecordCandidate(candidates = []) {
+  const content = Array.isArray(candidates)
+    ? candidates
+      .filter(candidate => candidate && candidate.shouldRecord && candidate.role === 'assistant')
+      .map(candidate => typeof candidate.content === 'string' ? candidate.content.trim() : '')
+      .filter(Boolean)
+      .join('\n')
+    : '';
+
+  if (!content) {
+    return skip('empty-assistant-record-candidates');
+  }
+
+  return {
+    shouldRecord: true,
+    role: 'assistant',
+    content,
+    reason: null,
+  };
+}
+
 function normalizeStreamOutcome(streamResult) {
   if (!streamResult || typeof streamResult !== 'object') {
     return 'invalid-stream-result';
@@ -124,4 +145,5 @@ module.exports = {
   buildAssistantRecordCandidate,
   buildStreamAssistantRecordCandidate,
   buildNonStreamAssistantRecordCandidate,
+  buildCombinedAssistantRecordCandidate,
 };

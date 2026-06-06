@@ -2,6 +2,11 @@
 const { StringDecoder } = require('string_decoder');
 const vcpInfoHandler = require('../../vcpInfoHandler.js');
 const roleDivider = require('../roleDivider.js');
+const {
+  buildCombinedAssistantRecordCandidate,
+  buildStreamAssistantRecordCandidate,
+} = require('../oneringHandlerAdapter.js');
+const { dispatchOneRingAssistantRecordCandidate } = require('../oneringHandlerWiring.js');
 
 function buildStreamHelperResult({ content = '', raw = '', message = { content: '', reasoning_content: '' }, outcome = 'stream-error', error = null } = {}) {
   const recordable = outcome === 'success';
@@ -73,6 +78,23 @@ class StreamHandler {
     let currentAIContentForLoop = '';
     let currentAIRawDataForDiary = '';
     let chatLogs = [];
+    let oneRingFinalAssistantRecordCandidate = null;
+    const collectOneRingStreamCandidate = (streamResult) => {
+      const candidate = buildStreamAssistantRecordCandidate(streamResult);
+      oneRingFinalAssistantRecordCandidate = candidate.shouldRecord ? candidate : null;
+    };
+    const clearOneRingStreamCandidate = () => {
+      oneRingFinalAssistantRecordCandidate = null;
+    };
+    const flushOneRingAssistantRecordCandidates = () => {
+      const candidate = buildCombinedAssistantRecordCandidate(
+        oneRingFinalAssistantRecordCandidate ? [oneRingFinalAssistantRecordCandidate] : [],
+      );
+      return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
+        phaseLabel: 'final_turn',
+        logPrefix: '[OneRing Stream]',
+      });
+    };
 
     // 辅助函数：处理 AI 响应流 (优化版：直通转发 + 后台解析 + chunk 空闲超时保护)
     const processAIResponseStreamHelper = async (aiResponse, isInitialCall) => {
@@ -278,6 +300,7 @@ class StreamHandler {
     currentAIContentForLoop = initialAIResponseData.content;
     currentAIRawDataForDiary = initialAIResponseData.raw;
     if (writeChatLog) chatLogs.push({ request: originalBody, response: initialAIResponseData.message });
+    collectOneRingStreamCandidate(initialAIResponseData);
     handleDiaryFromAIResponse(currentAIRawDataForDiary).catch(e =>
       console.error('[VCP Stream Loop] Error in initial diary handling:', e),
     );
@@ -383,22 +406,27 @@ class StreamHandler {
           { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
         );
 
-        if (nextAiAPIResponse.ok) {
-          let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
-          currentAIContentForLoop = nextAIResponseData.content;
-          if (writeChatLog) {
-            chatLogs.push({
-              request: { messages: currentMessagesForLoop },
-              toolCalls: archeryLogs,
-              response: nextAIResponseData.message,
-            });
-          }
-          recursionDepth++;
-          continue;
+        if (!nextAiAPIResponse.ok) {
+          clearOneRingStreamCandidate();
+          break;
         }
+
+        let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
+        currentAIContentForLoop = nextAIResponseData.content;
+        collectOneRingStreamCandidate(nextAIResponseData);
+        if (writeChatLog) {
+          chatLogs.push({
+            request: { messages: currentMessagesForLoop },
+            toolCalls: archeryLogs,
+            response: nextAIResponseData.message,
+          });
+        }
+        recursionDepth++;
+        continue;
       }
 
       if (normalCalls.length === 0) {
+        clearOneRingStreamCandidate();
         if (!res.writableEnded && !res.destroyed) {
           try {
             res.write(`data: ${JSON.stringify({
@@ -507,10 +535,14 @@ class StreamHandler {
         { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
       );
 
-      if (!nextAiAPIResponse.ok) break;
+      if (!nextAiAPIResponse.ok) {
+        clearOneRingStreamCandidate();
+        break;
+      }
 
       let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
       currentAIContentForLoop = nextAIResponseData.content;
+      collectOneRingStreamCandidate(nextAIResponseData);
       if (writeChatLog) {
         chatLogs.push({
           request: { messages: currentMessagesForLoop },
@@ -528,6 +560,7 @@ class StreamHandler {
     } // toolcall loop end
 
     if (writeChatLog) writeChatLog(originalBody, chatLogs);
+    flushOneRingAssistantRecordCandidates();
 
     if (recursionDepth >= maxRecursion && !res.writableEnded && !res.destroyed) {
       try {
