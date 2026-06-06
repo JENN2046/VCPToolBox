@@ -1,5 +1,83 @@
 # Handoff
 
+Goal: continue from the current `main` after the 2026-06-06 fast-forward from
+`origin/main`.
+
+Current safe state:
+
+- Work is in `A:/VCP/apps/VCPToolBox`.
+- Branch is `main`.
+- Worktree was clean before `.agent_board` status-surface edits.
+- `origin` is `https://github.com/JENN2046/VCPToolBox.git`.
+- Local `main` was fast-forwarded with `git merge --ff-only origin/main`.
+- `HEAD`, `main`, and `origin/main` are verified at
+  `8488a6c4 Merge pull request #163 from JENN2046/codex/onering-absorb-ledger-20260606`.
+- `main...origin/main` was verified as `0 / 0` after the fast-forward.
+- No merge commit, local commit, push, deploy, production service start,
+  bridge enablement, env/secret edit, or runtime/cache/state/debug change was
+  performed.
+
+Open risks:
+
+- The newly fast-forwarded OneRing implementation has not been validated in
+  this session beyond Git topology/status checks.
+- Any future remote write, commit, deployment, production service action,
+  branch movement, env/secret change, bridge enablement, or runtime/state
+  cleanup needs explicit approval.
+- Historical sections below may reference older workspaces and heads; treat
+  the current section above as the latest handoff state.
+
+Next safe action:
+
+- Run narrow local validation for the OneRing modules/tests if further
+  confidence is needed, or continue with the next explicitly scoped local task.
+
+Policy update:
+
+- `main` upstream intake policy was changed on 2026-06-06.
+- New default: scan author-upstream diffs for core-boundary contact first.
+- Non-core diffs should move through fast merge/cherry-pick/manual absorb with
+  batch summary and basic validation.
+- Only core-boundary changes require strict preflight, small-package review, and
+  long governance records.
+- Core boundaries include execution dispatch, auth/approval, shell/file/bridge
+  writes, secrets, runtime/state/cache/log/image/operator data, Rust/Docker/
+  dependency chain, production defaults, external writes, and large architecture
+  changes.
+- `prod/stable` remains outside this fast-intake policy.
+
+Fast upstream intake trial:
+
+- Fetched `upstream/main`; author upstream advanced from `aa7e2e0e` to
+  `b3f5840c`.
+- Fast-scanned the new author range `aa7e2e0e..upstream/main`.
+- Quickly absorbed non-core batch:
+  - `457470c0` partial: `VolcSearch` `full_content` support, adapted to keep
+    local `snippets_only` compatibility.
+  - `b3f5840c` partial: `DailyNote` command inference robustness for clear
+    create/update argument shapes.
+- Deferred core/specialty items from the same range:
+  - `5d6dc451` `VCP.md` documentation update, because the upstream hunk carries
+    CRLF/trailing-whitespace noise and should be handled as a separate docs
+    normalization package.
+  - OneRing internals and pipeline/context changes.
+  - `modules/messageProcessor.js`, `modules/chatCompletionHandler.js`,
+    `modules/semanticModelRouter.js`, `ContextFoldingV2`, RAGDiary runtime
+    integration.
+  - Rust binary update `rust-vexus-lite/vexus-lite.linux-x64-gnu.node`.
+  - AdminPanel `dist/*` build artifacts.
+- Validation passed:
+  - `node --check Plugin\VolcSearch\VolcSearch.js`
+  - `node --check Plugin\DailyNote\dailynote.js`
+  - JSON parse for `Plugin/VolcSearch/plugin-manifest.json`
+- Validation note:
+  - `git diff --check` passes with Git line-ending warnings only.
+- No real VolcSearch request, DailyNote write, plugin execution, bridge call,
+  production service start, commit, push, env/secret edit, or runtime/state
+  write was performed.
+
+---
+
 Goal: continue VCPToolBox branch/worktree governance after the 2026-05-26
 upstream absorb, D4 value-package closure, and post-D4 N1-N5 governance
 refresh.
