@@ -1,5 +1,51 @@
 # Handoff
 
+Goal: continue fast author-upstream intake after local `main` aligned with
+`origin/main` at `9e153af0`.
+
+Current active intake:
+
+- Work is in `A:/VCP/apps/VCPToolBox`.
+- Branch is `codex/upstream-vcp-doc-20260606`.
+- Base is `origin/main` / local `main` at
+  `9e153af0 Merge pull request #164 from JENN2046/codex/fast-upstream-intake-20260606`.
+- `git fetch upstream` succeeded.
+- `upstream/main` is still `b3f5840c`; there are no new author commits after
+  the previously scanned `b3f5840c` point.
+- `origin/main..upstream/main` is a noisy whole-history comparison
+  (`739 / 158` ahead/behind before cherry filtering), so the current policy is
+  to use the last-known author-upstream point for incremental intake.
+- Current stage selected the non-core docs-only upstream commit
+  `5d6dc451 更新说明书`.
+- `git cherry-pick -n 5d6dc451` succeeded and staged only `VCP.md`.
+- Staged content shape is small: `VCP.md | 70`, `67 insertions(+), 3 deletions(-)`.
+- No code, config, runtime/state/cache/log/image/operator data, bridge, secret,
+  dependency, Rust binary, AdminPanel dist, production default, or external
+  write was touched.
+
+Validation notes:
+
+- `git diff --check` returned no output because there is no unstaged diff.
+- `git diff -- VCP.md` returned no output because the cherry-pick staged the
+  change.
+- `git diff --cached -- VCP.md` was reviewed and matches the docs-only
+  upstream content: front matter/title update, a new
+  `2.3 任意数组兼容与SystemPromptHacker` section, a new
+  `5.8 OneRing统一上下文系统` section, and heading renumbering.
+- `git diff --cached --check` reports trailing whitespace on added lines
+  because `VCP.md` is tracked and checked out as CRLF (`i/crlf w/crlf`) while
+  `core.autocrlf=true`; do not normalize the whole file inside this small docs
+  intake package.
+
+Next safe action:
+
+- Commit the local docs-only staged change plus this status-surface update if
+  the final diff remains limited to `VCP.md` and `.agent_board`.
+- Push / PR remains a remote write and still needs explicit approval unless the
+  user gives that instruction for this branch.
+
+---
+
 Goal: continue from the current `main` after the 2026-06-06 fast-forward from
 `origin/main`.
 
