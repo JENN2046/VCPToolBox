@@ -123,3 +123,44 @@ git diff --name-status main..upstream/main
 | `covered` | 行为已由本地 commit 实现，但 hash 不同。必须写明本地 commit。 |
 | `defer` | 有价值，但需要设计包或跨模块验证。 |
 | `reject` | stale、生成产物、运行态、真实配置、密钥风险、或会删除本地治理资产。 |
+
+## 7. 2026-06-06 OneRing 专项追加台账
+
+本节追加记录 `f456575f` 及前序 OneRing upstream 专项在本地的吸收状态。
+
+本节不是 raw merge 记录。OneRing 采用本地模块化吸收策略：上游 `Plugin/OneRing/*` 作为参考材料，不作为直接导入目标。
+
+| 时间 | 范围 | 本地 PR / commit | 状态 | 验证记录 | 准确说明 |
+|------|------|------------------|------|----------|----------|
+| 2026-06-06 | upstream OneRing 专项 preflight | #146 / `UPSTREAM_ABSORB_ONERING_SPECIAL_PREFLIGHT_20260606.md` | 已吸收并已推送 | 文档 preflight；未运行服务、未创建 SQLite、未改 handlers | 将 upstream OneRing 归为专项，不再作为 R16 普通碎包 raw absorb。 |
+| 2026-06-06 | OneRing local design | #147 / `ONERING_LOCAL_DESIGN_20260606.md` | 已吸收并已推送 | 文档 design | 定义本地默认关闭、record-only 优先、不得存 reasoning、不得默认改 `preprocessor_order.json`。 |
+| 2026-06-06 | parser / marker helpers | #148 | 已吸收并已推送 | targeted parser tests | 新增本地 `modules/oneringParser.js` 与测试；不接 SQLite、handlers 或 plugin wrapper。 |
+| 2026-06-06 | handler integration preflight | #149 / `ONERING_HANDLER_INTEGRATION_PREFLIGHT_20260606.md` | 已吸收并已推送 | 文档 preflight | 明确 handler 只可在 upstream 成功后记录可见 assistant 内容，不直接持久化 handler 内部累积变量。 |
+| 2026-06-06 | pure handler adapter tests | #150 | 已吸收并已推送 | adapter tests；review 修正 stream explicit success 和 invalid input P2 | 新增 `modules/oneringHandlerAdapter.js` 与测试，只产出候选记录，不写库。 |
+| 2026-06-06 | fuzzy helper pure functions | #151 | 已吸收并已推送 | fuzzy tests；review 修正 content block 与长文本边界 P2 | 新增 `modules/oneringFuzzy.js` 与测试，支持 replay/edit detection，长文本比较有边界。 |
+| 2026-06-06 | runtime ignore rules | #152 | 已吸收并已推送 | ignore diff review | 补 OneRing runtime 数据忽略规则，不提交运行态数据库。 |
+| 2026-06-06 | stream helper explicit result shape preflight / implementation / adapter consumption | #153, #154, #155, #156 | 已吸收并已推送 | stream result shape tests；adapter consumption tests | 先明确 stream success/abort/idle/error 形态，再让 adapter 消费显式结果；不直接接 recorder 直到后续包。 |
+| 2026-06-06 | minimal handler wiring | #157 | 已吸收并已推送 | PR CI；review 修正只记录 final successful turn、跳过 tool-only turn | 接入 OneRing assistant record candidate flushing，但保持失败 upstream 不产出成功记录。 |
+| 2026-06-06 | `f456575f` final context display-only subset | #158 / `db4b5d12` | 已吸收并已推送 | `git diff --check`；`vue-tsc --noEmit`；PR CI | 只吸收 `FinalContextViewer.vue` 的伪系统/通知 user block badge；未吸收 config UI/API、`Plugin/OneRing/*` 或 `dist`。 |
+| 2026-06-06 | `f456575f` remainder preflight | #159 / `1214326f` | 已吸收并已推送 | 文档 diff check；PR CI | 将剩余 hot-config UI/API/admin route/plugin config 统一归为 OneRing hot-config 专项，不 raw cherry-pick。 |
+| 2026-06-06 | OneRing hot-config local design | #160 / `7ae2bb44` | 已吸收并已推送 | 文档 diff check；PR CI | 定义 hot-config 策略：plugin semantics first、runtime config ownership second、admin write API third、frontend UI last。 |
+| 2026-06-06 | OneRing plugin package decision | #161 / `832e9552` | 已吸收并已推送 | 文档 diff check；PR CI | 决定不 raw-import upstream `Plugin/OneRing/*`，继续本地模块化实现；上游文件只作参考。 |
+| 2026-06-06 | OneRing local core helpers | #162 / `b2620d94` | 已吸收并已推送 | `node --check` 新增文件；OneRing targeted suite 58 pass；`git diff --check`；PR CI | 新增 `modules/oneringHotConfig.js`、`modules/oneringStore.js` 与测试。store 要求显式 temp/baseDir，未接 `Plugin/OneRing/*`、admin route、frontend、handlers 或 `dist`。 |
+
+当前仍不直接吸收的 OneRing upstream 内容：
+
+| 内容 | 当前状态 | 原因 |
+|------|----------|------|
+| upstream `Plugin/OneRing/*` 整包 | 不 raw-import | 本地已决定继续模块化实现；整包导入会混入 SQLite、manifest、config、snapshot、fuzzy、context patching 等多层行为。 |
+| `Plugin/OneRing/OneRingConfig.json` | 不提交 | operator-owned runtime state；不得作为源码默认提交。 |
+| `routes/admin/finalContext.js` 的 `PUT /admin_api/onering-config` | 暂缓 | admin 写接口需单独路径收束、权限、回滚和缺失插件目录测试。 |
+| `AdminPanel-Vue` OneRing config modal/API/types | 暂缓 | 必须等 backend write contract 与 plugin config 语义存在后再做 source-only UI 包。 |
+| `AdminPanel-Vue/dist/*` | 不吸收 | 生成产物，不进入 source-only 吸收。 |
+| `preprocessor_order.json` 默认加入 `OneRing` | 暂缓 | OneRing plugin wrapper 尚未接入，运行顺序必须单独设计和测试。 |
+
+下一步建议：
+
+1. 做 thin plugin wrapper 设计/实现包。
+2. wrapper 只调用本地 `modules/onering*.js`。
+3. 默认关闭或 record-only。
+4. 继续不接 admin write API、frontend UI、`dist` 或默认 `preprocessor_order.json`。
