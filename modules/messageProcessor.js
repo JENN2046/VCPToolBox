@@ -110,9 +110,19 @@ function findLastRealUserMessage(messages, options = {}) {
         if (!message || message.role !== 'user') continue;
 
         const rawContent = extractTextFromMessageContent(message.content);
-        if (!rawContent || !rawContent.trim()) continue;
-
         const trimmedRawContent = rawContent.trim();
+
+        if (!trimmedRawContent) {
+            return { index, message, rawContent, sanitizedContent: '' };
+        }
+
+        const notificationStrippedContent = stripSystemNotificationBlocks(rawContent);
+        if (
+            isSystemNotificationText(trimmedRawContent) &&
+            (!notificationStrippedContent || !notificationStrippedContent.trim())
+        ) {
+            continue;
+        }
 
         if (skipEmptySystemPrompt && SYSTEM_EMPTY_PROMPT_PREFIX_REGEX.test(trimmedRawContent)) {
             continue;
@@ -138,7 +148,12 @@ function findLastRealUserMessage(messages, options = {}) {
             : String(sanitizedContent || '');
 
         if (!normalizedSanitizedContent || !normalizedSanitizedContent.trim()) {
-            continue;
+            return {
+                index,
+                message,
+                rawContent,
+                sanitizedContent: ''
+            };
         }
 
         return {

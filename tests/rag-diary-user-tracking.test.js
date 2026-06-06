@@ -105,3 +105,59 @@ test('RAGDiaryPlugin ignores notification-only latest user when selecting query 
         ragDiaryPlugin._processSingleSystemMessage = originalProcessSingleSystemMessage;
     }
 });
+
+test('RAGDiaryPlugin does not reuse stale user query when latest real user has no embeddable text', async () => {
+    const originalContextVectorManager = ragDiaryPlugin.contextVectorManager;
+    const originalFoldingStore = ragDiaryPlugin.foldingStore;
+    const originalRagParams = ragDiaryPlugin.ragParams;
+    const originalTimeParser = ragDiaryPlugin.timeParser;
+    const originalGetSingleEmbeddingCached = ragDiaryPlugin.getSingleEmbeddingCached;
+    const originalGetWeightedAverageVector = ragDiaryPlugin._getWeightedAverageVector;
+    const originalProcessSingleSystemMessage = ragDiaryPlugin._processSingleSystemMessage;
+
+    const embeddedTexts = [];
+
+    try {
+        ragDiaryPlugin.contextVectorManager = {
+            updateContext: async () => {},
+            segmentContext: () => []
+        };
+        ragDiaryPlugin.foldingStore = null;
+        ragDiaryPlugin.ragParams = {
+            RAGDiaryPlugin: {
+                mainSearchWeights: [1, 0]
+            }
+        };
+        ragDiaryPlugin.timeParser = {
+            parse: () => []
+        };
+        ragDiaryPlugin.getSingleEmbeddingCached = async (text) => {
+            embeddedTexts.push(text);
+            throw new Error('Latest sanitized-empty user turn should not be replaced by stale query text');
+        };
+        ragDiaryPlugin._getWeightedAverageVector = (vectors) => vectors.find(Boolean) || null;
+        ragDiaryPlugin._processSingleSystemMessage = async () => {
+            throw new Error('RAG processing should be skipped when the latest real user has no query text');
+        };
+
+        const messages = [
+            { role: 'system', content: '请检索 [[测试日记本]]' },
+            { role: 'user', content: '旧问题：请找昨天的部署记录' },
+            { role: 'user', content: '😀😀😀' }
+        ];
+
+        const result = await ragDiaryPlugin.processMessages(messages, {});
+
+        assert.deepEqual(embeddedTexts, []);
+        assert.equal(result[0].content, '请检索 ');
+        assert.equal(messages[0].content, '请检索 [[测试日记本]]');
+    } finally {
+        ragDiaryPlugin.contextVectorManager = originalContextVectorManager;
+        ragDiaryPlugin.foldingStore = originalFoldingStore;
+        ragDiaryPlugin.ragParams = originalRagParams;
+        ragDiaryPlugin.timeParser = originalTimeParser;
+        ragDiaryPlugin.getSingleEmbeddingCached = originalGetSingleEmbeddingCached;
+        ragDiaryPlugin._getWeightedAverageVector = originalGetWeightedAverageVector;
+        ragDiaryPlugin._processSingleSystemMessage = originalProcessSingleSystemMessage;
+    }
+});
