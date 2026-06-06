@@ -426,6 +426,7 @@ class StreamHandler {
       }
 
       if (normalCalls.length === 0) {
+        clearOneRingStreamCandidate();
         if (!res.writableEnded && !res.destroyed) {
           try {
             res.write(`data: ${JSON.stringify({

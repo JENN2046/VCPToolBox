@@ -197,7 +197,10 @@ class NonStreamHandler {
           continue;
         }
 
-        if (normalCalls.length === 0) break;
+        if (normalCalls.length === 0) {
+          clearOneRingNonStreamCandidate();
+          break;
+        }
 
         // 执行普通调用
         let assistantMessages = [{ role: 'assistant', content: currentAIContentForLoop }];
