@@ -46,3 +46,28 @@ test('R9 closeout keeps GPTImageGen chat endpoint and gated base64 previews', ()
   assert.match(source, /url:\s*`data:\$\{imageMimeType\};base64,\$\{buffer\.toString\('base64'\)\}`/);
   assert.match(source, /const details = \{/);
 });
+
+test('R13 remaining script migration keeps canonical scripts and root wrappers', () => {
+  const migratedScripts = [
+    'diary-tag-batch-processor.js',
+    'rebuild_vector_indexes.js',
+    'rebuild_tag_index_custom.js',
+    'repair_database.js',
+    'sync_missing_tags.js',
+    'test-units.js',
+  ];
+
+  for (const fileName of migratedScripts) {
+    assert.ok(fs.existsSync(path.join(repoRoot, 'scripts', fileName)), `missing scripts/${fileName}`);
+    assert.match(readRepoFile(fileName), new RegExp(`scripts/${fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  }
+
+  assert.ok(fs.existsSync(path.join(repoRoot, 'scripts', 'timeline整理器.py')));
+  assert.match(readRepoFile('timeline整理器.py'), /scripts.*timeline整理器\.py/s);
+
+  assert.match(readRepoFile('scripts/rebuild_vector_indexes.js'), /path\.join\(repoRoot, 'VectorStore'\)/);
+  assert.match(readRepoFile('scripts/rebuild_tag_index_custom.js'), /path\.join\(repoRoot, 'VectorStore'\)/);
+  assert.match(readRepoFile('scripts/repair_database.js'), /path\.join\(repoRoot, 'VectorStore'\)/);
+  assert.match(readRepoFile('scripts/sync_missing_tags.js'), /path\.join\(repoRoot, 'dailynote'\)/);
+  assert.match(readRepoFile('scripts/test-units.js'), /cwd: repoRoot/);
+});

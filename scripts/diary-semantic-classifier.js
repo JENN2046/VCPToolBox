@@ -304,7 +304,7 @@ async function main() {
                         console.error(`  ❌ Failed to rebuild index for ${diaryName}:`, e.message);
                     }
                 } else {
-                    console.warn(`  ⚠️ Vexus-Lite not loaded, cannot rebuild index for ${diaryName}. Please run rebuild_vector_indexes.js manually.`);
+                    console.warn(`  ⚠️ Vexus-Lite not loaded, cannot rebuild index for ${diaryName}. Please run scripts/rebuild_vector_indexes.js manually.`);
                 }
             }
         } else if (isDryRun) {
