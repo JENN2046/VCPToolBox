@@ -146,7 +146,8 @@ git diff --name-status main..upstream/main
 | 2026-06-06 | OneRing hot-config local design | #160 / `7ae2bb44` | 已吸收并已推送 | 文档 diff check；PR CI | 定义 hot-config 策略：plugin semantics first、runtime config ownership second、admin write API third、frontend UI last。 |
 | 2026-06-06 | OneRing plugin package decision | #161 / `832e9552` | 已吸收并已推送 | 文档 diff check；PR CI | 决定不 raw-import upstream `Plugin/OneRing/*`，继续本地模块化实现；上游文件只作参考。 |
 | 2026-06-06 | OneRing local core helpers | #162 / `b2620d94` | 已吸收并已推送 | `node --check` 新增文件；OneRing targeted suite 58 pass；`git diff --check`；PR CI | 新增 `modules/oneringHotConfig.js`、`modules/oneringStore.js` 与测试。store 要求显式 temp/baseDir，未接 `Plugin/OneRing/*`、admin route、frontend、handlers 或 `dist`。 |
-| 2026-06-06 | OneRing thin plugin wrapper | #170 / `c1e0ecde` | 已合并 | `node --check Plugin\OneRing\OneRing.js`；OneRing targeted suite 35 pass；`git diff --check`；PR CI | 新增本地薄插件壳、manifest、config example 与 wrapper tests。默认关闭，且要求 `ONERING_ENABLED=true` 与 hot config `enabled=true` 双开关才创建 store；review 后修复 reload 旧配置残留；不 raw-import upstream `OneRingDB/Fuzzy/Snapshot`，不接 admin write API、frontend、`dist` 或默认 `preprocessor_order.json`。 |
+| 2026-06-06 | OneRing thin plugin wrapper | #170 / `c1e0ecde` | 已吸收并已推送 | `node --check Plugin\OneRing\OneRing.js`；OneRing targeted suite 35 pass；`git diff --check`；PR CI | 新增本地薄插件壳、manifest、config example 与 wrapper tests。默认关闭，且要求 `ONERING_ENABLED=true` 与 hot config `enabled=true` 双开关才创建 store；review 后修复 reload 旧配置残留；不 raw-import upstream `OneRingDB/Fuzzy/Snapshot`，不接 admin write API、frontend、`dist` 或默认 `preprocessor_order.json`。 |
+| 2026-06-06 | latest OneRing Rust/native upstream sweep | `43436f12`, `178955ad`, `8bcd9b35`, `1dd5aec1` | 已审未吸收 / 需另开专项 | 只读 `git show --name-status --stat` | `43436f12` 继续改 upstream `Plugin/OneRing/OneRing.js`；`178955ad` 将 OneRing 计算下沉到 Rust 并新增 `rust-vexus-lite/src/onering.rs`、`Plugin/OneRing/OneRingNative.js`、native API 与 Windows `.node` 二进制；`8bcd9b35` / `1dd5aec1` 继续新增或更新 Linux native 二进制。该组不是 thin wrapper 增量，必须另开 OneRing Rust/native 专项，先审设计、二进制来源、跨平台构建、回滚和数据库/向量安全，不 raw merge。 |
 
 当前仍不直接吸收的 OneRing upstream 内容：
 
@@ -158,12 +159,13 @@ git diff --name-status main..upstream/main
 | `AdminPanel-Vue` OneRing config modal/API/types | 暂缓 | 必须等 backend write contract 与 plugin config 语义存在后再做 source-only UI 包。 |
 | `AdminPanel-Vue/dist/*` | 不吸收 | 生成产物，不进入 source-only 吸收。 |
 | `preprocessor_order.json` 默认加入 `OneRing` | 暂缓 | thin wrapper 已默认关闭；显式运行顺序仍必须单独设计和测试，不能跟随 upstream 默认文件。 |
+| OneRing Rust/native rewrite (`178955ad`, `8bcd9b35`, `1dd5aec1`) | 需另开专项 | 涉及 Rust 源码、native package API、`.node` 二进制、跨平台产物和性能/一致性语义，不属于当前本地模块化 JS thin wrapper 的可直接吸收范围。 |
 
 下一步建议：
 
-1. 继续审查 thin wrapper 的 PR/CI 结果。
-2. 后续若继续 OneRing，可做 runtime config loader/watcher 小包，但仍不得提交真实 `OneRingConfig.json`。
-3. admin write API、frontend UI、`dist` 与默认 `preprocessor_order.json` 继续单独暂缓。
+1. 后续若继续 OneRing JS 线，可评估 admin config API 或 frontend config UI，但必须先有 backend write contract，不提交真实 `OneRingConfig.json`。
+2. 若转向 upstream Rust/native 线，先开 OneRing Rust/native design/preflight，不直接导入 `.node` 二进制或 Rust API。
+3. `AdminPanel-Vue/dist/*` 与默认 `preprocessor_order.json` 继续单独暂缓。
 
 ## 8. 2026-06-06 快速吸收追加台账
 
@@ -177,15 +179,17 @@ git diff --name-status main..upstream/main
 |------|------------------------|------------------|------|----------|----------|
 | 2026-06-06 | `457470c0` partial | #164 / `6fd00970`, review fixes `1175966e`, `07985c28` | 已吸收并已推送 | `node --check Plugin\VolcSearch\VolcSearch.js`; `node --check Plugin\DailyNote\dailynote.js`; `Plugin/VolcSearch/plugin-manifest.json` JSON parse; PR CI | 只吸收 VolcSearch `full_content` 支持和 DailyNote 缺失 command 时的 create/update 参数形态推断。review 后修正 full-content 兼容和 snippet-mode Summary 保留。 |
 | 2026-06-06 | `5d6dc451` docs-only | #165 / `cc644b69` | 已吸收并已推送 | PR CI; staged `VCP.md` diff review | 吸收 `VCP.md` 演讲稿 front matter/title、`SystemPromptHacker` 与 `OneRing` 文档段落。`VCP.md` 仍为 CRLF 文件，未在该小包内做整文件换行规范化。 |
-| 2026-06-06 | `b3f5840c` DailyNote review-safe subset | #167 / `4562e77f`, review fix pending | PR 已打开，未合并 | `node --check Plugin\DailyNote\dailynote.js`; `node --test tests\gptimagegen-safety.test.js` 25 pass; `git diff --check` 仅有既有 CRLF 转换提示 | 保留 #164 的“缺失/空白 command 可按明确参数形态推断”行为；review 后不吸收上游“显式但无效 command 也可由参数形态纠正”的宽松行为，显式未知 command 继续返回 unknown-command，避免 `delete` / `search` / malformed parser value 携带写入参数时触发 DailyNote 写入。 |
+| 2026-06-06 | `b3f5840c` DailyNote review-safe subset | #167 / `4562e77f`, review fix `a153ead6`, merge `2ea8294e` | 已吸收并已推送 | `node --check Plugin\DailyNote\dailynote.js`; `node --test tests\gptimagegen-safety.test.js` 25 pass; PR CI | 保留 #164 的“缺失/空白 command 可按明确参数形态推断”行为；review 后不吸收上游“显式但无效 command 也可由参数形态纠正”的宽松行为，显式未知 command 继续返回 unknown-command，避免 `delete` / `search` / malformed parser value 携带写入参数时触发 DailyNote 写入。 |
+| 2026-06-06 | `666af9eb` DailyNote missing-command robustness | #164 / #167 covered | 已覆盖 | 只读 `git show 666af9eb -- Plugin\DailyNote\dailynote.js`; 当前 `Plugin\DailyNote\dailynote.js` 静态确认 | upstream `666af9eb` 的核心行为是缺失 command 时按 `content/contentText/Content` 或 `target + replace` 推断 create/update。本地已由 #164 引入并由 #167 收窄保护；`git cherry` 仍显示 `+` 是 hash 不同，不代表未吸收。 |
 
 ### 8.1 本轮明确没有吸收的内容
 
 | upstream 内容 | 当前状态 | 原因 / 后续动作 |
 |---------------|----------|-----------------|
-| `Plugin/OneRing/config.env.example` from `92a1e80d` | 不单独吸收 | 当前本地 `main` 不存在 `Plugin/OneRing/` 插件包；本地策略是模块化实现，已在第 7 节决定不 raw-import upstream `Plugin/OneRing/*`。配置样例会指向不存在的插件包，需等待 thin plugin wrapper 专项。 |
-| `Plugin/OneRing/README.md` docs snippets from `31064f3f` | 不单独吸收 | 同上。文档描述 upstream plugin wrapper / snapshot / output dedup 形态，但当前本地主线没有该插件目录，不能先提交超前文档。 |
+| `Plugin/OneRing/config.env.example` from `92a1e80d` | 已由 #170 本地安全子集覆盖 / 不再单独吸收 | 本地已有 thin wrapper 的 `Plugin/OneRing/config.env.example`，默认关闭并匹配本地双开关策略。upstream full plugin config 仍不 raw-import。 |
+| `Plugin/OneRing/README.md` docs snippets from `31064f3f` | 不单独吸收 | 文档描述 upstream plugin wrapper / snapshot / output dedup 形态；本地只有 thin wrapper，不应提交会承诺 upstream 整包行为的 README。 |
 | upstream `Plugin/OneRing/OneRing.js` changes from `7855f8ae`, `31064f3f`, `4ef1517f`, `f34e5ca2`, `f456575f` and later fixes | 继续归入 OneRing 专项 | 已由第 7 节明确：上游 OneRing 整包只作为参考材料，不 raw-import；后续应做 thin plugin wrapper 设计/实现包，默认关闭或 record-only，不接 admin write API、frontend UI、`dist` 或默认 `preprocessor_order.json`。 |
+| upstream DailyNote explicit-invalid-command correction from `b3f5840c` | 不吸收 | 该行为会让显式未知 command 在携带写入形态参数时被纠正为 create/update。本地 #167 review 后明确保留更严格策略：只有缺失/空白 command 可推断，显式未知 command 必须报 unknown-command。 |
 
 ### 8.2 后续吸收固定补充规则
 
@@ -209,7 +213,7 @@ git cherry -v origin/main upstream/main
 
 | 时间 | upstream 范围 | 本地分支 | 状态 | 验证记录 | 准确说明 |
 |------|---------------|----------|------|----------|----------|
-| 2026-06-06 | `567cf29b` remaining script relocations | `codex/r13-remaining-scripts-migration-20260606` | 本地验证通过，待提交/PR | `node --check` migrated JS scripts/wrappers; Python AST parse; `node --test tests\upstream-diff-closeout.test.js` 4 pass; `git diff --check` | 迁移 `diary-tag-batch-processor.js`、`rebuild_vector_indexes.js`、`rebuild_tag_index_custom.js`、`repair_database.js`、`sync_missing_tags.js`、`test-units.js`、`timeline整理器.py` 到 `scripts/`，根目录保留 wrapper；不执行真实写入/SSH/插件流程。 |
+| 2026-06-06 | `567cf29b` remaining script relocations | #168 / `bcb68423`, review fix `c38b0c09`, merge `5a3462ed` | 已吸收并已推送 | `node --check` migrated JS scripts/wrappers; Python AST parse; `node --test tests\upstream-diff-closeout.test.js` 4 pass; `git diff --check`; PR CI | 迁移 `diary-tag-batch-processor.js`、`rebuild_vector_indexes.js`、`rebuild_tag_index_custom.js`、`repair_database.js`、`sync_missing_tags.js`、`test-units.js`、`timeline整理器.py` 到 `scripts/`，根目录保留 wrapper；不执行真实写入/SSH/插件流程。 |
 
 ## 10. 2026-06-06 `18728628` FileOperator/VSearch 快速吸收台账
 
@@ -219,4 +223,22 @@ git cherry -v origin/main upstream/main
 
 | 时间 | upstream commit / 范围 | 本地 PR / commit | 状态 | 验证记录 | 准确说明 |
 |------|------------------------|------------------|------|----------|----------|
-| 2026-06-06 | `18728628` FileOperator/VSearch/EmojiListGenerator subset | `6d6121f4` + `codex/absorb-18728628-20260606` | 本地验证通过，待提交/PR | `node --check Plugin\FileOperator\FileOperator.js`; `node --check Plugin\VSearch\VSearch.js`; `git diff --check` | `FileOperator` 默认 `WEB_FILE_DIR` fallback、README、`config.env.example` 以及 `VSearch` 缺参文案已由 `6d6121f4` 覆盖；本分支只补齐 EmojiListGenerator README 多余空行清理和台账记录。不吸收 upstream 对 `VSearch.js` 的 no-final-newline 格式差异。 |
+| 2026-06-06 | `18728628` FileOperator/VSearch/EmojiListGenerator subset | #169 / `1c470a52`, merge `85badf51` | 已吸收并已推送 | `node --check Plugin\FileOperator\FileOperator.js`; `node --check Plugin\VSearch\VSearch.js`; `git diff --check`; PR CI | `FileOperator` 默认 `WEB_FILE_DIR` fallback、README、`config.env.example` 以及 `VSearch` 缺参文案已由 `6d6121f4` 覆盖；#169 补齐 EmojiListGenerator README 多余空行清理和台账记录。不吸收 upstream 对 `VSearch.js` 的 no-final-newline 格式差异。 |
+
+## 11. 2026-06-06 统一真实 User 追踪管线追加台账
+
+本节追加记录 `1cb979c4` / `d50297b3` / `ec1737f9` 方向在本地的已吸收状态。该组仍不是 raw merge，当前只吸收真实 user 选择语义，不吸收 Detector / Role Divider 执行顺序调整。
+
+| 时间 | 范围 | 本地 PR / commit | 状态 | 验证记录 | 准确说明 |
+|------|------|------------------|------|----------|----------|
+| 2026-06-06 | User tracking pipeline preflight | #171 / `10d5fd1c` | 已吸收并已推送 | 文档 preflight；只读 upstream inspection | 明确把 upstream 统一真实 User 追踪拆为 helper、RAGDiary consumer、semantic/dynamic fold consumer、ContextFoldingV2 consumer 与 Detector / Role Divider order design，禁止混包。 |
+| 2026-06-06 | Package A pure helper + tests | #172 / `cffa2b79`, review fix `eb3ecd95`, merge `3d78491d` | 已吸收并已推送 | `node --test tests\message-processor-user-tracking.test.js`; PR CI | 新增 `extractTextFromMessageContent`、`isSystemNotificationText`、`isBetaSystemUserText`、`stripSystemNotificationBlocks`、`findLastRealUserMessage` 与 focused tests。review 后收窄伪系统识别，只匹配已知 `[系统提示:]` / `[系统邀请指令:]` / `[系统通知]` carrier，不把普通 `[系统...]` 用户文本当伪系统。 |
+| 2026-06-06 | Package B RAGDiaryPlugin consumer | #173 / `c5f84505`, review fix `f7d5b35f`, merge `f9039b0e` | 已吸收并已推送 | `node --test tests\message-processor-user-tracking.test.js`; `node --test tests\rag-diary-user-tracking.test.js`; `node --test tests\codex-memory-recall.test.js`; PR CI | `RAGDiaryPlugin` 使用共享 helper 选择最新真实 user。review 后修正 sanitized-empty P2：emoji-only、image-only、HTML/tool-marker-only 等最新真实 user 清洗为空时不回退旧 query；只有已知通知/系统 carrier 才继续向前找。 |
+
+当前仍未吸收的 User Tracking 相关内容：
+
+| 内容 | 当前状态 | 原因 / 后续动作 |
+|------|----------|-----------------|
+| Package C: `modules\semanticModelRouter.js` + `modules\messageProcessor.js` dynamic fold consumers | 待单独小包 | 可继续吸收共享 helper consumer，但不得改变 Detector / SuperDetector 行为。 |
+| Package D: `Plugin\ContextFoldingV2\ContextFoldingV2.js` consumer | 待单独小包 | 可继续让 folding context vector 使用共享 helper，但不得改变折叠阈值、queue、store write 或 summary 生成行为。 |
+| Package E: `ec1737f9` Detector / Role Divider order adjustment | 需设计/preflight | 该提交改变 prompt pipeline 顺序，会影响 message count、role layout、detector rewrite 和 VCP tool parsing，不能直接实现。 |
