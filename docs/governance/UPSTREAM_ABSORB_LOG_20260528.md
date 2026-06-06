@@ -177,7 +177,7 @@ git diff --name-status main..upstream/main
 |------|------------------------|------------------|------|----------|----------|
 | 2026-06-06 | `457470c0` partial | #164 / `6fd00970`, review fixes `1175966e`, `07985c28` | 已吸收并已推送 | `node --check Plugin\VolcSearch\VolcSearch.js`; `node --check Plugin\DailyNote\dailynote.js`; `Plugin/VolcSearch/plugin-manifest.json` JSON parse; PR CI | 只吸收 VolcSearch `full_content` 支持和 DailyNote 缺失 command 时的 create/update 参数形态推断。review 后修正 full-content 兼容和 snippet-mode Summary 保留。 |
 | 2026-06-06 | `5d6dc451` docs-only | #165 / `cc644b69` | 已吸收并已推送 | PR CI; staged `VCP.md` diff review | 吸收 `VCP.md` 演讲稿 front matter/title、`SystemPromptHacker` 与 `OneRing` 文档段落。`VCP.md` 仍为 CRLF 文件，未在该小包内做整文件换行规范化。 |
-| 2026-06-06 | `b3f5840c` DailyNote remainder | #167 / `4562e77f` | PR 已打开，未合并 | `node --check Plugin\DailyNote\dailynote.js`; `node --test tests\gptimagegen-safety.test.js` 25 pass; `git diff --check` 仅有既有 CRLF 转换提示 | 在 #164 的“缺失 command 推断”基础上，继续吸收上游“显式但无效 command 可由明确参数形态纠正”的剩余行为。只改 `Plugin/DailyNote/dailynote.js` 和静态回归测试；未执行真实 DailyNote 写入。 |
+| 2026-06-06 | `b3f5840c` DailyNote review-safe subset | #167 / `4562e77f`, review fix pending | PR 已打开，未合并 | `node --check Plugin\DailyNote\dailynote.js`; `node --test tests\gptimagegen-safety.test.js` 25 pass; `git diff --check` 仅有既有 CRLF 转换提示 | 保留 #164 的“缺失/空白 command 可按明确参数形态推断”行为；review 后不吸收上游“显式但无效 command 也可由参数形态纠正”的宽松行为，显式未知 command 继续返回 unknown-command，避免 `delete` / `search` / malformed parser value 携带写入参数时触发 DailyNote 写入。 |
 
 ### 8.1 本轮明确没有吸收的内容
 

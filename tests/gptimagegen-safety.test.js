@@ -313,11 +313,14 @@ test('DailyNote adds structured success metadata while preserving legacy fields'
   assert.match(source, /targetFile: modifiedFilePath/);
 });
 
-test('DailyNote infers clear command shape when command is missing or invalid', () => {
+test('DailyNote only infers clear command shape when command is missing', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'Plugin', 'DailyNote', 'dailynote.js'), 'utf8');
 
   assert.match(source, /const rawCommand = typeof command === 'string' \? command\.trim\(\)\.toLowerCase\(\) : command;/);
-  assert.match(source, /if \(rawCommand !== 'create' && rawCommand !== 'update'\) \{/);
+  assert.match(source, /const isCommandMissing = rawCommand === undefined \|\| rawCommand === null \|\| rawCommand === '';/);
+  assert.match(source, /if \(isCommandMissing\) \{/);
+  assert.doesNotMatch(source, /rawCommand !== 'create' && rawCommand !== 'update'/);
+  assert.doesNotMatch(source, /missing or invalid/);
   assert.match(source, /normalizedCommand = 'update';/);
   assert.match(source, /target\/replace arguments/);
   assert.match(source, /normalizedCommand = 'create';/);

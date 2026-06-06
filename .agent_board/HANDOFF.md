@@ -19,13 +19,15 @@ Current active intake:
   `Plugin/OneRing/`; only local split modules such as `modules/oneringParser.js`
   exist. Absorbing those docs/config examples now would document a package that
   is absent in this mainline shape.
-- Current stage selected the remaining non-core DailyNote command robustness
-  piece from `b3f5840c`.
-- `Plugin/DailyNote/dailynote.js` now normalizes explicit invalid command
-  strings when the argument shape clearly identifies `update` (`target` +
-  `replace`) or `create` (`contentText` / `Content` / `content`).
+- Current stage selected the DailyNote command robustness piece from
+  `b3f5840c`, then narrowed it after PR review.
+- `Plugin/DailyNote/dailynote.js` only infers `update` (`target` + `replace`)
+  or `create` (`contentText` / `Content` / `content`) when `command` is missing
+  or blank. Explicit unknown commands such as `delete`, `search`, or malformed
+  parser output continue to return unknown-command instead of reaching
+  write-capable handlers.
 - Added a static regression in `tests/gptimagegen-safety.test.js` to keep this
-  command inference shape from regressing.
+  command inference boundary from regressing.
 
 Validation:
 
