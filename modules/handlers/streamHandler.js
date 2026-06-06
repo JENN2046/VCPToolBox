@@ -78,13 +78,18 @@ class StreamHandler {
     let currentAIContentForLoop = '';
     let currentAIRawDataForDiary = '';
     let chatLogs = [];
-    const oneRingAssistantRecordCandidates = [];
+    let oneRingFinalAssistantRecordCandidate = null;
     const collectOneRingStreamCandidate = (streamResult) => {
       const candidate = buildStreamAssistantRecordCandidate(streamResult);
-      if (candidate.shouldRecord) oneRingAssistantRecordCandidates.push(candidate);
+      oneRingFinalAssistantRecordCandidate = candidate.shouldRecord ? candidate : null;
+    };
+    const clearOneRingStreamCandidate = () => {
+      oneRingFinalAssistantRecordCandidate = null;
     };
     const flushOneRingAssistantRecordCandidates = () => {
-      const candidate = buildCombinedAssistantRecordCandidate(oneRingAssistantRecordCandidates);
+      const candidate = buildCombinedAssistantRecordCandidate(
+        oneRingFinalAssistantRecordCandidate ? [oneRingFinalAssistantRecordCandidate] : [],
+      );
       return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
         phaseLabel: 'final_turn',
         logPrefix: '[OneRing Stream]',
@@ -401,20 +406,23 @@ class StreamHandler {
           { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
         );
 
-        if (nextAiAPIResponse.ok) {
-          let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
-          currentAIContentForLoop = nextAIResponseData.content;
-          collectOneRingStreamCandidate(nextAIResponseData);
-          if (writeChatLog) {
-            chatLogs.push({
-              request: { messages: currentMessagesForLoop },
-              toolCalls: archeryLogs,
-              response: nextAIResponseData.message,
-            });
-          }
-          recursionDepth++;
-          continue;
+        if (!nextAiAPIResponse.ok) {
+          clearOneRingStreamCandidate();
+          break;
         }
+
+        let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
+        currentAIContentForLoop = nextAIResponseData.content;
+        collectOneRingStreamCandidate(nextAIResponseData);
+        if (writeChatLog) {
+          chatLogs.push({
+            request: { messages: currentMessagesForLoop },
+            toolCalls: archeryLogs,
+            response: nextAIResponseData.message,
+          });
+        }
+        recursionDepth++;
+        continue;
       }
 
       if (normalCalls.length === 0) {
@@ -526,7 +534,10 @@ class StreamHandler {
         { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
       );
 
-      if (!nextAiAPIResponse.ok) break;
+      if (!nextAiAPIResponse.ok) {
+        clearOneRingStreamCandidate();
+        break;
+      }
 
       let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
       currentAIContentForLoop = nextAIResponseData.content;

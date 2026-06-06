@@ -329,3 +329,17 @@ test('combined assistant record candidate joins only recordable assistant conten
     reason: 'empty-assistant-record-candidates',
   });
 });
+
+test('combined assistant record candidate supports final-turn-only caller policy', () => {
+  const intermediate = { shouldRecord: true, role: 'assistant', content: 'tool call markup', reason: null };
+  const final = { shouldRecord: true, role: 'assistant', content: 'final visible answer', reason: null };
+
+  assert.deepEqual(buildCombinedAssistantRecordCandidate([final]), {
+    shouldRecord: true,
+    role: 'assistant',
+    content: 'final visible answer',
+    reason: null,
+  });
+
+  assert.notEqual(buildCombinedAssistantRecordCandidate([final]).content, intermediate.content);
+});

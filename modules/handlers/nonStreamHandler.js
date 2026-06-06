@@ -52,13 +52,18 @@ class NonStreamHandler {
     const aiResponseText = responseBuffer.toString('utf-8');
     let firstResponseRawDataForClientAndDiary = aiResponseText;
     let chatLogs = [];
-    const oneRingAssistantRecordCandidates = [];
+    let oneRingFinalAssistantRecordCandidate = null;
     const collectOneRingNonStreamCandidate = (nonStreamResult) => {
       const candidate = buildNonStreamAssistantRecordCandidate(nonStreamResult);
-      if (candidate.shouldRecord) oneRingAssistantRecordCandidates.push(candidate);
+      oneRingFinalAssistantRecordCandidate = candidate.shouldRecord ? candidate : null;
+    };
+    const clearOneRingNonStreamCandidate = () => {
+      oneRingFinalAssistantRecordCandidate = null;
     };
     const flushOneRingAssistantRecordCandidates = () => {
-      const candidate = buildCombinedAssistantRecordCandidate(oneRingAssistantRecordCandidates);
+      const candidate = buildCombinedAssistantRecordCandidate(
+        oneRingFinalAssistantRecordCandidate ? [oneRingFinalAssistantRecordCandidate] : [],
+      );
       return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
         phaseLabel: 'final_turn',
         logPrefix: '[OneRing NonStream]',
@@ -161,32 +166,35 @@ class NonStreamHandler {
             { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
           );
 
-          if (recursionAiResponse.ok) {
-            const recursionArrayBuffer = await recursionAiResponse.arrayBuffer();
-            const recursionBuffer = Buffer.from(recursionArrayBuffer);
-            const recursionText = recursionBuffer.toString('utf-8');
-            const recursionMessage = extractedMessage(recursionText);
-            if (recursionMessage) {
-              currentAIContentForLoop = '\n' + (recursionMessage.content || '');
-            } else {
-              currentAIContentForLoop = '\n' + recursionText;
-            }
-            collectOneRingNonStreamCandidate({ ok: true, message: recursionMessage });
-            if (writeChatLog) {
-              chatLogs.push({
-                request: currentMessagesForNonStreamLoop,
-                toolCalls: archeryLogs,
-                response: recursionMessage || recursionText,
-              });
-            }
-            // 记录日志
-            handleDiaryFromAIResponse(recursionText).catch(e =>
-              console.error(`[VCP NonStream Loop] Error in diary handling for depth ${recursionDepth}:`, e),
-            );
-
-            recursionDepth++;
-            continue;
+          if (!recursionAiResponse.ok) {
+            clearOneRingNonStreamCandidate();
+            break;
           }
+
+          const recursionArrayBuffer = await recursionAiResponse.arrayBuffer();
+          const recursionBuffer = Buffer.from(recursionArrayBuffer);
+          const recursionText = recursionBuffer.toString('utf-8');
+          const recursionMessage = extractedMessage(recursionText);
+          if (recursionMessage) {
+            currentAIContentForLoop = '\n' + (recursionMessage.content || '');
+          } else {
+            currentAIContentForLoop = '\n' + recursionText;
+          }
+          collectOneRingNonStreamCandidate({ ok: true, message: recursionMessage });
+          if (writeChatLog) {
+            chatLogs.push({
+              request: currentMessagesForNonStreamLoop,
+              toolCalls: archeryLogs,
+              response: recursionMessage || recursionText,
+            });
+          }
+          // 记录日志
+          handleDiaryFromAIResponse(recursionText).catch(e =>
+            console.error(`[VCP NonStream Loop] Error in diary handling for depth ${recursionDepth}:`, e),
+          );
+
+          recursionDepth++;
+          continue;
         }
 
         if (normalCalls.length === 0) break;
@@ -269,7 +277,10 @@ class NonStreamHandler {
           { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
         );
 
-        if (!recursionAiResponse.ok) break;
+        if (!recursionAiResponse.ok) {
+          clearOneRingNonStreamCandidate();
+          break;
+        }
 
         const recursionArrayBuffer = await recursionAiResponse.arrayBuffer();
         const recursionBuffer = Buffer.from(recursionArrayBuffer);
