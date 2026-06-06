@@ -124,6 +124,37 @@ test('OneRing plugin wrapper records visible user and assistant messages in reco
   }
 });
 
+test('OneRing plugin wrapper resets runtime config on initialize reload', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  const recorder = createOneRingRecorder({
+    hotConfig: { enabled: true },
+    now: () => '2026-06-06T08:00:00.000Z',
+  });
+  const messages = [
+    { role: 'system', content: '[[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: 'hello' },
+  ];
+
+  try {
+    recorder.initialize({
+      ONERING_ENABLED: true,
+      ONERING_DATA_DIR: baseDir,
+    });
+    await recorder.processMessages(messages);
+    assert.equal(recorder.listMessages('Agnes').length, 1);
+
+    recorder.initialize({});
+    const result = await recorder.recordAIResponseFromMessages(messages, 'visible answer');
+
+    assert.equal(result.recorded, false);
+    assert.equal(result.reason, 'disabled-or-empty');
+    assert.equal(recorder._isEffectiveEnabled(), false);
+  } finally {
+    recorder.shutdown();
+  }
+});
+
 test('OneRing plugin wrapper skips assistant records without trigger metadata', async () => {
   const tempParent = await makeTempDir();
   const baseDir = path.join(tempParent, 'data');

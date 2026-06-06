@@ -30,11 +30,9 @@ function createOneRingRecorder(options = {}) {
   const StoreClass = options.StoreClass || OneRingStore;
 
   function initialize(initialConfig = {}) {
-    runtimeConfig = normalizeRuntimeConfig({
-      ...runtimeConfig,
-      ...initialConfig,
-    });
-    hotConfigPath = initialConfig.ONERING_HOT_CONFIG_PATH || hotConfigPath || path.join(pluginDir, HOT_CONFIG_FILE_NAME);
+    shutdown();
+    runtimeConfig = normalizeRuntimeConfig(initialConfig);
+    hotConfigPath = runtimeConfig.ONERING_HOT_CONFIG_PATH || path.join(pluginDir, HOT_CONFIG_FILE_NAME);
   }
 
   async function processMessages(messages) {
