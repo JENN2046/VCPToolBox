@@ -297,7 +297,7 @@ async function main() {
                             const { LogoUrl, Summary, Snippet, ...rest } = item;
                             return rest;
                         }
-                        const { LogoUrl, Summary, Content, ...rest } = item;
+                        const { LogoUrl, Content, ...rest } = item;
                         return rest;
                     });
                 }

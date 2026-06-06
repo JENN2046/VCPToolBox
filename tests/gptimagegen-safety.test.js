@@ -496,7 +496,7 @@ test('PluginSourceViewer manifest example uses the registered tool name', () => 
   assert.doesNotMatch(description, /tool_name:「始」PluginSourceViewer「末」/);
 });
 
-test('VolcSearch keeps summary or snippet text when full content is absent', () => {
+test('VolcSearch preserves snippet-mode summary text and full-content compatibility', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'Plugin', 'VolcSearch', 'VolcSearch.js'), 'utf8');
   const manifest = fs.readFileSync(path.join(repoRoot, 'Plugin', 'VolcSearch', 'plugin-manifest.json'), 'utf8');
 
@@ -508,7 +508,8 @@ test('VolcSearch keeps summary or snippet text when full content is absent', () 
   assert.match(source, /const snippet = item\.Snippet \|\| '';/);
   assert.match(source, /const displayText = fullContent \? \(content \|\| summary \|\| snippet\) : \(summary \|\| snippet \|\| content\);/);
   assert.match(source, /const \{ LogoUrl, Summary, Snippet, \.\.\.rest \} = item;/);
-  assert.match(source, /const \{ LogoUrl, Summary, Content, \.\.\.rest \} = item;/);
+  assert.match(source, /const \{ LogoUrl, Content, \.\.\.rest \} = item;/);
+  assert.doesNotMatch(source, /const \{ LogoUrl, Summary, Content, \.\.\.rest \} = item;/);
   assert.match(manifest, /snippets_only/);
   assert.match(manifest, /snippets_only=false 会优先返回 Content/);
 });
