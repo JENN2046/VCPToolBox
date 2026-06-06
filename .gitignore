@@ -167,6 +167,8 @@ ip_blacklist.json
 /VectorStore
 
 # OneRing runtime data (operator-owned; never commit local stores)
+Plugin/OneRing/OneRingConfig.json
+Plugin/OneRing/OneRingConfig.*.json
 Plugin/OneRing/data/
 Plugin/OneRing/*.db
 Plugin/OneRing/*.db-wal

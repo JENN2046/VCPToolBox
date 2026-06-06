@@ -1,0 +1,53 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "OneRing",
+  "version": "0.1.0-local.1",
+  "displayName": "OneRing 统一上下文",
+  "description": "本地模块化 OneRing 薄插件壳。默认关闭；仅在 ONERING_ENABLED=true 且 OneRingConfig.json enabled=true 时，按 record-only 路径记录可见 user/assistant 内容。当前包不做跨前端上下文补丁，不修改 preprocessor_order.json，不提供 admin 写配置 API。",
+  "author": "VCPToolBox",
+  "pluginType": "messagePreprocessor",
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "OneRing.js"
+  },
+  "communication": {
+    "protocol": "direct"
+  },
+  "configSchema": {
+    "ONERING_ENABLED": {
+      "type": "boolean",
+      "description": "总开关。默认 false；即使为 true，也需要 OneRingConfig.json 中 enabled=true 才会写入本地 store。",
+      "default": "false"
+    },
+    "ONERING_RECORD_ONLY": {
+      "type": "boolean",
+      "description": "保留给后续扩展；当前本地薄壳始终只走 record-only，不做上下文补丁。",
+      "default": "true"
+    },
+    "ONERING_ALLOW_CONTEXT_PATCH": {
+      "type": "boolean",
+      "description": "保留给后续扩展；当前版本不会启用跨端上下文补丁。",
+      "default": "false"
+    },
+    "ONERING_USER_NAME": {
+      "type": "string",
+      "description": "记录普通 user 发言时使用的默认 senderName。",
+      "default": "User"
+    },
+    "ONERING_MAX_DB_RECORDS": {
+      "type": "integer",
+      "description": "每个 agent 保留的最大记录数；0 表示不自动裁剪。",
+      "default": "100"
+    },
+    "ONERING_HOT_CONFIG_PATH": {
+      "type": "string",
+      "description": "可选热配置 JSON 路径；默认 Plugin/OneRing/OneRingConfig.json。",
+      "default": ""
+    },
+    "ONERING_DATA_DIR": {
+      "type": "string",
+      "description": "可选本地 store 目录；默认 Plugin/OneRing/data，仅在双开关启用后创建。",
+      "default": ""
+    }
+  }
+}
