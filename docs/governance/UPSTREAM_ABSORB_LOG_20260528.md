@@ -234,11 +234,11 @@ git cherry -v origin/main upstream/main
 | 2026-06-06 | User tracking pipeline preflight | #171 / `10d5fd1c` | 已吸收并已推送 | 文档 preflight；只读 upstream inspection | 明确把 upstream 统一真实 User 追踪拆为 helper、RAGDiary consumer、semantic/dynamic fold consumer、ContextFoldingV2 consumer 与 Detector / Role Divider order design，禁止混包。 |
 | 2026-06-06 | Package A pure helper + tests | #172 / `cffa2b79`, review fix `eb3ecd95`, merge `3d78491d` | 已吸收并已推送 | `node --test tests\message-processor-user-tracking.test.js`; PR CI | 新增 `extractTextFromMessageContent`、`isSystemNotificationText`、`isBetaSystemUserText`、`stripSystemNotificationBlocks`、`findLastRealUserMessage` 与 focused tests。review 后收窄伪系统识别，只匹配已知 `[系统提示:]` / `[系统邀请指令:]` / `[系统通知]` carrier，不把普通 `[系统...]` 用户文本当伪系统。 |
 | 2026-06-06 | Package B RAGDiaryPlugin consumer | #173 / `c5f84505`, review fix `f7d5b35f`, merge `f9039b0e` | 已吸收并已推送 | `node --test tests\message-processor-user-tracking.test.js`; `node --test tests\rag-diary-user-tracking.test.js`; `node --test tests\codex-memory-recall.test.js`; PR CI | `RAGDiaryPlugin` 使用共享 helper 选择最新真实 user。review 后修正 sanitized-empty P2：emoji-only、image-only、HTML/tool-marker-only 等最新真实 user 清洗为空时不回退旧 query；只有已知通知/系统 carrier 才继续向前找。 |
+| 2026-06-06 | Package C semantic router / dynamic fold consumers | #175 / `da003497`, merge `547285b8` | 已吸收并已推送 | `node --check modules\semanticModelRouter.js`; `node --check modules\messageProcessor.js`; `node --test tests\semantic-model-router.test.js`; `node --test tests\dynamicToolRegistry.test.js`; `node --test tests\message-processor-user-tracking.test.js`; PR CI | `semanticModelRouter` 与 `messageProcessor` dynamic fold 均复用共享真实 user helper；保持 Detector / SuperDetector / Role Divider 顺序不变，不碰 env、runtime state、数据库、向量重建、服务启动或生成产物。 |
+| 2026-06-06 | Package D ContextFoldingV2 consumer | #176 / `9226d474`, merge `ee99246b` | 已吸收并已推送 | `node --check Plugin\ContextFoldingV2\ContextFoldingV2.js`; `node --check tests\context-folding-v2-user-tracking.test.js`; `node --test tests\context-folding-v2-user-tracking.test.js`; `node --test tests\message-processor-user-tracking.test.js`; `git diff --check`; PR CI | `ContextFoldingV2` 上下文向量改用共享真实 user helper；保留最新 assistant 处理、折叠阈值、summary queue、store write 与 summary 生成行为。 |
 
-当前仍未吸收的 User Tracking 相关内容：
+当前剩余未吸收的 User Tracking 相关内容：
 
 | 内容 | 当前状态 | 原因 / 后续动作 |
 |------|----------|-----------------|
-| Package C: `modules\semanticModelRouter.js` + `modules\messageProcessor.js` dynamic fold consumers | 待单独小包 | 可继续吸收共享 helper consumer，但不得改变 Detector / SuperDetector 行为。 |
-| Package D: `Plugin\ContextFoldingV2\ContextFoldingV2.js` consumer | 待单独小包 | 可继续让 folding context vector 使用共享 helper，但不得改变折叠阈值、queue、store write 或 summary 生成行为。 |
-| Package E: `ec1737f9` Detector / Role Divider order adjustment | 需设计/preflight | 该提交改变 prompt pipeline 顺序，会影响 message count、role layout、detector rewrite 和 VCP tool parsing，不能直接实现。 |
+| Package E: `ec1737f9` Detector / Role Divider order adjustment | 需另开 design/preflight；不得直接实现 | 该提交改变 prompt pipeline 顺序，会影响 message count、role layout、detector rewrite、preprocessor 输出与 VCP tool parsing。下一步只允许做设计/边界评估，不吸收运行链路改动。 |
