@@ -7,6 +7,7 @@ const {
   buildAssistantRecordCandidate,
   buildStreamAssistantRecordCandidate,
   buildNonStreamAssistantRecordCandidate,
+  buildCombinedAssistantRecordCandidate,
 } = require('../modules/oneringHandlerAdapter');
 
 test('stream success records only visible assistant content', () => {
@@ -303,4 +304,28 @@ test('adapter does not mutate handler result objects', () => {
   buildStreamAssistantRecordCandidate(streamResult);
 
   assert.equal(JSON.stringify(streamResult), before);
+});
+
+test('combined assistant record candidate joins only recordable assistant content', () => {
+  assert.deepEqual(
+    buildCombinedAssistantRecordCandidate([
+      { shouldRecord: false, role: 'assistant', content: 'skip me', reason: 'partial' },
+      { shouldRecord: true, role: 'assistant', content: ' first visible ', reason: null },
+      { shouldRecord: true, role: 'user', content: 'wrong role', reason: null },
+      { shouldRecord: true, role: 'assistant', content: 'second visible', reason: null },
+    ]),
+    {
+      shouldRecord: true,
+      role: 'assistant',
+      content: 'first visible\nsecond visible',
+      reason: null,
+    },
+  );
+
+  assert.deepEqual(buildCombinedAssistantRecordCandidate([]), {
+    shouldRecord: false,
+    role: 'assistant',
+    content: '',
+    reason: 'empty-assistant-record-candidates',
+  });
 });

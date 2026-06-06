@@ -1,6 +1,11 @@
 // modules/handlers/nonStreamHandler.js
 const vcpInfoHandler = require('../../vcpInfoHandler.js');
 const roleDivider = require('../roleDivider.js');
+const {
+  buildCombinedAssistantRecordCandidate,
+  buildNonStreamAssistantRecordCandidate,
+} = require('../oneringHandlerAdapter.js');
+const { dispatchOneRingAssistantRecordCandidate } = require('../oneringHandlerWiring.js');
 
 class NonStreamHandler {
   constructor(context) {
@@ -47,6 +52,18 @@ class NonStreamHandler {
     const aiResponseText = responseBuffer.toString('utf-8');
     let firstResponseRawDataForClientAndDiary = aiResponseText;
     let chatLogs = [];
+    const oneRingAssistantRecordCandidates = [];
+    const collectOneRingNonStreamCandidate = (nonStreamResult) => {
+      const candidate = buildNonStreamAssistantRecordCandidate(nonStreamResult);
+      if (candidate.shouldRecord) oneRingAssistantRecordCandidates.push(candidate);
+    };
+    const flushOneRingAssistantRecordCandidates = () => {
+      const candidate = buildCombinedAssistantRecordCandidate(oneRingAssistantRecordCandidates);
+      return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
+        phaseLabel: 'final_turn',
+        logPrefix: '[OneRing NonStream]',
+      });
+    };
 
     let fullContentFromAI = '';
     const extractedMessage = (rawResponseText) => {
@@ -67,6 +84,7 @@ class NonStreamHandler {
       fullContentFromAI = aiResponseText;
     }
     if (writeChatLog) chatLogs.push({ request: originalBody, response: initMessage || fullContentFromAI});
+    collectOneRingNonStreamCandidate({ ok: true, message: initMessage });
 
     let recursionDepth = 0;
     const maxRecursion = maxVCPLoopNonStream || 5;
@@ -153,6 +171,7 @@ class NonStreamHandler {
             } else {
               currentAIContentForLoop = '\n' + recursionText;
             }
+            collectOneRingNonStreamCandidate({ ok: true, message: recursionMessage });
             if (writeChatLog) {
               chatLogs.push({
                 request: currentMessagesForNonStreamLoop,
@@ -261,6 +280,7 @@ class NonStreamHandler {
         } else {
           currentAIContentForLoop = '\n' + recursionText;
         }
+        collectOneRingNonStreamCandidate({ ok: true, message: recursionMessage });
         if (writeChatLog) {
           chatLogs.push({
             request: currentMessagesForNonStreamLoop,
@@ -298,6 +318,7 @@ class NonStreamHandler {
     }
 
     if (writeChatLog) writeChatLog(originalBody, chatLogs);
+    flushOneRingAssistantRecordCandidates();
     if (!res.writableEnded && !res.destroyed) {
       res.send(Buffer.from(JSON.stringify(finalJsonResponse)));
     }
