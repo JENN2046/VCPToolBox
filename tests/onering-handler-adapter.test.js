@@ -65,6 +65,85 @@ test('stream result requires explicit success before recording visible content',
   });
 });
 
+test('stream helper result metadata blocks non-recordable partial content', () => {
+  assert.equal(
+    buildStreamAssistantRecordCandidate({
+      outcome: 'idle-timeout',
+      recordable: false,
+      partial: true,
+      message: { content: 'partial timeout answer' },
+    }).reason,
+    'idle-timeout',
+  );
+
+  assert.equal(
+    buildStreamAssistantRecordCandidate({
+      outcome: 'client-abort',
+      recordable: false,
+      partial: true,
+      message: { content: 'partial client abort answer' },
+    }).reason,
+    'client-abort',
+  );
+
+  assert.equal(
+    buildStreamAssistantRecordCandidate({
+      outcome: 'stream-abort',
+      recordable: false,
+      partial: true,
+      error: { name: 'AbortError', message: 'aborted', type: 'aborted' },
+      message: { content: 'partial stream abort answer' },
+    }).reason,
+    'stream-abort',
+  );
+});
+
+test('stream helper recordable flag does not replace explicit success', () => {
+  assert.deepEqual(
+    buildStreamAssistantRecordCandidate({
+      recordable: true,
+      partial: false,
+      message: { content: 'visible but missing outcome' },
+    }),
+    {
+      shouldRecord: false,
+      role: 'assistant',
+      content: '',
+      reason: 'missing-stream-success',
+    },
+  );
+
+  assert.deepEqual(
+    buildStreamAssistantRecordCandidate({
+      outcome: 'success',
+      recordable: false,
+      partial: false,
+      message: { content: 'visible but non-recordable' },
+    }),
+    {
+      shouldRecord: false,
+      role: 'assistant',
+      content: '',
+      reason: 'non-recordable-stream-result',
+    },
+  );
+
+  assert.deepEqual(
+    buildStreamAssistantRecordCandidate({
+      outcome: 'success',
+      recordable: true,
+      partial: true,
+      message: { content: 'visible but partial' },
+    }),
+    {
+      shouldRecord: false,
+      role: 'assistant',
+      content: '',
+      reason: 'partial-stream-result',
+    },
+  );
+});
+
 test('stream abort, idle timeout, and read errors are not recorded', () => {
   assert.deepEqual(
     buildStreamAssistantRecordCandidate({
