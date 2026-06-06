@@ -23,8 +23,14 @@ function buildAssistantRecordCandidate({ outcome = 'success', message } = {}) {
 }
 
 function buildStreamAssistantRecordCandidate(streamResult = {}) {
-  const outcome = normalizeStreamOutcome(streamResult);
   const safeStreamResult = asResultObject(streamResult);
+  const skipReason = getStreamSkipReason(safeStreamResult, streamResult);
+
+  if (skipReason) {
+    return skip(skipReason);
+  }
+
+  const outcome = normalizeStreamOutcome(safeStreamResult);
 
   return buildAssistantRecordCandidate({
     outcome,
@@ -61,6 +67,28 @@ function normalizeStreamOutcome(streamResult) {
   }
 
   return streamResult.outcome || streamResult.status || 'missing-stream-success';
+}
+
+function getStreamSkipReason(safeStreamResult, originalStreamResult) {
+  if (!originalStreamResult || typeof originalStreamResult !== 'object') {
+    return 'invalid-stream-result';
+  }
+
+  const explicitOutcome = safeStreamResult.outcome || safeStreamResult.status;
+
+  if (safeStreamResult.recordable === false) {
+    return nonSuccessReason(explicitOutcome) || 'non-recordable-stream-result';
+  }
+
+  if (safeStreamResult.partial === true) {
+    return nonSuccessReason(explicitOutcome) || 'partial-stream-result';
+  }
+
+  return null;
+}
+
+function nonSuccessReason(outcome) {
+  return outcome && !SUCCESS_OUTCOMES.has(outcome) ? outcome : null;
 }
 
 function asResultObject(result) {
