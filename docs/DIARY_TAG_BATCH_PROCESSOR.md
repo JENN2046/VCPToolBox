@@ -432,10 +432,10 @@ DebugMode=true
 # ============================================================
 #
 # 用途：为日记批量打Tag工具提供配置
-# 位置：可放在任意目录，通过 --config 参数指定
+# 位置：保存为 VCP 根目录 config.env 后自动加载
 #
 # 使用示例：
-#   node scripts/diary-tag-batch-processor.js --config ./tag-processor-config.env ./my-diaries
+#   node scripts/diary-tag-batch-processor.js ./my-diaries
 #
 # ============================================================
 
@@ -471,8 +471,8 @@ TagModelMaxTokens=40000
 TagModelMaxOutPutTokens=30000
 
 # Tag生成提示词文件路径（相对于项目根目录）
-# 默认使用 Plugin/DailyNoteWrite/TagMaster.txt
-TagModelPrompt=TagMaster.txt
+# 推荐复用 DailyNoteWrite 的提示词
+TagModelPrompt=Plugin/DailyNoteWrite/TagMaster.txt
 
 
 # ------------------------------------------------------------
@@ -533,9 +533,9 @@ DAILY_NOTE_EXTENSION=txt
 node scripts/diary-tag-batch-processor.js ./my-diaries
 ```
 
-#### 方法2：使用自定义路径（高级）
+#### 方法2：使用自定义配置文件路径（高级）
 
-如果需要在其他项目中使用，可以修改工具代码加载配置路径：
+当前脚本没有 `--config` 参数。如果需要从其他路径加载配置，可以修改工具代码中的 `dotenv` 加载路径：
 
 ```javascript
 // 在 scripts/diary-tag-batch-processor.js 开头修改
