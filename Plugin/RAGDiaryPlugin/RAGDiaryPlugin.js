@@ -19,6 +19,7 @@ const { chunkText } = require('../../TextChunker.js');
 const { getEmbeddingsBatch } = require('../../EmbeddingUtils.js');
 const { getCodexAdaptiveProfile } = require('../../modules/codexMemoryAdaptive');
 const { getTargetForDiaryName } = require('../../modules/codexMemoryConstants');
+const { findLastRealUserMessage } = require('../../modules/messageProcessor.js');
 
 
 const dayjs = require('dayjs');
@@ -1141,25 +1142,16 @@ class RAGDiaryPlugin {
             }
 
             // 2. 准备共享资源 (V3.3: 精准上下文提取)
-            // 始终寻找最后一个用户消息和最后一个AI消息，以避免注入污染。
-            // V3.4: 跳过特殊的 "系统邀请指令" user 消息
-            const lastUserMessageIndex = messages.findLastIndex(m => {
-                if (m.role !== 'user') {
-                    return false;
-                }
-                const content = this._extractTextFromContent(m.content);
-                return !content.startsWith('[系统邀请指令:]') && !content.trim().startsWith('[系统提示:]无内容');
+            // 始终寻找最后一个真实用户消息和最后一个AI消息，以避免注入污染。
+            const lastUserMessage = findLastRealUserMessage(messages, {
+                sanitize: this.sanitizeForEmbedding.bind(this)
             });
+            const lastUserMessageIndex = lastUserMessage.index;
             const lastAiMessageIndex = messages.findLastIndex(m => m.role === 'assistant');
             const assistantMessageCount = messages.filter(m => m.role === 'assistant').length;
 
-            let userContent = '';
+            let userContent = lastUserMessage.sanitizedContent || '';
             let aiContent = null;
-
-            if (lastUserMessageIndex > -1) {
-                const lastUserMessage = messages[lastUserMessageIndex];
-                userContent = this._extractTextFromContent(lastUserMessage.content);
-            }
 
             if (lastAiMessageIndex > -1) {
                 const lastAiMessage = messages[lastAiMessageIndex];
@@ -1172,14 +1164,8 @@ class RAGDiaryPlugin {
             const hasValidUserMessage = lastUserMessageIndex > -1 && !!userContent?.trim();
             const isFreshTimeConversationStart = hasValidUserMessage && assistantMessageCount < 3;
 
-            // V3.1: 在向量化之前，清理userContent和aiContent中的HTML标签和emoji
-            if (userContent) {
-                const originalUserContent = userContent;
-                userContent = this.sanitizeForEmbedding(userContent, 'user');
-                if (originalUserContent.length !== userContent.length) {
-                    console.log('[RAGDiaryPlugin] User content was sanitized (SystemNotification + HTML + Emoji removed).');
-                }
-            }
+            // V3.1: userContent 已由 findLastRealUserMessage 通过统一 sanitizer 净化；
+            // 这里仅保留 assistant 净化，避免独立系统通知空块遮蔽更早的真实用户查询。
             // 🌟 V6: 解析并剥离 AI 锚点 (Ghost Nodes)
             const anchorRegex = /\[@(!)?([^\]]+)\]/g;
             const hardTagNames = [];
