@@ -53,6 +53,105 @@ function replaceFirstAliasPlaceholder(text, alias, replacementText, prefix = '')
     });
 }
 
+const SYSTEM_PROMPT_PREFIX_REGEX = /^\s*\[系统提示[:：]\]/;
+const SYSTEM_NOTIFICATION_PREFIX_REGEX = /^\s*\[系统通知[:：]?\]/;
+const SYSTEM_EMPTY_PROMPT_PREFIX_REGEX = /^\s*\[系统提示[:：]\]无内容/;
+const SYSTEM_INVITATION_PREFIX_REGEX = /^\s*\[系统邀请指令[:：]\]/;
+const VCP_TOOL_PAYLOAD_PREFIX_REGEX = /^\s*<!-- VCP_TOOL_PAYLOAD -->/;
+
+function extractTextFromMessageContent(content) {
+    if (typeof content === 'string') return content;
+
+    if (Array.isArray(content)) {
+        return content
+            .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+            .map(part => part.text)
+            .join('\n')
+            .trim();
+    }
+
+    if (content && typeof content === 'object' && typeof content.text === 'string') {
+        return content.text;
+    }
+
+    return '';
+}
+
+function isSystemNotificationText(text) {
+    return SYSTEM_NOTIFICATION_PREFIX_REGEX.test(String(text || ''));
+}
+
+function isBetaSystemUserText(text) {
+    const normalizedText = String(text || '');
+    if (!normalizedText) return false;
+    if (isSystemNotificationText(normalizedText)) return false;
+    return SYSTEM_PROMPT_PREFIX_REGEX.test(normalizedText) ||
+        SYSTEM_INVITATION_PREFIX_REGEX.test(normalizedText);
+}
+
+function stripSystemNotificationBlocks(text) {
+    if (!text || typeof text !== 'string') return text || '';
+    return text.replace(/\[系统通知[:：]?\][\s\S]*?\[系统通知结束\]/g, '').trim();
+}
+
+function findLastRealUserMessage(messages, options = {}) {
+    if (!Array.isArray(messages)) {
+        return { index: -1, rawContent: '', sanitizedContent: '' };
+    }
+
+    const sanitizer = typeof options.sanitize === 'function' ? options.sanitize : null;
+    const skipBetaSystemUser = options.skipBetaSystemUser !== false;
+    const skipEmptySystemPrompt = options.skipEmptySystemPrompt !== false;
+    const skipSystemInvitation = options.skipSystemInvitation !== false;
+    const skipToolPayload = options.skipToolPayload !== false;
+
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+        if (!message || message.role !== 'user') continue;
+
+        const rawContent = extractTextFromMessageContent(message.content);
+        if (!rawContent || !rawContent.trim()) continue;
+
+        const trimmedRawContent = rawContent.trim();
+
+        if (skipEmptySystemPrompt && SYSTEM_EMPTY_PROMPT_PREFIX_REGEX.test(trimmedRawContent)) {
+            continue;
+        }
+
+        if (skipSystemInvitation && SYSTEM_INVITATION_PREFIX_REGEX.test(trimmedRawContent)) {
+            continue;
+        }
+
+        if (skipToolPayload && VCP_TOOL_PAYLOAD_PREFIX_REGEX.test(trimmedRawContent)) {
+            continue;
+        }
+
+        if (skipBetaSystemUser && isBetaSystemUserText(rawContent)) {
+            continue;
+        }
+
+        const sanitizedContent = sanitizer
+            ? sanitizer(rawContent, 'user')
+            : stripSystemNotificationBlocks(rawContent);
+        const normalizedSanitizedContent = typeof sanitizedContent === 'string'
+            ? sanitizedContent
+            : String(sanitizedContent || '');
+
+        if (!normalizedSanitizedContent || !normalizedSanitizedContent.trim()) {
+            continue;
+        }
+
+        return {
+            index,
+            message,
+            rawContent,
+            sanitizedContent: normalizedSanitizedContent.trim()
+        };
+    }
+
+    return { index: -1, rawContent: '', sanitizedContent: '' };
+}
+
 async function resolveAllVariables(text, model, role, context, processingStack = new Set()) {
     if (text == null) return '';
     let processedText = String(text);
@@ -670,5 +769,10 @@ module.exports = {
     // 导出主函数，并重命名旧函数以供内部调用
     replaceAgentVariables: resolveAllVariables,
     replaceOtherVariables,
-    replacePriorityVariables
+    replacePriorityVariables,
+    extractTextFromMessageContent,
+    isSystemNotificationText,
+    isBetaSystemUserText,
+    stripSystemNotificationBlocks,
+    findLastRealUserMessage
 };
