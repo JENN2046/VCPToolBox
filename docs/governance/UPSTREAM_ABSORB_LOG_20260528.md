@@ -200,3 +200,13 @@ git cherry -v origin/main upstream/main
 如果 `git cherry` 显示 `+`，必须先在本台账中查找是否已有
 `covered` / `defer` / `reject` / 专项归类记录。只有台账没有覆盖、文件范围
 仍小、且不触及核心边界时，才进入快速吸收。
+
+## 9. 2026-06-06 R13 剩余脚本迁移追加台账
+
+本节追加记录 R13 目录治理剩余脚本迁移专项。该专项仍不是 raw merge
+`567cf29b`，而是在本地保留根目录兼容入口、将真实实现迁入 `scripts/`，
+并修正迁移后的 repo root 路径解析。
+
+| 时间 | upstream 范围 | 本地分支 | 状态 | 验证记录 | 准确说明 |
+|------|---------------|----------|------|----------|----------|
+| 2026-06-06 | `567cf29b` remaining script relocations | `codex/r13-remaining-scripts-migration-20260606` | 本地验证通过，待提交/PR | `node --check` migrated JS scripts/wrappers; Python AST parse; `node --test tests\upstream-diff-closeout.test.js` 4 pass; `git diff --check` | 迁移 `diary-tag-batch-processor.js`、`rebuild_vector_indexes.js`、`rebuild_tag_index_custom.js`、`repair_database.js`、`sync_missing_tags.js`、`test-units.js`、`timeline整理器.py` 到 `scripts/`，根目录保留 wrapper；不执行真实写入/SSH/插件流程。 |

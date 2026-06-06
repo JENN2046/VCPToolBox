@@ -47,12 +47,12 @@
 
 | 文件路径 | 职责 | 入口函数 | 依赖关系 |
 |---------|------|---------|---------|
-| `rebuild_vector_indexes.js` | 重建向量索引 | main() | KnowledgeBaseManager |
-| `rebuild_tag_index_custom.js` | 重建标签索引 | main() | KnowledgeBaseManager |
-| `repair_database.js` | 数据库修复 | main() | better-sqlite3 |
+| `scripts/rebuild_vector_indexes.js` | 重建向量索引 | main() | KnowledgeBaseManager |
+| `scripts/rebuild_tag_index_custom.js` | 重建标签索引 | main() | KnowledgeBaseManager |
+| `scripts/repair_database.js` | 数据库修复 | main() | better-sqlite3 |
 | `reset_vectordb.js` | 重置向量数据库 | main() | fs |
-| `sync_missing_tags.js` | 同步缺失标签 | main() | KnowledgeBaseManager |
-| `diary-tag-batch-processor.js` | 日记标签批处理 | main() | - |
+| `scripts/sync_missing_tags.js` | 同步缺失标签 | main() | KnowledgeBaseManager |
+| `scripts/diary-tag-batch-processor.js` | 日记标签批处理 | main() | - |
 
 ### 1.4 Python 脚本
 
@@ -60,7 +60,7 @@
 |---------|------|---------|
 | `WinNotify.py` | Windows 系统通知 | win10toast |
 | `backup_vcp.py` | VCP 备份脚本 | - |
-| `timeline整理器.py` | 时间线整理工具 | - |
+| `scripts/timeline整理器.py` | 时间线整理工具 | - |
 
 ### 1.5 批处理脚本
 
@@ -448,7 +448,7 @@ Plugin/DailyNote/config.env
 | 文件路径 | 职责 |
 |---------|------|
 | `scripts/check_tagmemo_status.js` | TagMemo 状态只读检查 |
-| `test-units.js` | 单元测试 |
+| `scripts/test-units.js` | 单元测试 |
 | `scripts/example.test.js` | 示例测试 |
 
 ### 8.2 CI/CD 配置

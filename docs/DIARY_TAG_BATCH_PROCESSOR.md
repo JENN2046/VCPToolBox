@@ -2,7 +2,7 @@
 
 ## 概述
 
-`diary-tag-batch-processor.js` 是一个独立的命令行工具，用于批量处理日记文件的Tag标签。它可以：
+`scripts/diary-tag-batch-processor.js` 是一个独立的命令行工具，用于批量处理日记文件的Tag标签。根目录 `diary-tag-batch-processor.js` 保留为兼容入口。它可以：
 
 - ✅ **检查Tag格式** - 验证Tag是否符合VCP RAG系统规范
 - 🔧 **自动修复格式** - 修复中文标点、首行缩进等格式问题
@@ -63,7 +63,9 @@ npm install
 
 ```
 your-diary-tool/
-├── diary-tag-batch-processor.js    # 主程序
+├── scripts/
+│   └── diary-tag-batch-processor.js # 主程序
+├── diary-tag-batch-processor.js     # 兼容入口
 ├── package.json                     # 依赖配置（见下文）
 ├── config.env                       # API配置
 ├── TagMaster.txt                    # Tag生成提示词
@@ -79,9 +81,9 @@ your-diary-tool/
   "name": "vcp-diary-tag-processor",
   "version": "1.0.0",
   "description": "VCP日记批量Tag处理工具",
-  "main": "diary-tag-batch-processor.js",
+  "main": "scripts/diary-tag-batch-processor.js",
   "scripts": {
-    "start": "node diary-tag-batch-processor.js"
+    "start": "node scripts/diary-tag-batch-processor.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -122,7 +124,7 @@ TagModelPrompt=TagMaster.txt
 #### 步骤5：运行
 
 ```bash
-node diary-tag-batch-processor.js /path/to/your/diaries
+node scripts/diary-tag-batch-processor.js /path/to/your/diaries
 ```
 
 ### 主要依赖
@@ -150,7 +152,7 @@ TagModelPrompt=TagMaster.txt
 ### 基本语法
 
 ```bash
-node diary-tag-batch-processor.js [目标文件夹路径]
+node scripts/diary-tag-batch-processor.js [目标文件夹路径]
 ```
 
 ### 示例
@@ -158,23 +160,23 @@ node diary-tag-batch-processor.js [目标文件夹路径]
 #### 1. 处理dailynote目录
 
 ```bash
-node diary-tag-batch-processor.js ./dailynote
+node scripts/diary-tag-batch-processor.js ./dailynote
 ```
 
 #### 2. 处理指定路径的旧日记
 
 ```bash
 # Windows
-node diary-tag-batch-processor.js "C:\Users\Admin\Documents\旧日记"
+node scripts/diary-tag-batch-processor.js "C:\Users\Admin\Documents\旧日记"
 
 # Linux/Mac
-node diary-tag-batch-processor.js "/home/user/old-diaries"
+node scripts/diary-tag-batch-processor.js "/home/user/old-diaries"
 ```
 
 #### 3. 处理相对路径
 
 ```bash
-node diary-tag-batch-processor.js ../my-diaries
+node scripts/diary-tag-batch-processor.js ../my-diaries
 ```
 
 ## 运行示例
@@ -344,7 +346,7 @@ TagModelPrompt=MyCustomTagPrompt.txt
 也可以在代码中导入使用：
 
 ```javascript
-const processor = require('./diary-tag-batch-processor.js');
+const processor = require('./scripts/diary-tag-batch-processor.js');
 // 自定义使用...
 ```
 
@@ -412,7 +414,7 @@ DebugMode=true
 
 - `Plugin/DailyNoteWrite/` - 实时Tag处理（写入时）
 - `RAGDiaryPlugin/` - Tag检索和RAG系统
-- `diary-tag-batch-processor.js` - 批量Tag处理（本工具）
+- `scripts/diary-tag-batch-processor.js` - 批量Tag处理（本工具）
 
 ---
 
@@ -430,10 +432,10 @@ DebugMode=true
 # ============================================================
 #
 # 用途：为日记批量打Tag工具提供配置
-# 位置：可放在任意目录，通过 --config 参数指定
+# 位置：保存为 VCP 根目录 config.env 后自动加载
 #
 # 使用示例：
-#   node diary-tag-batch-processor.js --config ./tag-processor-config.env ./my-diaries
+#   node scripts/diary-tag-batch-processor.js ./my-diaries
 #
 # ============================================================
 
@@ -468,9 +470,9 @@ TagModelMaxTokens=40000
 # 模型最大输出Token限制
 TagModelMaxOutPutTokens=30000
 
-# Tag生成提示词文件路径（相对于工具所在目录）
-# 默认使用 Plugin/DailyNoteWrite/TagMaster.txt
-TagModelPrompt=TagMaster.txt
+# Tag生成提示词文件路径（相对于项目根目录）
+# 推荐复用 DailyNoteWrite 的提示词
+TagModelPrompt=Plugin/DailyNoteWrite/TagMaster.txt
 
 
 # ------------------------------------------------------------
@@ -528,15 +530,15 @@ DAILY_NOTE_EXTENSION=txt
 
 ```bash
 # 配置会自动加载
-node diary-tag-batch-processor.js ./my-diaries
+node scripts/diary-tag-batch-processor.js ./my-diaries
 ```
 
-#### 方法2：使用自定义路径（高级）
+#### 方法2：使用自定义配置文件路径（高级）
 
-如果需要在其他项目中使用，可以修改工具代码加载配置路径：
+当前脚本没有 `--config` 参数。如果需要从其他路径加载配置，可以修改工具代码中的 `dotenv` 加载路径：
 
 ```javascript
-// 在 diary-tag-batch-processor.js 开头修改
+// 在 scripts/diary-tag-batch-processor.js 开头修改
 require('dotenv').config({ path: '/path/to/your/tag-processor-config.env' });
 ```
 

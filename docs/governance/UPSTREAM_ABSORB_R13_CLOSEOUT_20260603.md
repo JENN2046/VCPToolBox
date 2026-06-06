@@ -4,6 +4,8 @@
 
 本批只做台账更新，不修改运行逻辑。
 
+> 2026-06-06 追加：R13 剩余脚本迁移已另开专项处理。根目录保留兼容 wrapper，规范实现位置迁入 `scripts/`，并只做静态验证，不执行真实数据库、向量索引、标签同步、SSH、插件或用户文件写入流程。
+
 ## 1. 基线
 
 | 项目 | 值 |
@@ -48,7 +50,7 @@ rg -n "diary-tag-batch-processor\.js|rebuild_tag_index_custom\.js|rebuild_vector
 | raw cherry-pick / raw merge `567cf29b` | rejected | 该提交混合文档移动、脚本移动、删除文档和换行差异；会一次性改变用户命令入口并删除兼容文件。 |
 | 一次性移动所有剩余脚本到 `scripts/` | rejected | 剩余脚本包含 package/bin 入口、运维命令、数据库/索引写入、SSH/插件执行测试和用户文件输出脚本，不属于安全目录整理。 |
 
-## 4. R13 延后项
+## 4. R13 原延后项（2026-06-03）
 
 | 剩余项 | 结论 | 说明 |
 |--------|------|------|
@@ -66,6 +68,18 @@ rg -n "diary-tag-batch-processor\.js|rebuild_tag_index_custom\.js|rebuild_vector
 |------|----------|------|
 | `emergency_stop_frontend_guide.md => docs/emergency_stop_frontend_guide.md` | `R097` | R13A 已以本地内容保持方式迁移，忽略 CRLF/行尾差异后无可吸收功能差异。 |
 | `timeline整理器.py => scripts/timeline整理器.py` | `R097` | 忽略 CRLF/行尾差异后无可吸收功能差异；位置迁移因入口兼容和写文件风险延后。 |
+
+## 5.1 2026-06-06 追加迁移专项
+
+| 剩余项 | 结论 | 兼容策略 | 验证边界 |
+|--------|------|----------|----------|
+| `diary-tag-batch-processor.js => scripts/diary-tag-batch-processor.js` | absorbed | 根目录保留 wrapper；`diary-tag-processor-package.json` 改指 `scripts/`；文档命令改为规范入口。 | 只做 `node --check` 与 wrapper 静态测试；不调用 AI API，不写日记文件。 |
+| `rebuild_vector_indexes.js => scripts/rebuild_vector_indexes.js` | absorbed | 根目录保留 wrapper；脚本内 `rust-vexus-lite` 与 `VectorStore` 改按 repo root 解析。 | 只做 `node --check`；不删除或重建 `.usearch`。 |
+| `rebuild_tag_index_custom.js => scripts/rebuild_tag_index_custom.js` | absorbed | 根目录保留 wrapper；`config.env`、`rust-vexus-lite` 与 `VectorStore` 改按 repo root 解析。 | 只做 `node --check`；不改写 SQLite，不重建 tag index。 |
+| `repair_database.js => scripts/repair_database.js` | absorbed | 根目录保留 wrapper；`rust-vexus-lite` 与 `VectorStore` 改按 repo root 解析。 | 只做 `node --check`；不执行数据库修复。 |
+| `sync_missing_tags.js => scripts/sync_missing_tags.js` | absorbed | 根目录保留 wrapper；`config.env`、`dailynote` 与 `VectorStore` 改按 repo root 解析。 | 只做 `node --check`；不生成同步文件，不触发 embedding。 |
+| `test-units.js => scripts/test-units.js` | absorbed | 根目录保留 wrapper；`modules/`、`Plugin/` 与 child process `cwd` 改按 repo root 解析。 | 只做 `node --check`；不执行真实 SSH、远端命令或插件端到端。 |
+| `timeline整理器.py => scripts/timeline整理器.py` | absorbed | 根目录保留 Python wrapper；规范实现位置迁入 `scripts/`。 | 只做 Python AST parse；不创建 `timeline/` 或 `timeline已整理/`，不写输出文件。 |
 
 ## 6. 明确排除
 
@@ -85,18 +99,18 @@ rg -n "diary-tag-batch-processor\.js|rebuild_tag_index_custom\.js|rebuild_vector
 | 低风险辅助脚本迁移 | 已吸收并合并到 `main` |
 | 日记语义分类脚本迁移 | 已吸收并合并到 `main` |
 | 根目录兼容 README | 保留，拒绝删除 |
-| package/bin 或运维入口脚本迁移 | 延后 |
-| 数据库/索引/标签写入脚本迁移 | 延后 |
-| SSH/插件执行测试迁移 | 延后 |
-| timeline 工具迁移 | 延后 |
+| package/bin 或运维入口脚本迁移 | 已通过 wrapper/package/doc 兼容策略迁移 |
+| 数据库/索引/标签写入脚本迁移 | 已迁移位置；真实写入验证仍排除 |
+| SSH/插件执行测试迁移 | 已迁移位置；真实 SSH/插件执行验证仍排除 |
+| timeline 工具迁移 | 已迁移位置；真实文件输出验证仍排除 |
 
-R13 结论：`567cf29b` 的目录整理价值已按稳定线吸收安全子集；剩余内容不再适合继续拆“安全目录整理”小包。R13 可以收尾。
+R13 结论：`567cf29b` 的目录整理价值已按稳定线吸收；剩余高风险脚本已在 2026-06-06 以兼容 wrapper 和静态验证策略补齐。R13 可以收尾。
 
-## 8. 后续建议
+## 8. 后续处理策略
 
-如未来仍要推进脚本目录治理，应另开专项而非继续 R13：
+2026-06-06 追加迁移已按以下策略推进脚本目录治理：
 
 1. 先设计 root wrapper 或 package scripts 兼容策略。
-2. 先更新运维文档、知识条目和命令示例。
+2. 先更新运维文档和命令示例；知识条目因根命令兼容保留不动。
 3. 对数据库/向量/标签脚本只做静态检查或 fake workspace dry-run，不执行真实写入。
-4. 对 `test-units.js` 先拆除真实 SSH/插件执行依赖，再考虑迁移。
+4. 对 `test-units.js` 只修正 repo root 路径解析，不执行真实 SSH/插件端到端。
