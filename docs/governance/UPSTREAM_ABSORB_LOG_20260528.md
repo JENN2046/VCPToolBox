@@ -146,24 +146,24 @@ git diff --name-status main..upstream/main
 | 2026-06-06 | OneRing hot-config local design | #160 / `7ae2bb44` | 已吸收并已推送 | 文档 diff check；PR CI | 定义 hot-config 策略：plugin semantics first、runtime config ownership second、admin write API third、frontend UI last。 |
 | 2026-06-06 | OneRing plugin package decision | #161 / `832e9552` | 已吸收并已推送 | 文档 diff check；PR CI | 决定不 raw-import upstream `Plugin/OneRing/*`，继续本地模块化实现；上游文件只作参考。 |
 | 2026-06-06 | OneRing local core helpers | #162 / `b2620d94` | 已吸收并已推送 | `node --check` 新增文件；OneRing targeted suite 58 pass；`git diff --check`；PR CI | 新增 `modules/oneringHotConfig.js`、`modules/oneringStore.js` 与测试。store 要求显式 temp/baseDir，未接 `Plugin/OneRing/*`、admin route、frontend、handlers 或 `dist`。 |
+| 2026-06-06 | OneRing thin plugin wrapper | `codex/onering-thin-wrapper-20260606` | 本地吸收中 | `node --check Plugin\OneRing\OneRing.js`；OneRing targeted suite 34 pass；`git diff --check` | 新增本地薄插件壳、manifest、config example 与 wrapper tests。默认关闭，且要求 `ONERING_ENABLED=true` 与 hot config `enabled=true` 双开关才创建 store；不 raw-import upstream `OneRingDB/Fuzzy/Snapshot`，不接 admin write API、frontend、`dist` 或默认 `preprocessor_order.json`。 |
 
 当前仍不直接吸收的 OneRing upstream 内容：
 
 | 内容 | 当前状态 | 原因 |
 |------|----------|------|
-| upstream `Plugin/OneRing/*` 整包 | 不 raw-import | 本地已决定继续模块化实现；整包导入会混入 SQLite、manifest、config、snapshot、fuzzy、context patching 等多层行为。 |
+| upstream `Plugin/OneRing/*` 整包 | 不 raw-import | 本地已决定继续模块化实现；已只吸收 thin wrapper 子集。整包导入仍会混入 snapshot、fuzzy diff 私有实现、context patching 等多层行为。 |
 | `Plugin/OneRing/OneRingConfig.json` | 不提交 | operator-owned runtime state；不得作为源码默认提交。 |
 | `routes/admin/finalContext.js` 的 `PUT /admin_api/onering-config` | 暂缓 | admin 写接口需单独路径收束、权限、回滚和缺失插件目录测试。 |
 | `AdminPanel-Vue` OneRing config modal/API/types | 暂缓 | 必须等 backend write contract 与 plugin config 语义存在后再做 source-only UI 包。 |
 | `AdminPanel-Vue/dist/*` | 不吸收 | 生成产物，不进入 source-only 吸收。 |
-| `preprocessor_order.json` 默认加入 `OneRing` | 暂缓 | OneRing plugin wrapper 尚未接入，运行顺序必须单独设计和测试。 |
+| `preprocessor_order.json` 默认加入 `OneRing` | 暂缓 | thin wrapper 已默认关闭；显式运行顺序仍必须单独设计和测试，不能跟随 upstream 默认文件。 |
 
 下一步建议：
 
-1. 做 thin plugin wrapper 设计/实现包。
-2. wrapper 只调用本地 `modules/onering*.js`。
-3. 默认关闭或 record-only。
-4. 继续不接 admin write API、frontend UI、`dist` 或默认 `preprocessor_order.json`。
+1. 继续审查 thin wrapper 的 PR/CI 结果。
+2. 后续若继续 OneRing，可做 runtime config loader/watcher 小包，但仍不得提交真实 `OneRingConfig.json`。
+3. admin write API、frontend UI、`dist` 与默认 `preprocessor_order.json` 继续单独暂缓。
 
 ## 8. 2026-06-06 快速吸收追加台账
 
