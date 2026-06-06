@@ -72,6 +72,7 @@ async function main() {
             const industry = data.industry;
 
             const authInfoLevel = data.auth_info_level;
+            const fullContent = parseBoolean(data.full_content ?? data.fullContent, !snippetsOnly);
 
             if (!query) {
                 throw new Error("Missing required argument: query");
@@ -133,7 +134,7 @@ async function main() {
                     hasFilter = true;
 
                 }
-                if (!snippetsOnly) {
+                if (!snippetsOnly || fullContent) {
                     filter.NeedContent = true;
                     hasFilter = true;
                 }
@@ -256,7 +257,7 @@ async function main() {
                         const content = item.Content || '';
                         const summary = item.Summary || '';
                         const snippet = item.Snippet || '';
-                        const displayText = content || summary || snippet;
+                        const displayText = fullContent ? (content || summary || snippet) : (summary || snippet || content);
                         const publishTime = item.PublishTime || '';
                         const siteName = item.SiteName || '';
                         const authInfo = item.AuthInfoDes || '';
@@ -292,7 +293,11 @@ async function main() {
                 const cleanData = JSON.parse(JSON.stringify(apiResult));
                 if (cleanData.WebResults) {
                     cleanData.WebResults = cleanData.WebResults.map(item => {
-                        const { LogoUrl, ...rest } = item;
+                        if (fullContent) {
+                            const { LogoUrl, Summary, Snippet, ...rest } = item;
+                            return rest;
+                        }
+                        const { LogoUrl, Content, ...rest } = item;
                         return rest;
                     });
                 }

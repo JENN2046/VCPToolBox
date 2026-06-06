@@ -12,6 +12,42 @@
 - 本地和远端协作时，默认以 `main` 作为最新主线基准。
 - `main` 的职责是保持项目当前最完整状态；它不是稳定生产部署线。
 
+## 作者上游快速吸收策略
+
+`main` 对作者上游采用快速吸收策略。默认目标是尽快判断并吸收可合并内容，而不是把每个 upstream commit 都拆成严格治理 preflight。
+
+默认判断方式：
+
+1. 先快速扫描 upstream diff 的文件路径和行为影响。
+2. 只要没有触及核心边界，默认进入快速合并/批量 cherry-pick/批量手工吸收路径。
+3. 只对触及核心边界的变更进入严格 preflight、小包审查和长治理记录。
+4. 每批快速吸收只需要留下批次摘要、排除项、验证结果和风险说明；不要求为每个非核心 commit 写独立长文档。
+
+核心边界包括：
+
+- `server.js`, `Plugin.js`, `WebSocketServer.js` 等主入口、插件执行分发、跨节点/桥接执行链路。
+- shell/file/bridge 外写、工具执行、自动执行、人类审批绕过、权限或认证逻辑。
+- `.env`, `config.env`, credentials, token, auth material, secret-like files。
+- `state/`, `cache/`, `DebugLog/`, `image/`, 数据库、向量索引、runtime data、operator data。
+- Rust `.node` 二进制、Docker、依赖/安装链、构建基础设施。
+- 默认公网暴露、生产服务、真实外部写入、不可快速回滚的迁移。
+- 大规模架构改造、跨模块执行语义变化，或无法用局部验证说明风险的改动。
+
+非核心变更默认快速扫描可合并性，例如：
+
+- docs、README、示例文档、治理台账。
+- 普通前端源码和 UI 改进，但默认排除 `AdminPanel-Vue/dist/*` 等构建产物，除非明确做 release/build 包。
+- 普通 bugfix、helper/module 局部兼容修复、测试补充。
+- 不改变默认危险行为、不扩大权限、不触发外部写入的插件文案、manifest、配置样例或局部逻辑。
+
+快速吸收仍必须保留这些底线：
+
+- 不吸收真实 secret、runtime/cache/state/log/image/operator data。
+- 不默认启用公网、bridge、shell/file 外写、生产服务或自动执行能力。
+- 不把生成物、构建产物或本地运行态混入源码吸收。
+- 有冲突时优先选择最小可回滚解决方案；无法判断是否触及核心边界时才升级到严格 preflight。
+- `prod/stable` 不适用快速吸收策略，仍按稳定线保护规则处理。
+
 `prod/stable` 是本项目稳定生产使用的稳定生产线分支，必须永久保留。
 
 - 永远不要删除本地或远端 `prod/stable`。

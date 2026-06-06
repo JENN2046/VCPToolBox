@@ -1053,7 +1053,33 @@ async function main() {
             const args = JSON.parse(inputData);
             const { command, ...parameters } = args;
 
-            switch (command) {
+            // 鲁棒性兼容：AI 有时会遗漏 command。
+            // 参数形态足够明确时，优先按参数形态纠正：
+            // - 含 target + replace 时，视为 update
+            // - 含 content/contentText/Content 时，视为 create
+            // 显式但未知的 command 继续报错，避免意外触发本地写入。
+            const rawCommand = typeof command === 'string' ? command.trim().toLowerCase() : command;
+            const isCommandMissing = rawCommand === undefined || rawCommand === null || rawCommand === '';
+            const hasCreateContent =
+                typeof parameters.contentText === 'string' ||
+                typeof parameters.Content === 'string' ||
+                typeof parameters.content === 'string';
+            const hasUpdateTargetReplace =
+                typeof parameters.target === 'string' &&
+                typeof parameters.replace === 'string';
+
+            let normalizedCommand = rawCommand;
+            if (isCommandMissing) {
+                if (hasUpdateTargetReplace) {
+                    normalizedCommand = 'update';
+                    debugLog(`Command is missing; inferred 'update' from target/replace arguments.`);
+                } else if (hasCreateContent) {
+                    normalizedCommand = 'create';
+                    debugLog(`Command is missing; inferred 'create' from content arguments.`);
+                }
+            }
+
+            switch (normalizedCommand) {
                 case 'create':
                     result = await handleCreateCommand(parameters);
                     break;
