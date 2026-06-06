@@ -53,26 +53,26 @@ test('chatCompletionHandler keeps current local pipeline order before Package E 
   assert.equal(source.includes('applyDetectorsToMessages(processedMessages'), false);
 });
 
-test('messageProcessor keeps Detector and SuperDetector inside replaceOtherVariables', () => {
+test('messageProcessor keeps Detector and SuperDetector attached to replaceOtherVariables', () => {
   const source = readSource('modules/messageProcessor.js');
 
   assertSourceOrder(source, [
-    'async function replaceOtherVariables(text, model, role, context)',
-    'const { pluginManager, cachedEmojiLists, detectors, superDetectors, DEBUG_MODE } = context',
+    'function applyDetectorRules(text, role, context = {})',
     'for (const rule of detectors)',
     'for (const rule of superDetectors)',
+    'async function replaceOtherVariables(text, model, role, context)',
+    'processedText = applyDetectorRules(processedText, role, context)',
     'const asyncResultPlaceholderRegex',
     'module.exports ='
   ]);
 
   const replaceStart = markerIndex(source, 'async function replaceOtherVariables(text, model, role, context)');
   const exportStart = markerIndex(source, 'module.exports =');
-  const detectorLoop = markerIndex(source, 'for (const rule of detectors)');
-  const superDetectorLoop = markerIndex(source, 'for (const rule of superDetectors)');
+  const detectorHelperCall = markerIndex(source, 'processedText = applyDetectorRules(processedText, role, context)');
+  const asyncPlaceholderStart = markerIndex(source, 'const asyncResultPlaceholderRegex');
 
-  assert.ok(detectorLoop > replaceStart && detectorLoop < exportStart);
-  assert.ok(superDetectorLoop > replaceStart && superDetectorLoop < exportStart);
-  assert.equal(source.includes('function applyDetectorRules'), false);
+  assert.ok(detectorHelperCall > replaceStart && detectorHelperCall < exportStart);
+  assert.ok(detectorHelperCall < asyncPlaceholderStart);
   assert.equal(source.includes('function applyDetectorsToMessages'), false);
 });
 
