@@ -12,6 +12,31 @@
 - 本地和远端协作时，默认以 `main` 作为最新主线基准。
 - `main` 的职责是保持项目当前最完整状态；它不是稳定生产部署线。
 
+## PR 目标仓库规则
+
+除非用户在当前回合明确指定并授权作者仓库，任何 PR 都必须开到用户仓库：
+
+```text
+JENN2046/VCPToolBox
+```
+
+禁止默认或误开 PR 到作者上游仓库：
+
+```text
+lioensky/VCPToolBox
+```
+
+执行 push / PR 流程时必须显式指定目标仓库，例如：
+
+```powershell
+gh pr create --repo JENN2046/VCPToolBox --base main --head <branch>
+```
+
+不要依赖 `gh repo view` 或当前 remote 推断 PR 目标；本仓库同时配置了
+`origin` 和 `upstream`，工具可能把作者仓库识别为默认仓库。只有当用户
+明确说要向 `lioensky/VCPToolBox` 开 PR 时，才允许使用作者仓库作为 PR
+目标。
+
 ## 作者上游快速吸收策略
 
 `main` 对作者上游采用快速吸收策略。默认目标是尽快判断并吸收可合并内容，而不是把每个 upstream commit 都拆成严格治理 preflight。
