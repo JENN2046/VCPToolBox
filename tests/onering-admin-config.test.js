@@ -140,6 +140,16 @@ test('readOneRingAdminConfig reports invalid JSON with safe defaults', async () 
   });
 });
 
+test('readOneRingAdminConfig surfaces non-syntax read failures', async () => {
+  const { projectRoot, configPath } = await createTempProjectRoot();
+  await fs.mkdir(configPath);
+
+  await assert.rejects(
+    readOneRingAdminConfig({ projectRoot }),
+    { code: 'EISDIR' },
+  );
+});
+
 test('validateOneRingAdminConfigPayload rejects non-object payloads', () => {
   assert.deepEqual(validateOneRingAdminConfigPayload(null), {
     valid: false,
@@ -219,4 +229,19 @@ test('OneRing admin config route rejects unknown keys without saving', async () 
   });
 
   await assert.rejects(fs.stat(configPath), { code: 'ENOENT' });
+});
+
+test('OneRing admin config route returns 500 on config read failures', async () => {
+  const { projectRoot, configPath } = await createTempProjectRoot();
+  await fs.mkdir(configPath);
+
+  await withFinalContextApp(projectRoot, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/onering-config`);
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), {
+      error: 'Failed to read OneRing config',
+      details: 'OneRing config path could not be resolved.',
+    });
+  });
 });

@@ -97,12 +97,16 @@ async function readOneRingAdminConfig(options = {}) {
       };
     }
 
-    return {
-      config: normalizeOneRingHotConfig(DEFAULT_ONERING_HOT_CONFIG),
-      exists: false,
-      path: paths.relativePath,
-      error: error instanceof SyntaxError ? 'invalid-json' : 'read-error',
-    };
+    if (error instanceof SyntaxError) {
+      return {
+        config: normalizeOneRingHotConfig(DEFAULT_ONERING_HOT_CONFIG),
+        exists: false,
+        path: paths.relativePath,
+        error: 'invalid-json',
+      };
+    }
+
+    throw error;
   }
 }
 
