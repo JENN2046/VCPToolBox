@@ -25,12 +25,26 @@ function dispatchOneRingAssistantRecordCandidate(context, candidate, {
 
   const metadata = buildOneRingDispatchMetadata(context, { phaseLabel });
   const recorder = resolveOneRingRecorder(context, metadata);
-  if (!recorder) {
+  const shouldPrepareWrapperPostTurn = !metadata.postTurn && canPrepareOneRingWrapperPostTurn(context);
+  if (!recorder && !shouldPrepareWrapperPostTurn) {
     return { ...candidate, dispatched: false };
   }
 
   Promise.resolve()
-    .then(() => recorder(candidate, metadata))
+    .then(async () => {
+      if (shouldPrepareWrapperPostTurn) {
+        await prepareOneRingWrapperPostTurn(context, metadata);
+      }
+
+      const resolvedRecorder = shouldPrepareWrapperPostTurn
+        ? resolveOneRingRecorder(context, metadata)
+        : recorder || resolveOneRingRecorder(context, metadata);
+      if (!resolvedRecorder) {
+        return { recorded: false, reason: 'missing-onering-recorder' };
+      }
+
+      return resolvedRecorder(candidate, metadata);
+    })
     .then(recordResult => completeOneRingPostTurnAfterRecord(
       context,
       metadata,
@@ -147,6 +161,54 @@ function resolveOneRingRecorder(context, metadata = null) {
   }
 
   return null;
+}
+
+function canPrepareOneRingWrapperPostTurn(context) {
+  if (hasExplicitOneRingRecorderHook(context)) {
+    return false;
+  }
+
+  const oneRingModule = context?.pluginManager?.messagePreprocessors?.get?.('OneRing');
+  if (typeof oneRingModule?._isEffectiveEnabled === 'function' && !oneRingModule._isEffectiveEnabled()) {
+    return false;
+  }
+
+  return Boolean(
+    oneRingModule
+    && typeof oneRingModule.preparePostTurnFromMessages === 'function'
+    && typeof oneRingModule.recordAIResponse === 'function'
+  );
+}
+
+async function prepareOneRingWrapperPostTurn(context, metadata) {
+  if (metadata?.postTurn) {
+    return metadata.postTurn;
+  }
+
+  const oneRingModule = context?.pluginManager?.messagePreprocessors?.get?.('OneRing');
+  if (!oneRingModule || typeof oneRingModule.preparePostTurnFromMessages !== 'function') {
+    return null;
+  }
+
+  let result = null;
+  try {
+    result = await oneRingModule.preparePostTurnFromMessages(metadata?.messages);
+  } catch {
+    return null;
+  }
+
+  if (result?.prepared === true && result.postTurn) {
+    metadata.postTurn = result.postTurn;
+    context.oneRingPostTurn = result.postTurn;
+    return result.postTurn;
+  }
+
+  return null;
+}
+
+function hasExplicitOneRingRecorderHook(context) {
+  return typeof context?.handleOneRingAssistantRecordCandidate === 'function'
+    || typeof context?.onOneRingAssistantRecordCandidate === 'function';
 }
 
 function buildOneRingWrapperMeta(metadata) {
