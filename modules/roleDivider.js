@@ -36,6 +36,34 @@ function normalizeForIgnore(text) {
 }
 
 /**
+ * Copy array-level metadata attached by preprocessors when this module returns a new array.
+ */
+function copyArrayMetadata(source, target) {
+    if (!Array.isArray(source) || !Array.isArray(target)) {
+        return target;
+    }
+
+    for (const key of Object.getOwnPropertyNames(source)) {
+        if (/^(?:length|\d+)$/.test(key)) {
+            continue;
+        }
+
+        const descriptor = Object.getOwnPropertyDescriptor(source, key);
+        if (!descriptor) {
+            continue;
+        }
+
+        try {
+            Object.defineProperty(target, key, descriptor);
+        } catch (error) {
+            // Metadata preservation is best-effort and must not affect role splitting.
+        }
+    }
+
+    return target;
+}
+
+/**
  * Process a single message content and split it into multiple messages if tags are present.
  * @param {Object} message - The original message object {role, content}.
  * @param {Object} options - Configuration options.
@@ -373,7 +401,7 @@ function process(messages, { ignoreList = [], switches = { system: true, assista
         const processed = processSingleMessage(msg, { ignoreList, switches, scanSwitches, removeDisabledTags });
         newMessages.push(...processed);
     }
-    return newMessages;
+    return copyArrayMetadata(messages, newMessages);
 }
 
 module.exports = {

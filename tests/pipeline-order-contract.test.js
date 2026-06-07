@@ -5,6 +5,7 @@ const path = require('node:path');
 const http = require('node:http');
 
 const ChatCompletionHandler = require('../modules/chatCompletionHandler.js');
+const roleDivider = require('../modules/roleDivider.js');
 
 const repoRoot = path.join(__dirname, '..');
 
@@ -246,6 +247,35 @@ test('messageProcessor keeps Detector and SuperDetector attached to replaceOther
   assert.ok(detectorHelperCall < asyncPlaceholderStart);
   assert.ok(detectorPhaseGuard > replaceStart && detectorPhaseGuard < detectorHelperCall);
   assert.ok(messageHelperStart < replaceStart);
+});
+
+test('roleDivider preserves non-enumerable array metadata when returning processed messages', () => {
+  const messages = [
+    { role: 'system', content: 'system' },
+    {
+      role: 'user',
+      content: 'hello <<<[ROLE_DIVIDE_ASSISTANT]>>>side<<<[END_ROLE_DIVIDE_ASSISTANT]>>>'
+    }
+  ];
+  const metadata = { agentName: 'Nova', turnId: 'turn-1' };
+
+  Object.defineProperty(messages, '__oneRingMeta', {
+    value: metadata,
+    enumerable: false,
+    configurable: true,
+    writable: false
+  });
+
+  const processed = roleDivider.process(messages);
+
+  assert.notEqual(processed, messages);
+  assert.deepEqual(processed.map(message => message.role), ['system', 'user', 'assistant']);
+  assert.equal(processed.__oneRingMeta, metadata);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(processed, '__oneRingMeta'), false);
+
+  const descriptor = Object.getOwnPropertyDescriptor(processed, '__oneRingMeta');
+  assert.equal(descriptor.configurable, true);
+  assert.equal(descriptor.writable, false);
 });
 
 test('Package E keeps legacy and experimental orders distinct in source', () => {
