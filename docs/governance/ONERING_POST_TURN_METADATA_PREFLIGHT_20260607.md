@@ -24,7 +24,8 @@ Local OneRing handler integration is still intentionally small:
 - `modules/oneringHandlerAdapter.js` builds visible assistant record candidates
   only after explicit stream / non-stream success.
 - `modules/oneringHandlerWiring.js` dispatches a successful candidate with
-  metadata containing `phaseLabel` and `originalBody.messages`.
+  metadata containing `phaseLabel` and `messages`; the `messages` value is
+  sourced from `context.originalBody.messages`.
 - `Plugin/OneRing/OneRing.js` currently supports:
   - `recordAIResponseFromMessages(messages, assistantContent)`;
   - `recordAIResponse(meta, assistantContent)`.
