@@ -57,7 +57,41 @@ test('replaceOtherVariables still applies detector rules before async placeholde
   assert.equal(result.includes('detector-should-not-run-for-user'), false);
 });
 
-test('Package E message-level detector helper is not exported or wired yet', () => {
+test('applyDetectorsToMessages rewrites string and text parts without mutating inputs', () => {
+  const input = [
+    {
+      role: 'system',
+      content: [
+        { type: 'text', text: 'system-only all-role' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } }
+      ]
+    },
+    {
+      role: 'user',
+      content: 'system-only all-role'
+    },
+    null,
+    'raw-message'
+  ];
+  const original = JSON.parse(JSON.stringify(input));
+
+  const output = messageProcessor.applyDetectorsToMessages(input, {
+    detectors: [{ detector: 'system-only', output: 'detected' }],
+    superDetectors: [{ detector: 'all-role', output: 'global' }]
+  });
+
+  assert.deepEqual(input, original);
+  assert.notEqual(output, input);
+  assert.notEqual(output[0], input[0]);
+  assert.notEqual(output[0].content[0], input[0].content[0]);
+  assert.equal(output[0].content[0].text, 'detected global');
+  assert.deepEqual(output[0].content[1], original[0].content[1]);
+  assert.equal(output[1].content, 'system-only global');
+  assert.equal(output[2], null);
+  assert.equal(output[3], 'raw-message');
+});
+
+test('Package E message-level detector helper is exported but not wired to handlers yet', () => {
   assert.equal(typeof messageProcessor.applyDetectorRules, 'function');
-  assert.equal(Object.prototype.hasOwnProperty.call(messageProcessor, 'applyDetectorsToMessages'), false);
+  assert.equal(typeof messageProcessor.applyDetectorsToMessages, 'function');
 });

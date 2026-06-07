@@ -60,6 +60,7 @@ test('messageProcessor keeps Detector and SuperDetector attached to replaceOther
     'function applyDetectorRules(text, role, context = {})',
     'for (const rule of detectors)',
     'for (const rule of superDetectors)',
+    'function applyDetectorsToMessages(messages, context = {})',
     'async function replaceOtherVariables(text, model, role, context)',
     'processedText = applyDetectorRules(processedText, role, context)',
     'const asyncResultPlaceholderRegex',
@@ -70,10 +71,11 @@ test('messageProcessor keeps Detector and SuperDetector attached to replaceOther
   const exportStart = markerIndex(source, 'module.exports =');
   const detectorHelperCall = markerIndex(source, 'processedText = applyDetectorRules(processedText, role, context)');
   const asyncPlaceholderStart = markerIndex(source, 'const asyncResultPlaceholderRegex');
+  const messageHelperStart = markerIndex(source, 'function applyDetectorsToMessages(messages, context = {})');
 
   assert.ok(detectorHelperCall > replaceStart && detectorHelperCall < exportStart);
   assert.ok(detectorHelperCall < asyncPlaceholderStart);
-  assert.equal(source.includes('function applyDetectorsToMessages'), false);
+  assert.ok(messageHelperStart < replaceStart);
 });
 
 test('Package E target order is documented but not active in runtime source', () => {
@@ -108,5 +110,6 @@ test('Package E target order is documented but not active in runtime source', ()
 
   assert.equal(handlerSource.includes('LogAfterDetectors'), false);
   assert.equal(handlerSource.includes('LogAfterFinalRoleDivider'), false);
-  assert.equal(processorSource.includes('applyDetectorsToMessages'), false);
+  assert.equal(handlerSource.includes('applyDetectorsToMessages'), false);
+  assert.equal(processorSource.includes('function applyDetectorsToMessages'), true);
 });
