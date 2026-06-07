@@ -4,6 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
+const {
+  normalizePostTurnMetadata,
+} = require('./oneringPostTurnMetadata');
+
 const DEFAULT_STORE_FILE_NAME = 'onering.sqlite';
 const DEFAULT_MAX_RECORDS = 100;
 const VALID_ROLES = new Set(['user', 'assistant']);
@@ -22,6 +26,7 @@ class OneRingStore {
     this.maxRecords = normalizeMaxRecords(options.maxRecords, DEFAULT_MAX_RECORDS);
     this.db = new Database(dbPath);
     this.closed = false;
+    this._enableForeignKeys();
     this._initializeSchema();
   }
 
@@ -93,6 +98,216 @@ class OneRingStore {
     return row.count;
   }
 
+  upsertPostTurn(metadata) {
+    this._assertOpen();
+
+    const normalized = normalizePostTurnMetadataOrThrow(metadata);
+    if (normalized.status !== 'pending') {
+      throw new TypeError('OneRing post-turn upsert requires pending metadata');
+    }
+
+    this.db.prepare(`
+      INSERT INTO post_turns (
+        turn_id,
+        agent_name,
+        frontend_source,
+        request_hash,
+        request_block_count,
+        status,
+        response_message_id,
+        response_content_hash,
+        created_at,
+        updated_at,
+        completed_at,
+        aborted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(turn_id) DO UPDATE SET
+        request_hash = excluded.request_hash,
+        request_block_count = excluded.request_block_count,
+        updated_at = excluded.updated_at
+      WHERE post_turns.status = 'pending'
+        AND post_turns.agent_name = excluded.agent_name
+        AND post_turns.frontend_source = excluded.frontend_source
+    `).run(
+      normalized.turnId,
+      normalized.agentName,
+      normalized.frontendSource,
+      normalized.requestHash,
+      normalized.requestBlockCount,
+      normalized.status,
+      normalized.responseMessageId,
+      normalized.responseContentHash,
+      normalized.createdAt,
+      normalized.updatedAt,
+      normalized.completedAt,
+      normalized.abortedAt,
+    );
+
+    return this.getPostTurn(normalized.agentName, normalized.turnId);
+  }
+
+  getPostTurn(agentName, turnId) {
+    this._assertOpen();
+
+    const safeAgentName = normalizeRequiredString(agentName, 'agentName');
+    const safeTurnId = normalizeRequiredString(turnId, 'turnId');
+    const row = this.db.prepare(`
+      SELECT
+        turn_id AS turnId,
+        agent_name AS agentName,
+        frontend_source AS frontendSource,
+        request_hash AS requestHash,
+        request_block_count AS requestBlockCount,
+        status,
+        response_message_id AS responseMessageId,
+        response_content_hash AS responseContentHash,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        completed_at AS completedAt,
+        aborted_at AS abortedAt
+      FROM post_turns
+      WHERE agent_name = ?
+        AND turn_id = ?
+      LIMIT 1
+    `).get(safeAgentName, safeTurnId);
+
+    return row || null;
+  }
+
+  completePostTurn(metadata, responseMessageId) {
+    this._assertOpen();
+
+    const normalized = normalizePostTurnMetadataOrThrow(metadata);
+    if (normalized.status !== 'completed') {
+      throw new TypeError('OneRing post-turn completion requires completed metadata');
+    }
+
+    const safeMessageId = normalizePositiveInteger(responseMessageId);
+    if (safeMessageId === null) {
+      return {
+        updated: false,
+        reason: 'invalid-response-message-id',
+        row: null,
+      };
+    }
+
+    if (!normalized.responseContentHash) {
+      return {
+        updated: false,
+        reason: 'missing-response-content-hash',
+        row: null,
+      };
+    }
+
+    const ownership = this._validateResponseMessageOwnership(normalized, safeMessageId);
+    if (!ownership.ok) {
+      return {
+        updated: false,
+        reason: ownership.reason,
+        row: null,
+      };
+    }
+
+    const completedAt = normalized.completedAt || normalized.updatedAt;
+    const result = this.db.prepare(`
+      UPDATE post_turns
+      SET
+        status = 'completed',
+        response_message_id = ?,
+        response_content_hash = ?,
+        updated_at = ?,
+        completed_at = ?,
+        aborted_at = NULL
+      WHERE turn_id = ?
+        AND agent_name = ?
+        AND frontend_source = ?
+        AND status = 'pending'
+    `).run(
+      safeMessageId,
+      normalized.responseContentHash,
+      normalized.updatedAt,
+      completedAt,
+      normalized.turnId,
+      normalized.agentName,
+      normalized.frontendSource,
+    );
+
+    const row = this.getPostTurn(normalized.agentName, normalized.turnId);
+    return {
+      updated: result.changes > 0,
+      reason: result.changes > 0 ? null : 'missing-pending-post-turn',
+      row,
+    };
+  }
+
+  abortPostTurn(metadata) {
+    this._assertOpen();
+
+    const normalized = normalizePostTurnMetadataOrThrow(metadata);
+    if (normalized.status !== 'aborted') {
+      throw new TypeError('OneRing post-turn abort requires aborted metadata');
+    }
+
+    const abortedAt = normalized.abortedAt || normalized.updatedAt;
+    const result = this.db.prepare(`
+      UPDATE post_turns
+      SET
+        status = 'aborted',
+        response_message_id = NULL,
+        response_content_hash = NULL,
+        updated_at = ?,
+        completed_at = NULL,
+        aborted_at = ?
+      WHERE turn_id = ?
+        AND agent_name = ?
+        AND frontend_source = ?
+        AND status = 'pending'
+    `).run(
+      normalized.updatedAt,
+      abortedAt,
+      normalized.turnId,
+      normalized.agentName,
+      normalized.frontendSource,
+    );
+
+    const row = this.getPostTurn(normalized.agentName, normalized.turnId);
+    return {
+      updated: result.changes > 0,
+      reason: result.changes > 0 ? null : 'missing-pending-post-turn',
+      row,
+    };
+  }
+
+  listRecentCompletedPostTurns(agentName, frontendSource, options = {}) {
+    this._assertOpen();
+
+    const safeAgentName = normalizeRequiredString(agentName, 'agentName');
+    const safeFrontendSource = normalizeRequiredString(frontendSource, 'frontendSource');
+    const limit = normalizeReadLimit(options.limit, this.maxRecords);
+    return this.db.prepare(`
+      SELECT
+        turn_id AS turnId,
+        agent_name AS agentName,
+        frontend_source AS frontendSource,
+        request_hash AS requestHash,
+        request_block_count AS requestBlockCount,
+        status,
+        response_message_id AS responseMessageId,
+        response_content_hash AS responseContentHash,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        completed_at AS completedAt,
+        aborted_at AS abortedAt
+      FROM post_turns
+      WHERE agent_name = ?
+        AND frontend_source = ?
+        AND status = 'completed'
+        AND response_message_id IS NOT NULL
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(safeAgentName, safeFrontendSource, limit);
+  }
+
   close() {
     if (!this.closed) {
       this.db.close();
@@ -115,6 +330,31 @@ class OneRingStore {
 
       CREATE INDEX IF NOT EXISTS idx_onering_messages_agent_id
       ON messages (agent_name, id);
+
+      CREATE TABLE IF NOT EXISTS post_turns (
+        turn_id TEXT PRIMARY KEY,
+        agent_name TEXT NOT NULL,
+        frontend_source TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        request_block_count INTEGER NOT NULL CHECK (request_block_count >= 0),
+        status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'aborted')),
+        response_message_id INTEGER,
+        response_content_hash TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT,
+        aborted_at TEXT,
+        FOREIGN KEY (response_message_id) REFERENCES messages(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_onering_post_turns_agent_frontend_updated
+      ON post_turns (agent_name, frontend_source, updated_at);
+
+      CREATE INDEX IF NOT EXISTS idx_onering_post_turns_request_hash
+      ON post_turns (agent_name, frontend_source, request_hash);
+
+      CREATE INDEX IF NOT EXISTS idx_onering_post_turns_status_updated
+      ON post_turns (status, updated_at);
     `);
   }
 
@@ -139,6 +379,40 @@ class OneRingStore {
     if (this.closed) {
       throw new Error('OneRingStore is closed');
     }
+  }
+
+  _enableForeignKeys() {
+    this.db.pragma('foreign_keys = ON');
+    const enabled = this.db.pragma('foreign_keys', { simple: true });
+    if (enabled !== 1) {
+      throw new Error('OneRingStore requires SQLite foreign key enforcement');
+    }
+  }
+
+  _validateResponseMessageOwnership(metadata, responseMessageId) {
+    const row = this.db.prepare(`
+      SELECT
+        agent_name AS agentName,
+        frontend_source AS frontendSource,
+        role
+      FROM messages
+      WHERE id = ?
+      LIMIT 1
+    `).get(responseMessageId);
+
+    if (!row) {
+      return { ok: false, reason: 'missing-response-message' };
+    }
+
+    if (row.agentName !== metadata.agentName || row.frontendSource !== metadata.frontendSource) {
+      return { ok: false, reason: 'response-message-owner-mismatch' };
+    }
+
+    if (row.role !== 'assistant') {
+      return { ok: false, reason: 'response-message-role-mismatch' };
+    }
+
+    return { ok: true, reason: null };
   }
 }
 
@@ -222,6 +496,19 @@ function normalizeOptionalString(value, fallback) {
 function normalizeNullableString(value) {
   const text = typeof value === 'string' ? value.trim() : '';
   return text || null;
+}
+
+function normalizePostTurnMetadataOrThrow(metadata) {
+  const result = normalizePostTurnMetadata(metadata);
+  if (!result.ok) {
+    throw new TypeError(`Invalid OneRing post-turn metadata: ${result.reason}`);
+  }
+  return result.metadata;
+}
+
+function normalizePositiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 module.exports = {
