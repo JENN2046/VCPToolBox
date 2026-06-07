@@ -2,13 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const messageProcessor = require('../modules/messageProcessor.js');
+const {
+  PROMPT_PIPELINE_ORDER_MODES,
+  resolvePromptPipelineOrderMode
+} = require('../modules/promptPipelineOrderMode.js');
 
-const LEGACY_MODE = 'legacy';
-const EXPERIMENTAL_MODE = 'detector_post_processors_final_role_divider';
-
-function resolvePromptPipelineOrderMode(value) {
-  return value === EXPERIMENTAL_MODE ? EXPERIMENTAL_MODE : LEGACY_MODE;
-}
+const LEGACY_MODE = PROMPT_PIPELINE_ORDER_MODES.LEGACY;
+const EXPERIMENTAL_MODE = PROMPT_PIPELINE_ORDER_MODES.DETECTOR_POST_PROCESSORS_FINAL_ROLE_DIVIDER;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
