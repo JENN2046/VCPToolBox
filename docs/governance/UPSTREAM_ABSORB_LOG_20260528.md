@@ -157,6 +157,7 @@ git diff --name-status main..upstream/main
 | 2026-06-08 | OneRing wiring resolver to wrapper recorder | #207 / merge `2d6f1adc`; #208 / merge `3f417199` | 已吸收并已推送 | resolver preflight；`tests/onering-handler-wiring.test.js`; PR CI | 设计并实现 resolver：当 metadata 带 `postTurn` 时优先调用 wrapper `recordAIResponse(meta, content)`，否则保持 legacy `recordAIResponseFromMessages()` fallback；仍不改 live handlers。 |
 | 2026-06-08 | OneRing postTurn pending lifecycle / side-channel | #209 / merge `5e941f19`; #210 / merge `c27fc893` | 已吸收并已推送 | lifecycle preflight；side-channel helper tests；PR CI | 明确 pending postTurn 的 prepare/complete/abort 生命周期，并补 `modules/oneringPostTurnContext.js` side-channel helper/tests。review 后要求 final processedMessages 边界保留 side-channel，避免 replacement array 丢 metadata。 |
 | 2026-06-08 | OneRing wrapper `preparePostTurnFromMessages()` temp-store + wiring alignment | #211 / merge `20542147` | 已吸收并已推送 | `node --check` wrapper/wiring/tests；focused OneRing tests；`npm test` 298 pass；PR CI | wrapper 新增 `preparePostTurnFromMessages(messages)`，在 trigger/enabled/user gates 后创建 pending postTurn 并挂 messages side-channel。review 后修正重复 prepare 幂等复用、completion path 读取 side-channel、skipped-candidate abort path 读取 side-channel，并将 `tests/onering-handler-wiring.test.js` 接入 `npm test`。仍未接新的 live handler prepare 调用，不改 admin/frontend、真实 config、runtime 数据、dist 或默认 `preprocessor_order.json`。 |
+| 2026-06-08 | OneRing live final-dispatch prepare | #213 / merge `b832544f` | 已吸收并已推送 | `node --check modules/oneringHandlerWiring.js`; `node --check tests/onering-handler-wiring.test.js`; `node --test tests/onering-handler-wiring.test.js tests/onering-plugin-wrapper.test.js`; PR CI | 在最终 assistant candidate dispatch 处懒调用 wrapper `preparePostTurnFromMessages()`：只有可记录 final candidate 才创建 pending postTurn，skipped candidate 不新建 pending；`_isEffectiveEnabled()` 为 false 时不 prepare，保持默认关闭；prepare 抛错时回落 legacy recorder，不影响请求路径。不改 env/config、admin/frontend、真实 runtime 数据、dist 或默认 `preprocessor_order.json`。 |
 | 2026-06-06 | latest OneRing Rust/native upstream sweep | `43436f12`, `178955ad`, `8bcd9b35`, `1dd5aec1` | 已审转专项 / 暂缓观察 / 不 raw merge | 只读 `git show --name-status --stat`; #197 SQL/hash-only preflight | `43436f12` 继续改 upstream `Plugin/OneRing/OneRing.js`；`178955ad` 曾将 OneRing 计算下沉到 Rust 并新增 `rust-vexus-lite/src/onering.rs`、`Plugin/OneRing/OneRingNative.js`、native API 与 Windows `.node` 二进制；`8bcd9b35` / `1dd5aec1` 继续新增或更新 Linux native 二进制。该组不是本地 thin wrapper 增量；当前本地策略已由 #197 收窄为 SQL/hash-only JS 路线，Rust/native 仅保留观察，不导入源码或二进制。 |
 
 当前仍不直接吸收的 OneRing upstream 内容：
@@ -173,8 +174,8 @@ git diff --name-status main..upstream/main
 
 下一步建议：
 
-1. 后续若继续 OneRing JS 线，优先做 live handler prepare 调用的最小接入包：默认仍关闭，只在现有 OneRing 双开关有效时准备 pending postTurn，并复用 #211 side-channel 完成/中止路径。
-2. admin config API / frontend config UI 必须等 backend write contract 单独通过后再做，不提交真实 `OneRingConfig.json`。
+1. OneRing JS 线已完成到 final-dispatch lazy prepare（#213），默认仍关闭，并复用 #211 side-channel 完成/中止路径。
+2. 后续若继续 OneRing，优先做 admin config / backend write contract preflight；admin config API / frontend config UI 必须等 backend write contract 单独通过后再做，不提交真实 `OneRingConfig.json`。
 3. Rust/native、`AdminPanel-Vue/dist/*` 与默认 `preprocessor_order.json` 继续单独暂缓。
 
 ## 8. 2026-06-06 快速吸收追加台账
