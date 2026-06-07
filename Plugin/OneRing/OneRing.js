@@ -23,6 +23,7 @@ const {
 } = require('../../modules/oneringPostTurnMetadata');
 const {
   attachOneRingPostTurnMetadata,
+  readOneRingPostTurnMetadata,
 } = require('../../modules/oneringPostTurnContext');
 
 const HOT_CONFIG_FILE_NAME = 'OneRingConfig.json';
@@ -69,6 +70,11 @@ function createOneRingRecorder(options = {}) {
   async function preparePostTurnFromMessages(messages) {
     if (!Array.isArray(messages)) {
       return { prepared: false, postTurn: null, reason: 'invalid-messages' };
+    }
+
+    const existing = readOneRingPostTurnMetadata(messages);
+    if (existing?.prepared === true && existing.postTurn && typeof existing.postTurn === 'object') {
+      return { prepared: true, postTurn: existing.postTurn, reason: null };
     }
 
     const trigger = findLastTrigger(messages);

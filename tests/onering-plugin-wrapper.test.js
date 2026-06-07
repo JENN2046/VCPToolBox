@@ -328,6 +328,49 @@ test('OneRing plugin wrapper prepares pending postTurn metadata in a temp store'
   }
 });
 
+test('OneRing plugin wrapper reuses existing prepared postTurn metadata', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let store = null;
+  let tick = 0;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      super(options);
+      store = this;
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+      ONERING_MAX_DB_RECORDS: 10,
+    },
+    hotConfig: { enabled: true },
+    now: () => `2026-06-08T00:00:0${tick++}.000Z`,
+    StoreClass: CapturingStore,
+  });
+  const messages = [
+    { role: 'system', content: 'prefix [[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: 'hello' },
+  ];
+
+  try {
+    const first = await recorder.preparePostTurnFromMessages(messages);
+    const second = await recorder.preparePostTurnFromMessages(messages);
+
+    assert.equal(second.prepared, true);
+    assert.equal(second.reason, null);
+    assert.equal(second.postTurn.turnId, first.postTurn.turnId);
+    assert.equal(second.postTurn.createdAt, first.postTurn.createdAt);
+    assert.equal(readOneRingPostTurnMetadata(messages).postTurn.turnId, first.postTurn.turnId);
+
+    const rowCount = store.db.prepare('SELECT COUNT(*) AS count FROM post_turns').get().count;
+    assert.equal(rowCount, 1);
+  } finally {
+    recorder.shutdown();
+  }
+});
+
 test('OneRing plugin wrapper can complete a prepared postTurn through recordAIResponse', async () => {
   const tempParent = await makeTempDir();
   const baseDir = path.join(tempParent, 'data');
