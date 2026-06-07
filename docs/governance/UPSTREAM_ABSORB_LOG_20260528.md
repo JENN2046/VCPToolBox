@@ -61,13 +61,13 @@
 
 | upstream commit | upstream 时间 | 主题 | 改动文件 | 本轮决定 | 明确原因 | 后续动作 |
 |-----------------|---------------|------|----------|----------|----------|----------|
-| `18728628` | 2026-05-25 13:55:33 +08:00 | FileOperator 路径回退、README、EmojiListGenerator 文档、VSearch 错误提示 | `Plugin/EmojiListGenerator/README.md`；`Plugin/FileOperator/FileOperator.js`；`Plugin/FileOperator/README.md`；`Plugin/FileOperator/config.env.example`；`Plugin/VSearch/VSearch.js` | 已审未吸收 | 一个 commit 混合 3 个主题：FileOperator 行为、文档、VSearch 错误提示。不能作为单一安全窄包 raw cherry-pick。 | 如需要，拆成 `FileOperator path fallback`、`VSearch error message`、`Emoji docs` 三个独立包。 |
-| `973e2bdd` | 2026-05-25 23:16:00 +08:00 | fixKBDRebuild 方法 + 优化 UrlFetch 返回格式 | `KnowledgeBaseManager.js`；`Plugin/UrlFetch/UrlFetch.js` | 已审未吸收 | 与已经存在的本地 `debfa1da` UrlFetch/Vexus 吸收线重叠；raw cherry-pick 会重新覆盖当前 `KnowledgeBaseManager.js` 和 `UrlFetch.js` 的本地治理形态。 | 如需要，只能重新开 `UrlFetch return format` 窄包，对当前文件做手工补丁。 |
+| `18728628` | 2026-05-25 13:55:33 +08:00 | FileOperator 路径回退、README、EmojiListGenerator 文档、VSearch 错误提示 | `Plugin/EmojiListGenerator/README.md`；`Plugin/FileOperator/FileOperator.js`；`Plugin/FileOperator/README.md`；`Plugin/FileOperator/config.env.example`；`Plugin/VSearch/VSearch.js` | 当前 `main` 已覆盖 | #169 和第 10 节台账已核销：当前 `main` 已有 `FileOperator` 的 `WEB_FILE_DIR > DEFAULT_DOWNLOAD_DIR > VCPToolBox/file/` fallback、README、`config.env.example`、`VSearch` 的 `SearchTopic 和 Keywords` 缺参提示，以及 EmojiListGenerator README 文案修正。 | 不再开拆分代码包；后续如改 FileOperator/VSearch 行为，必须另开行为包并跑对应静态/单元验证。 |
+| `973e2bdd` | 2026-05-25 23:16:00 +08:00 | fixKBDRebuild 方法 + 优化 UrlFetch 返回格式 | `KnowledgeBaseManager.js`；`Plugin/UrlFetch/UrlFetch.js` | 当前 `main` 已覆盖 | 批量复核确认当前 `main` 已有 `KnowledgeBaseManager.scanInitialFiles()`，且 Rust watcher 成功后会在 `fullScanOnStartup` 下触发初始全量扫描；`Plugin/UrlFetch/UrlFetch.js` 也已包含 `formatExtractedArticleContent()` / `renderNodeAsText()`，保留段落、列表和标题边界。相关实现来自本地 `debfa1da` / `b5fd3a33` 吸收线。 | 不再开 `UrlFetch return format` 或 KnowledgeBase watcher 行为包；后续若调整读取格式或启动扫描策略，必须分别开可验证行为包。 |
 | `09fdab2a` | 2026-05-25 23:41:23 +08:00 | 为 URLFetch 引入 JinA 鉴权访问模式 | `Plugin/UrlFetch/UrlFetch.js`；`Plugin/UrlFetch/config.env.example`；`Plugin/UrlFetch/plugin-manifest.json` | 当前 `main` 已覆盖 | #194 preflight 确认当前 `main` 已有 `JINA_API_KEY` / `JINA_READER_TIMEOUT_MS`、`fetchWithJinaReader()`、Authorization Bearer 鉴权优先、失败回退免费 `https://r.jina.ai/`、`mode === 'jina'`、`config.env.example` 示例和 manifest 说明；实现来自本地 `b5fd3a33` 之后的 UrlFetch 吸收线，并与后续 download/direct fast path 改造共存。 | 不再开行为实现包；后续如调整 Jina 行为，必须另开可 mock 的行为设计/测试包，不访问真实 Jina 或读取真实 key。 |
 | `b30dbf7e` | 2026-05-25 23:47:51 +08:00 | 优化逻辑 | `Plugin/UrlFetch/UrlFetch.js` | 当前 `main` 已覆盖 | 只读评估确认当前 `Plugin/UrlFetch/UrlFetch.js` 已有 `DIRECT_FETCH_TIMEOUT_MS` / `DIRECT_FETCH_MAX_BYTES`、`requestDirectHttp()`、`fetchWithDirectHttp()`，且 `mode === 'text'` 已先走 direct HTTP 快速路径、失败再回退 Puppeteer。 | 不再开代码包；后续如调整 UrlFetch 网络读取行为，必须另开行为设计/测试包。 |
-| `3a95a1e3` | 2026-05-26 13:12:43 +08:00 | 引入缓存 Fuzzy 可调参机制 | `AdminPanel-Vue/dist/*`；`AdminPanel-Vue/src/features/rag-tuning/metadata.ts`；`Plugin/ContextFoldingV2/ContextFoldingV2.js`；`Plugin/RAGDiaryPlugin/RAGDiaryPlugin.js`；`modules/messageProcessor.js`；`rag_params.json` | 已审未吸收 | 包含前端构建产物、RAG 参数、插件行为和 message processor 运行逻辑，风险面过宽。 | 如需要，开 `RAG fuzzy tuning` 设计包，先审 `rag_params.json` 是否属于运行参数。 |
-| `07c9994e` | 2026-05-26 21:47:45 +08:00 | 统一图片生成类工具格式调用 | `Plugin/DMXDoubaoGen/DoubaoGen.js`；`Plugin/GPTImageGen/GPTImageGen.js`；`Plugin/NanoBananaGen2/NanoBananaGen.mjs`；`Plugin/ZImageTurboGen/ZImageTurboGen.mjs`；`TVStxt/MediaToolBox.txt` | 已审未吸收 | 同时修改多个生图插件和 TVS 文本提示资源。当前项目正在单独讨论 Codex 内置 `image_gen` 接入，不能把这条作为普通 raw absorb。 | 需要单独开 `image tool format unification` 包，逐插件验证。 |
-| `0c45a35a` | 2026-05-27 04:27:35 +08:00 | 补齐重要参数的浪潮可调参 | `AdminPanel-Vue/dist/*`；`AdminPanel-Vue/src/features/rag-tuning/metadata.ts`；`Plugin/RAGDiaryPlugin/RAGDiaryPlugin.js`；`rag_params.json` | 已审未吸收 | 和 `3a95a1e3` 同类，包含构建产物和 RAG 运行参数，不能 raw cherry-pick。 | 如需要，合并到同一个 `RAG fuzzy tuning` 包处理。 |
+| `3a95a1e3` | 2026-05-26 13:12:43 +08:00 | 引入缓存 Fuzzy 可调参机制 | `AdminPanel-Vue/dist/*`；`AdminPanel-Vue/src/features/rag-tuning/metadata.ts`；`Plugin/ContextFoldingV2/ContextFoldingV2.js`；`Plugin/RAGDiaryPlugin/RAGDiaryPlugin.js`；`modules/messageProcessor.js`；`rag_params.json` | 当前 `main` 已覆盖源码/参数子集，`dist` 仍排除 | 批量复核确认当前 `main` 已有 `ContextFoldingV2.fuzzyEmbedding` 热参数、`RAGDiaryPlugin._getFuzzyEmbeddingOptions()`、dynamic fold fuzzy options、`rag_params.json` 中 fuzzyEmbedding 默认值，以及 RagTuning metadata/range。`AdminPanel-Vue/dist/*` 继续作为生成产物排除。 | 不再开普通吸收包；后续若继续调整 fuzzy 参数默认值或 UI，必须走 `RAG fuzzy tuning` 专项，明确运行参数归属和回滚。 |
+| `07c9994e` | 2026-05-26 21:47:45 +08:00 | 统一图片生成类工具格式调用 | `Plugin/DMXDoubaoGen/DoubaoGen.js`；`Plugin/GPTImageGen/GPTImageGen.js`；`Plugin/NanoBananaGen2/NanoBananaGen.mjs`；`Plugin/ZImageTurboGen/ZImageTurboGen.mjs`；`TVStxt/MediaToolBox.txt` | 当前 `main` 已覆盖主要源码/提示词子集 | 批量复核确认当前 `main` 已有多生图插件的 `parseImageArrayInput()` / `collectImageInputs()` / normalize args 路径，并已在 `TVStxt/MediaToolBox.txt` 中合并统一生图/修图/多图合成调用说明。未运行真实生图 API。 | 不再开普通 raw absorb；后续如调整生图字段兼容或外部 API 行为，必须走 image plugin 专项并逐插件 mock/静态验证。 |
+| `0c45a35a` | 2026-05-27 04:27:35 +08:00 | 补齐重要参数的浪潮可调参 | `AdminPanel-Vue/dist/*`；`AdminPanel-Vue/src/features/rag-tuning/metadata.ts`；`Plugin/RAGDiaryPlugin/RAGDiaryPlugin.js`；`rag_params.json` | 当前 `main` 已覆盖源码/参数子集，`dist` 仍排除 | 批量复核确认当前 `main` 已有 `shotgunDecayFactor` / `shotgunHistorySegmentLimit` 参数消费、缓存键纳入、RagTuning metadata/range 和 `rag_params.json` 配置项；本地保留当前参数值，不 raw 覆盖运行参数。`AdminPanel-Vue/dist/*` 继续排除。 | 不再开普通吸收包；后续如调整 shotgun 默认值或 UI，必须并入 `RAG fuzzy tuning` / RAG 参数专项。 |
 | `696e3a9f` | 2026-05-28 04:41:42 +08:00 | 更新说明 | `README.md` | 当前 `main` 已覆盖 | 只读评估确认当前 `README.md` 已包含 `3.10 语义智能模型路由：带语义容灾的自动选模系统` 段落，并引用 `docs/SEMANTIC_MODEL_ROUTER.md`。 | 不再开 README 同步包；后续 README 只做当前主线叙事的增量维护。 |
 
 ## 4. 为什么 `git cherry` 还会显示 `+`
@@ -95,14 +95,14 @@
 
 ## 5. 当前明确剩余项
 
-截至 2026-05-29，本表没有标记“必须继续吸收”的 upstream commit。
+截至 2026-06-07 批量复核后，本表没有标记“必须继续吸收”的 upstream commit。
 
 当前剩余项只有两类：
 
 | 类别 | 内容 | 处理 |
 |------|------|------|
-| 已审未吸收 | 第 3 节列出的 upstream commit | 不自动吸收；需要用户明确指定后单独开包。 |
-| 本地未推送 | `f857d86c` 以及本次台账更新提交 | 如果要让 `origin/main` 获得这轮结果，需要用户明确批准 push。 |
+| 当前 `main` 已覆盖 | 第 3 节中 `18728628`、`973e2bdd`、`09fdab2a`、`b30dbf7e`、`696e3a9f` 等 | 不再开代码包；后续只在相关行为需要调整时另开小包。 |
+| 已覆盖但后续只能走专项 | 第 3 节中 RAG fuzzy/shotgun 参数与 image tool format unification 相关项 | 不 raw cherry-pick；后续分别走 RAG 参数专项或 image plugin 专项，继续排除 `AdminPanel-Vue/dist/*` 和真实外部 API 调用。 |
 
 ## 6. 下次审查固定流程
 
@@ -147,7 +147,7 @@ git diff --name-status main..upstream/main
 | 2026-06-06 | OneRing plugin package decision | #161 / `832e9552` | 已吸收并已推送 | 文档 diff check；PR CI | 决定不 raw-import upstream `Plugin/OneRing/*`，继续本地模块化实现；上游文件只作参考。 |
 | 2026-06-06 | OneRing local core helpers | #162 / `b2620d94` | 已吸收并已推送 | `node --check` 新增文件；OneRing targeted suite 58 pass；`git diff --check`；PR CI | 新增 `modules/oneringHotConfig.js`、`modules/oneringStore.js` 与测试。store 要求显式 temp/baseDir，未接 `Plugin/OneRing/*`、admin route、frontend、handlers 或 `dist`。 |
 | 2026-06-06 | OneRing thin plugin wrapper | #170 / `c1e0ecde` | 已吸收并已推送 | `node --check Plugin\OneRing\OneRing.js`；OneRing targeted suite 35 pass；`git diff --check`；PR CI | 新增本地薄插件壳、manifest、config example 与 wrapper tests。默认关闭，且要求 `ONERING_ENABLED=true` 与 hot config `enabled=true` 双开关才创建 store；review 后修复 reload 旧配置残留；不 raw-import upstream `OneRingDB/Fuzzy/Snapshot`，不接 admin write API、frontend、`dist` 或默认 `preprocessor_order.json`。 |
-| 2026-06-06 | latest OneRing Rust/native upstream sweep | `43436f12`, `178955ad`, `8bcd9b35`, `1dd5aec1` | 已审未吸收 / 需另开专项 | 只读 `git show --name-status --stat` | `43436f12` 继续改 upstream `Plugin/OneRing/OneRing.js`；`178955ad` 将 OneRing 计算下沉到 Rust 并新增 `rust-vexus-lite/src/onering.rs`、`Plugin/OneRing/OneRingNative.js`、native API 与 Windows `.node` 二进制；`8bcd9b35` / `1dd5aec1` 继续新增或更新 Linux native 二进制。该组不是 thin wrapper 增量，必须另开 OneRing Rust/native 专项，先审设计、二进制来源、跨平台构建、回滚和数据库/向量安全，不 raw merge。 |
+| 2026-06-06 | latest OneRing Rust/native upstream sweep | `43436f12`, `178955ad`, `8bcd9b35`, `1dd5aec1` | 已审转专项 / 不 raw merge | 只读 `git show --name-status --stat` | `43436f12` 继续改 upstream `Plugin/OneRing/OneRing.js`；`178955ad` 将 OneRing 计算下沉到 Rust 并新增 `rust-vexus-lite/src/onering.rs`、`Plugin/OneRing/OneRingNative.js`、native API 与 Windows `.node` 二进制；`8bcd9b35` / `1dd5aec1` 继续新增或更新 Linux native 二进制。该组不是 thin wrapper 增量，必须另开 OneRing Rust/native 专项，先审设计、二进制来源、跨平台构建、回滚和数据库/向量安全，不 raw merge。 |
 
 当前仍不直接吸收的 OneRing upstream 内容：
 
