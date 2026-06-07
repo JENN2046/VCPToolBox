@@ -239,10 +239,10 @@ git cherry -v origin/main upstream/main
 | 2026-06-07 | Package E preflight / pipeline-order contracts / pure detector helper | #178 / merge `64b21b1e`; #179 / merge `99605478`; #180 / merge `47a205ec` | 已吸收并已推送 | preflight 文档；`node --test tests\pipeline-order-contract.test.js`; `node --test tests\message-processor-detector-helper.test.js`; PR CI | 将 `ec1737f9` 的 Detector / Role Divider order 调整确认为不能 raw-port 的高影响 pipeline 变化；随后补当前 legacy 顺序 contract tests，并提取 `applyDetectorRules()` / `applyDetectorsToMessages()` 纯 helper，运行行为仍保持 legacy。 |
 | 2026-06-07 | Package E3 default-off pipeline experiment design / tests harness / message helper | #181 / merge `cf36803f`; #182 / merge `975711c2`; #183 / merge `d46e5ac6` | 已吸收并已推送 | E3 design/preflight；`node --test tests\pipeline-order-experiment.test.js`; `node --test tests\message-processor-detector-helper.test.js`; PR CI | 明确 `PromptPipelineOrderMode=legacy` / `detector_post_processors_final_role_divider` 双模式策略，legacy 默认；补 tests-only experiment harness；新增默认关闭的 `applyDetectorsToMessages()` 消息级 helper，不接 handler。 |
 | 2026-06-07 | Package E3c/E3d/E3e default-off mode resolver + handler wiring | #184 / merge `42192b28`; #185 / merge `b54e625e`; #186 / merge `bfe22f1e` | 已吸收并已推送 | `node --check` 相关源码/测试；focused tests；handler/semantic/dynamic tests；`npm test`；PR CI | 新增 input-only `promptPipelineOrderMode` resolver；完成 handler wiring preflight；随后接入默认关闭 runtime wiring：`server.js` 只传 raw `process.env.PromptPipelineOrderMode`，`chatCompletionHandler` 缺失/空/未知均保持 `legacy`，只有显式 `detector_post_processors_final_role_divider` 才启用 message-level Detector + final Role Divider。#186 review 后修复 final Role Divider 跳过对象：即使 VCPTavern/预处理器在第一条 system 前插入消息，也保护原始顶层 SystemPrompt，且内部 marker 不泄露到 upstream body。 |
+| 2026-06-07 | Package E config example closeout | #188 / merge `1251d610` | 已吸收并已推送 | `git diff --check`；静态 grep 确认 `PromptPipelineOrderMode` 由 `server.js` / `chatCompletionHandler.js` 消费 | `config.env.example` 已补 `PromptPipelineOrderMode=legacy` 示例说明，明确 experimental 值 `detector_post_processors_final_role_divider`、默认仍为 `legacy`，并提示生产启用前需要回归验证；未修改真实 `config.env` 或运行行为。 |
 
-当前 Package E 后续暂缓项：
+当前 Package E 后续决策项：
 
 | 内容 | 当前状态 | 原因 / 后续动作 |
 |------|----------|-----------------|
-| `config.env.example` 中的 `PromptPipelineOrderMode` 示例说明 | 暂缓 | 运行链路刚完成 default-off wiring；示例文档应另开小包，明确 experimental 风险、默认 legacy、不承诺默认启用。 |
-| Package E 默认切换 / E4 decision | 暂缓 | 不把 upstream order 设为默认；是否从 `legacy` 切换到 experimental 需要后续独立决策包、更多 fixture/运营验证与回滚方案。 |
+| Package E 默认切换 / E4 decision | 暂缓 | 不把 upstream order 设为默认；当前 `PromptPipelineOrderMode=legacy` 仍是保守默认，`detector_post_processors_final_role_divider` 只作为显式 opt-in 实验值存在。是否切换默认值需要后续独立 E4 决策包、更多 fixture/运营验证与回滚方案。 |
