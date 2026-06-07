@@ -257,10 +257,18 @@ test('roleDivider preserves non-enumerable array metadata when returning process
       content: 'hello <<<[ROLE_DIVIDE_ASSISTANT]>>>side<<<[END_ROLE_DIVIDE_ASSISTANT]>>>'
     }
   ];
+  const metadataSymbol = Symbol('oneRingMeta');
   const metadata = { agentName: 'Nova', turnId: 'turn-1' };
+  const symbolMetadata = { requestId: 'symbol-turn-1' };
 
   Object.defineProperty(messages, '__oneRingMeta', {
     value: metadata,
+    enumerable: false,
+    configurable: true,
+    writable: false
+  });
+  Object.defineProperty(messages, metadataSymbol, {
+    value: symbolMetadata,
     enumerable: false,
     configurable: true,
     writable: false
@@ -272,10 +280,16 @@ test('roleDivider preserves non-enumerable array metadata when returning process
   assert.deepEqual(processed.map(message => message.role), ['system', 'user', 'assistant']);
   assert.equal(processed.__oneRingMeta, metadata);
   assert.equal(Object.prototype.propertyIsEnumerable.call(processed, '__oneRingMeta'), false);
+  assert.equal(processed[metadataSymbol], symbolMetadata);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(processed, metadataSymbol), false);
 
   const descriptor = Object.getOwnPropertyDescriptor(processed, '__oneRingMeta');
   assert.equal(descriptor.configurable, true);
   assert.equal(descriptor.writable, false);
+
+  const symbolDescriptor = Object.getOwnPropertyDescriptor(processed, metadataSymbol);
+  assert.equal(symbolDescriptor.configurable, true);
+  assert.equal(symbolDescriptor.writable, false);
 });
 
 test('Package E keeps legacy and experimental orders distinct in source', () => {

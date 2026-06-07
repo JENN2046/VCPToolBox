@@ -43,8 +43,8 @@ function copyArrayMetadata(source, target) {
         return target;
     }
 
-    for (const key of Object.getOwnPropertyNames(source)) {
-        if (/^(?:length|\d+)$/.test(key)) {
+    for (const key of Reflect.ownKeys(source)) {
+        if (key === 'length' || (typeof key === 'string' && /^\d+$/.test(key))) {
             continue;
         }
 
