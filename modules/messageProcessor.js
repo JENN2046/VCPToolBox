@@ -540,6 +540,36 @@ function applyDetectorRules(text, role, context = {}) {
     return processedText;
 }
 
+function applyDetectorsToMessages(messages, context = {}) {
+    if (!Array.isArray(messages)) {
+        return messages;
+    }
+
+    return messages.map((message) => {
+        if (!message || typeof message !== 'object') {
+            return message;
+        }
+
+        const newMessage = JSON.parse(JSON.stringify(message));
+
+        if (typeof newMessage.content === 'string') {
+            newMessage.content = applyDetectorRules(newMessage.content, newMessage.role, context);
+        } else if (Array.isArray(newMessage.content)) {
+            newMessage.content = newMessage.content.map((part) => {
+                if (part && part.type === 'text' && typeof part.text === 'string') {
+                    return {
+                        ...part,
+                        text: applyDetectorRules(part.text, newMessage.role, context)
+                    };
+                }
+                return part;
+            });
+        }
+
+        return newMessage;
+    });
+}
+
 async function replaceOtherVariables(text, model, role, context) {
     const { pluginManager, cachedEmojiLists, DEBUG_MODE } = context;
     if (text == null) return '';
@@ -780,6 +810,7 @@ module.exports = {
     replaceOtherVariables,
     replacePriorityVariables,
     applyDetectorRules,
+    applyDetectorsToMessages,
     extractTextFromMessageContent,
     isSystemNotificationText,
     isBetaSystemUserText,

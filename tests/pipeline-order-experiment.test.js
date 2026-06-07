@@ -47,28 +47,6 @@ function markRoleDividerStage(messages, stage) {
   });
 }
 
-function applyDetectorsToMessagesHarness(messages, context = {}) {
-  if (!Array.isArray(messages)) return messages;
-
-  return messages.map(message => {
-    const newMessage = clone(message);
-    if (typeof newMessage.content === 'string') {
-      newMessage.content = messageProcessor.applyDetectorRules(newMessage.content, newMessage.role, context);
-    } else if (Array.isArray(newMessage.content)) {
-      newMessage.content = newMessage.content.map(part => {
-        if (part && part.type === 'text' && typeof part.text === 'string') {
-          return {
-            ...part,
-            text: messageProcessor.applyDetectorRules(part.text, newMessage.role, context)
-          };
-        }
-        return part;
-      });
-    }
-    return newMessage;
-  });
-}
-
 function applyDetectorPhaseHarness({ mode, text, role = 'system', context }) {
   const resolvedMode = resolvePromptPipelineOrderMode(mode);
   const phases = [];
@@ -79,7 +57,7 @@ function applyDetectorPhaseHarness({ mode, text, role = 'system', context }) {
     currentText = messageProcessor.applyDetectorRules(currentText, role, context);
   } else {
     phases.push('deferred-message-level');
-    currentText = applyDetectorsToMessagesHarness([
+    currentText = messageProcessor.applyDetectorsToMessages([
       { role, content: currentText }
     ], context)[0].content;
   }
@@ -153,7 +131,7 @@ test('E3a harness documents detector single ownership for legacy and experimenta
   assert.equal(legacy.text, 'C');
   assert.equal(experimental.text, 'C');
 
-  const doubleApplied = applyDetectorsToMessagesHarness([
+  const doubleApplied = messageProcessor.applyDetectorsToMessages([
     { role: 'system', content: legacy.text }
   ], context)[0].content;
 
@@ -176,7 +154,7 @@ test('E3a harness message-level detector traversal preserves non-text parts and 
     }
   ];
   const original = clone(input);
-  const output = applyDetectorsToMessagesHarness(input, {
+  const output = messageProcessor.applyDetectorsToMessages(input, {
     detectors: [{ detector: 'system-only', output: 'detected' }],
     superDetectors: [{ detector: 'all-role', output: 'global' }]
   });
