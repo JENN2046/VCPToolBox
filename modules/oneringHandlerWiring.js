@@ -17,7 +17,8 @@ function dispatchOneRingAssistantRecordCandidate(context, candidate, {
   if (!candidate || candidate.shouldRecord !== true) {
     const skipped = skipCandidate(candidate);
     if (abortPostTurnOnSkip) {
-      dispatchOneRingPostTurnAbort(context, skipped, { logPrefix, phaseLabel, now });
+      const metadata = buildOneRingDispatchMetadata(context, { phaseLabel });
+      dispatchOneRingPostTurnAbort(context, skipped, { logPrefix, phaseLabel, metadata, now });
     }
     return { ...skipped, dispatched: false };
   }
@@ -91,9 +92,14 @@ function completeOneRingPostTurnAfterRecord(context, metadata, candidate, record
   };
 }
 
-function dispatchOneRingPostTurnAbort(context, candidate, { logPrefix = '[OneRing Handler]', phaseLabel = 'final_turn', now } = {}) {
+function dispatchOneRingPostTurnAbort(context, candidate, {
+  logPrefix = '[OneRing Handler]',
+  phaseLabel = 'final_turn',
+  metadata = null,
+  now,
+} = {}) {
   const store = resolveOneRingPostTurnStore(context, 'abortPostTurn');
-  const postTurn = context?.oneRingPostTurn;
+  const postTurn = context?.oneRingPostTurn || metadata?.postTurn;
   if (!store || !postTurn) {
     return { aborted: false, reason: !store ? 'missing-post-turn-store' : 'missing-post-turn-metadata' };
   }

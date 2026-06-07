@@ -96,6 +96,38 @@ test('dispatchOneRingAssistantRecordCandidate can abort post-turns with explicit
   assert.equal(abortCalls[0].abortedAt, '2026-06-06T04:00:01.000Z');
 });
 
+test('dispatchOneRingAssistantRecordCandidate aborts prepared side-channel post-turns', async () => {
+  const postTurn = makePendingPostTurn();
+  const messages = [{ role: 'user', content: 'hello' }];
+  attachOneRingPostTurnMetadata(messages, { prepared: true, postTurn, reason: null });
+  const abortCalls = [];
+  const result = dispatchOneRingAssistantRecordCandidate(
+    {
+      originalBody: { messages },
+      oneRingPostTurnStore: {
+        completePostTurn() {},
+        abortPostTurn(metadata) {
+          abortCalls.push(metadata);
+          return { updated: true, row: metadata };
+        },
+      },
+    },
+    { shouldRecord: false, role: 'assistant', content: '', reason: 'stream-error' },
+    {
+      abortPostTurnOnSkip: true,
+      now: () => '2026-06-06T04:00:01.000Z',
+    },
+  );
+
+  await tick();
+
+  assert.equal(result.dispatched, false);
+  assert.equal(abortCalls.length, 1);
+  assert.equal(abortCalls[0].turnId, postTurn.turnId);
+  assert.equal(abortCalls[0].status, 'aborted');
+  assert.equal(abortCalls[0].abortedAt, '2026-06-06T04:00:01.000Z');
+});
+
 test('dispatchOneRingAssistantRecordCandidate calls explicit handler hook asynchronously', async () => {
   const calls = [];
   const result = dispatchOneRingAssistantRecordCandidate(
