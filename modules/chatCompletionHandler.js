@@ -34,8 +34,13 @@ const NonStreamHandler = require('./handlers/nonStreamHandler');
 const codexOAuthResponses = require('../routes/codexOAuthResponses');
 const { createCodexOAuthProvider } = require('./providers/codexOAuthProvider');
 const { createCodexOAuthTraceStore } = require('./codexOAuthTraceStore');
+const {
+  PROMPT_PIPELINE_ORDER_MODES,
+  resolvePromptPipelineOrderMode
+} = require('./promptPipelineOrderMode.js');
 
 const VCP_TOOL_USE_FORBIDDEN_PLACEHOLDER = '[[VCPToolUse=Forbidden]]';
+const ORIGINAL_TOP_SYSTEM_PROMPT_MARKER = '__vcpOriginalTopSystemPrompt';
 
 function parseBooleanEnv(value, defaultValue = false) {
   if (value === undefined || value === null || value === '') return defaultValue;
@@ -56,6 +61,55 @@ function getMessageTextContent(message = {}) {
     .filter(part => part && part.type === 'text' && typeof part.text === 'string')
     .map(part => part.text)
     .join('\n');
+}
+
+function markOriginalTopSystemPrompt(messages) {
+  if (!Array.isArray(messages) || !messages[0] || typeof messages[0] !== 'object') {
+    return messages;
+  }
+  if (messages[0].role !== 'system') {
+    return messages;
+  }
+
+  messages[0] = {
+    ...messages[0],
+    [ORIGINAL_TOP_SYSTEM_PROMPT_MARKER]: true
+  };
+  return messages;
+}
+
+function stripOriginalTopSystemPromptMarker(message) {
+  if (!message || typeof message !== 'object' || !message[ORIGINAL_TOP_SYSTEM_PROMPT_MARKER]) {
+    return message;
+  }
+
+  const cleanMessage = { ...message };
+  delete cleanMessage[ORIGINAL_TOP_SYSTEM_PROMPT_MARKER];
+  return cleanMessage;
+}
+
+function processFinalRoleDivider(messages, options = {}) {
+  if (!Array.isArray(messages)) {
+    return messages;
+  }
+
+  const originalSystemIndex = messages.findIndex(
+    message => message && typeof message === 'object' && message[ORIGINAL_TOP_SYSTEM_PROMPT_MARKER] === true
+  );
+
+  if (originalSystemIndex === -1) {
+    return roleDivider.process(messages, { ...options, skipCount: 0 });
+  }
+
+  const before = roleDivider.process(messages.slice(0, originalSystemIndex), { ...options, skipCount: 0 });
+  const protectedSystemPrompt = stripOriginalTopSystemPromptMarker(messages[originalSystemIndex]);
+  const after = roleDivider.process(messages.slice(originalSystemIndex + 1), { ...options, skipCount: 0 });
+
+  return [
+    ...before,
+    protectedSystemPrompt,
+    ...after
+  ];
 }
 
 function messageHasAgentPlaceholder(message, alias) {
@@ -658,6 +712,11 @@ class ChatCompletionHandler {
     } = this.config;
 
     const shouldShowVCP = SHOW_VCP_OUTPUT || forceShowVCP;
+    const pipelineOrderMode = resolvePromptPipelineOrderMode(
+      this.config.promptPipelineOrderMode ?? process.env.PromptPipelineOrderMode
+    );
+    const useExperimentalPipelineOrder =
+      pipelineOrderMode === PROMPT_PIPELINE_ORDER_MODES.DETECTOR_POST_PROCESSORS_FINAL_ROLE_DIVIDER;
     const applyChinaModelThinkingControl = (body) => {
       if (!body || !body.model || !chinaModel1 || !Array.isArray(chinaModel1) || chinaModel1.length === 0) {
         return body;
@@ -809,10 +868,13 @@ class ChatCompletionHandler {
       }
 
       await writeDebugLog('LogInput', originalBody);
+      if (useExperimentalPipelineOrder) {
+        originalBody.messages = markOriginalTopSystemPrompt(originalBody.messages);
+      }
 
       // --- 角色分割处理 (Role Divider) - 初始阶段 ---
       // 移动到最前端，确保拆分出的楼层能享受后续所有解析功能
-      if (enableRoleDivider) {
+      if (enableRoleDivider && !useExperimentalPipelineOrder) {
         if (DEBUG_MODE) console.log('[Server] Applying Role Divider processing (Initial Stage)...');
         // skipCount: 1 to exclude the initial SystemPrompt from splitting
         originalBody.messages = roleDivider.process(originalBody.messages, {
@@ -923,6 +985,7 @@ class ChatCompletionHandler {
         cachedEmojiLists: this.config.cachedEmojiLists,
         detectors: this.config.detectors,
         superDetectors: this.config.superDetectors,
+        detectorPhase: useExperimentalPipelineOrder ? 'deferred' : 'legacy',
         DEBUG_MODE,
         messages: tavernProcessedMessages, // 将近期消息列表传递下去，用于支持上下文动态折叠 (Contextual Folding)
         // 🔒 灵魂级占位符去重：跨消息共享展开状态
@@ -1039,6 +1102,24 @@ class ChatCompletionHandler {
           }
         }
         if (DEBUG_MODE) console.log(`[Server] TransBase64+ cleanup and media restore complete.`);
+      }
+
+      if (useExperimentalPipelineOrder) {
+        processedMessages = messageProcessor.applyDetectorsToMessages(processedMessages, processingContext);
+        if (DEBUG_MODE) await writeDebugLog('LogAfterDetectors', processedMessages);
+
+        if (enableRoleDivider) {
+          if (DEBUG_MODE) console.log('[Server] Applying Role Divider processing (Final Stage)...');
+          processedMessages = processFinalRoleDivider(processedMessages, {
+            ignoreList: roleDividerIgnoreList,
+            switches: roleDividerSwitches,
+            scanSwitches: roleDividerScanSwitches,
+            removeDisabledTags: roleDividerRemoveDisabledTags
+          });
+          if (DEBUG_MODE) await writeDebugLog('LogAfterFinalRoleDivider', processedMessages);
+        } else {
+          processedMessages = processedMessages.map(stripOriginalTopSystemPromptMarker);
+        }
       }
 
       // 经过改造后，processedMessages 已经是最终版本，无需再调用 replaceOtherVariables

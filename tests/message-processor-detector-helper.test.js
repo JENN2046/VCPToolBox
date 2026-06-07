@@ -57,6 +57,27 @@ test('replaceOtherVariables still applies detector rules before async placeholde
   assert.equal(result.includes('detector-should-not-run-for-user'), false);
 });
 
+test('replaceOtherVariables can defer detector rules for message-level pipeline mode', async () => {
+  const result = await messageProcessor.replaceOtherVariables(
+    'system-only all-role',
+    'test-model',
+    'system',
+    {
+      DEBUG_MODE: false,
+      pluginManager: {
+        getAllPlaceholderValues: () => new Map(),
+        getIndividualPluginDescriptions: () => new Map(),
+        getResolvedPluginConfigValue: () => null
+      },
+      detectorPhase: 'deferred',
+      detectors: [{ detector: 'system-only', output: 'detected' }],
+      superDetectors: [{ detector: 'all-role', output: 'global' }]
+    }
+  );
+
+  assert.equal(result, 'system-only all-role');
+});
+
 test('applyDetectorsToMessages rewrites string and text parts without mutating inputs', () => {
   const input = [
     {
@@ -91,7 +112,7 @@ test('applyDetectorsToMessages rewrites string and text parts without mutating i
   assert.equal(output[3], 'raw-message');
 });
 
-test('Package E message-level detector helper is exported but not wired to handlers yet', () => {
+test('Package E message-level detector helper is exported for pipeline wiring', () => {
   assert.equal(typeof messageProcessor.applyDetectorRules, 'function');
   assert.equal(typeof messageProcessor.applyDetectorsToMessages, 'function');
 });

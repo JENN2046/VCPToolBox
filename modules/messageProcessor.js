@@ -728,7 +728,9 @@ async function replaceOtherVariables(text, model, role, context) {
             if (DEBUG_MODE) console.warn('[replaceOtherVariables] {{Image_Key}} placeholder found in text, but ImageServer plugin or its Image_Key is not resolved. Placeholder will not be replaced.');
         }
     }
-    processedText = applyDetectorRules(processedText, role, context);
+    if (context?.detectorPhase !== 'deferred') {
+        processedText = applyDetectorRules(processedText, role, context);
+    }
 
     // 同时兼容标准双花括号、异常三花括号、以及被字符串转义后常见的四花括号格式
     // 例如：
