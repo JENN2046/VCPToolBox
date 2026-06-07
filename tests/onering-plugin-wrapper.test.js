@@ -10,9 +10,26 @@ const {
   createOneRingRecorder,
   normalizeRuntimeConfig,
 } = require('../Plugin/OneRing/OneRing');
+const { OneRingStore } = require('../modules/oneringStore');
+const { buildPendingPostTurnMetadata } = require('../modules/oneringPostTurnMetadata');
+const { buildOneRingContentHash } = require('../modules/oneringSqlHashContract');
 
 async function makeTempDir(prefix = 'onering-plugin-wrapper-') {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix));
+}
+
+function makePendingPostTurn(overrides = {}) {
+  const turnId = overrides.turnId || 'turn_agnes_vchat_1';
+  const result = buildPendingPostTurnMetadata({
+    agentName: overrides.agentName || 'Agnes',
+    frontendSource: overrides.frontendSource || 'VChat',
+    postBlocks: overrides.postBlocks || [{ role: 'user', content: 'hello' }],
+    now: () => overrides.now || '2026-06-06T08:00:00.000Z',
+    makeId: () => turnId,
+  });
+
+  assert.equal(result.ok, true);
+  return result.metadata;
 }
 
 test('normalizeRuntimeConfig keeps OneRing closed by default', () => {
@@ -46,6 +63,68 @@ test('OneRing plugin wrapper does not create a store while disabled', async () =
   assert.equal(await recorder.processMessages(messages), messages);
   await recorder.recordAIResponseFromMessages(messages, 'visible answer');
 
+  await assert.rejects(fs.stat(baseDir), { code: 'ENOENT' });
+});
+
+test('OneRing plugin wrapper does not complete post-turns while disabled or content is empty', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let constructed = false;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      constructed = true;
+      super(options);
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: false,
+    },
+    hotConfig: { enabled: true },
+    StoreClass: CapturingStore,
+  });
+  const postTurn = makePendingPostTurn();
+
+  assert.deepEqual(
+    await recorder.recordAIResponse({ agentName: 'Agnes', frontendSource: 'VChat', postTurn }, 'visible answer'),
+    { recorded: false, reason: 'disabled-or-empty' },
+  );
+  assert.deepEqual(
+    await recorder.recordAIResponse({ agentName: 'Agnes', frontendSource: 'VChat', postTurn }, '   '),
+    { recorded: false, reason: 'disabled-or-empty' },
+  );
+  assert.equal(constructed, false);
+  await assert.rejects(fs.stat(baseDir), { code: 'ENOENT' });
+});
+
+test('OneRing plugin wrapper does not create a store for empty recordAIResponse content', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let constructed = false;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      constructed = true;
+      super(options);
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+    },
+    hotConfig: { enabled: true },
+    StoreClass: CapturingStore,
+  });
+
+  assert.deepEqual(
+    await recorder.recordAIResponse(
+      { agentName: 'Agnes', frontendSource: 'VChat', postTurn: makePendingPostTurn() },
+      '  ',
+    ),
+    { recorded: false, reason: 'disabled-or-empty' },
+  );
+  assert.equal(constructed, false);
   await assert.rejects(fs.stat(baseDir), { code: 'ENOENT' });
 });
 
@@ -119,6 +198,182 @@ test('OneRing plugin wrapper records visible user and assistant messages in reco
         },
       ],
     );
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper recordAIResponse keeps legacy id result without postTurn metadata', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+      ONERING_MAX_DB_RECORDS: 10,
+    },
+    hotConfig: { enabled: true },
+    now: () => '2026-06-06T08:00:00.000Z',
+  });
+
+  try {
+    const result = await recorder.recordAIResponse(
+      { agentName: ' Agnes ', frontendSource: ' VChat ' },
+      'visible answer',
+    );
+
+    assert.equal(result.recorded, true);
+    assert.equal(Number.isInteger(result.id) && result.id > 0, true);
+    assert.equal(Object.hasOwn(result, 'postTurnCompleted'), false);
+    assert.deepEqual(
+      recorder.listMessages('Agnes').map(row => ({
+        role: row.role,
+        senderName: row.senderName,
+        frontendSource: row.frontendSource,
+        content: row.content,
+      })),
+      [
+        {
+          role: 'assistant',
+          senderName: 'Agnes',
+          frontendSource: 'VChat',
+          content: 'visible answer',
+        },
+      ],
+    );
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper recordAIResponse completes matching postTurn after assistant message insert', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let store = null;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      super(options);
+      store = this;
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+      ONERING_MAX_DB_RECORDS: 10,
+    },
+    hotConfig: { enabled: true },
+    now: () => '2026-06-06T08:00:01.000Z',
+    StoreClass: CapturingStore,
+  });
+  const postTurn = makePendingPostTurn();
+
+  try {
+    assert.deepEqual(recorder.listMessages('Agnes'), []);
+    store.upsertPostTurn(postTurn);
+
+    const result = await recorder.recordAIResponse(
+      { agentName: 'Agnes', frontendSource: 'VChat', postTurn },
+      ' visible answer ',
+    );
+
+    assert.equal(result.recorded, true);
+    assert.equal(Number.isInteger(result.id) && result.id > 0, true);
+    assert.equal(result.postTurnCompleted, true);
+    assert.equal(result.postTurnReason, null);
+
+    const row = store.getPostTurn('Agnes', postTurn.turnId);
+    assert.equal(row.status, 'completed');
+    assert.equal(row.responseMessageId, result.id);
+    assert.equal(row.responseContentHash, buildOneRingContentHash('visible answer'));
+    assert.equal(row.completedAt, '2026-06-06T08:00:01.000Z');
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper skips postTurn completion on metadata owner mismatch', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let store = null;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      super(options);
+      store = this;
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+    },
+    hotConfig: { enabled: true },
+    StoreClass: CapturingStore,
+  });
+  const postTurn = makePendingPostTurn({ agentName: 'Other' });
+
+  try {
+    assert.deepEqual(recorder.listMessages('Agnes'), []);
+    store.upsertPostTurn(postTurn);
+
+    const result = await recorder.recordAIResponse(
+      { agentName: 'Agnes', frontendSource: 'VChat', postTurn },
+      'visible answer',
+    );
+
+    assert.equal(result.recorded, true);
+    assert.equal(result.postTurnCompleted, false);
+    assert.equal(result.postTurnReason, 'post-turn-owner-mismatch');
+    assert.equal(store.getPostTurn('Other', postTurn.turnId).status, 'pending');
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper reports postTurn completion rejection without failing assistant record', async () => {
+  const postTurn = makePendingPostTurn();
+  const completeCalls = [];
+  class RejectingStore {
+    addMessage(message) {
+      return {
+        id: 9,
+        ...message,
+      };
+    }
+
+    completePostTurn(metadata, responseMessageId) {
+      completeCalls.push({ metadata, responseMessageId });
+      return {
+        updated: false,
+        reason: 'missing-pending-post-turn',
+        row: null,
+      };
+    }
+
+    close() {}
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_ENABLED: true,
+    },
+    hotConfig: { enabled: true },
+    now: () => '2026-06-06T08:00:01.000Z',
+    StoreClass: RejectingStore,
+  });
+
+  try {
+    const result = await recorder.recordAIResponse(
+      { agentName: 'Agnes', frontendSource: 'VChat', postTurn },
+      'visible answer',
+    );
+
+    assert.equal(result.recorded, true);
+    assert.equal(result.id, 9);
+    assert.equal(result.postTurnCompleted, false);
+    assert.equal(result.postTurnReason, 'missing-pending-post-turn');
+    assert.equal(completeCalls.length, 1);
+    assert.equal(completeCalls[0].responseMessageId, 9);
+    assert.equal(completeCalls[0].metadata.responseContentHash, buildOneRingContentHash('visible answer'));
   } finally {
     recorder.shutdown();
   }

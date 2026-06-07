@@ -17,6 +17,9 @@ const {
   DEFAULT_MAX_RECORDS,
   OneRingStore,
 } = require('../../modules/oneringStore');
+const {
+  completePostTurnMetadata,
+} = require('../../modules/oneringPostTurnMetadata');
 
 const HOT_CONFIG_FILE_NAME = 'OneRingConfig.json';
 const DEFAULT_USER_NAME = 'User';
@@ -93,7 +96,16 @@ function createOneRingRecorder(options = {}) {
       content,
     });
 
-    return { recorded: true, id: result.id };
+    return {
+      recorded: true,
+      id: result.id,
+      ...completePostTurnIfPresent(meta?.postTurn, {
+        agentName,
+        frontendSource,
+        assistantContent: content,
+        responseMessageId: result.id,
+      }),
+    };
   }
 
   function listMessages(agentName, listOptions) {
@@ -112,6 +124,54 @@ function createOneRingRecorder(options = {}) {
       ...message,
       timestamp: now(),
     });
+  }
+
+  function completePostTurnIfPresent(postTurn, {
+    agentName,
+    frontendSource,
+    assistantContent,
+    responseMessageId,
+  }) {
+    if (!postTurn) {
+      return {};
+    }
+
+    if (normalizeText(postTurn.agentName) !== agentName || normalizeText(postTurn.frontendSource) !== frontendSource) {
+      return {
+        postTurnCompleted: false,
+        postTurnReason: 'post-turn-owner-mismatch',
+      };
+    }
+
+    const completed = completePostTurnMetadata(
+      postTurn,
+      {
+        shouldRecord: true,
+        role: 'assistant',
+        content: assistantContent,
+        reason: null,
+      },
+      { now },
+    );
+    if (!completed.ok) {
+      return {
+        postTurnCompleted: false,
+        postTurnReason: completed.reason,
+      };
+    }
+
+    try {
+      const result = getStore().completePostTurn(completed.metadata, responseMessageId);
+      return {
+        postTurnCompleted: Boolean(result?.updated),
+        postTurnReason: result?.updated ? null : result?.reason || 'post-turn-completion-skipped',
+      };
+    } catch {
+      return {
+        postTurnCompleted: false,
+        postTurnReason: 'post-turn-completion-error',
+      };
+    }
   }
 
   function getStore() {
