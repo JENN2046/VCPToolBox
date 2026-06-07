@@ -125,6 +125,8 @@ Rationale:
 - `response_message_id` can link to `messages.id` later;
 - `ON DELETE SET NULL` prevents normal message retention pruning from failing
   when old referenced assistant messages are deleted;
+- this delete action is valid only if every `OneRingStore` SQLite connection
+  enables and verifies `PRAGMA foreign_keys = ON`;
 - nullable response fields preserve the #200 pure helper contract;
 - `CHECK` constraints make invalid states fail in store tests, not at runtime
   after handler wiring.
@@ -138,6 +140,10 @@ append fail with `FOREIGN KEY constraint failed`.
 
 Local policy for the first store package:
 
+- enable `PRAGMA foreign_keys = ON` on every `OneRingStore` SQLite connection
+  before schema creation or writes;
+- verify the setting with `PRAGMA foreign_keys` in tests and fail fast if it is
+  not `1`;
 - use `ON DELETE SET NULL` for `response_message_id`;
 - keep the completed `post_turns` row even if the referenced assistant message is
   later pruned;
@@ -226,6 +232,7 @@ tests/onering-store.test.js
 Minimum tests:
 
 - creates `post_turns` in a temp db without touching real runtime data;
+- enables and verifies `PRAGMA foreign_keys = ON` for every store connection;
 - schema creation is idempotent;
 - existing `messages` rows survive post_turns migration;
 - `upsertPostTurn()` stores pending metadata and returns camelCase fields;
@@ -281,7 +288,7 @@ Docs-only validation:
 
 ```powershell
 git diff --check
-rg -n "post_turns|ON DELETE SET NULL|upsertPostTurn|completePostTurn|abortPostTurn|temp db|Non-goals" docs/governance/ONERING_POSTTURNS_STORE_SCHEMA_PREFLIGHT_20260607.md
+rg -n "post_turns|PRAGMA foreign_keys|ON DELETE SET NULL|upsertPostTurn|completePostTurn|abortPostTurn|temp db|Non-goals" docs/governance/ONERING_POSTTURNS_STORE_SCHEMA_PREFLIGHT_20260607.md
 git status --short
 ```
 
