@@ -8,6 +8,7 @@ const {
   completeOneRingPostTurnAfterRecord,
   dispatchOneRingAssistantRecordCandidate,
 } = require('../modules/oneringHandlerWiring');
+const { attachOneRingPostTurnMetadata } = require('../modules/oneringPostTurnContext');
 const { buildPendingPostTurnMetadata } = require('../modules/oneringPostTurnMetadata');
 const { buildOneRingContentHash } = require('../modules/oneringSqlHashContract');
 
@@ -132,6 +133,22 @@ test('dispatch metadata preserves messages key and carries optional postTurn met
   assert.deepEqual(metadata.messages, [{ role: 'user', content: 'hello' }]);
   assert.equal(metadata.postTurn, postTurn);
   assert.equal(Object.hasOwn(metadata, 'originalBody'), false);
+});
+
+test('dispatch metadata reads prepared postTurn side-channel from messages', () => {
+  const postTurn = makePendingPostTurn();
+  const messages = [{ role: 'user', content: 'hello' }];
+  attachOneRingPostTurnMetadata(messages, { prepared: true, postTurn, reason: null });
+
+  const metadata = buildOneRingDispatchMetadata(
+    {
+      originalBody: { messages },
+    },
+    { phaseLabel: 'final_turn' },
+  );
+
+  assert.equal(metadata.messages, messages);
+  assert.equal(metadata.postTurn, postTurn);
 });
 
 test('dispatchOneRingAssistantRecordCandidate completes post-turn after assistant record id exists', async () => {
@@ -298,6 +315,47 @@ test('dispatchOneRingAssistantRecordCandidate prefers wrapper recorder when post
   }]);
   assert.deepEqual(legacyCalls, []);
   assert.deepEqual(completeCalls, []);
+});
+
+test('dispatchOneRingAssistantRecordCandidate uses wrapper recorder for prepared messages side-channel', async () => {
+  const postTurn = makePendingPostTurn();
+  const messages = [{ role: 'user', content: 'hello' }];
+  attachOneRingPostTurnMetadata(messages, { prepared: true, postTurn, reason: null });
+  const wrapperCalls = [];
+  const legacyCalls = [];
+  const oneRingModule = {
+    recordAIResponse(meta, content) {
+      wrapperCalls.push({ meta, content });
+      return { recorded: true, id: 42, postTurnCompleted: true, postTurnReason: null };
+    },
+    recordAIResponseFromMessages(legacyMessages, content) {
+      legacyCalls.push({ messages: legacyMessages, content });
+    },
+  };
+
+  const result = dispatchOneRingAssistantRecordCandidate(
+    {
+      originalBody: { messages },
+      pluginManager: {
+        messagePreprocessors: new Map([['OneRing', oneRingModule]]),
+      },
+    },
+    { shouldRecord: true, role: 'assistant', content: 'visible answer', reason: null },
+  );
+
+  assert.equal(result.dispatched, true);
+
+  await tick();
+
+  assert.deepEqual(wrapperCalls, [{
+    meta: {
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+      postTurn,
+    },
+    content: 'visible answer',
+  }]);
+  assert.deepEqual(legacyCalls, []);
 });
 
 test('dispatchOneRingAssistantRecordCandidate keeps legacy plugin fallback without postTurn metadata', async () => {
