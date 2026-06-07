@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS post_turns (
   updated_at TEXT NOT NULL,
   completed_at TEXT,
   aborted_at TEXT,
-  FOREIGN KEY (response_message_id) REFERENCES messages(id)
+  FOREIGN KEY (response_message_id) REFERENCES messages(id) ON DELETE SET NULL
 );
 ```
 
@@ -123,11 +123,34 @@ Rationale:
 
 - table name follows local snake_case style;
 - `response_message_id` can link to `messages.id` later;
+- `ON DELETE SET NULL` prevents normal message retention pruning from failing
+  when old referenced assistant messages are deleted;
 - nullable response fields preserve the #200 pure helper contract;
 - `CHECK` constraints make invalid states fail in store tests, not at runtime
   after handler wiring.
 
-## 5. Migration Contract
+## 5. Retention And Foreign-key Contract
+
+`OneRingStore.addMessage()` currently calls `_pruneAgent()` after every insert.
+That pruning deletes old `messages` rows once `maxRecords` is exceeded. Future
+`post_turns.response_message_id` references must not make ordinary message
+append fail with `FOREIGN KEY constraint failed`.
+
+Local policy for the first store package:
+
+- use `ON DELETE SET NULL` for `response_message_id`;
+- keep the completed `post_turns` row even if the referenced assistant message is
+  later pruned;
+- after the reference is nulled, `listRecentCompletedPostTurns()` must exclude
+  that row from message-backed replay candidates because it requires
+  `response_message_id IS NOT NULL`;
+- do not cascade-delete `post_turns` in the first package, because the turn row
+  still carries useful request / completion audit metadata;
+- add a temp-db test where a completed post turn references an assistant message,
+  then message retention pruning deletes that message without failing the next
+  `addMessage()` call.
+
+## 6. Migration Contract
 
 Schema creation must be idempotent:
 
@@ -141,7 +164,7 @@ Schema creation must be idempotent:
 No migration package should touch real operator databases until temp-path tests
 prove the behavior.
 
-## 6. State Update Contract
+## 7. State Update Contract
 
 Suggested future store methods:
 
@@ -186,7 +209,7 @@ listRecentCompletedPostTurns(agentName, frontendSource, options)
 - orders by `updated_at DESC`;
 - default limit should be bounded.
 
-## 7. Test Contract For The Next Package
+## 8. Test Contract For The Next Package
 
 The next implementation package may modify only:
 
@@ -205,6 +228,8 @@ Minimum tests:
 - `completePostTurn()` updates only pending rows;
 - `abortPostTurn()` clears response fields and updates only pending rows;
 - completed rows are returned by recent-completed query in newest-first order;
+- pruning old referenced assistant messages sets `response_message_id` to null
+  instead of failing message insertion;
 - closed store rejects post-turn operations;
 - invalid metadata returns safe results or throws only in already-established
   store-validation style, not in handler paths.
@@ -217,7 +242,7 @@ node --test tests/onering-store.test.js tests/onering-post-turn-metadata.test.js
 git diff --check
 ```
 
-## 8. Explicit Non-goals
+## 9. Explicit Non-goals
 
 This preflight and the next store-schema package must not:
 
@@ -231,7 +256,7 @@ This preflight and the next store-schema package must not:
 - import upstream `Plugin/OneRing/OneRingDB.js`;
 - touch Rust/native files or `.node` binaries.
 
-## 9. Rollback And Safety
+## 10. Rollback And Safety
 
 Rollback must be simple:
 
@@ -241,20 +266,20 @@ Rollback must be simple:
 - if a temp db contains `post_turns`, removing the local feature should not
   affect existing `messages` behavior.
 
-## 10. Validation Plan
+## 11. Validation Plan
 
 Docs-only validation:
 
 ```powershell
 git diff --check
-rg -n "post_turns|upsertPostTurn|completePostTurn|abortPostTurn|temp db|Non-goals" docs/governance/ONERING_POSTTURNS_STORE_SCHEMA_PREFLIGHT_20260607.md
+rg -n "post_turns|ON DELETE SET NULL|upsertPostTurn|completePostTurn|abortPostTurn|temp db|Non-goals" docs/governance/ONERING_POSTTURNS_STORE_SCHEMA_PREFLIGHT_20260607.md
 git status --short
 ```
 
 No SQLite operation, handler test, service startup, vector rebuild, Rust/native
 build, real migration, or external API call is required for this preflight.
 
-## 11. Recommended Next Package
+## 12. Recommended Next Package
 
 If accepted, the next safe package should be
 **OneRing postTurns temp-store schema + tests**:
