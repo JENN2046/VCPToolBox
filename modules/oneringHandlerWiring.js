@@ -51,6 +51,14 @@ function buildOneRingDispatchMetadata(context, { phaseLabel = 'final_turn' } = {
 }
 
 function completeOneRingPostTurnAfterRecord(context, metadata, candidate, recordResult, { now } = {}) {
+  if (isWrapperPostTurnResult(recordResult)) {
+    return {
+      completed: recordResult.postTurnCompleted === true,
+      reason: recordResult.postTurnReason || null,
+      row: null,
+    };
+  }
+
   const store = resolveOneRingPostTurnStore(context, 'completePostTurn');
   const postTurn = metadata?.postTurn;
   if (!store || !postTurn) {
@@ -113,11 +121,42 @@ function resolveOneRingRecorder(context) {
   }
 
   const oneRingModule = context?.pluginManager?.messagePreprocessors?.get?.('OneRing');
+  if (
+    oneRingModule
+    && typeof oneRingModule.recordAIResponse === 'function'
+    && context?.oneRingPostTurn
+  ) {
+    return (candidate, metadata) => oneRingModule.recordAIResponse(
+      buildOneRingWrapperMeta(metadata),
+      candidate.content,
+    );
+  }
+
   if (oneRingModule && typeof oneRingModule.recordAIResponseFromMessages === 'function') {
     return (candidate, metadata) => oneRingModule.recordAIResponseFromMessages(metadata.messages, candidate.content);
   }
 
   return null;
+}
+
+function buildOneRingWrapperMeta(metadata) {
+  const postTurn = metadata?.postTurn || null;
+  return {
+    agentName: postTurn?.agentName,
+    frontendSource: postTurn?.frontendSource,
+    postTurn,
+  };
+}
+
+function isWrapperPostTurnResult(recordResult) {
+  return Boolean(
+    recordResult
+    && typeof recordResult === 'object'
+    && (
+      Object.hasOwn(recordResult, 'postTurnCompleted')
+      || Object.hasOwn(recordResult, 'postTurnReason')
+    ),
+  );
 }
 
 function skipCandidate(candidate) {
