@@ -189,6 +189,11 @@ listRecentCompletedPostTurns(agentName, frontendSource, options)
 
 - requires metadata status `completed`;
 - requires a positive integer `responseMessageId`;
+- validates that the referenced `messages` row belongs to
+  `metadata.agentName`, belongs to `metadata.frontendSource`, and has
+  `role = 'assistant'`;
+- if the referenced message is missing, belongs to another agent/frontend, or is
+  not an assistant message, returns a safe `{ updated: false, reason }` result;
 - stores `response_content_hash`, `completed_at`, and `updated_at`;
 - updates only rows currently in `pending` status;
 - if no pending row matches, returns a safe `{ updated: false, reason }` result
@@ -225,6 +230,10 @@ Minimum tests:
 - existing `messages` rows survive post_turns migration;
 - `upsertPostTurn()` stores pending metadata and returns camelCase fields;
 - `completePostTurn()` requires a positive `responseMessageId`;
+- `completePostTurn()` rejects `responseMessageId` rows from another agent;
+- `completePostTurn()` rejects `responseMessageId` rows from another frontend;
+- `completePostTurn()` rejects `responseMessageId` rows whose role is not
+  `assistant`;
 - `completePostTurn()` updates only pending rows;
 - `abortPostTurn()` clears response fields and updates only pending rows;
 - completed rows are returned by recent-completed query in newest-first order;
