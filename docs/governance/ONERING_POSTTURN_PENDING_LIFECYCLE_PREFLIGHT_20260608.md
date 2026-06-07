@@ -113,12 +113,45 @@ Rules:
 - it may be non-enumerable to avoid accidental prompt contamination;
 - `roleDivider.process()` already preserves string and symbol array-level
   metadata through `Reflect.ownKeys()`;
+- `roleDivider.process()` preservation is not sufficient by itself, because the
+  final chat pipeline can still replace the whole array after role-divider work;
 - `chatCompletionHandler` may read this metadata from the final
   `processedMessages` array before creating handler context;
 - if metadata is absent, existing legacy OneRing assistant recording behavior
   stays unchanged.
 
-## 6. Pending Creation Owner
+## 6. Final Array Replacement Boundary
+
+The side-channel must survive the final `processedMessages` boundary, not only
+individual preprocessor calls.
+
+Known current replacement points:
+
+- in experimental pipeline mode, `processFinalRoleDivider()` may call
+  `roleDivider.process()` on slices and then return a fresh array literal;
+- when final role divider is disabled, `processedMessages.map(...)` returns a
+  fresh array after stripping the original top system prompt marker.
+
+Both paths drop array-level string and symbol properties unless the final
+pipeline explicitly copies them from the previous `processedMessages` array to
+the replacement array.
+
+Required rule:
+
+```text
+every final processedMessages replacement that may run after OneRing preparation
+must preserve the OneRing side-channel before chatCompletionHandler reads it
+```
+
+The next implementation must therefore include a small preservation helper or
+equivalent local code at the final `processedMessages` boundary, with tests for
+both:
+
+- `processFinalRoleDivider()` returning a fresh merged array;
+- role-divider-disabled `.map(stripOriginalTopSystemPromptMarker)` returning a
+  fresh array.
+
+## 7. Pending Creation Owner
 
 The preferred local owner is the OneRing plugin wrapper, not the live handlers.
 
@@ -151,7 +184,7 @@ Disallowed behavior:
 - serializing metadata into the prompt sent upstream;
 - creating a raw store object in `chatCompletionHandler` or handlers.
 
-## 7. Completion Path
+## 8. Completion Path
 
 The desired success path after later implementation:
 
@@ -176,7 +209,7 @@ Completion remains owned by `recordAIResponse(meta, content)` after assistant
 message persistence. `completePostTurn()` must not run before a successful
 assistant `messages` row exists.
 
-## 8. Failure / Skip Policy
+## 9. Failure / Skip Policy
 
 Default policy for the first lifecycle implementation:
 
@@ -194,7 +227,7 @@ Default policy for the first lifecycle implementation:
 Implementation must not invent a successful assistant record from an error
 chunk or partial content.
 
-## 9. Abort Boundary
+## 10. Abort Boundary
 
 There are two viable abort strategies:
 
@@ -227,7 +260,7 @@ Initial recommendation: use Strategy A only if the next implementation can keep
 handler edits tiny and focused. Otherwise open a separate abort observability
 preflight before live changes.
 
-## 10. Recommended Next Package
+## 11. Recommended Next Package
 
 Recommended next package: **OneRing pending metadata side-channel helpers +
 tests**, still not live handler wiring.
@@ -245,16 +278,22 @@ The package may be split smaller if review risk is high:
 
 1. pure side-channel attach/read helpers only;
 2. wrapper `preparePostTurnFromMessages()` with temp-store tests;
-3. `chatCompletionHandler` context seeding package;
+3. final `processedMessages` preservation plus context seeding package;
 4. minimal handler abort package if needed.
 
-## 11. Test Requirements For The Next Package
+## 12. Test Requirements For The Next Package
 
 Minimum tests before live wiring:
 
 - metadata side-channel is non-enumerable or otherwise not serialized by
   `JSON.stringify(messages)`;
 - symbol-keyed and string-keyed metadata survive `roleDivider.process()`;
+- symbol-keyed and string-keyed metadata survive `processFinalRoleDivider()`
+  when it returns a fresh merged array around the original system prompt;
+- symbol-keyed and string-keyed metadata survive the role-divider-disabled
+  `processedMessages.map(stripOriginalTopSystemPromptMarker)` path;
+- `chatCompletionHandler` reads `oneRingPostTurn` only from the final preserved
+  array, not from an earlier array that may be replaced;
 - absent metadata returns `null` and preserves legacy behavior;
 - wrapper preparation skips when OneRing is disabled;
 - wrapper preparation skips without a trigger;
@@ -275,7 +314,7 @@ node --test tests/onering-post-turn-context.test.js tests/onering-plugin-wrapper
 git diff --check
 ```
 
-## 12. Explicit Non-goals
+## 13. Explicit Non-goals
 
 This preflight and the next helper package must not:
 
@@ -293,7 +332,7 @@ This preflight and the next helper package must not:
 - persist hidden reasoning or tool payloads;
 - import upstream Rust/native code.
 
-## 13. Stop Conditions
+## 14. Stop Conditions
 
 Stop before implementation if the next package requires:
 
@@ -301,19 +340,21 @@ Stop before implementation if the next package requires:
   handler in one PR;
 - changing `executeMessagePreprocessor()` return semantics globally;
 - relying on serialized metadata in prompt messages;
+- reading side-channel metadata before final `processedMessages` replacements
+  have finished;
 - adding a raw store getter to handlers;
 - completing post-turns without a persisted assistant message id;
 - recording aborted / idle / failed stream partials;
 - writing `Plugin/OneRing/data` in tests;
 - changing `preprocessor_order.json`.
 
-## 14. Validation Plan
+## 15. Validation Plan
 
 Docs-only validation:
 
 ```powershell
 git diff --check
-rg -n "pending|side-channel|oneRingPostTurn|preparePostTurnFromMessages|abort|Non-goals|Stop Conditions" docs/governance/ONERING_POSTTURN_PENDING_LIFECYCLE_PREFLIGHT_20260608.md
+rg -n "pending|side-channel|oneRingPostTurn|preparePostTurnFromMessages|processFinalRoleDivider|stripOriginalTopSystemPromptMarker|abort|Non-goals|Stop Conditions" docs/governance/ONERING_POSTTURN_PENDING_LIFECYCLE_PREFLIGHT_20260608.md
 git status --short
 ```
 
@@ -321,11 +362,11 @@ No handler execution, service startup, SQLite operation, vector rebuild,
 Rust/native build, real migration, or external API call is required for this
 preflight.
 
-## 15. Preflight Result
+## 16. Preflight Result
 
 Do not open direct live handler edits yet.
 
 Proceed next with a side-channel/helper package that proves pending metadata can
-be prepared, attached, read, and kept out of upstream prompt JSON. After that,
-open a separate minimal context-seeding package, then decide whether handler
-abort hooks are necessary.
+be prepared, attached, preserved through final array replacements, read, and
+kept out of upstream prompt JSON. After that, open a separate minimal
+context-seeding package, then decide whether handler abort hooks are necessary.
