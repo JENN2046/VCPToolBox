@@ -181,6 +181,7 @@ git diff --name-status main..upstream/main
 | 2026-06-06 | `5d6dc451` docs-only | #165 / `cc644b69` | 已吸收并已推送 | PR CI; staged `VCP.md` diff review | 吸收 `VCP.md` 演讲稿 front matter/title、`SystemPromptHacker` 与 `OneRing` 文档段落。`VCP.md` 仍为 CRLF 文件，未在该小包内做整文件换行规范化。 |
 | 2026-06-06 | `b3f5840c` DailyNote review-safe subset | #167 / `4562e77f`, review fix `a153ead6`, merge `2ea8294e` | 已吸收并已推送 | `node --check Plugin\DailyNote\dailynote.js`; `node --test tests\gptimagegen-safety.test.js` 25 pass; PR CI | 保留 #164 的“缺失/空白 command 可按明确参数形态推断”行为；review 后不吸收上游“显式但无效 command 也可由参数形态纠正”的宽松行为，显式未知 command 继续返回 unknown-command，避免 `delete` / `search` / malformed parser value 携带写入参数时触发 DailyNote 写入。 |
 | 2026-06-06 | `666af9eb` DailyNote missing-command robustness | #164 / #167 covered | 已覆盖 | 只读 `git show 666af9eb -- Plugin\DailyNote\dailynote.js`; 当前 `Plugin\DailyNote\dailynote.js` 静态确认 | upstream `666af9eb` 的核心行为是缺失 command 时按 `content/contentText/Content` 或 `target + replace` 推断 create/update。本地已由 #164 引入并由 #167 收窄保护；`git cherry` 仍显示 `+` 是 hash 不同，不代表未吸收。 |
+| 2026-06-07 | `392269bb` DailyNote update failure hint | #190 / merge `5f06efc4` | 已吸收并已推送 | `node --check Plugin\DailyNote\dailynote.js`; `node --test tests\gptimagegen-safety.test.js` 25 pass; `git diff --check`; PR CI | 只吸收 update 找不到 target 时的可操作提示：检查字段或标点是否与原文一致，并建议用 `DailyNoteManager list` 查看原文状态后重试。未改变 DailyNote 搜索、写入、fuzzy fallback 或 command 推断逻辑。 |
 
 ### 8.1 本轮明确没有吸收的内容
 
@@ -190,6 +191,7 @@ git diff --name-status main..upstream/main
 | `Plugin/OneRing/README.md` docs snippets from `31064f3f` | 不单独吸收 | 文档描述 upstream plugin wrapper / snapshot / output dedup 形态；本地只有 thin wrapper，不应提交会承诺 upstream 整包行为的 README。 |
 | upstream `Plugin/OneRing/OneRing.js` changes from `7855f8ae`, `31064f3f`, `4ef1517f`, `f34e5ca2`, `f456575f` and later fixes | 继续归入 OneRing 专项 | 已由第 7 节明确：上游 OneRing 整包只作为参考材料，不 raw-import；后续应做 thin plugin wrapper 设计/实现包，默认关闭或 record-only，不接 admin write API、frontend UI、`dist` 或默认 `preprocessor_order.json`。 |
 | upstream DailyNote explicit-invalid-command correction from `b3f5840c` | 不吸收 | 该行为会让显式未知 command 在携带写入形态参数时被纠正为 create/update。本地 #167 review 后明确保留更严格策略：只有缺失/空白 command 可推断，显式未知 command 必须报 unknown-command。 |
+| upstream DailyNote 其它潜在提示/流程变化 | 不随 #190 扩展 | #190 只核销 `392269bb` 的 update failure hint 文案，不作为 DailyNote 行为重构入口；任何写入路径、搜索策略、fuzzy diff 或 command parser 变化仍需单独包和测试。 |
 
 ### 8.2 后续吸收固定补充规则
 
