@@ -26,10 +26,11 @@ function assertSourceOrder(source, markers) {
   }
 }
 
-test('chatCompletionHandler keeps current local pipeline order before Package E runtime changes', () => {
+test('chatCompletionHandler keeps legacy as the default pipeline order', () => {
   const source = readSource('modules/chatCompletionHandler.js');
 
   assertSourceOrder(source, [
+    'const pipelineOrderMode = resolvePromptPipelineOrderMode',
     'LogInput',
     'Applying Role Divider processing (Initial Stage)',
     'LogAfterInitialRoleDivider',
@@ -47,10 +48,35 @@ test('chatCompletionHandler keeps current local pipeline order before Package E 
     'finalContextStore.setLastFinalContext'
   ]);
 
-  assert.equal(source.includes('LogAfterDetectors'), false);
-  assert.equal(source.includes('LogAfterFinalRoleDivider'), false);
-  assert.equal(source.includes('Applying Role Divider processing (Final Stage)'), false);
-  assert.equal(source.includes('applyDetectorsToMessages(processedMessages'), false);
+  assert.equal(source.includes('if (enableRoleDivider && !useExperimentalPipelineOrder)'), true);
+  assert.equal(source.includes("detectorPhase: useExperimentalPipelineOrder ? 'deferred' : 'legacy'"), true);
+});
+
+test('chatCompletionHandler wires explicit experimental pipeline order after preprocessors', () => {
+  const source = readSource('modules/chatCompletionHandler.js');
+
+  assertSourceOrder(source, [
+    'TransBase64+ cleanup and media restore complete',
+    'if (useExperimentalPipelineOrder)',
+    'messageProcessor.applyDetectorsToMessages(processedMessages, processingContext)',
+    'LogAfterDetectors',
+    'Applying Role Divider processing (Final Stage)',
+    'LogAfterFinalRoleDivider',
+    'finalContextStore.setLastFinalContext'
+  ]);
+
+  assert.equal(source.includes('PROMPT_PIPELINE_ORDER_MODES.DETECTOR_POST_PROCESSORS_FINAL_ROLE_DIVIDER'), true);
+  assert.equal(source.includes('this.config.promptPipelineOrderMode ?? process.env.PromptPipelineOrderMode'), true);
+});
+
+test('server passes raw PromptPipelineOrderMode into ChatCompletionHandler config', () => {
+  const source = readSource('server.js');
+
+  assertSourceOrder(source, [
+    "dotenv.config({ path: 'config.env' })",
+    'const chatCompletionHandler = new ChatCompletionHandler',
+    'promptPipelineOrderMode: process.env.PromptPipelineOrderMode'
+  ]);
 });
 
 test('messageProcessor keeps Detector and SuperDetector attached to replaceOtherVariables', () => {
@@ -62,6 +88,7 @@ test('messageProcessor keeps Detector and SuperDetector attached to replaceOther
     'for (const rule of superDetectors)',
     'function applyDetectorsToMessages(messages, context = {})',
     'async function replaceOtherVariables(text, model, role, context)',
+    "if (context?.detectorPhase !== 'deferred')",
     'processedText = applyDetectorRules(processedText, role, context)',
     'const asyncResultPlaceholderRegex',
     'module.exports ='
@@ -72,13 +99,15 @@ test('messageProcessor keeps Detector and SuperDetector attached to replaceOther
   const detectorHelperCall = markerIndex(source, 'processedText = applyDetectorRules(processedText, role, context)');
   const asyncPlaceholderStart = markerIndex(source, 'const asyncResultPlaceholderRegex');
   const messageHelperStart = markerIndex(source, 'function applyDetectorsToMessages(messages, context = {})');
+  const detectorPhaseGuard = markerIndex(source, "if (context?.detectorPhase !== 'deferred')");
 
   assert.ok(detectorHelperCall > replaceStart && detectorHelperCall < exportStart);
   assert.ok(detectorHelperCall < asyncPlaceholderStart);
+  assert.ok(detectorPhaseGuard > replaceStart && detectorPhaseGuard < detectorHelperCall);
   assert.ok(messageHelperStart < replaceStart);
 });
 
-test('Package E target order is documented but not active in runtime source', () => {
+test('Package E keeps legacy and experimental orders distinct in source', () => {
   const currentLocalOrder = [
     'LogInput',
     'Role Divider initial stage',
@@ -108,8 +137,9 @@ test('Package E target order is documented but not active in runtime source', ()
   const handlerSource = readSource('modules/chatCompletionHandler.js');
   const processorSource = readSource('modules/messageProcessor.js');
 
-  assert.equal(handlerSource.includes('LogAfterDetectors'), false);
-  assert.equal(handlerSource.includes('LogAfterFinalRoleDivider'), false);
-  assert.equal(handlerSource.includes('applyDetectorsToMessages'), false);
+  assert.equal(handlerSource.includes('LogAfterInitialRoleDivider'), true);
+  assert.equal(handlerSource.includes('LogAfterDetectors'), true);
+  assert.equal(handlerSource.includes('LogAfterFinalRoleDivider'), true);
+  assert.equal(handlerSource.includes('applyDetectorsToMessages'), true);
   assert.equal(processorSource.includes('function applyDetectorsToMessages'), true);
 });

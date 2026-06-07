@@ -34,6 +34,10 @@ const NonStreamHandler = require('./handlers/nonStreamHandler');
 const codexOAuthResponses = require('../routes/codexOAuthResponses');
 const { createCodexOAuthProvider } = require('./providers/codexOAuthProvider');
 const { createCodexOAuthTraceStore } = require('./codexOAuthTraceStore');
+const {
+  PROMPT_PIPELINE_ORDER_MODES,
+  resolvePromptPipelineOrderMode
+} = require('./promptPipelineOrderMode.js');
 
 const VCP_TOOL_USE_FORBIDDEN_PLACEHOLDER = '[[VCPToolUse=Forbidden]]';
 
@@ -658,6 +662,11 @@ class ChatCompletionHandler {
     } = this.config;
 
     const shouldShowVCP = SHOW_VCP_OUTPUT || forceShowVCP;
+    const pipelineOrderMode = resolvePromptPipelineOrderMode(
+      this.config.promptPipelineOrderMode ?? process.env.PromptPipelineOrderMode
+    );
+    const useExperimentalPipelineOrder =
+      pipelineOrderMode === PROMPT_PIPELINE_ORDER_MODES.DETECTOR_POST_PROCESSORS_FINAL_ROLE_DIVIDER;
     const applyChinaModelThinkingControl = (body) => {
       if (!body || !body.model || !chinaModel1 || !Array.isArray(chinaModel1) || chinaModel1.length === 0) {
         return body;
@@ -812,7 +821,7 @@ class ChatCompletionHandler {
 
       // --- 角色分割处理 (Role Divider) - 初始阶段 ---
       // 移动到最前端，确保拆分出的楼层能享受后续所有解析功能
-      if (enableRoleDivider) {
+      if (enableRoleDivider && !useExperimentalPipelineOrder) {
         if (DEBUG_MODE) console.log('[Server] Applying Role Divider processing (Initial Stage)...');
         // skipCount: 1 to exclude the initial SystemPrompt from splitting
         originalBody.messages = roleDivider.process(originalBody.messages, {
@@ -923,6 +932,7 @@ class ChatCompletionHandler {
         cachedEmojiLists: this.config.cachedEmojiLists,
         detectors: this.config.detectors,
         superDetectors: this.config.superDetectors,
+        detectorPhase: useExperimentalPipelineOrder ? 'deferred' : 'legacy',
         DEBUG_MODE,
         messages: tavernProcessedMessages, // 将近期消息列表传递下去，用于支持上下文动态折叠 (Contextual Folding)
         // 🔒 灵魂级占位符去重：跨消息共享展开状态
@@ -1039,6 +1049,23 @@ class ChatCompletionHandler {
           }
         }
         if (DEBUG_MODE) console.log(`[Server] TransBase64+ cleanup and media restore complete.`);
+      }
+
+      if (useExperimentalPipelineOrder) {
+        processedMessages = messageProcessor.applyDetectorsToMessages(processedMessages, processingContext);
+        if (DEBUG_MODE) await writeDebugLog('LogAfterDetectors', processedMessages);
+
+        if (enableRoleDivider) {
+          if (DEBUG_MODE) console.log('[Server] Applying Role Divider processing (Final Stage)...');
+          processedMessages = roleDivider.process(processedMessages, {
+            ignoreList: roleDividerIgnoreList,
+            switches: roleDividerSwitches,
+            scanSwitches: roleDividerScanSwitches,
+            removeDisabledTags: roleDividerRemoveDisabledTags,
+            skipCount: 1
+          });
+          if (DEBUG_MODE) await writeDebugLog('LogAfterFinalRoleDivider', processedMessages);
+        }
       }
 
       // 经过改造后，processedMessages 已经是最终版本，无需再调用 replaceOtherVariables
