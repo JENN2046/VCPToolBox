@@ -12,7 +12,8 @@ const {
 } = require('../Plugin/OneRing/OneRing');
 const { OneRingStore } = require('../modules/oneringStore');
 const { buildPendingPostTurnMetadata } = require('../modules/oneringPostTurnMetadata');
-const { buildOneRingContentHash } = require('../modules/oneringSqlHashContract');
+const { readOneRingPostTurnMetadata } = require('../modules/oneringPostTurnContext');
+const { buildOneRingContentHash, buildOneRingRequestHash } = require('../modules/oneringSqlHashContract');
 
 async function makeTempDir(prefix = 'onering-plugin-wrapper-') {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -198,6 +199,224 @@ test('OneRing plugin wrapper records visible user and assistant messages in reco
         },
       ],
     );
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper skips postTurn preparation without creating a store', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let constructed = false;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      constructed = true;
+      super(options);
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+    },
+    hotConfig: { enabled: false },
+    StoreClass: CapturingStore,
+  });
+
+  assert.deepEqual(
+    await recorder.preparePostTurnFromMessages([
+      { role: 'system', content: '[[OneRing::Agnes::VChat::Only]]' },
+      { role: 'user', content: 'hello' },
+    ]),
+    { prepared: false, postTurn: null, reason: 'disabled' },
+  );
+  assert.deepEqual(
+    await recorder.preparePostTurnFromMessages([
+      { role: 'user', content: 'hello' },
+    ]),
+    { prepared: false, postTurn: null, reason: 'missing-trigger' },
+  );
+  assert.deepEqual(
+    await recorder.preparePostTurnFromMessages(null),
+    { prepared: false, postTurn: null, reason: 'invalid-messages' },
+  );
+
+  assert.equal(constructed, false);
+  await assert.rejects(fs.stat(baseDir), { code: 'ENOENT' });
+});
+
+test('OneRing plugin wrapper skips postTurn preparation for empty latest user text', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let constructed = false;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      constructed = true;
+      super(options);
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+    },
+    hotConfig: { enabled: true },
+    StoreClass: CapturingStore,
+  });
+
+  const messages = [
+    { role: 'system', content: '[[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: '   ' },
+  ];
+
+  assert.deepEqual(
+    await recorder.preparePostTurnFromMessages(messages),
+    { prepared: false, postTurn: null, reason: 'empty-user-content' },
+  );
+  assert.equal(readOneRingPostTurnMetadata(messages), null);
+  assert.equal(constructed, false);
+  await assert.rejects(fs.stat(baseDir), { code: 'ENOENT' });
+});
+
+test('OneRing plugin wrapper prepares pending postTurn metadata in a temp store', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let store = null;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      super(options);
+      store = this;
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+      ONERING_MAX_DB_RECORDS: 10,
+    },
+    hotConfig: { enabled: true },
+    now: () => '2026-06-08T00:00:00.000Z',
+    StoreClass: CapturingStore,
+  });
+  const messages = [
+    { role: 'system', content: 'prefix [[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: '[小克的发言]: hello' },
+  ];
+
+  try {
+    const result = await recorder.preparePostTurnFromMessages(messages);
+
+    assert.equal(result.prepared, true);
+    assert.equal(result.reason, null);
+    assert.equal(result.postTurn.agentName, 'Agnes');
+    assert.equal(result.postTurn.frontendSource, 'VChat');
+    assert.equal(result.postTurn.status, 'pending');
+    assert.equal(result.postTurn.requestHash, buildOneRingRequestHash(messages));
+    assert.equal(result.postTurn.requestBlockCount, 2);
+    assert.equal(result.postTurn.createdAt, '2026-06-08T00:00:00.000Z');
+
+    const sideChannel = readOneRingPostTurnMetadata(messages);
+    assert.equal(sideChannel.prepared, true);
+    assert.equal(sideChannel.postTurn.turnId, result.postTurn.turnId);
+    assert.equal(JSON.stringify(messages).includes(result.postTurn.turnId), false);
+
+    const row = store.getPostTurn('Agnes', result.postTurn.turnId);
+    assert.equal(row.status, 'pending');
+    assert.equal(row.requestHash, buildOneRingRequestHash(messages));
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper reuses existing prepared postTurn metadata', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let store = null;
+  let tick = 0;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      super(options);
+      store = this;
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+      ONERING_MAX_DB_RECORDS: 10,
+    },
+    hotConfig: { enabled: true },
+    now: () => `2026-06-08T00:00:0${tick++}.000Z`,
+    StoreClass: CapturingStore,
+  });
+  const messages = [
+    { role: 'system', content: 'prefix [[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: 'hello' },
+  ];
+
+  try {
+    const first = await recorder.preparePostTurnFromMessages(messages);
+    const second = await recorder.preparePostTurnFromMessages(messages);
+
+    assert.equal(second.prepared, true);
+    assert.equal(second.reason, null);
+    assert.equal(second.postTurn.turnId, first.postTurn.turnId);
+    assert.equal(second.postTurn.createdAt, first.postTurn.createdAt);
+    assert.equal(readOneRingPostTurnMetadata(messages).postTurn.turnId, first.postTurn.turnId);
+
+    const rowCount = store.db.prepare('SELECT COUNT(*) AS count FROM post_turns').get().count;
+    assert.equal(rowCount, 1);
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper can complete a prepared postTurn through recordAIResponse', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let store = null;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      super(options);
+      store = this;
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+      ONERING_MAX_DB_RECORDS: 10,
+    },
+    hotConfig: { enabled: true },
+    now: () => '2026-06-08T00:00:01.000Z',
+    StoreClass: CapturingStore,
+  });
+  const messages = [
+    { role: 'system', content: 'prefix [[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: 'hello' },
+  ];
+
+  try {
+    const prepared = await recorder.preparePostTurnFromMessages(messages);
+    const sideChannel = readOneRingPostTurnMetadata(messages);
+    const recorded = await recorder.recordAIResponse(
+      {
+        agentName: prepared.postTurn.agentName,
+        frontendSource: prepared.postTurn.frontendSource,
+        postTurn: sideChannel.postTurn,
+      },
+      ' final answer ',
+    );
+
+    assert.equal(recorded.recorded, true);
+    assert.equal(recorded.postTurnCompleted, true);
+    assert.equal(recorded.postTurnReason, null);
+
+    const row = store.getPostTurn('Agnes', prepared.postTurn.turnId);
+    assert.equal(row.status, 'completed');
+    assert.equal(row.responseMessageId, recorded.id);
+    assert.equal(row.responseContentHash, buildOneRingContentHash('final answer'));
+    assert.equal(row.completedAt, '2026-06-08T00:00:01.000Z');
   } finally {
     recorder.shutdown();
   }

@@ -18,8 +18,13 @@ const {
   OneRingStore,
 } = require('../../modules/oneringStore');
 const {
+  buildPendingPostTurnMetadata,
   completePostTurnMetadata,
 } = require('../../modules/oneringPostTurnMetadata');
+const {
+  attachOneRingPostTurnMetadata,
+  readOneRingPostTurnMetadata,
+} = require('../../modules/oneringPostTurnContext');
 
 const HOT_CONFIG_FILE_NAME = 'OneRingConfig.json';
 const DEFAULT_USER_NAME = 'User';
@@ -60,6 +65,47 @@ function createOneRingRecorder(options = {}) {
     });
 
     return messages;
+  }
+
+  async function preparePostTurnFromMessages(messages) {
+    if (!Array.isArray(messages)) {
+      return { prepared: false, postTurn: null, reason: 'invalid-messages' };
+    }
+
+    const existing = readOneRingPostTurnMetadata(messages);
+    if (existing?.prepared === true && existing.postTurn && typeof existing.postTurn === 'object') {
+      return { prepared: true, postTurn: existing.postTurn, reason: null };
+    }
+
+    const trigger = findLastTrigger(messages);
+    if (!trigger) {
+      return { prepared: false, postTurn: null, reason: 'missing-trigger' };
+    }
+
+    if (!isEffectiveEnabled()) {
+      return { prepared: false, postTurn: null, reason: 'disabled' };
+    }
+
+    const lastUser = findLastMessageByRole(messages, 'user');
+    const content = cleanVisibleContent(lastUser?.content);
+    if (!content) {
+      return { prepared: false, postTurn: null, reason: 'empty-user-content' };
+    }
+
+    const pending = buildPendingPostTurnMetadata({
+      agentName: trigger.agentName,
+      frontendSource: trigger.frontendSource,
+      postBlocks: messages,
+      now,
+    });
+    if (!pending.ok) {
+      return { prepared: false, postTurn: null, reason: pending.reason };
+    }
+
+    const postTurn = getStore().upsertPostTurn(pending.metadata);
+    const result = { prepared: true, postTurn, reason: null };
+    attachOneRingPostTurnMetadata(messages, result);
+    return result;
   }
 
   async function recordAIResponseFromMessages(messages, assistantContent) {
@@ -197,6 +243,7 @@ function createOneRingRecorder(options = {}) {
   return {
     initialize,
     processMessages,
+    preparePostTurnFromMessages,
     recordAIResponseFromMessages,
     recordAIResponse,
     listMessages,

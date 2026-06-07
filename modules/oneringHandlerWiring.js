@@ -4,6 +4,9 @@ const {
   abortPostTurnMetadata,
   completePostTurnMetadata,
 } = require('./oneringPostTurnMetadata');
+const {
+  readOneRingPostTurnMetadata,
+} = require('./oneringPostTurnContext');
 
 function dispatchOneRingAssistantRecordCandidate(context, candidate, {
   phaseLabel = 'final_turn',
@@ -14,17 +17,17 @@ function dispatchOneRingAssistantRecordCandidate(context, candidate, {
   if (!candidate || candidate.shouldRecord !== true) {
     const skipped = skipCandidate(candidate);
     if (abortPostTurnOnSkip) {
-      dispatchOneRingPostTurnAbort(context, skipped, { logPrefix, phaseLabel, now });
+      const metadata = buildOneRingDispatchMetadata(context, { phaseLabel });
+      dispatchOneRingPostTurnAbort(context, skipped, { logPrefix, phaseLabel, metadata, now });
     }
     return { ...skipped, dispatched: false };
   }
 
-  const recorder = resolveOneRingRecorder(context);
+  const metadata = buildOneRingDispatchMetadata(context, { phaseLabel });
+  const recorder = resolveOneRingRecorder(context, metadata);
   if (!recorder) {
     return { ...candidate, dispatched: false };
   }
-
-  const metadata = buildOneRingDispatchMetadata(context, { phaseLabel });
 
   Promise.resolve()
     .then(() => recorder(candidate, metadata))
@@ -43,10 +46,12 @@ function dispatchOneRingAssistantRecordCandidate(context, candidate, {
 }
 
 function buildOneRingDispatchMetadata(context, { phaseLabel = 'final_turn' } = {}) {
+  const messages = context?.originalBody?.messages;
+  const sideChannel = readOneRingPostTurnMetadata(messages);
   return {
     phaseLabel,
-    messages: context?.originalBody?.messages,
-    postTurn: context?.oneRingPostTurn || null,
+    messages,
+    postTurn: context?.oneRingPostTurn || sideChannel?.postTurn || null,
   };
 }
 
@@ -87,9 +92,14 @@ function completeOneRingPostTurnAfterRecord(context, metadata, candidate, record
   };
 }
 
-function dispatchOneRingPostTurnAbort(context, candidate, { logPrefix = '[OneRing Handler]', phaseLabel = 'final_turn', now } = {}) {
+function dispatchOneRingPostTurnAbort(context, candidate, {
+  logPrefix = '[OneRing Handler]',
+  phaseLabel = 'final_turn',
+  metadata = null,
+  now,
+} = {}) {
   const store = resolveOneRingPostTurnStore(context, 'abortPostTurn');
-  const postTurn = context?.oneRingPostTurn;
+  const postTurn = context?.oneRingPostTurn || metadata?.postTurn;
   if (!store || !postTurn) {
     return { aborted: false, reason: !store ? 'missing-post-turn-store' : 'missing-post-turn-metadata' };
   }
@@ -114,7 +124,7 @@ function dispatchOneRingPostTurnAbort(context, candidate, { logPrefix = '[OneRin
   return { aborted: true, reason: null };
 }
 
-function resolveOneRingRecorder(context) {
+function resolveOneRingRecorder(context, metadata = null) {
   const hook = context?.handleOneRingAssistantRecordCandidate || context?.onOneRingAssistantRecordCandidate;
   if (typeof hook === 'function') {
     return (candidate, metadata) => hook(candidate, metadata);
@@ -124,7 +134,7 @@ function resolveOneRingRecorder(context) {
   if (
     oneRingModule
     && typeof oneRingModule.recordAIResponse === 'function'
-    && context?.oneRingPostTurn
+    && metadata?.postTurn
   ) {
     return (candidate, metadata) => oneRingModule.recordAIResponse(
       buildOneRingWrapperMeta(metadata),
