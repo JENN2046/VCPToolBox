@@ -128,6 +128,41 @@ test('dispatchOneRingAssistantRecordCandidate aborts prepared side-channel post-
   assert.equal(abortCalls[0].abortedAt, '2026-06-06T04:00:01.000Z');
 });
 
+test('dispatchOneRingAssistantRecordCandidate does not prepare new post-turns for skipped candidates', async () => {
+  const prepareCalls = [];
+  const abortCalls = [];
+  const oneRingModule = {
+    preparePostTurnFromMessages(messages) {
+      prepareCalls.push(messages);
+      return { prepared: true, postTurn: makePendingPostTurn(), reason: null };
+    },
+    recordAIResponse() {},
+  };
+  const result = dispatchOneRingAssistantRecordCandidate(
+    {
+      originalBody: { messages: [{ role: 'user', content: 'hello' }] },
+      oneRingPostTurnStore: {
+        completePostTurn() {},
+        abortPostTurn(metadata) {
+          abortCalls.push(metadata);
+          return { updated: true, row: metadata };
+        },
+      },
+      pluginManager: {
+        messagePreprocessors: new Map([['OneRing', oneRingModule]]),
+      },
+    },
+    { shouldRecord: false, role: 'assistant', content: '', reason: 'stream-error' },
+    { abortPostTurnOnSkip: true },
+  );
+
+  await tick();
+
+  assert.equal(result.dispatched, false);
+  assert.deepEqual(prepareCalls, []);
+  assert.deepEqual(abortCalls, []);
+});
+
 test('dispatchOneRingAssistantRecordCandidate calls explicit handler hook asynchronously', async () => {
   const calls = [];
   const result = dispatchOneRingAssistantRecordCandidate(
@@ -388,6 +423,128 @@ test('dispatchOneRingAssistantRecordCandidate uses wrapper recorder for prepared
     content: 'visible answer',
   }]);
   assert.deepEqual(legacyCalls, []);
+});
+
+test('dispatchOneRingAssistantRecordCandidate prepares wrapper postTurn before recording final candidates', async () => {
+  const messages = [{ role: 'user', content: 'hello' }];
+  const postTurn = makePendingPostTurn();
+  const prepareCalls = [];
+  const wrapperCalls = [];
+  const legacyCalls = [];
+  const oneRingModule = {
+    preparePostTurnFromMessages(prepareMessages) {
+      prepareCalls.push(prepareMessages);
+      return { prepared: true, postTurn, reason: null };
+    },
+    recordAIResponse(meta, content) {
+      wrapperCalls.push({ meta, content });
+      return { recorded: true, id: 42, postTurnCompleted: true, postTurnReason: null };
+    },
+    recordAIResponseFromMessages(legacyMessages, content) {
+      legacyCalls.push({ messages: legacyMessages, content });
+    },
+  };
+
+  const result = dispatchOneRingAssistantRecordCandidate(
+    {
+      originalBody: { messages },
+      pluginManager: {
+        messagePreprocessors: new Map([['OneRing', oneRingModule]]),
+      },
+    },
+    { shouldRecord: true, role: 'assistant', content: 'visible answer', reason: null },
+  );
+
+  assert.equal(result.dispatched, true);
+
+  await tick();
+
+  assert.deepEqual(prepareCalls, [messages]);
+  assert.deepEqual(wrapperCalls, [{
+    meta: {
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+      postTurn,
+    },
+    content: 'visible answer',
+  }]);
+  assert.deepEqual(legacyCalls, []);
+});
+
+test('dispatchOneRingAssistantRecordCandidate falls back to legacy recorder when prepare fails', async () => {
+  const messages = [{ role: 'user', content: 'hello' }];
+  const wrapperCalls = [];
+  const legacyCalls = [];
+  const oneRingModule = {
+    preparePostTurnFromMessages() {
+      throw new Error('prepare failed');
+    },
+    recordAIResponse(meta, content) {
+      wrapperCalls.push({ meta, content });
+    },
+    recordAIResponseFromMessages(legacyMessages, content) {
+      legacyCalls.push({ messages: legacyMessages, content });
+    },
+  };
+
+  const result = dispatchOneRingAssistantRecordCandidate(
+    {
+      originalBody: { messages },
+      pluginManager: {
+        messagePreprocessors: new Map([['OneRing', oneRingModule]]),
+      },
+    },
+    { shouldRecord: true, role: 'assistant', content: 'visible answer', reason: null },
+  );
+
+  assert.equal(result.dispatched, true);
+
+  await tick();
+
+  assert.deepEqual(wrapperCalls, []);
+  assert.deepEqual(legacyCalls, [{
+    messages,
+    content: 'visible answer',
+  }]);
+});
+
+test('dispatchOneRingAssistantRecordCandidate does not prepare wrapper postTurn while OneRing is disabled', async () => {
+  const messages = [{ role: 'user', content: 'hello' }];
+  const prepareCalls = [];
+  const legacyCalls = [];
+  const oneRingModule = {
+    _isEffectiveEnabled() {
+      return false;
+    },
+    preparePostTurnFromMessages(prepareMessages) {
+      prepareCalls.push(prepareMessages);
+      return { prepared: true, postTurn: makePendingPostTurn(), reason: null };
+    },
+    recordAIResponse() {},
+    recordAIResponseFromMessages(legacyMessages, content) {
+      legacyCalls.push({ messages: legacyMessages, content });
+    },
+  };
+
+  const result = dispatchOneRingAssistantRecordCandidate(
+    {
+      originalBody: { messages },
+      pluginManager: {
+        messagePreprocessors: new Map([['OneRing', oneRingModule]]),
+      },
+    },
+    { shouldRecord: true, role: 'assistant', content: 'visible answer', reason: null },
+  );
+
+  assert.equal(result.dispatched, true);
+
+  await tick();
+
+  assert.deepEqual(prepareCalls, []);
+  assert.deepEqual(legacyCalls, [{
+    messages,
+    content: 'visible answer',
+  }]);
 });
 
 test('dispatchOneRingAssistantRecordCandidate keeps legacy plugin fallback without postTurn metadata', async () => {
