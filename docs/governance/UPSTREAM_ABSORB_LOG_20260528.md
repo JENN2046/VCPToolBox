@@ -97,12 +97,13 @@
 
 截至 2026-06-07 批量复核后，本表没有标记“必须继续吸收”的 upstream commit。
 
-当前剩余项只有两类：
+当前剩余/跟踪项主要分为三类：
 
 | 类别 | 内容 | 处理 |
 |------|------|------|
 | 当前 `main` 已覆盖 | 第 3 节中 `18728628`、`973e2bdd`、`09fdab2a`、`b30dbf7e`、`696e3a9f` 等 | 不再开代码包；后续只在相关行为需要调整时另开小包。 |
 | 已覆盖但后续只能走专项 | 第 3 节中 RAG fuzzy/shotgun 参数与 image tool format unification 相关项 | 不 raw cherry-pick；后续分别走 RAG 参数专项或 image plugin 专项，继续排除 `AdminPanel-Vue/dist/*` 和真实外部 API 调用。 |
+| 已审转专项 / 不 raw merge | OneRing Rust/native sweep：`43436f12`、`178955ad`、`8bcd9b35`、`1dd5aec1` | 仍是待跟踪专项，不属于第 3 节普通小包候选；后续必须先开 OneRing Rust/native design/preflight，审 Rust 源码、native API、`.node` 二进制来源、跨平台构建、数据库/向量安全和回滚。 |
 
 ## 6. 下次审查固定流程
 
