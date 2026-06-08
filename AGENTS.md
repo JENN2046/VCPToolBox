@@ -37,6 +37,21 @@ gh pr create --repo JENN2046/VCPToolBox --base main --head <branch>
 明确说要向 `lioensky/VCPToolBox` 开 PR 时，才允许使用作者仓库作为 PR
 目标。
 
+## PR 更新后审查触发规则
+
+每次完成 PR 分支更新并推送到远端后，必须在对应 PR 中触发一次：
+
+```text
+@Codex Review
+```
+
+要求：
+
+- 先确认推送目标 PR 是 `JENN2046/VCPToolBox` 下的正确 PR。
+- PR 更新包括新增提交、修复 review feedback、补测、文档修正规则等。
+- 如果当前工具或权限不能直接在 PR 中发送 `@Codex Review`，最终报告必须明确提醒用户需要手动触发。
+- 不要在尚未推送的本地修改上请求 review。
+
 ## 作者上游快速吸收策略
 
 `main` 对作者上游采用快速吸收策略。默认目标是尽快判断并吸收可合并内容，而不是把每个 upstream commit 都拆成严格治理 preflight。
