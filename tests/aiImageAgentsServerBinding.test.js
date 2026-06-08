@@ -49,13 +49,17 @@ test('secretless serum internal POST remains behind bearer auth', () => {
     assert.match(serverSource, /authHeader !== `Bearer \$\{serverKey\}`/);
 });
 
-test('runtime-to-review Trial 001 internal POST has exact loopback authorizer bypass', () => {
+test('runtime-to-review Trial 001 internal POST remains behind bearer auth', () => {
     const serverSource = read('server.js');
     const routeSource = read('routes/admin/aiImageAgents.js');
 
     assert.match(
         serverSource,
-        /if \(isSerumBottleSecretlessInternalRoute\(req\)\) \{\s+if \(\(req\.method === 'HEAD' \|\| req\.method === 'POST'\) && isLoopbackSocket\(req\)\) \{\s+return next\(\);\s+\}\s+\}/
+        /if \(isSerumBottleSecretlessInternalRoute\(req\)\) \{\s+if \(req\.method === 'HEAD' && isLoopbackSocket\(req\)\) \{\s+return next\(\);\s+\}\s+\}/
+    );
+    assert.doesNotMatch(
+        serverSource,
+        /req\.method === 'POST'[\s\S]{0,80}isLoopbackSocket\(req\)[\s\S]{0,80}return next\(\);/
     );
     assert.match(serverSource, /R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE/);
     assert.match(serverSource, /authorizeRuntimeToReviewV2Trial001SecretlessExecution\(request\)/);

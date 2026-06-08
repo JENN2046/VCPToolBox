@@ -855,7 +855,7 @@ app.use((req, res, next) => {
     }
 
     if (isSerumBottleSecretlessInternalRoute(req)) {
-        if ((req.method === 'HEAD' || req.method === 'POST') && isLoopbackSocket(req)) {
+        if (req.method === 'HEAD' && isLoopbackSocket(req)) {
             return next();
         }
     }

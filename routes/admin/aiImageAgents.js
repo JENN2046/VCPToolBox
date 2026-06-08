@@ -534,7 +534,8 @@ async function handleRuntimeToReviewV2Trial001ExecutionRequest(req, options = {}
         buildSerumBottleSecretlessRuntimeEvidence(
           response.result,
           delegateFacade.getInvocationEvidence(),
-          options.serumBottleSecretlessArtifactEvidenceReader
+          options.serumBottleSecretlessArtifactEvidenceReader,
+          gate.routeId
         );
     }
 
@@ -1536,7 +1537,8 @@ function createNativeDoubaoDelegatePluginManagerFacade(options = {}) {
 function buildSerumBottleSecretlessRuntimeEvidence(
   result = {},
   invocationEvidence = [],
-  artifactEvidenceReader = readSerumBottleSecretlessArtifactEvidence
+  artifactEvidenceReader = readSerumBottleSecretlessArtifactEvidence,
+  routeId = 'serum_bottle_vcptoolbox_route_owner_runtime'
 ) {
   const latest = invocationEvidence.length > 0
     ? invocationEvidence[invocationEvidence.length - 1]
@@ -1556,7 +1558,7 @@ function buildSerumBottleSecretlessRuntimeEvidence(
     : null;
 
   return {
-    routeId: 'serum_bottle_vcptoolbox_route_owner_runtime',
+    routeId,
     delegateId: SERUM_BOTTLE_SECRETLESS_DELEGATE_ID,
     providerId: SERUM_BOTTLE_SECRETLESS_PROVIDER_ID,
     pluginId: SERUM_BOTTLE_SECRETLESS_PLUGIN_ID,

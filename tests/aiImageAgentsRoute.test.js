@@ -533,6 +533,10 @@ test('aiImageAgents runtime-to-review v2 Trial 001 helper authorizes exact secre
             result.result.r2rV2Trial001SecretlessAuthorization.authorizationId,
             'trial-001-internal-auth-001'
         );
+        assert.equal(
+            result.result.r2rV2Trial001RuntimeEvidence.routeId,
+            'r2r_v2_trial_001_serum_detail_control_secretless'
+        );
     });
 });
 
