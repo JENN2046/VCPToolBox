@@ -3,6 +3,45 @@ const assert = require('node:assert/strict');
 
 const messageProcessor = require('../modules/messageProcessor.js');
 
+function makeStaticFoldPluginManager(foldValue, ragPlugin = null) {
+  return {
+    messagePreprocessors: ragPlugin
+      ? new Map([['RAGDiaryPlugin', ragPlugin]])
+      : new Map(),
+    getAllPlaceholderValues: () => new Map([['{{Fold}}', foldValue]]),
+    getIndividualPluginDescriptions: () => new Map(),
+    getResolvedPluginConfigValue: () => null
+  };
+}
+
+function makeDynamicFoldObject() {
+  return {
+    vcp_dynamic_fold: true,
+    plugin_description: 'matching description',
+    fold_blocks: [
+      { threshold: 0.9, content: 'high detail block' },
+      { threshold: 0.1, content: 'lite fallback block' },
+      { threshold: 0.5, content: 'middle detail block' }
+    ]
+  };
+}
+
+function makeMatchingRagPlugin(calls) {
+  return {
+    ragParams: {
+      RAGDiaryPlugin: { mainSearchWeights: [1, 0] },
+      ContextFoldingV2: { fuzzyEmbedding: {} }
+    },
+    getSingleEmbeddingCached(text) {
+      calls.push(String(text || ''));
+      return [1, 0];
+    },
+    _getWeightedAverageVector(vectors) {
+      return vectors.find(Boolean) || null;
+    }
+  };
+}
+
 test('applyDetectorRules keeps Detector system-only and SuperDetector all-role behavior', () => {
   const context = {
     detectors: [
@@ -76,6 +115,75 @@ test('replaceOtherVariables can defer detector rules for message-level pipeline 
   );
 
   assert.equal(result, 'system-only all-role');
+});
+
+test('replaceOtherVariables keeps dynamic fold on auto mode', async () => {
+  const embeddingCalls = [];
+  const foldValue = makeDynamicFoldObject();
+  const result = await messageProcessor.replaceOtherVariables(
+    'before [[VCPStaticFold::Auto]] {{Fold}} after',
+    'test-model',
+    'system',
+    {
+      DEBUG_MODE: false,
+      pluginManager: makeStaticFoldPluginManager(foldValue, makeMatchingRagPlugin(embeddingCalls)),
+      cachedEmojiLists: new Map(),
+      messages: [{ role: 'user', content: 'matching user context' }],
+      detectors: [],
+      superDetectors: []
+    }
+  );
+
+  assert.equal(result, 'before  high detail block after');
+  assert.ok(embeddingCalls.length > 0, 'auto mode should keep the dynamic fold path active');
+  assert.equal(result.includes('VCPStaticFold'), false);
+});
+
+test('replaceOtherVariables supports static fold lite without embedding lookup', async () => {
+  const embeddingCalls = [];
+  const foldValue = makeDynamicFoldObject();
+  const result = await messageProcessor.replaceOtherVariables(
+    'before [[VCPStaticFold::Lite]] {{Fold}} after',
+    'test-model',
+    'system',
+    {
+      DEBUG_MODE: false,
+      pluginManager: makeStaticFoldPluginManager(foldValue, makeMatchingRagPlugin(embeddingCalls)),
+      cachedEmojiLists: new Map(),
+      messages: [{ role: 'user', content: 'matching user context' }],
+      detectors: [],
+      superDetectors: []
+    }
+  );
+
+  assert.equal(result, 'before  lite fallback block after');
+  assert.equal(embeddingCalls.length, 0);
+  assert.equal(result.includes('VCPStaticFold'), false);
+});
+
+test('replaceOtherVariables supports static fold full in original block order', async () => {
+  const embeddingCalls = [];
+  const foldValue = makeDynamicFoldObject();
+  const result = await messageProcessor.replaceOtherVariables(
+    '[[VCPStaticFold::Full]] {{Fold}}',
+    'test-model',
+    'system',
+    {
+      DEBUG_MODE: false,
+      pluginManager: makeStaticFoldPluginManager(foldValue, makeMatchingRagPlugin(embeddingCalls)),
+      cachedEmojiLists: new Map(),
+      messages: [{ role: 'user', content: 'matching user context' }],
+      detectors: [],
+      superDetectors: []
+    }
+  );
+
+  assert.equal(
+    result,
+    'high detail block\n\n---\n\nlite fallback block\n\n---\n\nmiddle detail block'
+  );
+  assert.equal(embeddingCalls.length, 0);
+  assert.equal(result.includes('VCPStaticFold'), false);
 });
 
 test('applyDetectorsToMessages rewrites string and text parts without mutating inputs', () => {
