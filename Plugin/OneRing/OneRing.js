@@ -310,6 +310,11 @@ function findLastActivation(messages) {
     return null;
   }
 
+  const exactTrigger = findLastTrigger(messages);
+  if (exactTrigger) {
+    return exactTrigger;
+  }
+
   let lastActivation = null;
   for (const message of messages) {
     if (!message || message.role !== 'system') {
@@ -317,12 +322,6 @@ function findLastActivation(messages) {
     }
 
     const text = getVisibleMessageText(message);
-    const trigger = parseOneRingTrigger(text);
-    if (trigger) {
-      lastActivation = trigger;
-      continue;
-    }
-
     const notice = parseOneRingStartupNotice(text);
     if (notice) {
       lastActivation = notice;
