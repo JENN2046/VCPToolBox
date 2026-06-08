@@ -52,16 +52,28 @@ gh pr create --repo JENN2046/VCPToolBox --base main --head <branch>
 - 如果当前工具或权限不能直接在 PR 中发送 `@Codex Review`，最终报告必须明确提醒用户需要手动触发。
 - 不要在尚未推送的本地修改上请求 review。
 
-## 作者上游快速吸收策略
+## 作者上游三档吸收策略
 
-`main` 对作者上游采用快速吸收策略。默认目标是尽快判断并吸收可合并内容，而不是把每个 upstream commit 都拆成严格治理 preflight。
+`main` 对作者上游不再采用连续追逐式吸收。默认目标是先分档、再决定吸收方式，避免被上游高速迭代牵着走。
+
+每批 upstream diff 先归入三档：
+
+1. `Full absorb`：独立、低耦合、可整体替换。
+   - 适用：未被本地深度改造的独立插件、纯文档/示例、无副作用 helper、测试夹具、低耦合 UI 小组件、安全配置模板。
+   - 要求：整体替换不会破坏本地生产契约；现有或新增测试能证明行为未退化。
+2. `Selective absorb`：有价值但涉及本地契约，只摘关键逻辑。
+   - 适用：handler、message processor、OneRing、RAG、DB、approval、runtime wiring 等已被本地治理和测试覆盖的区域。
+   - 要求：小包吸收、保留本地契约、补回归测试，不 raw-merge 大文件。
+3. `Observe only`：大重构、高速变化、收益不确定，先不动。
+   - 适用：大规模架构迁移、文件体系重排、删除本地测试/治理层、依赖/二进制/运行态变更、难以局部验证的中间态。
+   - 要求：只记录观察结论或候选风险；等上游稳定成版本块后再统一评估。
 
 默认判断方式：
 
-1. 先快速扫描 upstream diff 的文件路径和行为影响。
-2. 只要没有触及核心边界，默认进入快速合并/批量 cherry-pick/批量手工吸收路径。
-3. 只对触及核心边界的变更进入严格 preflight、小包审查和长治理记录。
-4. 每批快速吸收只需要留下批次摘要、排除项、验证结果和风险说明；不要求为每个非核心 commit 写独立长文档。
+1. 先快速扫描 upstream diff 的文件路径、行为影响、是否覆盖本地契约。
+2. 先分档，再选择 full absorb、selective absorb 或 observe only。
+3. 不再因为 upstream 持续更新就自动继续吸收；每轮吸收必须有明确结束条件。
+4. 每批吸收至少留下批次摘要、分档结论、排除项、验证结果和风险说明。
 
 核心边界包括：
 
@@ -73,11 +85,13 @@ gh pr create --repo JENN2046/VCPToolBox --base main --head <branch>
 - 默认公网暴露、生产服务、真实外部写入、不可快速回滚的迁移。
 - 大规模架构改造、跨模块执行语义变化，或无法用局部验证说明风险的改动。
 
-非核心变更默认快速扫描可合并性，例如：
+优先进入 `Full absorb` 的低耦合变更包括：
 
 - docs、README、示例文档、治理台账。
-- 普通前端源码和 UI 改进，但默认排除 `AdminPanel-Vue/dist/*` 等构建产物，除非明确做 release/build 包。
-- 普通 bugfix、helper/module 局部兼容修复、测试补充。
+- 未被本地深度改造的独立插件。
+- 无副作用 parser、formatter、normalizer、hash helper、文本处理 helper。
+- 不依赖真实外部服务、不写 runtime/cache/state 的测试夹具。
+- 普通前端源码和 UI 小组件，但默认排除 `AdminPanel-Vue/dist/*` 等构建产物，除非明确做 release/build 包。
 - 不改变默认危险行为、不扩大权限、不触发外部写入的插件文案、manifest、配置样例或局部逻辑。
 
 快速吸收仍必须保留这些底线：
@@ -85,7 +99,7 @@ gh pr create --repo JENN2046/VCPToolBox --base main --head <branch>
 - 不吸收真实 secret、runtime/cache/state/log/image/operator data。
 - 不默认启用公网、bridge、shell/file 外写、生产服务或自动执行能力。
 - 不把生成物、构建产物或本地运行态混入源码吸收。
-- 有冲突时优先选择最小可回滚解决方案；无法判断是否触及核心边界时才升级到严格 preflight。
+- 有冲突时优先选择最小可回滚解决方案；无法判断分档时默认归入 `Selective absorb` 或 `Observe only`，不要 raw merge。
 - `prod/stable` 不适用快速吸收策略，仍按稳定线保护规则处理。
 
 `prod/stable` 是本项目稳定生产使用的稳定生产线分支，必须永久保留。
