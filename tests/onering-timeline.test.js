@@ -192,6 +192,46 @@ test('bindClientTimestampBindingsToPostBlocks verifies post-block hashes before 
   });
 });
 
+test('bindClientTimestampBindingsToPostBlocks falls back to array positions for plain message blocks', () => {
+  const userHash = rawSha256('plain user message');
+  const assistantHash = rawSha256('plain assistant message');
+  const result = bindClientTimestampBindingsToPostBlocks(
+    [
+      { role: 'user', senderName: 'Ryan', content: 'plain user message' },
+      { role: 'assistant', content: 'plain assistant message' },
+    ],
+    {
+      bindings: [
+        {
+          messageId: 'u1',
+          role: 'user',
+          index: 0,
+          timestamp: '2026-02-02T16:00:00.000Z',
+          sentHash: userHash,
+        },
+        {
+          messageId: 'a1',
+          role: 'assistant',
+          index: 1,
+          timestamp: '2026-02-02T16:00:01.000Z',
+          sentHash: assistantHash,
+        },
+      ],
+    },
+    {
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+    },
+  );
+
+  assert.equal(result.missingIndex, 0);
+  assert.equal(result.hashMismatch, 0);
+  assert.equal(result.verifiedBindings.length, 2);
+  assert.deepEqual(Object.keys(result.boundTimestampsByIndex), ['0', '1']);
+  assert.equal(result.boundTimestampsByIndex[0].senderName, 'Ryan');
+  assert.equal(result.boundTimestampsByIndex[1].senderName, 'Agnes');
+});
+
 test('mergeTimestampBindings keeps later binding maps authoritative', () => {
   assert.deepEqual(
     mergeTimestampBindings(

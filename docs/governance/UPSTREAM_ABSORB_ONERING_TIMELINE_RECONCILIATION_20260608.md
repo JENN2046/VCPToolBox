@@ -17,7 +17,7 @@ This package absorbs the low-risk, pure timeline contract layer into the local b
 - `sha256:` client hash normalization
 - strict client timestamp binding schema normalization
 - tail-whitespace-only raw hash tolerance
-- post-block timestamp binding by verified role, index, and hash
+- post-block timestamp binding by verified role, explicit index or array position, and hash
 - timestamp binding merge helper
 
 Local implementation:

@@ -167,7 +167,10 @@ function bindClientTimestampBindingsToPostBlocks(
     return stats;
   }
 
-  const blockByIndex = new Map(blocks.map(block => [block?.index, block]));
+  const blockByIndex = new Map(blocks.map((block, arrayIndex) => [
+    getPostBlockIndex(block, arrayIndex),
+    block,
+  ]));
 
   for (const binding of clientBindings) {
     const block = blockByIndex.get(binding.index);
@@ -181,7 +184,8 @@ function bindClientTimestampBindingsToPostBlocks(
       continue;
     }
 
-    const hashMatch = findClientRawHashMatchVariant(block.text, binding.sentHash);
+    const blockText = getPostBlockText(block);
+    const hashMatch = findClientRawHashMatchVariant(blockText, binding.sentHash);
     if (!hashMatch) {
       stats.hashMismatch += 1;
       continue;
@@ -191,14 +195,14 @@ function bindClientTimestampBindingsToPostBlocks(
       ...binding,
       agentName,
       frontendSource,
-      text: typeof block.text === 'string' ? block.text : '',
+      text: blockText,
       hash: hashMatch.hash,
       hashVariant: hashMatch.variant,
       hashVariantAddedChars: hashMatch.addedChars,
     };
 
     stats.verifiedBindings.push(verified);
-    stats.boundTimestampsByIndex[block.index] = {
+    stats.boundTimestampsByIndex[binding.index] = {
       timestamp: binding.timestamp,
       senderName: block.senderName || (block.role === 'assistant' ? agentName : '?'),
       frontendSource,
@@ -210,6 +214,29 @@ function bindClientTimestampBindingsToPostBlocks(
   }
 
   return stats;
+}
+
+function getPostBlockIndex(block, arrayIndex) {
+  const explicitIndex = Number(block?.index);
+  return Number.isInteger(explicitIndex) && explicitIndex >= 0
+    ? explicitIndex
+    : arrayIndex;
+}
+
+function getPostBlockText(block) {
+  if (!block || typeof block !== 'object') {
+    return '';
+  }
+
+  if (typeof block.text === 'string') {
+    return block.text;
+  }
+
+  if (typeof block.content === 'string') {
+    return block.content;
+  }
+
+  return '';
 }
 
 module.exports = {
