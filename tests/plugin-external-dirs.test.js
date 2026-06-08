@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 
 const pluginManager = require('../Plugin.js');
+const { classifyExternalPluginManifest } = require('../modules/externalPluginSafetyGate');
 
 after(() => {
     if (pluginManager.toolApprovalManager && typeof pluginManager.toolApprovalManager.shutdown === 'function') {
@@ -83,6 +84,12 @@ test('legacy external discovery reads plugin-manifest.json without executing plu
         assert.equal(manifests[0].pluginSource, 'external');
         assert.equal(manifests[0].basePath, pluginDir);
         assert.deepEqual(manifests[0].pluginSpecificEnvConfig, {});
+
+        const safetyDecision = classifyExternalPluginManifest(manifests[0]);
+        assert.equal(safetyDecision.pluginName, 'ExternalEcho');
+        assert.equal(safetyDecision.isExternal, true);
+        assert.equal(safetyDecision.decision, 'would_block');
+        assert.equal(safetyDecision.risk, 'executes_process');
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
