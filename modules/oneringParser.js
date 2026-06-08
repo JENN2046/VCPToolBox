@@ -1,6 +1,7 @@
 'use strict';
 
 const TRIGGER_REGEX = /\[\[OneRing::([^\]:\[\]\r\n]+)::([^\]:\[\]\r\n]+)(?:::([^\]:\[\]\r\n]+))?\]\]/g;
+const STARTUP_NOTICE_REGEX = /\[OneRing系统已启动，当前Agent([^，\]\r\n]+)，当前客户端([^，\]\r\n]+)(?:，当前模式([^，\]\r\n]+))?/g;
 const TAIL_MARKER_EXACT_REGEX = /^\[OneRing通知:([^\]\r\n]{1,80})于(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?)发送于([^\]\r\n]{1,80})\]$/;
 const TAIL_MARKER_TRAILING_REGEX = /\s*(\[OneRing通知:[^\]\r\n]{1,80}于\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?发送于[^\]\r\n]{1,80}\])\s*$/;
 const GROUP_SENDER_REGEX = /^\s*\[([^\]\r\n]{1,30})的发言\]\s*[:：]\s*/;
@@ -33,6 +34,38 @@ function parseOneRingTrigger(input) {
   }
 
   return null;
+}
+
+function parseOneRingStartupNotice(input) {
+  const text = toStringOrEmpty(input);
+  STARTUP_NOTICE_REGEX.lastIndex = 0;
+
+  let lastMatch = null;
+  for (const match of text.matchAll(STARTUP_NOTICE_REGEX)) {
+    lastMatch = match;
+  }
+
+  if (!lastMatch) {
+    return null;
+  }
+
+  const agentName = lastMatch[1].trim();
+  const frontendSource = lastMatch[2].trim();
+  const modeToken = lastMatch[3] ? lastMatch[3].trim() : '';
+  const normalizedMode = modeToken.toLowerCase() === 'only' ? 'only' : 'normal';
+
+  if (!agentName || !frontendSource) {
+    return null;
+  }
+
+  return {
+    raw: lastMatch[0],
+    agentName,
+    frontendSource,
+    mode: normalizedMode,
+    recordOnly: normalizedMode === 'only',
+    index: lastMatch.index,
+  };
 }
 
 function parseOneRingTailMarker(marker) {
@@ -160,6 +193,7 @@ function toStringOrEmpty(value) {
 
 module.exports = {
   parseOneRingTrigger,
+  parseOneRingStartupNotice,
   parseOneRingTailMarker,
   stripOneRingTailMarkers,
   buildOneRingTailMarker,
