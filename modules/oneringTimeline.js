@@ -298,6 +298,11 @@ function restoreServerInferredWorkingView(originalMessages, processedMessages, w
   const injectedAfterOriginalIndex = new Map();
   const injectedAtEnd = [];
   let pendingInjected = [];
+  const positionalFallbackAllowed = canUseRestorePositionalFallback(
+    processedMessages,
+    workingView,
+    isInjected,
+  );
 
   const pushInjectedAfter = (originalIndex, injectedMessages) => {
     if (!Array.isArray(injectedMessages) || injectedMessages.length === 0 || !Number.isInteger(originalIndex)) {
@@ -365,14 +370,19 @@ function restoreServerInferredWorkingView(originalMessages, processedMessages, w
       continue;
     }
 
+    const currentProcessedWorkingIndex = processedWorkingIndex;
+    processedWorkingIndex += 1;
+
     let originalIndex = getOneRingOriginalIndex(message);
     if ((!Number.isInteger(originalIndex) || originalIndex < 0) && workingKey) {
       originalIndex = getOriginalIndexFromWorkingKey(workingKey);
     }
     if (!Number.isInteger(originalIndex) || originalIndex < 0) {
-      originalIndex = workingView.workingToOriginalIndex?.[processedWorkingIndex];
+      if (!positionalFallbackAllowed) {
+        continue;
+      }
+      originalIndex = workingView.workingToOriginalIndex?.[currentProcessedWorkingIndex];
     }
-    processedWorkingIndex += 1;
 
     if (!Number.isInteger(originalIndex) || originalIndex < 0 || originalIndex >= originalMessages.length) {
       continue;
@@ -715,6 +725,30 @@ function copyArrayOneRingMetaFromSources(sources, target) {
     }
   }
   return target;
+}
+
+function canUseRestorePositionalFallback(processedMessages, workingView, isInjected) {
+  const workingMessages = workingView?.workingMessages;
+  const workingToOriginalIndex = workingView?.workingToOriginalIndex;
+  if (!Array.isArray(workingMessages) || !Array.isArray(workingToOriginalIndex)) {
+    return false;
+  }
+
+  const ordinaryProcessedMessages = [];
+  for (const message of processedMessages) {
+    if (!message) {
+      continue;
+    }
+    const workingKey = getOneRingWorkingKey(message);
+    if (isInjected(message) || (workingKey && (workingKey.startsWith('z') || workingKey.startsWith('o')))) {
+      continue;
+    }
+    ordinaryProcessedMessages.push(message);
+  }
+
+  return ordinaryProcessedMessages.length === workingMessages.length
+    && ordinaryProcessedMessages.length === workingToOriginalIndex.length
+    && ordinaryProcessedMessages.every((message, index) => message === workingMessages[index]);
 }
 
 function defaultMergeProcessedMessageOntoOriginal(originalMessage, processedMessage) {

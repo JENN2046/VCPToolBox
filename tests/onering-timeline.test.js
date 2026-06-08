@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   buildServerInferredWorkingView,
   bindClientTimestampBindingsToPostBlocks,
+  cloneMessageWithOneRingMetadata,
   findClientRawHashMatchVariant,
   getOneRingOriginalIndex,
   getOneRingWorkingKey,
@@ -581,8 +582,8 @@ test('restoreServerInferredWorkingView maps processed messages and anchored inje
     { role: 'assistant', content: 'old assistant' },
   ];
   const view = buildServerInferredWorkingView(messages);
-  const processed = view.workingMessages.map(message => ({ ...message }));
-  processed[2] = { ...processed[2], content: 'new assistant' };
+  const processed = view.workingMessages.map(message => cloneMessageWithOneRingMetadata(message));
+  processed[2] = cloneMessageWithOneRingMetadata(processed[2], { content: 'new assistant' });
   const injected = markOneRingInjectedFromDb(
     markOneRingWorkingKey({ role: 'assistant', content: 'db context' }, 'z1'),
   );
@@ -601,13 +602,34 @@ test('restoreServerInferredWorkingView maps processed messages and anchored inje
   assert.equal(restored.__oneRingInjectedCount, 1);
 });
 
+test('restoreServerInferredWorkingView skips unanchored derived messages instead of positional misrestore', () => {
+  const messages = [
+    { role: 'system', content: 'top system' },
+    { role: 'user', content: 'visible user' },
+    { role: 'assistant', content: 'old assistant' },
+  ];
+  const view = buildServerInferredWorkingView(messages);
+  const processed = view.workingMessages
+    .slice(1)
+    .map(message => ({ ...message, content: `${message.content} changed` }));
+
+  const restored = restoreServerInferredWorkingView(messages, processed, view);
+
+  assert.deepEqual(restored.map(message => message.content), [
+    'top system',
+    'visible user',
+    'old assistant',
+  ]);
+  assert.equal(restored.__oneRingInjectedCount, 0);
+});
+
 test('restoreServerInferredWorkingView supports custom user merge for tail metadata projection', () => {
   const messages = [
     { role: 'user', content: '[系统通知]hidden\n[系统通知结束]\nvisible user' },
   ];
   const view = buildServerInferredWorkingView(messages);
   const processed = [
-    { ...view.workingMessages[0], content: 'visible user\n[tail]' },
+    cloneMessageWithOneRingMetadata(view.workingMessages[0], { content: 'visible user\n[tail]' }),
   ];
 
   const restored = restoreServerInferredWorkingView(messages, processed, view, {
