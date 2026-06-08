@@ -312,6 +312,10 @@ function findLastActivation(messages) {
 
   let lastActivation = null;
   for (const message of messages) {
+    if (!message || message.role !== 'system') {
+      break;
+    }
+
     const text = getVisibleMessageText(message);
     const trigger = parseOneRingTrigger(text);
     if (trigger) {
