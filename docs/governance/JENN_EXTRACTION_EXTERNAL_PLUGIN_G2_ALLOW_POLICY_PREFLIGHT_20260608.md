@@ -74,7 +74,8 @@ Allowed without runtime behavior change:
 - accept raw policy text from the caller instead of reading `process.env`;
 - parse entries in the shape `PluginName@SourceDirectory`;
 - reject name-only entries;
-- reject empty names, empty paths, and broad wildcard entries;
+- reject empty names, empty paths, filesystem roots, and broad wildcard
+  entries;
 - normalize source directories with `path.resolve()`;
 - evaluate a G1 classification result against the parsed policy;
 - return structured decisions such as `would_allow` or `would_block`;
@@ -176,7 +177,10 @@ Minimum matching rules for G2A/G2B:
   `path.resolve()`;
 - allow a plugin only when the manifest `basePath` is inside the allowed source
   directory for that same plugin name;
-- reject `*`, `.`-only, path-only, and name-only allow entries by default;
+- reject `*`, `.`-only, filesystem roots, path-only, and name-only allow
+  entries by default;
+- treat POSIX roots, Windows drive roots, and Windows UNC share roots as too
+  broad for source-directory approval;
 - preserve parse errors as audit evidence without treating them as allow rules.
 
 Open decision for implementation review:

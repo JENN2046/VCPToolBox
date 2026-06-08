@@ -71,6 +71,31 @@ test('allow policy parser rejects name-only, path-only, wildcard, and dot-only e
     );
 });
 
+test('allow policy parser rejects filesystem root source directories', () => {
+    const projectRoot = makeProjectRoot();
+    const currentPlatformRoot = path.parse(projectRoot).root;
+    const result = parseExternalPluginAllowPolicy(
+        [
+            'ExternalPosixRoot@/',
+            `ExternalCurrentRoot@${currentPlatformRoot}`,
+            'ExternalDriveRoot@C:\\',
+            'ExternalUncRoot@\\\\server\\share\\'
+        ].join(';'),
+        { projectRoot }
+    );
+
+    assert.equal(result.entries.length, 0);
+    assert.deepEqual(
+        result.errors.map((error) => error.reason),
+        [
+            'broad-source-directory-not-allowed',
+            'broad-source-directory-not-allowed',
+            'broad-source-directory-not-allowed',
+            'broad-source-directory-not-allowed'
+        ]
+    );
+});
+
 test('allow policy evaluation observes non-external plugin classifications', () => {
     const result = evaluateExternalPluginAllowPolicy({
         pluginName: 'SciCalculator',
@@ -138,6 +163,41 @@ test('allow policy evaluation accepts policy objects with sourceDirectory fallba
 
     assert.equal(result.decision, 'would_allow');
     assert.equal(result.matchedPolicy.normalizedSourceDirectory, sourceDirectory);
+});
+
+test('allow policy evaluation blocks same-name external plugin when policy source is a filesystem root', () => {
+    const projectRoot = makeProjectRoot();
+    const result = evaluateExternalPluginAllowPolicy(
+        makeExternalClassification({
+            basePath: path.join(projectRoot, 'reviewed-plugins', 'ExternalEcho')
+        }),
+        `ExternalEcho@${path.parse(projectRoot).root}`,
+        { projectRoot }
+    );
+
+    assert.equal(result.decision, 'would_block');
+    assert.equal(result.matchedPolicy, null);
+    assert.match(result.reasons.join('\n'), /invalid entries/);
+    assert.match(result.reasons.join('\n'), /requires explicit name and source directory/);
+});
+
+test('allow policy evaluation blocks broad source directories in policy objects', () => {
+    const projectRoot = makeProjectRoot();
+    const result = evaluateExternalPluginAllowPolicy(
+        makeExternalClassification({
+            basePath: path.join(projectRoot, 'reviewed-plugins', 'ExternalEcho')
+        }),
+        {
+            entries: [{ pluginName: 'ExternalEcho', sourceDirectory: path.parse(projectRoot).root }],
+            errors: []
+        },
+        { projectRoot }
+    );
+
+    assert.equal(result.decision, 'would_block');
+    assert.equal(result.matchedPolicy, null);
+    assert.match(result.reasons.join('\n'), /broad source directory entries/);
+    assert.match(result.reasons.join('\n'), /source directory did not match/);
 });
 
 test('allow policy evaluation blocks same plugin name from a different source directory', () => {

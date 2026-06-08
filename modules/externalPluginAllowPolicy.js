@@ -42,6 +42,32 @@ function isDotOnlyPath(value) {
     return pathValue.replace(/[\\/]/g, '') === '.';
 }
 
+function isParsedRoot(parsedPath) {
+    return Boolean(parsedPath.root) && parsedPath.dir === parsedPath.root && !parsedPath.base;
+}
+
+function isFilesystemRootPath(value, options = {}) {
+    const pathValue = normalizeString(value);
+    if (!pathValue) {
+        return false;
+    }
+
+    const normalized = normalizePath(pathValue, options.projectRoot);
+    if (normalized && normalized === path.parse(normalized).root) {
+        return true;
+    }
+
+    if (path.posix.isAbsolute(pathValue) && isParsedRoot(path.posix.parse(path.posix.resolve(pathValue)))) {
+        return true;
+    }
+
+    return path.win32.isAbsolute(pathValue) && isParsedRoot(path.win32.parse(path.win32.resolve(pathValue)));
+}
+
+function isBroadSourceDirectory(value, options = {}) {
+    return isDotOnlyPath(value) || isFilesystemRootPath(value, options);
+}
+
 function makeError(entry, reason) {
     return { entry, reason };
 }
@@ -70,7 +96,7 @@ function parsePolicyEntry(rawEntry, options = {}) {
     if (hasWildcard(pluginName) || hasWildcard(sourceDirectory)) {
         return { entry: null, error: makeError(rawEntry, 'wildcard-entry-not-allowed') };
     }
-    if (isDotOnlyPath(sourceDirectory)) {
+    if (isBroadSourceDirectory(sourceDirectory, options)) {
         return { entry: null, error: makeError(rawEntry, 'broad-source-directory-not-allowed') };
     }
 
@@ -189,7 +215,15 @@ function evaluateExternalPluginAllowPolicy(classification = {}, policy, options 
 
     if (pluginName && pluginName !== 'unknown' && basePath) {
         const sameNameEntries = parsedPolicy.entries.filter((entry) => entry.pluginName === pluginName);
-        const matchedEntry = sameNameEntries.find((entry) => (
+        const scopedSameNameEntries = sameNameEntries.filter((entry) => (
+            !isBroadSourceDirectory(getEntrySourceDirectory(entry), options)
+        ));
+
+        if (sameNameEntries.length > scopedSameNameEntries.length) {
+            reasons.push('external plugin allow policy contains broad source directory entries');
+        }
+
+        const matchedEntry = scopedSameNameEntries.find((entry) => (
             isPathInsideOrEqual(getEntrySourceDirectory(entry), basePath, options)
         ));
 
