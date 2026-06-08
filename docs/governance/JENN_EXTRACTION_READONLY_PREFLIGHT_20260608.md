@@ -73,13 +73,45 @@ The first implementation PR should not move existing plugins. It should only
 prove that an empty or missing external plugin directory does not alter current
 built-in plugin loading behavior.
 
+## 4.1 Minimal `VCP_PLUGIN_DIRS` Contract
+
+Implemented local commit:
+
+```text
+1d3cbd0a feat: discover external legacy plugin dirs
+```
+
+Current behavior is intentionally narrow:
+
+- supports only legacy plugin folders that contain `plugin-manifest.json`
+- reads external directories from `VCP_PLUGIN_DIRS`
+- accepts `;` separators, and `:` separators when the value is not a Windows
+  drive path
+- discovers built-in `Plugin/` before external directories
+- preserves existing duplicate handling, so external plugins do not override
+  already loaded built-in plugins with the same `name`
+- ignores missing or empty external directories
+- reads manifest/config metadata during discovery, but does not execute plugin
+  entrypoint code during discovery
+
+Current non-goals:
+
+- no plugin migration
+- no stub/remove phase
+- no external modern `plugins/registry.json` support
+- no AdminPanel extension loader
+- no Agent loader
+- no LocalState migration
+- no new permission model or default high-risk plugin allow policy
+
 ## 5. Safety Boundaries
 
 This preflight does not touch:
 
 - `AdminPanel-Vue` source
 - LocalState resolution
-- plugin loading behavior
+- plugin loading behavior outside the minimal `VCP_PLUGIN_DIRS` legacy discovery
+  entrypoint
 - agent loading behavior
 - runtime/cache/state/log/image/operator data
 - `.env` or `config.env`
@@ -91,12 +123,17 @@ Required validation for this package:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/jenn-extraction-audit-readonly.ps1
+node --check Plugin.js
+node --check tests\plugin-external-dirs.test.js
+node --test tests\plugin-external-dirs.test.js
+npm test
 git diff --name-status
 git diff --stat
 ```
 
-No application tests are required for this documentation/script-only package
-because it does not change runtime code.
+The readonly preflight commit is documentation/script-only. The later
+`VCP_PLUGIN_DIRS` commit changes `Plugin.js`, so it requires targeted plugin
+discovery tests and `npm test`.
 
 ## 7. Rollback
 

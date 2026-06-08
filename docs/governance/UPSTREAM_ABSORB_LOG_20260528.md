@@ -170,8 +170,13 @@ runtime loader。
 | `Selective absorb` | loader patch、copy-first 抽离流程 | 仅保留为后续窄 PR 候选；不得在本包直接实现迁移。 |
 | `Observe only` | AdminPanel 动态扩展、LocalState 全迁移、大规模 stub/remove | 先不动；需要独立设计审查和明确授权。 |
 
-后续首个可执行实现包建议只做 `VCP_PLUGIN_DIRS` 空目录/缺失目录兼容验证，不移动
-现有插件、不删除文件、不触碰 AdminPanel 或 LocalState。
+当前分支已在 `1d3cbd0a feat: discover external legacy plugin dirs` 落地首个最小
+`VCP_PLUGIN_DIRS` 实现包：只支持 legacy `plugin-manifest.json` 外部目录发现，内置
+`Plugin/` 先于外部目录发现，外部同名插件不覆盖内置插件，空目录/缺失目录无行为变化。
+本包仍不移动现有插件、不删除文件、不触碰 AdminPanel 或 LocalState。
+
+后续若要处理外部高权限插件默认策略、manifest 显式 opt-in、外部插件启用安全门，
+必须另开安全门 PR；不得塞回当前预检/loader 小包。
 
 ## 7. 2026-06-06 OneRing 专项追加台账
 
