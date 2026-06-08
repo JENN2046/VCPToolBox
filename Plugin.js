@@ -16,6 +16,7 @@ const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
+const EXTERNAL_LEGACY_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';
 const MODERN_PLUGIN_DIR = path.join(__dirname, 'plugins');
 const MODERN_PLUGIN_REGISTRY_FILE = path.join(MODERN_PLUGIN_DIR, 'registry.json');
 const MODERN_MANIFEST_FILE_NAME = 'plugin.json';
@@ -573,26 +574,55 @@ class PluginManager extends EventEmitter {
         }
     }
 
-    async _discoverLegacyPluginManifests() {
+    _parseExternalLegacyPluginDirs(rawValue) {
+        if (!rawValue || typeof rawValue !== 'string') {
+            return [];
+        }
+
+        const hasWindowsDrivePrefix = /^[A-Za-z]:[\\/]/.test(rawValue);
+        const primarySeparator = rawValue.includes(';') ? ';' : (hasWindowsDrivePrefix ? null : ':');
+        const rawParts = primarySeparator ? rawValue.split(primarySeparator) : [rawValue];
+        const seen = new Set();
+        const dirs = [];
+
+        for (const rawPart of rawParts) {
+            const trimmed = rawPart.trim();
+            if (!trimmed) continue;
+
+            const resolved = path.resolve(__dirname, trimmed);
+            if (seen.has(resolved)) continue;
+            seen.add(resolved);
+            dirs.push(resolved);
+        }
+
+        return dirs;
+    }
+
+    _getExternalLegacyPluginDirs() {
+        return this._parseExternalLegacyPluginDirs(process.env[EXTERNAL_LEGACY_PLUGIN_DIRS_ENV]);
+    }
+
+    async _discoverLegacyPluginManifestsFromDir(pluginRoot, sourceLabel = 'legacy') {
         try {
-            const pluginFolders = await fs.readdir(LEGACY_PLUGIN_DIR, { withFileTypes: true });
+            const pluginFolders = await fs.readdir(pluginRoot, { withFileTypes: true });
             const manifests = [];
 
             for (const folder of pluginFolders) {
                 if (!folder.isDirectory()) continue;
 
-                const pluginPath = path.join(LEGACY_PLUGIN_DIR, folder.name);
+                const pluginPath = path.join(pluginRoot, folder.name);
                 const manifestPath = path.join(pluginPath, LEGACY_MANIFEST_FILE_NAME);
                 try {
                     const manifestContent = await fs.readFile(manifestPath, 'utf-8');
                     const manifest = JSON.parse(manifestContent);
                     if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
                     manifest.basePath = pluginPath;
+                    manifest.pluginSource = sourceLabel;
                     manifest.pluginSpecificEnvConfig = await this._loadPluginEnvConfig(pluginPath, manifest.name);
                     manifests.push(manifest);
                 } catch (error) {
                     if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
-                        console.error(`[PluginManager] Error loading legacy plugin from ${folder.name}:`, error);
+                        console.error(`[PluginManager] Error loading ${sourceLabel} legacy plugin from ${folder.name}:`, error);
                     }
                 }
             }
@@ -600,10 +630,19 @@ class PluginManager extends EventEmitter {
             return manifests;
         } catch (error) {
             if (error.code !== 'ENOENT') {
-                console.error('[PluginManager] Error reading legacy plugin directory:', error);
+                console.error(`[PluginManager] Error reading ${sourceLabel} legacy plugin directory ${pluginRoot}:`, error);
             }
             return [];
         }
+    }
+
+    async _discoverLegacyPluginManifests() {
+        const manifests = await this._discoverLegacyPluginManifestsFromDir(LEGACY_PLUGIN_DIR, 'legacy');
+        for (const externalDir of this._getExternalLegacyPluginDirs()) {
+            const externalManifests = await this._discoverLegacyPluginManifestsFromDir(externalDir, 'external');
+            manifests.push(...externalManifests);
+        }
+        return manifests;
     }
 
     async _registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize) {

@@ -125,6 +125,59 @@ git diff --name-status main..upstream/main
 | `defer` | 有价值，但需要设计包或跨模块验证。 |
 | `reject` | stale、生成产物、运行态、真实配置、密钥风险、或会删除本地治理资产。 |
 
+### 6.1 2026-06-08 上游吸收策略调整
+
+VCP 上游吸收从“连续快速跟跑”调整为“三档分流”。执行规则已同步写入
+`AGENTS.md` 的“作者上游三档吸收策略”。
+
+后续每轮 upstream diff 必须先分档，再决定处理方式：
+
+| 新分档 | 含义 | 处理原则 |
+|--------|------|----------|
+| `Full absorb` | 独立、低耦合、可整体替换。 | 可整体吸收，但必须确认不会破坏本地生产契约，并保留验证记录。 |
+| `Selective absorb` | 有价值但涉及本地契约。 | 只摘关键逻辑，小包实现，补回归测试；不得 raw merge 大文件。 |
+| `Observe only` | 大重构、高速变化、收益不确定。 | 先不动，只记录观察结论；等上游稳定成版本块后再统一评估。 |
+
+本策略变更后，不再因 upstream 持续更新而自动追逐吸收。每轮吸收必须有明确结束条件；
+大重构、文件体系重排、删除本地测试/治理层、依赖/二进制/运行态变更，默认归入
+`Observe only`，除非用户另行明确开启专项。
+
+### 6.2 2026-06-08 Jenn 外置化战略包预检
+
+审查对象：
+
+```text
+C:\Users\617\Downloads\vcptoolbox_jenn_extraction_package_20260608.zip
+```
+
+结论：该包不是可直接执行的代码补丁，而是用于降低长期 upstream merge 压力的
+外置化战略包。当前只吸收其治理思路和只读审计入口，不执行抽离、不搬文件、不改
+runtime loader。
+
+本地落地记录：
+
+| 项目 | 结果 |
+|------|------|
+| 预检文档 | `docs/governance/JENN_EXTRACTION_READONLY_PREFLIGHT_20260608.md` |
+| 只读脚本 | `scripts/jenn-extraction-audit-readonly.ps1` |
+| 当前状态 | 只读预检包；未执行抽离 |
+
+三档处理：
+
+| 分档 | 内容 | 本轮处理 |
+|------|------|----------|
+| `Full absorb` | 文档策略、清单思想、secret-risk paths-only 原则 | 记录进维护规则和只读审计脚本。 |
+| `Selective absorb` | loader patch、copy-first 抽离流程 | 仅保留为后续窄 PR 候选；不得在本包直接实现迁移。 |
+| `Observe only` | AdminPanel 动态扩展、LocalState 全迁移、大规模 stub/remove | 先不动；需要独立设计审查和明确授权。 |
+
+当前分支已在 `1d3cbd0a feat: discover external legacy plugin dirs` 落地首个最小
+`VCP_PLUGIN_DIRS` 实现包：只支持 legacy `plugin-manifest.json` 外部目录发现，内置
+`Plugin/` 先于外部目录发现，外部同名插件不覆盖内置插件，空目录/缺失目录无行为变化。
+本包仍不移动现有插件、不删除文件、不触碰 AdminPanel 或 LocalState。
+
+后续若要处理外部高权限插件默认策略、manifest 显式 opt-in、外部插件启用安全门，
+必须另开安全门 PR；不得塞回当前预检/loader 小包。
+
 ## 7. 2026-06-06 OneRing 专项追加台账
 
 本节追加记录 `f456575f` 及前序 OneRing upstream 专项在本地的吸收状态。

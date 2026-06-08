@@ -67,6 +67,39 @@ function createSerumBottleSecretlessBody(overrides = {}) {
     return body;
 }
 
+function createRuntimeToReviewV2Trial001Body(overrides = {}) {
+    return {
+        pipeline_id: 'runtime_to_review_v2_trial_001_serum_detail_control',
+        task_id: 'AUTH-R2R-V2-TRIAL-001-SERUM-DETAIL-CONTROL-20260608-FUTURE-EXECUTION',
+        activation: {
+            activation_package_id: 'AUTH-R2R-V2-TRIAL-001-SERUM-DETAIL-CONTROL-20260608-FUTURE-EXECUTION',
+            max_provider_calls: 1,
+            max_plugin_calls: 1,
+            max_api_calls: 1,
+            max_images: 1,
+            retry_allowed: false
+        },
+        visual_job_contract: {
+            prompt_package_ref: 'prompts/image_generation/product_detail_premium_serum_bottle_v2.yaml',
+            receipt_ref: 'reports/runtime_to_review_v2/r2r_v2_trial_001_serum_detail_control_receipt.json',
+            artifact_record_ref: 'reports/runtime_to_review_v2/r2r_v2_trial_001_serum_detail_control_artifact_record.json',
+            review_bridge_ref: 'review_console/live_receipt_bridge/r2r_v2_trial_001_serum_detail_control/bridge_entry.json',
+            output_directory_ref: 'runs/real_generation/runtime_to_review_v2_trial_001_serum_detail_control/'
+        },
+        plan: {
+            steps: [{
+                type: 'generate_image',
+                plugin: 'DoubaoGen',
+                prompt: 'Trial 001 controlled serum detail prompt with intentionally blank label',
+                model: 'doubao-seedream-5-0-260128',
+                resolution: '1920x1920',
+                output_directory_ref: 'runs/real_generation/runtime_to_review_v2_trial_001_serum_detail_control/'
+            }]
+        },
+        ...overrides
+    };
+}
+
 function canonicalJson(value) {
     if (Array.isArray(value)) {
         return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
@@ -425,6 +458,150 @@ test('aiImageAgents serum-bottle secretless internal router exposes only exact r
             body: JSON.stringify({ dryRun: false, confirm: true })
         });
         assert.equal(ordinaryExecuteResponse.status, 404);
+    });
+});
+
+test('aiImageAgents runtime-to-review v2 Trial 001 helper authorizes exact secretless activation', async () => {
+    const calls = [];
+    const authorizerCalls = [];
+    const events = [];
+
+    await withRouteModule({
+        async executeAiImagePipelineV2(input, options) {
+            events.push('executor');
+            calls.push({ input, options });
+            return {
+                ok: true,
+                mode: 'real_execution',
+                result: {
+                    ok: true,
+                    outputRefs: ['runs/real_generation/runtime_to_review_v2_trial_001_serum_detail_control/one.jpg']
+                }
+            };
+        }
+    }, async ({ handleRuntimeToReviewV2Trial001ExecutionRequest }) => {
+        const result = await handleRuntimeToReviewV2Trial001ExecutionRequest({
+            ip: '::ffff:127.0.0.1',
+            body: createRuntimeToReviewV2Trial001Body()
+        }, createSerumBottleSecretlessOptions({
+            async authorizeSerumBottleSecretlessExecution(request) {
+                events.push('authorizer');
+                authorizerCalls.push(request);
+                return {
+                    ok: true,
+                    operatorId: 'vcptoolbox-r2r-v2-trial-001-secretless-internal',
+                    authorizationId: 'trial-001-internal-auth-001',
+                    receiptId: 'trial-001-internal-receipt-001'
+                };
+            }
+        }));
+
+        assert.equal(result.ok, true);
+        assert.deepEqual(events, ['authorizer', 'executor']);
+        assert.equal(authorizerCalls.length, 1);
+        assert.equal(authorizerCalls[0].mode, 'r2r_v2_trial_001_serum_detail_control_secretless_internal_execute');
+        assert.equal(
+            authorizerCalls[0].activationPackageId,
+            'AUTH-R2R-V2-TRIAL-001-SERUM-DETAIL-CONTROL-20260608-FUTURE-EXECUTION'
+        );
+        assert.equal(authorizerCalls[0].routeId, 'r2r_v2_trial_001_serum_detail_control_secretless');
+        assert.equal(
+            authorizerCalls[0].receiptRef,
+            'reports/runtime_to_review_v2/r2r_v2_trial_001_serum_detail_control_receipt.json'
+        );
+        assert.deepEqual(authorizerCalls[0].budget, {
+            maxProviderCalls: 1,
+            maxPluginCalls: 1,
+            maxApiCalls: 1,
+            maxImages: 1,
+            retryAllowed: false
+        });
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].options.dryRun, false);
+        assert.equal(calls[0].options.allowExecutionWithoutEnvGate, true);
+        assert.equal(typeof calls[0].options.pluginManager.processToolCall, 'function');
+        assert.deepEqual(calls[0].options.executionContext, {
+            requestSource: 'ai-image-pipeline',
+            operatorId: 'vcptoolbox-r2r-v2-trial-001-secretless-internal',
+            taskId: 'AUTH-R2R-V2-TRIAL-001-SERUM-DETAIL-CONTROL-20260608-FUTURE-EXECUTION',
+            invocationId: 'runtime_to_review_v2_trial_001_serum_detail_control',
+            routeId: 'r2r_v2_trial_001_serum_detail_control_secretless',
+            serumBottleSecretless: true,
+            serumBottleSecretlessAuthorizationId: 'trial-001-internal-auth-001'
+        });
+        assert.equal(
+            result.result.r2rV2Trial001SecretlessAuthorization.authorizationId,
+            'trial-001-internal-auth-001'
+        );
+        assert.equal(
+            result.result.r2rV2Trial001RuntimeEvidence.routeId,
+            'r2r_v2_trial_001_serum_detail_control_secretless'
+        );
+    });
+});
+
+test('aiImageAgents runtime-to-review v2 Trial 001 helper fails closed on secret-like payload key', async () => {
+    const calls = [];
+    const authorizerCalls = [];
+
+    await withRouteModule({
+        async executeAiImagePipelineV2(input, options) {
+            calls.push({ input, options });
+            return { ok: true, mode: 'real_execution' };
+        }
+    }, async ({ handleRuntimeToReviewV2Trial001ExecutionRequest }) => {
+        const result = await handleRuntimeToReviewV2Trial001ExecutionRequest({
+            body: createRuntimeToReviewV2Trial001Body({
+                activation: {
+                    ...createRuntimeToReviewV2Trial001Body().activation,
+                    apiKey: 'should-not-be-accepted'
+                }
+            })
+        }, createSerumBottleSecretlessOptions({
+            async authorizeSerumBottleSecretlessExecution(request) {
+                authorizerCalls.push(request);
+                return { ok: true };
+            }
+        }));
+
+        assert.equal(result.ok, false);
+        assert.equal(result.result.status, 'r2r_v2_trial_001_payload_contains_forbidden_secret_key');
+        assert.equal(result.result.provider_contact_performed, false);
+        assert.equal(result.result.authorization_header_constructed, false);
+        assert.equal(authorizerCalls.length, 0);
+        assert.equal(calls.length, 0);
+    });
+});
+
+test('aiImageAgents runtime-to-review v2 Trial 001 helper rejects budget drift before authorization', async () => {
+    const calls = [];
+    const authorizerCalls = [];
+
+    await withRouteModule({
+        async executeAiImagePipelineV2(input, options) {
+            calls.push({ input, options });
+            return { ok: true, mode: 'real_execution' };
+        }
+    }, async ({ handleRuntimeToReviewV2Trial001ExecutionRequest }) => {
+        const body = createRuntimeToReviewV2Trial001Body({
+            activation: {
+                ...createRuntimeToReviewV2Trial001Body().activation,
+                max_images: 2
+            }
+        });
+        const result = await handleRuntimeToReviewV2Trial001ExecutionRequest({
+            body
+        }, createSerumBottleSecretlessOptions({
+            async authorizeSerumBottleSecretlessExecution(request) {
+                authorizerCalls.push(request);
+                return { ok: true };
+            }
+        }));
+
+        assert.equal(result.ok, false);
+        assert.equal(result.result.status, 'r2r_v2_trial_001_budget_not_exact');
+        assert.equal(authorizerCalls.length, 0);
+        assert.equal(calls.length, 0);
     });
 });
 

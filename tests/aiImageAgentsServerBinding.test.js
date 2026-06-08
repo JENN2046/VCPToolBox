@@ -38,13 +38,33 @@ test('secretless serum internal POST remains behind bearer auth', () => {
 
     assert.match(
         serverSource,
+        /const SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH = '\/internal\/ai-image-agents\/execute\/serum-bottle-secretless';/
+    );
+    assert.match(serverSource, /const R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH =\s*\n\s+'\/internal\/ai-image-agents\/execute\/r2r-v2-trial-001-serum-detail-control';/);
+    assert.match(serverSource, /req\.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH \|\|\s*\n\s*req\.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH/);
+    assert.doesNotMatch(
+        serverSource,
+        /req\.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH[^;]+req\.method === 'POST'/s
+    );
+    assert.match(serverSource, /authHeader !== `Bearer \$\{serverKey\}`/);
+});
+
+test('runtime-to-review Trial 001 internal POST remains behind bearer auth', () => {
+    const serverSource = read('server.js');
+    const routeSource = read('routes/admin/aiImageAgents.js');
+
+    assert.match(
+        serverSource,
         /if \(isSerumBottleSecretlessInternalRoute\(req\)\) \{\s+if \(req\.method === 'HEAD' && isLoopbackSocket\(req\)\) \{\s+return next\(\);\s+\}\s+\}/
     );
     assert.doesNotMatch(
         serverSource,
-        /if \(isSerumBottleSecretlessInternalRoute\(req\)\) \{\s+if \(isLoopbackSocket\(req\)\) \{\s+return next\(\);\s+\}\s+return res\.status\(403\)/
+        /req\.method === 'POST'[\s\S]{0,80}isLoopbackSocket\(req\)[\s\S]{0,80}return next\(\);/
     );
-    assert.match(serverSource, /authHeader !== `Bearer \$\{serverKey\}`/);
+    assert.match(serverSource, /R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE/);
+    assert.match(serverSource, /authorizeRuntimeToReviewV2Trial001SecretlessExecution\(request\)/);
+    assert.match(routeSource, /handleRuntimeToReviewV2Trial001ExecutionRequest/);
+    assert.match(routeSource, /router\.post\('\/execute\/r2r-v2-trial-001-serum-detail-control'/);
 });
 
 test('admin ai image real execution receives native Doubao delegate option', () => {
