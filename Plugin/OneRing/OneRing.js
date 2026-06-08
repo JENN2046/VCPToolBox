@@ -5,6 +5,7 @@ const path = require('node:path');
 const {
   classifySenderSource,
   getVisibleMessageText,
+  parseOneRingStartupNotice,
   parseOneRingTrigger,
   stripOneRingTailMarkers,
 } = require('../../modules/oneringParser');
@@ -115,9 +116,9 @@ function createOneRingRecorder(options = {}) {
 
     const sideChannel = readOneRingPostTurnMetadata(messages);
     const postTurn = sideChannel?.postTurn || null;
-    const trigger = findLastTrigger(messages);
-    const agentName = normalizeText(postTurn?.agentName) || trigger?.agentName || '';
-    const frontendSource = normalizeText(postTurn?.frontendSource) || trigger?.frontendSource || '';
+    const activation = findLastActivation(messages);
+    const agentName = normalizeText(postTurn?.agentName) || activation?.agentName || '';
+    const frontendSource = normalizeText(postTurn?.frontendSource) || activation?.frontendSource || '';
 
     if (!agentName || !frontendSource) {
       return null;
@@ -133,17 +134,17 @@ function createOneRingRecorder(options = {}) {
   }
 
   async function recordAIResponseFromMessages(messages, assistantContent) {
-    const trigger = findLastTrigger(messages);
+    const meta = extractMetaFromMessages(messages);
     const content = cleanVisibleContent(assistantContent);
-    if (!trigger || !content || !isEffectiveEnabled()) {
-      return { recorded: false, reason: !trigger ? 'missing-trigger' : 'disabled-or-empty' };
+    if (!meta || !content || !isEffectiveEnabled()) {
+      return { recorded: false, reason: !hasOneRingActivationSignal(messages) ? 'missing-trigger' : 'disabled-or-empty' };
     }
 
     const result = recordMessage({
-      agentName: trigger.agentName,
+      agentName: meta.agentName,
       role: 'assistant',
-      senderName: trigger.agentName,
-      frontendSource: trigger.frontendSource,
+      senderName: meta.agentName,
+      frontendSource: meta.frontendSource,
       content,
     });
 
@@ -302,6 +303,36 @@ function findLastTrigger(messages) {
   }
 
   return lastTrigger;
+}
+
+function findLastActivation(messages) {
+  if (!Array.isArray(messages)) {
+    return null;
+  }
+
+  const exactTrigger = findLastTrigger(messages);
+  if (exactTrigger) {
+    return exactTrigger;
+  }
+
+  let lastActivation = null;
+  for (const message of messages) {
+    if (!message || message.role !== 'system') {
+      break;
+    }
+
+    const text = getVisibleMessageText(message);
+    const notice = parseOneRingStartupNotice(text);
+    if (notice) {
+      lastActivation = notice;
+    }
+  }
+
+  return lastActivation;
+}
+
+function hasOneRingActivationSignal(messages) {
+  return Boolean(findLastActivation(messages));
 }
 
 function findLastMessageByRole(messages, role) {

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   parseOneRingTrigger,
+  parseOneRingStartupNotice,
   parseOneRingTailMarker,
   stripOneRingTailMarkers,
   buildOneRingTailMarker,
@@ -38,6 +39,32 @@ test('parseOneRingTrigger skips unsupported modes and malformed triggers', () =>
   assert.equal(parseOneRingTrigger('[[OneRing::Agnes::VChat::Now]]'), null);
   assert.equal(parseOneRingTrigger('[[OneRing::::VChat]]'), null);
   assert.equal(parseOneRingTrigger('[[Other::Agnes::VChat]]'), null);
+});
+
+test('parseOneRingStartupNotice recovers meta from complete and truncated notices', () => {
+  assert.deepEqual(
+    parseOneRingStartupNotice('[OneRing系统已启动，当前Agent小吉，当前客户端VCPChat，当前模式Only，所有上下文OneRing信息来源标记由系统生成无需你自动输出。]'),
+    {
+      raw: '[OneRing系统已启动，当前Agent小吉，当前客户端VCPChat，当前模式Only',
+      agentName: '小吉',
+      frontendSource: 'VCPChat',
+      mode: 'only',
+      recordOnly: true,
+      index: 0,
+    },
+  );
+
+  assert.deepEqual(
+    parseOneRingStartupNotice('prefix [OneRing系统已启动，当前AgentAgnes，当前客户端VChat，'),
+    {
+      raw: '[OneRing系统已启动，当前AgentAgnes，当前客户端VChat',
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+      mode: 'normal',
+      recordOnly: false,
+      index: 7,
+    },
+  );
 });
 
 test('tail marker parser handles second and millisecond timestamps', () => {
