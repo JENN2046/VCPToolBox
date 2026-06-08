@@ -1,5 +1,28 @@
 # VCPToolBox Governance Task Queue
 
+Updated: 2026-06-08 Asia/Shanghai.
+
+## Current Ready State
+
+- Local record package: `docs: close out jenn extraction plan state`.
+- Workspace: `A:/AGENTS_OS_Workspace/runtime/VCPToolBox`.
+- Branch: `main`.
+- `HEAD` / `origin/main`: `a64b7846756a548a306f5aad1d40732ce4ffcde1`.
+- Ahead/behind: `0 / 0`.
+- Worktree: clean.
+- Active local package: none.
+- Next task: wait for the next explicit user scope, then inspect files, state
+  intended edits/validation/rollback, make the smallest local reversible change,
+  and validate.
+
+## Current Blocked Boundaries
+
+- No commit, push, PR, deployment, production service action, branch movement,
+  env/secret edit, bridge enablement, runtime/state cleanup, or external write
+  is authorized by this readiness refresh.
+
+---
+
 Updated: 2026-05-28 Asia/Shanghai.
 
 ## Current Intake

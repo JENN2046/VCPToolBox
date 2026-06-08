@@ -1,5 +1,39 @@
 # Checkpoint
 
+Time: 2026-06-08 20:46 Asia/Shanghai.
+
+Completed:
+
+- Named the current local record package
+  `docs: close out jenn extraction plan state`.
+- Refreshed the local status surface for the current workspace
+  `A:/AGENTS_OS_Workspace/runtime/VCPToolBox`.
+- Verified current branch is `main`.
+- Verified `HEAD` and `origin/main` are both
+  `a64b7846756a548a306f5aad1d40732ce4ffcde1`.
+- Verified ahead/behind `HEAD...origin/main` is `0 / 0`.
+- Verified the worktree is clean before status-surface edits.
+- Recorded that no active local package is currently in progress.
+- Post-edit diff inspection confirmed changes are limited to the five
+  `.agent_board` status files.
+
+Not completed:
+
+- No code, config, env/secret, runtime/state/cache/log/image/operator data,
+  bridge, service, commit, push, PR, deploy, production action, or branch
+  movement was performed.
+- No functional test suite was run because this checkpoint only refreshes local
+  readiness status.
+
+Next:
+
+1. Start the next explicitly scoped local task from clean `main`.
+2. Before edits, state intended files, validation commands, and rollback plan.
+3. Stop before any remote write, production action, branch movement, env/secret
+   edit, bridge enablement, or runtime/state cleanup unless explicitly approved.
+
+---
+
 Time: 2026-05-28 Asia/Shanghai.
 
 Completed:

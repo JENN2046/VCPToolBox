@@ -1,5 +1,35 @@
 # VCPToolBox Governance Run State
 
+Status: ready for next explicitly scoped local task.
+Workspace: `A:/AGENTS_OS_Workspace/runtime/VCPToolBox`.
+Current branch: `main`.
+Worktree status at last check: clean.
+Current local record package: `docs: close out jenn extraction plan state`.
+
+Current verified state:
+
+- `git fetch origin` succeeded on 2026-06-08.
+- `HEAD`: `a64b7846756a548a306f5aad1d40732ce4ffcde1`.
+- `origin/main`: `a64b7846756a548a306f5aad1d40732ce4ffcde1`.
+- Ahead/behind `HEAD...origin/main`: `0 / 0`.
+- `git status -sb` reported only `## main...origin/main`.
+- No active local package is in progress in this workspace.
+- No code, config, env/secret, runtime/state/cache/log/image/operator data,
+  bridge, service, commit, push, PR, deploy, or production action changed during
+  this readiness refresh.
+
+Current operating boundary:
+
+- Start the next task from clean `main` only after the user names the task.
+- Make only small, local, reversible edits inside the requested scope.
+- Stop before commits, pushes, PRs, deployments, branch movement, production
+  service actions, env/secret edits, bridge enablement, or runtime/state cleanup
+  unless explicitly approved in the current turn.
+- Historical sections below are retained for audit context and may reference
+  stale workspaces, branches, and heads.
+
+---
+
 Status: active upstream split-package intake.
 Workspace: `A:/VCP/VCPToolBox`.
 Current branch: `codex/semantic-router-backend-20260528`.

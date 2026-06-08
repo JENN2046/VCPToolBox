@@ -6,13 +6,20 @@ This plan records the implementation path for turning
 `vcptoolbox_jenn_extraction_package_20260608.zip` into a safe local
 externalization track.
 
-Current branch:
+Closed branch:
 
 ```text
 codex/jenn-extraction-readonly-preflight-20260608
 ```
 
-Current local commits in scope:
+Merged main status:
+
+```text
+main at a64b7846756a548a306f5aad1d40732ce4ffcde1
+Merge pull request #223 from JENN2046/codex/jenn-extraction-readonly-preflight-20260608
+```
+
+Merged commits in scope:
 
 ```text
 5eadafeb docs: add jenn extraction readonly preflight
@@ -20,13 +27,12 @@ Current local commits in scope:
 9f890367 docs: clarify external plugin dirs contract
 ```
 
-The branch should remain a narrow PR that contains only readonly preflight,
-minimal legacy external plugin discovery, and documentation for the current
-contract.
+The narrow PR is closed and merged into `main`. This document is now the
+closeout and follow-up boundary for the Jenn extraction track.
 
-## 2. Current PR Boundary
+## 2. Merged Package Boundary
 
-Keep this PR limited to:
+The merged package is limited to:
 
 - readonly extraction audit script
 - governance ledger entries for the extraction strategy package
@@ -35,7 +41,8 @@ Keep this PR limited to:
 - tests proving missing/empty external directories are safe and external
   discovery does not execute plugin entrypoint code
 
-Do not add to this PR:
+Do not expand this merged package retroactively. The following work remains out
+of scope and must use separate packages:
 
 - plugin migration
 - plugin deletion or stub replacement
@@ -59,11 +66,11 @@ Do not add to this PR:
 - discovery reads manifest/config metadata but does not execute plugin
   entrypoint code
 
-This contract is the only runtime behavior change in the current branch.
+This contract is the only runtime behavior change in the merged package.
 
 ## 4. Next Work Queue
 
-1. Open the current branch as a PR and request review.
+1. Treat PR #223 as closed and do not reopen it with extra extraction scope.
 2. If review asks for high-risk external plugin policy, create a separate
    external plugin safety-gate PR.
 3. Keep Agent external directories as a later readonly design package.
@@ -72,9 +79,32 @@ This contract is the only runtime behavior change in the current branch.
 5. Keep AdminPanel extension loader as `Observe only` until plugin and Agent
    externalization boundaries are stable.
 
-## 5. Validation
+## 5. Future Package Approval Boundaries
 
-Validation commands for this branch:
+Allowed as small local follow-up packages after normal branch/diff preflight:
+
+- docs-only closeout or ledger updates
+- readonly Agent external-directory design
+- readonly AdminPanel extension-loader design
+- readonly LocalState risk assessment
+- external plugin safety-gate design that does not change default loading or
+  execution behavior
+
+Requires explicit approval before implementation:
+
+- extracting, copying, moving, deleting, stubbing, or replacing plugin content
+- enabling Agent external directory loading
+- enabling AdminPanel extension loading
+- migrating LocalState or any operator/private state
+- adding external modern `plugins/registry.json` support
+- changing plugin permission policy, high-risk allow behavior, or default
+  execution authority
+- reading or operating on a workspace-external ZIP package
+- committing, pushing, opening a PR, or writing to any remote service
+
+## 6. Validation
+
+Validation commands for the merged package were:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\jenn-extraction-audit-readonly.ps1
@@ -94,8 +124,12 @@ npm test: 341/341 pass
 `npm test` may create untracked `dailynote/` artifacts. These artifacts must
 not be committed.
 
-## 6. Rollback
+This closeout update was validated by checking the markdown diff and whitespace
+only. It does not rerun the full merged-package test suite.
 
-Rollback this branch by reverting the current PR commits. No runtime data,
-secrets, AdminPanel source, Agent files, LocalState files, or plugin content
-should need manual cleanup because this plan does not move or delete them.
+## 7. Rollback
+
+Rollback the merged package by reverting PR #223 or the listed commits. No
+runtime data, secrets, AdminPanel source, Agent files, LocalState files, or
+plugin content should need manual cleanup because this plan does not move or
+delete them.

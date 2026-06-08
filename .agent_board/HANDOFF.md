@@ -1,5 +1,38 @@
 # Handoff
 
+Goal: ready the current workspace for the next local task.
+
+Current ready state:
+
+- Local record package name: `docs: close out jenn extraction plan state`.
+- Work is in `A:/AGENTS_OS_Workspace/runtime/VCPToolBox`.
+- Branch is `main`.
+- `git fetch origin` succeeded on 2026-06-08.
+- `HEAD` and `origin/main` are both verified at
+  `a64b7846756a548a306f5aad1d40732ce4ffcde1`.
+- `HEAD...origin/main` is verified as `0 / 0`.
+- Worktree is clean: `git status -sb` reported only
+  `## main...origin/main`.
+- No code, config, env/secret, runtime/state/cache/log/image/operator data,
+  bridge, service, commit, push, PR, deploy, or production action was changed
+  during this readiness refresh.
+
+Next safe action:
+
+- Start the next explicitly scoped local task from clean `main`.
+- Before edits, restate intended files, validation commands, and rollback plan.
+- Any commit, push, PR, deployment, production service action, branch movement,
+  env/secret change, bridge enablement, or runtime/state cleanup remains a
+  separate explicit approval boundary.
+
+Historical note:
+
+- Older handoff sections below may reference previous workspaces, branches, and
+  stale heads. Treat this 2026-06-08 current ready state as the latest verified
+  status for this workspace.
+
+---
+
 Goal: continue fast author-upstream intake after local `main` aligned with
 `origin/main` at `06a2c908`.
 
