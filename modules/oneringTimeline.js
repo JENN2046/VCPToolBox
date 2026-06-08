@@ -393,7 +393,10 @@ function restoreServerInferredWorkingView(originalMessages, processedMessages, w
     result.push(...(injectedAfterOriginalIndex.get(index) || []));
   }
   result.push(...injectedAtEnd);
-  copyArrayOneRingMeta(processedMessages, result);
+  copyArrayOneRingMetaFromSources(
+    [processedMessages, workingView.workingMessages, originalMessages],
+    result,
+  );
 
   try {
     Object.defineProperty(result, '__oneRingInjectedCount', {
@@ -700,6 +703,15 @@ function copyArrayOneRingMeta(source, target) {
       Object.defineProperty(target, '__oneRingMeta', descriptor);
     } catch {
       // Keep helpers side-effect-safe for frozen objects.
+    }
+  }
+  return target;
+}
+
+function copyArrayOneRingMetaFromSources(sources, target) {
+  for (const source of sources) {
+    if (source && Object.getOwnPropertyDescriptor(source, '__oneRingMeta')) {
+      return copyArrayOneRingMeta(source, target);
     }
   }
   return target;

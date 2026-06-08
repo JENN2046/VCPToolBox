@@ -550,6 +550,30 @@ test('server inferred working view preserves array metadata identity and descrip
   assert.equal(Object.getOwnPropertyDescriptor(restored, '__oneRingMeta').writable, false);
 });
 
+test('restoreServerInferredWorkingView preserves metadata from derived processed arrays', () => {
+  const messages = [
+    { role: 'system', content: 'top system' },
+    { role: 'assistant', content: 'assistant reply' },
+  ];
+  const metadata = { requestId: 'turn-derived' };
+  Object.defineProperty(messages, '__oneRingMeta', {
+    value: metadata,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+  const view = buildServerInferredWorkingView(messages);
+  const processed = view.workingMessages.map(message => ({ ...message }));
+
+  assert.equal(Object.hasOwn(processed, '__oneRingMeta'), false);
+
+  const restored = restoreServerInferredWorkingView(messages, processed, view);
+
+  assert.equal(restored.__oneRingMeta, metadata);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(restored, '__oneRingMeta'), false);
+  assert.equal(Object.getOwnPropertyDescriptor(restored, '__oneRingMeta').writable, false);
+});
+
 test('restoreServerInferredWorkingView maps processed messages and anchored injected blocks back to originals', () => {
   const messages = [
     { role: 'system', content: 'top system' },
