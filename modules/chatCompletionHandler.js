@@ -112,6 +112,27 @@ function processFinalRoleDivider(messages, options = {}) {
   ];
 }
 
+function captureOneRingResponseMeta(pluginManager, messages, debugMode = false) {
+  const oneRingModule = pluginManager?.messagePreprocessors?.get?.('OneRing');
+  if (!oneRingModule || typeof oneRingModule.extractMetaFromMessages !== 'function') {
+    return null;
+  }
+
+  try {
+    const meta = oneRingModule.extractMetaFromMessages(messages);
+    if (!meta || typeof meta !== 'object') {
+      return null;
+    }
+    if (debugMode) {
+      console.log(`[OneRing] Frozen response meta before upstream fetch: agent=${meta.agentName || 'unknown'} frontend=${meta.frontendSource || 'unknown'} turn=${meta.turnId || 'none'}`);
+    }
+    return meta;
+  } catch (error) {
+    console.warn('[OneRing] Failed to freeze response meta before upstream fetch:', error.message);
+    return null;
+  }
+}
+
 function messageHasAgentPlaceholder(message, alias) {
   const text = getMessageTextContent(message);
   if (!text) return false;
@@ -1126,6 +1147,7 @@ class ChatCompletionHandler {
 
       originalBody.messages = processedMessages;
       const executionContext = buildExecutionContext(processingContext, configuredExecutionContext);
+      const oneRingResponseMeta = captureOneRingResponseMeta(pluginManager, processedMessages, DEBUG_MODE);
 
       const willStreamResponse = isOriginalRequestStreaming;
       const finalUpstreamBody = { ...originalBody, stream: willStreamResponse };
@@ -1272,7 +1294,8 @@ class ChatCompletionHandler {
         isToolResultError,
         formatToolResult,
         vcpToolUseForbidden,
-        semanticModelFallbackCandidates
+        semanticModelFallbackCandidates,
+        oneRingResponseMeta
       };
 
       if (isUpstreamStreaming) {
@@ -1507,6 +1530,7 @@ async function fetchCodexOAuthChatCompletion(body = {}, req, config = {}) {
 }
 
 ChatCompletionHandler._buildExecutionContext = buildExecutionContext;
+ChatCompletionHandler._captureOneRingResponseMeta = captureOneRingResponseMeta;
 ChatCompletionHandler._fetchCodexOAuthChatCompletion = fetchCodexOAuthChatCompletion;
 ChatCompletionHandler._normalizeAgentModelRequest = normalizeAgentModelRequest;
 

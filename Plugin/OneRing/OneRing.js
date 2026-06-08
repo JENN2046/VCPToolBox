@@ -108,6 +108,30 @@ function createOneRingRecorder(options = {}) {
     return result;
   }
 
+  function extractMetaFromMessages(messages) {
+    if (!Array.isArray(messages)) {
+      return null;
+    }
+
+    const sideChannel = readOneRingPostTurnMetadata(messages);
+    const postTurn = sideChannel?.postTurn || null;
+    const trigger = findLastTrigger(messages);
+    const agentName = normalizeText(postTurn?.agentName) || trigger?.agentName || '';
+    const frontendSource = normalizeText(postTurn?.frontendSource) || trigger?.frontendSource || '';
+
+    if (!agentName || !frontendSource) {
+      return null;
+    }
+
+    return {
+      agentName,
+      frontendSource,
+      postTurn,
+      turnId: normalizeText(postTurn?.turnId) || null,
+      requestHash: normalizeText(postTurn?.requestHash) || null,
+    };
+  }
+
   async function recordAIResponseFromMessages(messages, assistantContent) {
     const trigger = findLastTrigger(messages);
     const content = cleanVisibleContent(assistantContent);
@@ -244,6 +268,7 @@ function createOneRingRecorder(options = {}) {
     initialize,
     processMessages,
     preparePostTurnFromMessages,
+    extractMetaFromMessages,
     recordAIResponseFromMessages,
     recordAIResponse,
     listMessages,

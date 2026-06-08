@@ -98,6 +98,62 @@ class OneRingStore {
     return row.count;
   }
 
+  updateMessageContent(messageId, patch = {}) {
+    this._assertOpen();
+
+    const safeMessageId = normalizePositiveInteger(messageId);
+    if (safeMessageId === null) {
+      return {
+        updated: false,
+        reason: 'invalid-message-id',
+        row: null,
+      };
+    }
+
+    const source = patch && typeof patch === 'object' ? patch : {};
+    const safeAgentName = normalizeRequiredString(source.agentName, 'agentName');
+    const content = normalizeRequiredContent(source.content);
+    const frontendSource = normalizeNullableString(source.frontendSource);
+    const role = normalizeNullableString(source.role);
+    const timestamp = normalizeNullableString(source.timestamp);
+
+    if (role && !VALID_ROLES.has(role)) {
+      throw new TypeError('Invalid OneRing message role');
+    }
+
+    const where = ['id = ?', 'agent_name = ?'];
+    const values = [content];
+    const whereValues = [safeMessageId, safeAgentName];
+
+    if (frontendSource) {
+      where.push('frontend_source = ?');
+      whereValues.push(frontendSource);
+    }
+
+    if (role) {
+      where.push('role = ?');
+      whereValues.push(role);
+    }
+
+    const setClause = timestamp ? 'content = ?, timestamp = ?' : 'content = ?';
+    if (timestamp) {
+      values.push(timestamp);
+    }
+
+    const result = this.db.prepare(`
+      UPDATE messages
+      SET ${setClause}
+      WHERE ${where.join(' AND ')}
+    `).run(...values, ...whereValues);
+
+    const updated = result.changes > 0;
+    return {
+      updated,
+      reason: updated ? null : 'missing-message-or-owner-mismatch',
+      row: updated ? this._getMessageById(safeMessageId) : null,
+    };
+  }
+
   upsertPostTurn(metadata) {
     this._assertOpen();
 
@@ -413,6 +469,28 @@ class OneRingStore {
     }
 
     return { ok: true, reason: null };
+  }
+
+  _getMessageById(messageId) {
+    const safeMessageId = normalizePositiveInteger(messageId);
+    if (safeMessageId === null) {
+      return null;
+    }
+
+    return this.db.prepare(`
+      SELECT
+        id,
+        agent_name AS agentName,
+        role,
+        sender_name AS senderName,
+        frontend_source AS frontendSource,
+        content,
+        timestamp,
+        post_context_hash AS postContextHash
+      FROM messages
+      WHERE id = ?
+      LIMIT 1
+    `).get(safeMessageId) || null;
   }
 }
 

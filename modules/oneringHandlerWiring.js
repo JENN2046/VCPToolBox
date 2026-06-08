@@ -12,18 +12,19 @@ function dispatchOneRingAssistantRecordCandidate(context, candidate, {
   phaseLabel = 'final_turn',
   logPrefix = '[OneRing Handler]',
   abortPostTurnOnSkip = false,
+  responseMeta = null,
   now,
 } = {}) {
   if (!candidate || candidate.shouldRecord !== true) {
     const skipped = skipCandidate(candidate);
     if (abortPostTurnOnSkip) {
-      const metadata = buildOneRingDispatchMetadata(context, { phaseLabel });
+      const metadata = buildOneRingDispatchMetadata(context, { phaseLabel, responseMeta });
       dispatchOneRingPostTurnAbort(context, skipped, { logPrefix, phaseLabel, metadata, now });
     }
     return { ...skipped, dispatched: false };
   }
 
-  const metadata = buildOneRingDispatchMetadata(context, { phaseLabel });
+  const metadata = buildOneRingDispatchMetadata(context, { phaseLabel, responseMeta });
   const recorder = resolveOneRingRecorder(context, metadata);
   const shouldPrepareWrapperPostTurn = !metadata.postTurn && canPrepareOneRingWrapperPostTurn(context);
   if (!recorder && !shouldPrepareWrapperPostTurn) {
@@ -59,13 +60,15 @@ function dispatchOneRingAssistantRecordCandidate(context, candidate, {
   return { ...candidate, dispatched: true };
 }
 
-function buildOneRingDispatchMetadata(context, { phaseLabel = 'final_turn' } = {}) {
+function buildOneRingDispatchMetadata(context, { phaseLabel = 'final_turn', responseMeta = null } = {}) {
   const messages = context?.originalBody?.messages;
   const sideChannel = readOneRingPostTurnMetadata(messages);
+  const frozenMeta = normalizeFrozenResponseMeta(responseMeta || context?.oneRingResponseMeta);
   return {
     phaseLabel,
     messages,
-    postTurn: context?.oneRingPostTurn || sideChannel?.postTurn || null,
+    responseMeta: frozenMeta,
+    postTurn: context?.oneRingPostTurn || sideChannel?.postTurn || frozenMeta?.postTurn || null,
   };
 }
 
@@ -148,7 +151,7 @@ function resolveOneRingRecorder(context, metadata = null) {
   if (
     oneRingModule
     && typeof oneRingModule.recordAIResponse === 'function'
-    && metadata?.postTurn
+    && (metadata?.postTurn || metadata?.responseMeta)
   ) {
     return (candidate, metadata) => oneRingModule.recordAIResponse(
       buildOneRingWrapperMeta(metadata),
@@ -213,9 +216,11 @@ function hasExplicitOneRingRecorderHook(context) {
 
 function buildOneRingWrapperMeta(metadata) {
   const postTurn = metadata?.postTurn || null;
+  const responseMeta = metadata?.responseMeta || {};
   return {
-    agentName: postTurn?.agentName,
-    frontendSource: postTurn?.frontendSource,
+    ...responseMeta,
+    agentName: responseMeta.agentName || postTurn?.agentName,
+    frontendSource: responseMeta.frontendSource || postTurn?.frontendSource,
     postTurn,
   };
 }
@@ -251,6 +256,34 @@ function resolveOneRingPostTurnStore(context, methodName) {
 function normalizePositiveInteger(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeFrozenResponseMeta(meta) {
+  if (!meta || typeof meta !== 'object') {
+    return null;
+  }
+
+  const result = {};
+  for (const key of [
+    'agentName',
+    'frontendSource',
+    'lastUserSenderName',
+    'lastUserTimestamp',
+    'turnId',
+    'requestHash',
+    'retryOfTurnId',
+    'responseMessageIdToUpdate',
+  ]) {
+    if (meta[key] !== undefined && meta[key] !== null) {
+      result[key] = meta[key];
+    }
+  }
+
+  if (meta.postTurn && typeof meta.postTurn === 'object') {
+    result.postTurn = meta.postTurn;
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 module.exports = {
