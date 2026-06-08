@@ -181,6 +181,83 @@ test('OneRingStore adds and lists visible conversation messages by agent', async
   }
 });
 
+test('OneRingStore updates message content only for the scoped owner', async () => {
+  const tempDir = await makeTempStoreDir();
+  const store = new OneRingStore({ baseDir: tempDir, maxRecords: 10 });
+
+  try {
+    const assistantMessage = store.addMessage({
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+      role: 'assistant',
+      content: 'draft reply',
+      timestamp: '2026-06-06T04:00:00.000Z',
+    });
+    const otherMessage = store.addMessage({
+      agentName: 'Other',
+      frontendSource: 'VChat',
+      role: 'assistant',
+      content: 'other reply',
+    });
+
+    assert.deepEqual(
+      store.updateMessageContent(0, {
+        agentName: 'Agnes',
+        frontendSource: 'VChat',
+        role: 'assistant',
+        content: 'ignored',
+      }),
+      { updated: false, reason: 'invalid-message-id', row: null },
+    );
+
+    assert.deepEqual(
+      store.updateMessageContent(assistantMessage.id, {
+        agentName: 'Other',
+        frontendSource: 'VChat',
+        role: 'assistant',
+        content: 'wrong agent',
+      }),
+      { updated: false, reason: 'missing-message-or-owner-mismatch', row: null },
+    );
+    assert.deepEqual(
+      store.updateMessageContent(assistantMessage.id, {
+        agentName: 'Agnes',
+        frontendSource: 'OtherUI',
+        role: 'assistant',
+        content: 'wrong frontend',
+      }),
+      { updated: false, reason: 'missing-message-or-owner-mismatch', row: null },
+    );
+    assert.deepEqual(
+      store.updateMessageContent(assistantMessage.id, {
+        agentName: 'Agnes',
+        frontendSource: 'VChat',
+        role: 'user',
+        content: 'wrong role',
+      }),
+      { updated: false, reason: 'missing-message-or-owner-mismatch', row: null },
+    );
+
+    const updated = store.updateMessageContent(assistantMessage.id, {
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+      role: 'assistant',
+      content: 'final reply',
+      timestamp: '2026-06-06T04:00:01.000Z',
+    });
+    assert.equal(updated.updated, true);
+    assert.equal(updated.reason, null);
+    assert.equal(updated.row.content, 'final reply');
+    assert.equal(updated.row.timestamp, '2026-06-06T04:00:01.000Z');
+
+    assert.equal(store.listMessages('Other')[0].content, 'other reply');
+    assert.equal(store.listMessages('Agnes')[0].content, 'final reply');
+    assert.equal(otherMessage.id > assistantMessage.id, true);
+  } finally {
+    store.close();
+  }
+});
+
 test('OneRingStore prunes old messages per agent with maxRecords', async () => {
   const tempDir = await makeTempStoreDir();
   const store = new OneRingStore({ baseDir: tempDir, maxRecords: 2 });
