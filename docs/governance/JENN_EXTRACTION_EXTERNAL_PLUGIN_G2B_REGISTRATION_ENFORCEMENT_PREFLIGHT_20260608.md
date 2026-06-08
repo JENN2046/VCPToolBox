@@ -113,7 +113,10 @@ Recommended minimal insertion point:
 
 ```text
 const legacyManifests = await this._discoverLegacyPluginManifests();
-const allowedLegacyManifests =
+const {
+  allowedManifests: allowedLegacyManifests,
+  decisions: externalAllowPolicyDecisions
+} =
   this._filterLegacyPluginManifestsByExternalAllowPolicy(legacyManifests);
 
 for (const manifest of allowedLegacyManifests) {
@@ -121,6 +124,10 @@ for (const manifest of allowedLegacyManifests) {
   await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);
 }
 ```
+
+`externalAllowPolicyDecisions` should be consumed only for sanitized audit or
+debug evidence. It must not affect the iteration target, and it must not include
+raw manifest env/config values.
 
 This keeps execution dispatch unchanged. The gate is registration/loading only.
 
