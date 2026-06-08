@@ -324,6 +324,59 @@ test('bindClientTimestampBindingsToPostBlocks falls back to array positions for 
   assert.equal(result.boundTimestampsByIndex[1].senderName, 'Agnes');
 });
 
+test('bindClientTimestampBindingsToPostBlocks preserves visible text for multipart content blocks', () => {
+  const visibleText = 'first visible line\nsecond visible line';
+  const emptyHash = rawSha256('');
+  const result = bindClientTimestampBindingsToPostBlocks(
+    [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'first visible line' },
+          { type: 'text', value: 'second visible line' },
+          { type: 'image_url', image_url: { url: 'https://example.invalid/image.png' } },
+        ],
+      },
+    ],
+    {
+      bindings: [
+        {
+          messageId: 'bad-empty',
+          role: 'user',
+          index: 0,
+          timestamp: '2026-02-02T15:59:59.000Z',
+          sentHash: emptyHash,
+        },
+        {
+          messageId: 'good-visible',
+          role: 'user',
+          index: 0,
+          timestamp: '2026-02-02T16:00:00.000Z',
+          sentHash: rawSha256(visibleText),
+        },
+      ],
+    },
+    {
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+    },
+  );
+
+  assert.equal(result.hashMismatch, 1);
+  assert.equal(result.verifiedBindings.length, 1);
+  assert.equal(result.verifiedBindings[0].messageId, 'good-visible');
+  assert.equal(result.verifiedBindings[0].text, visibleText);
+  assert.deepEqual(result.boundTimestampsByIndex[0], {
+    timestamp: '2026-02-02T16:00:00.000Z',
+    senderName: '?',
+    frontendSource: 'VChat',
+    source: 'client-verified-hash',
+    messageId: 'good-visible',
+    sentHash: rawSha256(visibleText),
+    hashVariant: 'raw',
+  });
+});
+
 test('mergeTimestampBindings keeps later binding maps authoritative', () => {
   assert.deepEqual(
     mergeTimestampBindings(

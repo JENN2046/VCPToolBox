@@ -2,6 +2,8 @@
 
 const crypto = require('node:crypto');
 
+const { getVisibleMessageText } = require('./oneringParser');
+
 const SHA256_PREFIX = 'sha256:';
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
 const TRAILING_WHITESPACE_PATTERN = /[\s\u00a0\u3000]+$/u;
@@ -250,7 +252,11 @@ function getPostBlockText(block) {
     return block.content;
   }
 
-  return '';
+  if (Object.hasOwn(block, 'content')) {
+    return getVisibleMessageText(block.content);
+  }
+
+  return getVisibleMessageText(block);
 }
 
 module.exports = {
