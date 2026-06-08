@@ -506,6 +506,50 @@ test('buildServerInferredWorkingView creates reversible sanitized view without e
   assert.equal(Object.keys(view.workingMessages[1]).includes('__oneRingWorkingKey'), false);
 });
 
+test('buildServerInferredWorkingView preserves user multipart non-text content', () => {
+  const messages = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: '[系统通知]hidden\n[系统通知结束]\n' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+      ],
+    },
+  ];
+  const view = buildServerInferredWorkingView(messages);
+
+  assert.equal(view.workingMessages.length, 1);
+  assert.deepEqual(view.workingMessages[0].content, [
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+  ]);
+  assert.equal(view.stats.removedEmptyUser, 0);
+  assert.equal(view.originalRecords.get('0').reason, 'sanitized-user');
+});
+
+test('server inferred working view preserves array metadata identity and descriptor', () => {
+  const messages = [
+    { role: 'system', content: 'top system' },
+    { role: 'assistant', content: 'assistant reply' },
+  ];
+  const metadata = { requestId: 'turn-1' };
+  Object.defineProperty(messages, '__oneRingMeta', {
+    value: metadata,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+
+  const view = buildServerInferredWorkingView(messages);
+  const restored = restoreServerInferredWorkingView(messages, view.workingMessages, view);
+
+  assert.equal(view.workingMessages.__oneRingMeta, metadata);
+  assert.equal(restored.__oneRingMeta, metadata);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(view.workingMessages, '__oneRingMeta'), false);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(restored, '__oneRingMeta'), false);
+  assert.equal(Object.getOwnPropertyDescriptor(view.workingMessages, '__oneRingMeta').writable, false);
+  assert.equal(Object.getOwnPropertyDescriptor(restored, '__oneRingMeta').writable, false);
+});
+
 test('restoreServerInferredWorkingView maps processed messages and anchored injected blocks back to originals', () => {
   const messages = [
     { role: 'system', content: 'top system' },

@@ -585,7 +585,35 @@ function stripLeadingSystemNoticeText(text) {
 }
 
 function defaultHasUserTextContent(content) {
-  return Boolean(getVisibleMessageText(content).trim());
+  return Boolean(getVisibleMessageText(content).trim()) || hasNonTextContentPart(content);
+}
+
+function hasNonTextContentPart(content) {
+  if (Array.isArray(content)) {
+    return content.some((part) => hasNonTextContentPart(part));
+  }
+
+  if (!content || typeof content !== 'object') {
+    return false;
+  }
+
+  if (typeof content.text === 'string' || (content.type === 'text' && typeof content.value === 'string')) {
+    return false;
+  }
+
+  if (content.type === 'text') {
+    return false;
+  }
+
+  if (typeof content.type === 'string') {
+    return true;
+  }
+
+  if (Object.hasOwn(content, 'content')) {
+    return hasNonTextContentPart(content.content);
+  }
+
+  return Object.keys(content).length > 0;
 }
 
 function cloneMessageForWorkingView(message) {
@@ -666,8 +694,13 @@ function defineHiddenOneRingProperty(target, key, value) {
 }
 
 function copyArrayOneRingMeta(source, target) {
-  if (source?.__oneRingMeta) {
-    defineHiddenOneRingProperty(target, '__oneRingMeta', { ...source.__oneRingMeta });
+  const descriptor = source && Object.getOwnPropertyDescriptor(source, '__oneRingMeta');
+  if (descriptor) {
+    try {
+      Object.defineProperty(target, '__oneRingMeta', descriptor);
+    } catch {
+      // Keep helpers side-effect-safe for frozen objects.
+    }
   }
   return target;
 }
