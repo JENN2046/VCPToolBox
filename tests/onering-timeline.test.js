@@ -4,8 +4,16 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  buildServerInferredWorkingView,
   bindClientTimestampBindingsToPostBlocks,
   findClientRawHashMatchVariant,
+  getOneRingOriginalIndex,
+  getOneRingWorkingKey,
+  isOneRingInjectedFromDb,
+  markOneRingInjectedFromDb,
+  markOneRingWorkingKey,
+  restoreServerInferredWorkingView,
+  sanitizeUserContentAtTimelineEntry,
   getClientTimestampBindingsFromConfig,
   mergeTimestampBindings,
   normalizeClientSentHash,
@@ -430,6 +438,100 @@ test('bindClientTimestampBindingsToPostBlocks rejects duplicate verified index a
     sentHash: firstHash,
     hashVariant: 'raw',
   });
+});
+
+test('sanitizeUserContentAtTimelineEntry strips leading system notices from string and multipart text', () => {
+  assert.equal(
+    sanitizeUserContentAtTimelineEntry('[系统通知]internal\n[系统通知结束]\nvisible'),
+    'visible',
+  );
+  assert.deepEqual(
+    sanitizeUserContentAtTimelineEntry([
+      { type: 'text', text: '[系统通知]internal\n[系统通知结束]\nvisible text' },
+      { type: 'text', value: '[系统通知]internal\n[系统通知结束]\nvisible value' },
+      { type: 'image_url', image_url: { url: 'https://example.invalid/image.png' } },
+    ]),
+    [
+      { type: 'text', text: 'visible text' },
+      { type: 'text', value: 'visible value' },
+      { type: 'image_url', image_url: { url: 'https://example.invalid/image.png' } },
+    ],
+  );
+});
+
+test('buildServerInferredWorkingView creates reversible sanitized view without enumerable metadata', () => {
+  const messages = [
+    { role: 'system', content: 'top system' },
+    { role: 'user', content: '[系统通知]hidden\n[系统通知结束]\nvisible user' },
+    { role: 'user', content: '[系统提示]pseudo system' },
+    { role: 'user', content: '   ' },
+    { role: 'assistant', content: 'assistant reply' },
+  ];
+  const view = buildServerInferredWorkingView(messages);
+
+  assert.equal(view.workingMessages.length, 3);
+  assert.deepEqual(view.workingToOriginalIndex, [0, 1, 4]);
+  assert.equal(view.originalToWorkingIndex.get(1), 1);
+  assert.equal(view.originalRecords.get('1').reason, 'sanitized-user');
+  assert.equal(view.originalRecords.get('2').reason, 'system-user');
+  assert.equal(view.originalRecords.get('3').reason, 'empty-user');
+  assert.deepEqual(view.stats, {
+    removedSystemUser: 1,
+    removedEmptyUser: 1,
+    strippedUserContent: 1,
+  });
+  assert.equal(view.workingMessages[1].content, 'visible user');
+  assert.equal(getOneRingOriginalIndex(view.workingMessages[1]), 1);
+  assert.equal(getOneRingWorkingKey(view.workingMessages[1]), '1');
+  assert.equal(Object.keys(view.workingMessages[1]).includes('__oneRingOriginalIndex'), false);
+  assert.equal(Object.keys(view.workingMessages[1]).includes('__oneRingWorkingKey'), false);
+});
+
+test('restoreServerInferredWorkingView maps processed messages and anchored injected blocks back to originals', () => {
+  const messages = [
+    { role: 'system', content: 'top system' },
+    { role: 'user', content: '[系统通知]hidden\n[系统通知结束]\nvisible user' },
+    { role: 'assistant', content: 'old assistant' },
+  ];
+  const view = buildServerInferredWorkingView(messages);
+  const processed = view.workingMessages.map(message => ({ ...message }));
+  processed[2] = { ...processed[2], content: 'new assistant' };
+  const injected = markOneRingInjectedFromDb(
+    markOneRingWorkingKey({ role: 'assistant', content: 'db context' }, 'z1'),
+  );
+  processed.splice(2, 0, injected);
+
+  const restored = restoreServerInferredWorkingView(messages, processed, view);
+
+  assert.equal(restored.length, 4);
+  assert.deepEqual(restored.map(message => message.content), [
+    'top system',
+    '[系统通知]hidden\n[系统通知结束]\nvisible user',
+    'db context',
+    'new assistant',
+  ]);
+  assert.equal(isOneRingInjectedFromDb(restored[2]), true);
+  assert.equal(restored.__oneRingInjectedCount, 1);
+});
+
+test('restoreServerInferredWorkingView supports custom user merge for tail metadata projection', () => {
+  const messages = [
+    { role: 'user', content: '[系统通知]hidden\n[系统通知结束]\nvisible user' },
+  ];
+  const view = buildServerInferredWorkingView(messages);
+  const processed = [
+    { ...view.workingMessages[0], content: 'visible user\n[tail]' },
+  ];
+
+  const restored = restoreServerInferredWorkingView(messages, processed, view, {
+    mergeProcessedMessage(original, processedMessage) {
+      return { ...original, content: processedMessage.content };
+    },
+  });
+
+  assert.deepEqual(restored, [
+    { role: 'user', content: 'visible user\n[tail]' },
+  ]);
 });
 
 test('mergeTimestampBindings keeps later binding maps authoritative', () => {
