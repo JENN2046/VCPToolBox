@@ -176,6 +176,8 @@ function bindClientTimestampBindingsToPostBlocks(
     missingIndex: 0,
     roleMismatch: 0,
     hashMismatch: 0,
+    duplicateIndex: 0,
+    duplicateMessageId: 0,
   };
   const blocks = Array.isArray(postBlocks) ? postBlocks : [];
   const clientBindings = Array.isArray(bindingInfo?.bindings) ? bindingInfo.bindings : [];
@@ -187,6 +189,8 @@ function bindClientTimestampBindingsToPostBlocks(
     getPostBlockIndex(block, arrayIndex),
     block,
   ]));
+  const usedIndexes = new Set();
+  const usedMessageIds = new Set();
 
   for (const binding of clientBindings) {
     const block = blockByIndex.get(binding.index);
@@ -207,6 +211,16 @@ function bindClientTimestampBindingsToPostBlocks(
       continue;
     }
 
+    if (usedIndexes.has(binding.index)) {
+      stats.duplicateIndex += 1;
+      continue;
+    }
+
+    if (binding.messageId && usedMessageIds.has(binding.messageId)) {
+      stats.duplicateMessageId += 1;
+      continue;
+    }
+
     const verified = {
       ...binding,
       agentName,
@@ -218,6 +232,10 @@ function bindClientTimestampBindingsToPostBlocks(
     };
 
     stats.verifiedBindings.push(verified);
+    usedIndexes.add(binding.index);
+    if (binding.messageId) {
+      usedMessageIds.add(binding.messageId);
+    }
     stats.boundTimestampsByIndex[binding.index] = {
       timestamp: binding.timestamp,
       senderName: block.senderName || (block.role === 'assistant' ? agentName : '?'),

@@ -377,6 +377,61 @@ test('bindClientTimestampBindingsToPostBlocks preserves visible text for multipa
   });
 });
 
+test('bindClientTimestampBindingsToPostBlocks rejects duplicate verified index and message IDs', () => {
+  const firstHash = rawSha256('first block');
+  const secondHash = rawSha256('second block');
+  const result = bindClientTimestampBindingsToPostBlocks(
+    [
+      { role: 'user', content: 'first block' },
+      { role: 'assistant', content: 'second block' },
+    ],
+    {
+      bindings: [
+        {
+          messageId: 'same-message',
+          role: 'user',
+          index: 0,
+          timestamp: '2026-02-02T16:00:00.000Z',
+          sentHash: firstHash,
+        },
+        {
+          messageId: 'same-index-later',
+          role: 'user',
+          index: 0,
+          timestamp: '2026-02-02T16:00:01.000Z',
+          sentHash: firstHash,
+        },
+        {
+          messageId: 'same-message',
+          role: 'assistant',
+          index: 1,
+          timestamp: '2026-02-02T16:00:02.000Z',
+          sentHash: secondHash,
+        },
+      ],
+    },
+    {
+      agentName: 'Agnes',
+      frontendSource: 'VChat',
+    },
+  );
+
+  assert.equal(result.duplicateIndex, 1);
+  assert.equal(result.duplicateMessageId, 1);
+  assert.equal(result.verifiedBindings.length, 1);
+  assert.equal(result.verifiedBindings[0].messageId, 'same-message');
+  assert.deepEqual(Object.keys(result.boundTimestampsByIndex), ['0']);
+  assert.deepEqual(result.boundTimestampsByIndex[0], {
+    timestamp: '2026-02-02T16:00:00.000Z',
+    senderName: '?',
+    frontendSource: 'VChat',
+    source: 'client-verified-hash',
+    messageId: 'same-message',
+    sentHash: firstHash,
+    hashVariant: 'raw',
+  });
+});
+
 test('mergeTimestampBindings keeps later binding maps authoritative', () => {
   assert.deepEqual(
     mergeTimestampBindings(
