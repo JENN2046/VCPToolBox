@@ -126,8 +126,19 @@ default.
 Suggested policy surface for later review:
 
 ```text
-VCP_EXTERNAL_PLUGIN_ALLOWLIST=ExternalEcho;ExternalSearch
+VCP_EXTERNAL_PLUGIN_ALLOWLIST=ExternalEcho@A:\VCPExternal\plugins;ExternalSearch@D:\ReviewedVcpPlugins
 ```
+
+Each entry should bind the plugin name to the reviewed external source
+directory that may provide it. A name-only allow entry is not sufficient when
+multiple `VCP_PLUGIN_DIRS` roots are configured, because any configured root
+could otherwise provide the same plugin name.
+
+Policy matching should use normalized absolute paths. A plugin should be allowed
+only when both the manifest `name` and discovered `basePath` match an allowed
+name/source-directory pair. If a plugin name matches but the source directory is
+different, the enforcement package should block registration and report a
+path-only reason.
 
 The policy should be scoped to registration/loading only. It must not replace
 tool approval, command approval, or human approval for live side effects.
