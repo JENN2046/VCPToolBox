@@ -124,6 +124,10 @@ function normalizeClientTimestampBinding(binding, formatTimestamp) {
   }
 
   const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
   return {
     messageId: typeof binding.messageId === 'string' ? binding.messageId : null,
     role,

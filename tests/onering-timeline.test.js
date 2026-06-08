@@ -81,13 +81,19 @@ test('getClientTimestampBindingsFromConfig validates client timestamp binding sc
           timestamp: 0,
           sentMessageHash: rawSha256('bad timestamp'),
         },
+        {
+          role: 'user',
+          sentMessageIndex: 4,
+          timestamp: 100000000000000000000,
+          sentMessageHash: rawSha256('out of range timestamp'),
+        },
       ],
     },
   }, date => `formatted:${date.toISOString()}`);
 
   assert.equal(bindingInfo.schemaVersion, 2);
   assert.equal(bindingInfo.messageMetadataMode, 'raw-message-hash');
-  assert.equal(bindingInfo.rawCount, 4);
+  assert.equal(bindingInfo.rawCount, 5);
   assert.deepEqual(bindingInfo.bindings, [
     {
       messageId: 'u1',
@@ -110,6 +116,26 @@ test('getClientTimestampBindingsFromConfig validates client timestamp binding sc
       sentHash: assistantHash,
     },
   ]);
+});
+
+test('getClientTimestampBindingsFromConfig drops out-of-range timestamps without throwing', () => {
+  assert.doesNotThrow(() => {
+    const bindingInfo = getClientTimestampBindingsFromConfig({
+      vcpchatExtensions: {
+        messageTimestampBindings: [
+          {
+            role: 'user',
+            sentMessageIndex: 0,
+            timestamp: 100000000000000000000,
+            sentMessageHash: rawSha256('bad'),
+          },
+        ],
+      },
+    });
+
+    assert.deepEqual(bindingInfo.bindings, []);
+    assert.equal(bindingInfo.rawCount, 1);
+  });
 });
 
 test('bindClientTimestampBindingsToPostBlocks verifies post-block hashes before binding timestamps', () => {
