@@ -65,8 +65,8 @@ test('getClientTimestampBindingsFromConfig validates client timestamp binding sc
         },
         {
           role: 'assistant',
-          sentMessageIndex: '1',
-          timestamp: '1770000001000',
+          sentMessageIndex: 1,
+          timestamp: 1770000001000,
           sentMessageHash: assistantHash,
         },
         {
@@ -87,13 +87,37 @@ test('getClientTimestampBindingsFromConfig validates client timestamp binding sc
           timestamp: 100000000000000000000,
           sentMessageHash: rawSha256('out of range timestamp'),
         },
+        {
+          role: 'user',
+          sentMessageIndex: '',
+          timestamp: 1770000003000,
+          sentMessageHash: rawSha256('coerced empty index'),
+        },
+        {
+          role: 'user',
+          sentMessageIndex: true,
+          timestamp: 1770000004000,
+          sentMessageHash: rawSha256('coerced boolean index'),
+        },
+        {
+          role: 'user',
+          sentMessageIndex: [1],
+          timestamp: 1770000005000,
+          sentMessageHash: rawSha256('coerced array index'),
+        },
+        {
+          role: 'user',
+          sentMessageIndex: 5,
+          timestamp: '1770000006000',
+          sentMessageHash: rawSha256('coerced string timestamp'),
+        },
       ],
     },
   }, date => `formatted:${date.toISOString()}`);
 
   assert.equal(bindingInfo.schemaVersion, 2);
   assert.equal(bindingInfo.messageMetadataMode, 'raw-message-hash');
-  assert.equal(bindingInfo.rawCount, 5);
+  assert.equal(bindingInfo.rawCount, 9);
   assert.deepEqual(bindingInfo.bindings, [
     {
       messageId: 'u1',
@@ -136,6 +160,48 @@ test('getClientTimestampBindingsFromConfig drops out-of-range timestamps without
     assert.deepEqual(bindingInfo.bindings, []);
     assert.equal(bindingInfo.rawCount, 1);
   });
+});
+
+test('getClientTimestampBindingsFromConfig rejects coerced index and timestamp schema values', () => {
+  const bindingInfo = getClientTimestampBindingsFromConfig({
+    vcpchatExtensions: {
+      messageTimestampBindings: [
+        {
+          role: 'user',
+          sentMessageIndex: '',
+          timestamp: 1770000000000,
+          sentMessageHash: rawSha256('empty index'),
+        },
+        {
+          role: 'user',
+          sentMessageIndex: '  ',
+          timestamp: 1770000000000,
+          sentMessageHash: rawSha256('whitespace index'),
+        },
+        {
+          role: 'user',
+          sentMessageIndex: true,
+          timestamp: 1770000000000,
+          sentMessageHash: rawSha256('boolean index'),
+        },
+        {
+          role: 'user',
+          sentMessageIndex: [1],
+          timestamp: 1770000000000,
+          sentMessageHash: rawSha256('array index'),
+        },
+        {
+          role: 'user',
+          sentMessageIndex: 0,
+          timestamp: '1770000000000',
+          sentMessageHash: rawSha256('string timestamp'),
+        },
+      ],
+    },
+  });
+
+  assert.equal(bindingInfo.rawCount, 5);
+  assert.deepEqual(bindingInfo.bindings, []);
 });
 
 test('bindClientTimestampBindingsToPostBlocks verifies post-block hashes before binding timestamps', () => {

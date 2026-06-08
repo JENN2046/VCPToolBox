@@ -108,16 +108,14 @@ function normalizeClientTimestampBinding(binding, formatTimestamp) {
   const role = binding.role === 'user' || binding.role === 'assistant'
     ? binding.role
     : null;
-  const index = Number(binding.sentMessageIndex);
-  const timestampMs = Number(binding.timestamp);
+  const index = normalizeSentMessageIndex(binding.sentMessageIndex);
+  const timestampMs = normalizeTimestampMs(binding.timestamp);
   const sentHash = normalizeClientSentHash(binding.sentMessageHash);
 
   if (
     !role
-    || !Number.isInteger(index)
-    || index < 0
-    || !Number.isFinite(timestampMs)
-    || timestampMs <= 0
+    || index === null
+    || timestampMs === null
     || !sentHash
   ) {
     return null;
@@ -140,6 +138,18 @@ function normalizeClientTimestampBinding(binding, formatTimestamp) {
     source: typeof binding.source === 'string' ? binding.source : 'client',
     sentHash,
   };
+}
+
+function normalizeSentMessageIndex(index) {
+  return typeof index === 'number' && Number.isInteger(index) && index >= 0
+    ? index
+    : null;
+}
+
+function normalizeTimestampMs(timestamp) {
+  return typeof timestamp === 'number' && Number.isFinite(timestamp) && timestamp > 0
+    ? timestamp
+    : null;
 }
 
 function mergeTimestampBindings(...bindingMaps) {
