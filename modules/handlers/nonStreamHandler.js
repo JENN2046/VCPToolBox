@@ -67,6 +67,7 @@ class NonStreamHandler {
       return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
         phaseLabel: 'final_turn',
         logPrefix: '[OneRing NonStream]',
+        responseMeta: this.context.oneRingResponseMeta || null,
       });
     };
 

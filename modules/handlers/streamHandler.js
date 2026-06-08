@@ -93,6 +93,7 @@ class StreamHandler {
       return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
         phaseLabel: 'final_turn',
         logPrefix: '[OneRing Stream]',
+        responseMeta: this.context.oneRingResponseMeta || null,
       });
     };
 

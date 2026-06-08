@@ -278,6 +278,40 @@ test('OneRing plugin wrapper skips postTurn preparation for empty latest user te
   await assert.rejects(fs.stat(baseDir), { code: 'ENOENT' });
 });
 
+test('OneRing plugin wrapper extracts frozen response meta without creating a store', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  let constructed = false;
+  class CapturingStore extends OneRingStore {
+    constructor(options) {
+      constructed = true;
+      super(options);
+    }
+  }
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+    },
+    hotConfig: { enabled: true },
+    StoreClass: CapturingStore,
+  });
+  const messages = [
+    { role: 'system', content: 'prefix [[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: 'hello' },
+  ];
+
+  assert.deepEqual(recorder.extractMetaFromMessages(messages), {
+    agentName: 'Agnes',
+    frontendSource: 'VChat',
+    postTurn: null,
+    turnId: null,
+    requestHash: null,
+  });
+  assert.equal(constructed, false);
+  await assert.rejects(fs.stat(baseDir), { code: 'ENOENT' });
+});
+
 test('OneRing plugin wrapper prepares pending postTurn metadata in a temp store', async () => {
   const tempParent = await makeTempDir();
   const baseDir = path.join(tempParent, 'data');
@@ -323,6 +357,37 @@ test('OneRing plugin wrapper prepares pending postTurn metadata in a temp store'
     const row = store.getPostTurn('Agnes', result.postTurn.turnId);
     assert.equal(row.status, 'pending');
     assert.equal(row.requestHash, buildOneRingRequestHash(messages));
+  } finally {
+    recorder.shutdown();
+  }
+});
+
+test('OneRing plugin wrapper extracts prepared postTurn response meta', async () => {
+  const tempParent = await makeTempDir();
+  const baseDir = path.join(tempParent, 'data');
+  const recorder = createOneRingRecorder({
+    config: {
+      ONERING_DATA_DIR: baseDir,
+      ONERING_ENABLED: true,
+      ONERING_MAX_DB_RECORDS: 10,
+    },
+    hotConfig: { enabled: true },
+    now: () => '2026-06-08T00:00:00.000Z',
+  });
+  const messages = [
+    { role: 'system', content: 'prefix [[OneRing::Agnes::VChat::Only]]' },
+    { role: 'user', content: 'hello' },
+  ];
+
+  try {
+    const prepared = await recorder.preparePostTurnFromMessages(messages);
+    const meta = recorder.extractMetaFromMessages(messages);
+
+    assert.equal(meta.agentName, 'Agnes');
+    assert.equal(meta.frontendSource, 'VChat');
+    assert.equal(meta.postTurn.turnId, prepared.postTurn.turnId);
+    assert.equal(meta.turnId, prepared.postTurn.turnId);
+    assert.equal(meta.requestHash, prepared.postTurn.requestHash);
   } finally {
     recorder.shutdown();
   }
