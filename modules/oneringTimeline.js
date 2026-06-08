@@ -576,10 +576,12 @@ function stripLeadingSystemNoticeText(text) {
   }
 
   let result = text;
+  let stripped = false;
   while (LEADING_SYSTEM_NOTICE_PATTERN.test(result)) {
     result = result.replace(LEADING_SYSTEM_NOTICE_PATTERN, '');
+    stripped = true;
   }
-  return result.trim();
+  return stripped ? result.trimStart() : text;
 }
 
 function defaultHasUserTextContent(content) {

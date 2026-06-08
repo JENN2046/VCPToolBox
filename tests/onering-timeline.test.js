@@ -459,6 +459,25 @@ test('sanitizeUserContentAtTimelineEntry strips leading system notices from stri
   );
 });
 
+test('sanitizeUserContentAtTimelineEntry preserves whitespace when no leading system notice exists', () => {
+  const whitespaceSensitive = '  keep indentation\nand trailing lines\n\n';
+
+  assert.equal(
+    sanitizeUserContentAtTimelineEntry(whitespaceSensitive),
+    whitespaceSensitive,
+  );
+  assert.deepEqual(
+    sanitizeUserContentAtTimelineEntry([
+      { type: 'text', text: whitespaceSensitive },
+      { type: 'text', value: '\tvalue indentation\n' },
+    ]),
+    [
+      { type: 'text', text: whitespaceSensitive },
+      { type: 'text', value: '\tvalue indentation\n' },
+    ],
+  );
+});
+
 test('buildServerInferredWorkingView creates reversible sanitized view without enumerable metadata', () => {
   const messages = [
     { role: 'system', content: 'top system' },
