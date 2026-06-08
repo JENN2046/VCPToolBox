@@ -296,7 +296,7 @@ function extractStaticFoldMode(text) {
 
 function removeStaticFoldModePlaceholders(text) {
     STATIC_FOLD_MODE_REGEX.lastIndex = 0;
-    const result = String(text || '').replace(STATIC_FOLD_MODE_REGEX, '').trim();
+    const result = String(text || '').replace(STATIC_FOLD_MODE_REGEX, '');
     STATIC_FOLD_MODE_REGEX.lastIndex = 0;
     return result;
 }

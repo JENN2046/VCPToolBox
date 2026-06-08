@@ -117,6 +117,40 @@ test('replaceOtherVariables can defer detector rules for message-level pipeline 
   assert.equal(result, 'system-only all-role');
 });
 
+test('replaceOtherVariables preserves system prompt whitespace without static fold marker', async () => {
+  const result = await messageProcessor.replaceOtherVariables(
+    '\n  ordinary prompt  \n',
+    'test-model',
+    'system',
+    {
+      DEBUG_MODE: false,
+      pluginManager: makeStaticFoldPluginManager('unused'),
+      cachedEmojiLists: new Map(),
+      detectors: [],
+      superDetectors: []
+    }
+  );
+
+  assert.equal(result, '\n  ordinary prompt  \n');
+});
+
+test('replaceOtherVariables removes only the static fold marker text', async () => {
+  const result = await messageProcessor.replaceOtherVariables(
+    'left  [[VCPStaticFold::Lite]]  right',
+    'test-model',
+    'system',
+    {
+      DEBUG_MODE: false,
+      pluginManager: makeStaticFoldPluginManager('unused'),
+      cachedEmojiLists: new Map(),
+      detectors: [],
+      superDetectors: []
+    }
+  );
+
+  assert.equal(result, 'left    right');
+});
+
 test('replaceOtherVariables keeps dynamic fold on auto mode', async () => {
   const embeddingCalls = [];
   const foldValue = makeDynamicFoldObject();
@@ -165,7 +199,7 @@ test('replaceOtherVariables supports static fold full in original block order', 
   const embeddingCalls = [];
   const foldValue = makeDynamicFoldObject();
   const result = await messageProcessor.replaceOtherVariables(
-    '[[VCPStaticFold::Full]] {{Fold}}',
+    '[[VCPStaticFold::Full]]{{Fold}}',
     'test-model',
     'system',
     {
