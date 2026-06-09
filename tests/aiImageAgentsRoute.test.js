@@ -647,7 +647,7 @@ test('aiImageAgents runtime-to-review v2 Trial 002 helper authorizes exact secre
         async executeAiImagePipelineV2(input, options) {
             events.push('executor');
             calls.push({ input, options });
-            await options.pluginManager.processToolCall(
+            const delegateResult = await options.pluginManager.processToolCall(
                 'DoubaoGen',
                 {
                     command: 'generate',
@@ -662,7 +662,7 @@ test('aiImageAgents runtime-to-review v2 Trial 002 helper authorizes exact secre
                 mode: 'real_execution',
                 images: [{
                     plugin: 'DoubaoGen',
-                    path: 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/one.jpg',
+                    path: delegateResult.details.serverPath,
                     sha256: '2'.repeat(64),
                     mime: 'image/jpeg',
                     dimensions: { width: 1920, height: 1920 }
@@ -674,6 +674,20 @@ test('aiImageAgents runtime-to-review v2 Trial 002 helper authorizes exact secre
             ip: '::ffff:127.0.0.1',
             body: createRuntimeToReviewV2Trial002Body()
         }, createSerumBottleSecretlessOptions({
+            delegateHandler: async () => ({
+                ok: true,
+                result: {
+                    details: {
+                        serverPath: 'image/doubaogen/one.jpg',
+                        fileName: 'one.jpg',
+                        imageUrls: ['https://example.test/one.jpg']
+                    }
+                },
+                provider_contact_performed: true,
+                plugin_call_performed: true,
+                api_call_performed: true,
+                image_generation_performed: true
+            }),
             async authorizeSerumBottleSecretlessExecution(request) {
                 events.push('authorizer');
                 authorizerCalls.push(request);
@@ -725,14 +739,19 @@ test('aiImageAgents runtime-to-review v2 Trial 002 helper authorizes exact secre
             invocationId: 'runtime_to_review_v2_trial_002_lantern_ecommerce_hero',
             routeId: 'r2r_v2_trial_002_lantern_ecommerce_hero_secretless',
             serumBottleSecretless: true,
-            serumBottleSecretlessAuthorizationId: 'trial-002-internal-auth-001'
+            serumBottleSecretlessAuthorizationId: 'trial-002-internal-auth-001',
+            doubaoProjectBasePathOverride: 'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\runtime_to_review_v2_trial_002_lantern_ecommerce_hero'
         });
+        assert.equal(
+            calls[0].options.executionContext.doubaoProjectBasePathOverride,
+            'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\runtime_to_review_v2_trial_002_lantern_ecommerce_hero'
+        );
         assert.equal(
             result.result.r2rV2Trial002SecretlessAuthorization.authorizationId,
             'trial-002-internal-auth-001'
         );
         assert.deepEqual(result.result.outputRefs, [
-            'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/one.jpg'
+            'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/image/doubaogen/one.jpg'
         ]);
         assert.equal(
             result.result.r2rV2Trial002RuntimeEvidence.routeId,

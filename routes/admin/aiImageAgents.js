@@ -72,6 +72,8 @@ const R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF =
   'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/';
 const R2R_V2_TRIAL_002_ROUTE_ID =
   'r2r_v2_trial_002_lantern_ecommerce_hero_secretless';
+const R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE =
+  'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\runtime_to_review_v2_trial_002_lantern_ecommerce_hero';
 const SERUM_BOTTLE_SECRETLESS_OUTPUT_REF_PREFIX =
   'runs/real_generation/runtime_to_review_v1_guarded_live_probe_serum_bottle_secretless_attempt_';
 const R2R_V2_TRIAL_001_OUTPUT_REF_PREFIX =
@@ -175,6 +177,8 @@ const AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES = Object.freeze({
     'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\v0_6_73_real_vcp_agent_generation_retry_007',
   'AUTH-DRAFT-NATIVE-DOUBAO-RUNTIME-TO-REVIEW-V1-20260529-001':
     'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\runtime_to_review_v1_guarded_live_probe',
+  [R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID]:
+    R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE,
 });
 
 // ── Router 工厂 ──────────────────────────────────────────────────────────
@@ -624,6 +628,7 @@ async function handleRuntimeToReviewV2Trial002ExecutionRequest(req, options = {}
     const delegateFacade = createNativeDoubaoDelegatePluginManagerFacade({
       nativeImageDelegateRegistry: options.nativeImageDelegateRegistry,
       strictInternalCommand: true,
+      boundOutputDirectoryRef: gate.outputDirectoryRef,
     });
 
     const delegatedRequest = {
@@ -643,6 +648,7 @@ async function handleRuntimeToReviewV2Trial002ExecutionRequest(req, options = {}
           routeId: gate.routeId,
           serumBottleSecretless: true,
           serumBottleSecretlessAuthorizationId: authorization.publicReceipt.authorizationId,
+          doubaoProjectBasePathOverride: R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE,
         },
       },
     };
@@ -1946,6 +1952,7 @@ async function ensureRequiredPluginsRegistered(routeInput, pluginManager) {
 function createNativeDoubaoDelegatePluginManagerFacade(options = {}) {
   const nativeImageDelegateRegistry = options.nativeImageDelegateRegistry || null;
   const strictInternalCommand = options.strictInternalCommand === true;
+  const boundOutputDirectoryRef = readFirstString(options.boundOutputDirectoryRef);
   const invocationEvidence = [];
 
   return {
@@ -1998,12 +2005,43 @@ function createNativeDoubaoDelegatePluginManagerFacade(options = {}) {
         image_generation_performed: delegateResult.image_generation_performed === true,
       });
 
-      return delegateResult.result;
+      return bindDoubaoDelegateResultToOutputDirectory(
+        delegateResult.result,
+        boundOutputDirectoryRef
+      );
     },
     getInvocationEvidence() {
       return invocationEvidence.slice();
     },
   };
+}
+
+function bindDoubaoDelegateResultToOutputDirectory(result, outputDirectoryRef) {
+  if (!outputDirectoryRef || !result || typeof result !== 'object') {
+    return result;
+  }
+
+  const normalizedOutputDirectoryRef = outputDirectoryRef.replace(/\\/g, '/').replace(/\/?$/, '/');
+  const clone = {
+    ...result,
+  };
+  const details = clone.details && typeof clone.details === 'object'
+    ? { ...clone.details }
+    : null;
+  if (!details) {
+    return clone;
+  }
+
+  const fileName = readFirstString(details.fileName, details.filename);
+  if (!fileName || fileName.includes('/') || fileName.includes('\\') || fileName.includes('\0')) {
+    clone.details = details;
+    return clone;
+  }
+
+  details.serverPath = `${normalizedOutputDirectoryRef}image/doubaogen/${fileName}`;
+  details.boundOutputDirectoryRef = normalizedOutputDirectoryRef;
+  clone.details = details;
+  return clone;
 }
 
 function buildSerumBottleSecretlessRuntimeEvidence(
