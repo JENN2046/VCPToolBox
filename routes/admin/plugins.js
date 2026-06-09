@@ -6,6 +6,121 @@ const { readPluginDashboardCards } = require('./lib/dashboardCards');
 const manifestFileName = 'plugin-manifest.json';
 const blockedManifestExtension = '.block';
 
+const SENSITIVE_CONFIG_KEY_RE = /(api[_-]?key|token|secret|password|passwd|cookie|authorization|credential|private[_-]?key)/i;
+
+function getProjectRoot() {
+    return path.join(__dirname, '..', '..');
+}
+
+function toSafeDisplayPath(filePath, source = 'external') {
+    if (!filePath || typeof filePath !== 'string') return null;
+    const projectRoot = path.resolve(getProjectRoot());
+    const resolved = path.resolve(filePath);
+    const relative = path.relative(projectRoot, resolved);
+    if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
+        return relative.replace(/\\/g, '/') || '.';
+    }
+    return `[${source}]/${path.basename(resolved)}`;
+}
+
+function redactConfigSchema(configSchema) {
+    if (!configSchema || typeof configSchema !== 'object') return configSchema || {};
+    const redacted = {};
+    for (const [key, value] of Object.entries(configSchema)) {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            redacted[key] = { ...value };
+            if (Object.prototype.hasOwnProperty.call(redacted[key], 'default') && SENSITIVE_CONFIG_KEY_RE.test(key)) {
+                redacted[key].default = '[redacted]';
+            }
+        } else {
+            redacted[key] = value;
+        }
+    }
+    return redacted;
+}
+
+function sanitizeRootId(rootId) {
+    if (!rootId || typeof rootId !== 'string') return rootId || null;
+    if (rootId.startsWith('external:')) return rootId.split(':').slice(0, 2).join(':');
+    if (rootId.startsWith('core:')) return rootId;
+    return 'unknown';
+}
+
+function sanitizeManifestForAdmin(manifest) {
+    if (!manifest || typeof manifest !== 'object') return manifest;
+    const clone = JSON.parse(JSON.stringify(manifest));
+
+    delete clone.pluginSpecificEnvConfig;
+
+    if (clone.configSchema) {
+        clone.configSchema = redactConfigSchema(clone.configSchema);
+    }
+
+    const source = clone.pluginSource || (clone.isDistributed ? 'distributed' : 'core');
+    if (clone.basePath) {
+        clone.basePath = toSafeDisplayPath(clone.basePath, source);
+    }
+    if (clone.pluginRoot) {
+        clone.pluginRoot = toSafeDisplayPath(clone.pluginRoot, source);
+    }
+    if (clone.pluginRootId) {
+        clone.pluginRootId = sanitizeRootId(clone.pluginRootId);
+    }
+
+    return clone;
+}
+
+async function getConfigEnvStatus(pluginPath, pluginName) {
+    if (!pluginPath) {
+        return { exists: false, readable: false, redacted: true };
+    }
+
+    const configPath = path.join(pluginPath, 'config.env');
+    try {
+        const stat = await fs.stat(configPath);
+        return {
+            exists: true,
+            readable: true,
+            redacted: true,
+            size: stat.size,
+            updatedAt: stat.mtime ? stat.mtime.toISOString() : null
+        };
+    } catch (envError) {
+        if (envError.code !== 'ENOENT') {
+            console.warn(`[AdminPanelRoutes] Cannot inspect config.env status for ${pluginName}: ${envError.code || envError.message}`);
+        }
+        return {
+            exists: false,
+            readable: false,
+            redacted: true,
+            errorCode: envError.code === 'ENOENT' ? null : (envError.code || 'UNKNOWN')
+        };
+    }
+}
+
+function isExternalPluginManifest(manifest) {
+    return Boolean(
+        manifest
+        && (
+            manifest.pluginSource === 'external'
+            || (typeof manifest.pluginRootId === 'string' && manifest.pluginRootId.startsWith('external:'))
+        )
+    );
+}
+
+function isBlankConfigContent(content) {
+    return typeof content === 'string' && content.trim().length === 0;
+}
+
+async function statExistingConfigEnv(configPath) {
+    try {
+        return await fs.stat(configPath);
+    } catch (error) {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+    }
+}
+
 module.exports = function(options) {
     const router = express.Router();
     const { pluginManager, DEBUG_MODE } = options;
@@ -19,24 +134,20 @@ module.exports = function(options) {
 
             const loadedPlugins = Array.from(pluginManager.plugins.values());
             for (const p of loadedPlugins) {
-                let configEnvContent = null;
+                let configEnvStatus = { exists: false, readable: false, redacted: true };
                 if (!p.isDistributed && p.basePath) {
-                    try {
-                        const pluginConfigPath = path.join(p.basePath, 'config.env');
-                        configEnvContent = await fs.readFile(pluginConfigPath, 'utf-8');
-                    } catch (envError) {
-                        if (envError.code !== 'ENOENT') {
-                            console.warn(`[AdminPanelRoutes] Error reading config.env for ${p.name}:`, envError);
-                        }
-                    }
+                    configEnvStatus = await getConfigEnvStatus(p.basePath, p.name);
                 }
+                const pluginSource = p.pluginSource || (p.isDistributed ? 'distributed' : 'core');
                 pluginDataMap.set(p.name, {
                     name: p.name,
-                    manifest: p,
+                    manifest: sanitizeManifestForAdmin(p),
                     dashboardCards: readPluginDashboardCards(p.name, p),
                     enabled: true,
-                    configEnvContent: configEnvContent,
+                    configEnvContent: null,
+                    configEnvStatus,
                     isDistributed: p.isDistributed || false,
+                    pluginSource,
                     serverId: p.serverId || null
                 });
             }
@@ -53,23 +164,20 @@ module.exports = function(options) {
                         const manifest = JSON.parse(manifestContent);
 
                         if (!pluginDataMap.has(manifest.name)) {
-                            let configEnvContent = null;
-                            try {
-                                const pluginConfigPath = path.join(pluginPath, 'config.env');
-                                configEnvContent = await fs.readFile(pluginConfigPath, 'utf-8');
-                            } catch (envError) {
-                                if (envError.code !== 'ENOENT') {
-                                    console.warn(`[AdminPanelRoutes] Error reading config.env for disabled plugin ${manifest.name}:`, envError);
-                                }
-                            }
                             manifest.basePath = pluginPath;
+                            manifest.pluginSource = 'core';
+                            manifest.pluginRoot = PLUGIN_DIR;
+                            manifest.pluginRootId = 'core:legacy';
+                            const configEnvStatus = await getConfigEnvStatus(pluginPath, manifest.name);
                             pluginDataMap.set(manifest.name, {
                                 name: manifest.name,
-                                manifest: manifest,
+                                manifest: sanitizeManifestForAdmin(manifest),
                                 dashboardCards: readPluginDashboardCards(manifest.name, manifest),
                                 enabled: false,
-                                configEnvContent: configEnvContent,
+                                configEnvContent: null,
+                                configEnvStatus,
                                 isDistributed: false,
+                                pluginSource: 'core',
                                 serverId: null
                             });
                         }
@@ -245,7 +353,7 @@ module.exports = function(options) {
     // Save plugin config
     router.post('/plugins/:pluginName/config', async (req, res) => {
         const pluginName = req.params.pluginName;
-        const { content } = req.body;
+        const { content, confirmBlankConfigEnv } = req.body;
         const PLUGIN_DIR = path.join(__dirname, '..', '..', 'Plugin');
 
         if (typeof content !== 'string') {
@@ -253,6 +361,15 @@ module.exports = function(options) {
         }
 
         try {
+            const loadedManifest = pluginManager.plugins?.get(pluginName);
+            if (isExternalPluginManifest(loadedManifest)) {
+                return res.status(403).json({
+                    error: 'External plugin config editing is deferred in P0.',
+                    code: 'external_config_deferred',
+                    status: 'deferred'
+                });
+            }
+
             const pluginFolders = await fs.readdir(PLUGIN_DIR, { withFileTypes: true });
             let targetPluginPath = null;
 
@@ -285,6 +402,20 @@ module.exports = function(options) {
             }
 
             const configPath = path.join(targetPluginPath, 'config.env');
+            const existingConfigStat = await statExistingConfigEnv(configPath);
+            if (
+                existingConfigStat
+                && existingConfigStat.size > 0
+                && isBlankConfigContent(content)
+                && confirmBlankConfigEnv !== true
+            ) {
+                return res.status(409).json({
+                    error: 'Refusing to overwrite an existing non-empty config.env with blank content.',
+                    code: 'blank_config_env_requires_confirmation',
+                    requiresConfirmation: true
+                });
+            }
+
             await fs.writeFile(configPath, content, 'utf-8');
             await pluginManager.loadPlugins();
             res.json({ message: `插件 ${pluginName} 的配置已保存并已重新加载。` });

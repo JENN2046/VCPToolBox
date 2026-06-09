@@ -13,6 +13,7 @@ const ToolApprovalManager = require('./modules/toolApprovalManager');
 const { hasFoldMarkers, buildDynamicFoldObject } = require('./modules/foldProtocol');
 const { normalizeExecutionContext } = require('./modules/toolExecutionContext');
 const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
+const { createPluginRootResolver } = require('./modules/pluginRootResolver');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
@@ -47,6 +48,11 @@ class PluginManager extends EventEmitter {
         this.vectorDBManager = null; // 修复：不再自己创建，等待注入
         this.toolApprovalManager = new ToolApprovalManager(path.join(__dirname, 'toolApprovalConfig.json'));
         this.pendingApprovals = new Map(); // requestId -> { resolve, reject, timeoutId, notifyAiOnReject }
+        this.pluginRootResolver = createPluginRootResolver({
+            projectRoot: __dirname,
+            env: process.env
+        });
+        this.lastPluginRootSnapshot = null;
     }
 
     setWebSocketServer(wss) {
@@ -602,7 +608,57 @@ class PluginManager extends EventEmitter {
         return this._parseExternalLegacyPluginDirs(process.env[EXTERNAL_LEGACY_PLUGIN_DIRS_ENV]);
     }
 
-    async _discoverLegacyPluginManifestsFromDir(pluginRoot, sourceLabel = 'legacy') {
+    _formatPluginRootForLog(rootInfo, fallbackLabel = 'plugin-root') {
+        if (!rootInfo || typeof rootInfo !== 'object') return fallbackLabel;
+        const rootId = rootInfo.rootId || fallbackLabel;
+        const displayPath = rootInfo.displayPath || rootInfo.root || null;
+        return displayPath ? `${rootId}(${displayPath})` : rootId;
+    }
+
+    _formatPluginRootDiagnosticForLog(item) {
+        if (!item || typeof item !== 'object') return 'plugin-root';
+        return this._formatPluginRootForLog(
+            { rootId: item.rootId || item.code || 'plugin-root', displayPath: item.root || null },
+            item.code || 'plugin-root'
+        );
+    }
+
+    _formatPluginErrorForLog(error) {
+        if (!error || typeof error !== 'object') return 'UNKNOWN_ERROR';
+        return error.code || error.name || 'UNKNOWN_ERROR';
+    }
+
+    _getPluginRootInfosForLog(snapshot = null) {
+        const rootSnapshot = snapshot || this.getPluginRootSnapshot();
+        return [
+            rootSnapshot.coreLegacyRoot,
+            rootSnapshot.coreModernRoot,
+            ...(rootSnapshot.externalLegacyRoots || [])
+        ].filter(Boolean);
+    }
+
+    _isPathInsideRoot(candidatePath, rootPath) {
+        const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
+        return !relative.startsWith('..') && !path.isAbsolute(relative);
+    }
+
+    _formatPluginEventPathForLog(filePath) {
+        if (!filePath || typeof filePath !== 'string') return 'unknown';
+        const rootInfos = this._getPluginRootInfosForLog()
+            .filter(rootInfo => rootInfo.rootPath)
+            .sort((a, b) => b.rootPath.length - a.rootPath.length);
+
+        for (const rootInfo of rootInfos) {
+            if (this._isPathInsideRoot(filePath, rootInfo.rootPath)) {
+                const relative = path.relative(rootInfo.rootPath, filePath).replace(/\\/g, '/');
+                return `${this._formatPluginRootForLog(rootInfo)}/${relative || path.basename(filePath)}`;
+            }
+        }
+
+        return path.basename(filePath);
+    }
+
+    async _discoverLegacyPluginManifestsFromDir(pluginRoot, sourceLabel = 'legacy', rootInfo = null) {
         try {
             const pluginFolders = await fs.readdir(pluginRoot, { withFileTypes: true });
             const manifests = [];
@@ -617,12 +673,18 @@ class PluginManager extends EventEmitter {
                     const manifest = JSON.parse(manifestContent);
                     if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
                     manifest.basePath = pluginPath;
-                    manifest.pluginSource = sourceLabel;
-                    manifest.pluginSpecificEnvConfig = await this._loadPluginEnvConfig(pluginPath, manifest.name);
+                    manifest.pluginSource = rootInfo?.source || sourceLabel;
+                    manifest.pluginRoot = rootInfo?.rootPath || pluginRoot;
+                    manifest.pluginRootId = rootInfo?.rootId || sourceLabel;
+                    manifest.pluginRootDisplayPath = rootInfo?.displayPath || null;
+                    manifest.pluginSpecificEnvConfig = rootInfo?.allowConfigEnv === false
+                        ? {}
+                        : await this._loadPluginEnvConfig(pluginPath, manifest.name);
                     manifests.push(manifest);
                 } catch (error) {
                     if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
-                        console.error(`[PluginManager] Error loading ${sourceLabel} legacy plugin from ${folder.name}:`, error);
+                        const rootLabel = this._formatPluginRootForLog(rootInfo, sourceLabel);
+                        console.error(`[PluginManager] Error loading ${rootLabel} legacy plugin from ${folder.name}: ${this._formatPluginErrorForLog(error)}`);
                     }
                 }
             }
@@ -630,17 +692,32 @@ class PluginManager extends EventEmitter {
             return manifests;
         } catch (error) {
             if (error.code !== 'ENOENT') {
-                console.error(`[PluginManager] Error reading ${sourceLabel} legacy plugin directory ${pluginRoot}:`, error);
+                const rootLabel = this._formatPluginRootForLog(rootInfo, sourceLabel);
+                console.error(`[PluginManager] Error reading ${rootLabel} legacy plugin directory: ${this._formatPluginErrorForLog(error)}`);
             }
             return [];
         }
     }
 
     async _discoverLegacyPluginManifests() {
-        const manifests = await this._discoverLegacyPluginManifestsFromDir(LEGACY_PLUGIN_DIR, 'legacy');
-        for (const externalDir of this._getExternalLegacyPluginDirs()) {
-            const externalManifests = await this._discoverLegacyPluginManifestsFromDir(externalDir, 'external');
-            manifests.push(...externalManifests);
+        const rootSnapshot = await this.pluginRootResolver.getPluginRootSnapshot();
+        this.lastPluginRootSnapshot = rootSnapshot;
+
+        if (rootSnapshot.diagnostics?.length && this.debugMode) {
+            rootSnapshot.diagnostics.forEach(item => {
+                const rootLabel = this._formatPluginRootDiagnosticForLog(item);
+                console.warn(`[PluginManager] Plugin root diagnostic: ${item.code} ${rootLabel} ${item.message || ''}`.trim());
+            });
+        }
+
+        const manifests = [];
+        for (const rootInfo of rootSnapshot.legacyLoadRoots) {
+            const rootManifests = await this._discoverLegacyPluginManifestsFromDir(
+                rootInfo.rootPath,
+                rootInfo.source,
+                rootInfo
+            );
+            manifests.push(...rootManifests);
         }
         return manifests;
     }
@@ -1744,10 +1821,17 @@ class PluginManager extends EventEmitter {
             };
         });
     }
+
+    getPluginRootSnapshot() {
+        return this.lastPluginRootSnapshot || this.pluginRootResolver.getPluginRootSnapshotSync();
+    }
+
     startPluginWatcher() {
         if (this.debugMode) console.log('[PluginManager] Starting plugin file watcher...');
 
-        const watchRoots = [LEGACY_PLUGIN_DIR, MODERN_PLUGIN_DIR];
+        const rootSnapshot = this.pluginRootResolver.getPluginRootSnapshotSync();
+        const watchRoots = rootSnapshot.watchRoots;
+        const watchRootLabels = this._getPluginRootInfosForLog(rootSnapshot).map(rootInfo => this._formatPluginRootForLog(rootInfo));
         const watcher = chokidar.watch(watchRoots, {
             ignored: [
                 '**/node_modules/**',
@@ -1784,12 +1868,12 @@ class PluginManager extends EventEmitter {
                 if (filterManifest(filePath)) this.handlePluginManifestChange('unlink', filePath);
             });
 
-        console.log(`[PluginManager] Chokidar is now watching ${watchRoots.join(', ')} for plugin contract changes.`);
+        console.log(`[PluginManager] Chokidar is now watching ${watchRootLabels.join(', ')} for plugin contract changes.`);
     }
 
     handlePluginManifestChange(eventType, filePath) {
         if (this.isReloading) {
-            if (this.debugMode) console.log(`[PluginManager] Already reloading, skipping event '${eventType}' for: ${filePath}`);
+            if (this.debugMode) console.log(`[PluginManager] Already reloading, skipping event '${eventType}' for: ${this._formatPluginEventPathForLog(filePath)}`);
             return;
         }
 
