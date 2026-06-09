@@ -644,11 +644,14 @@ const cachedEmojiLists = new Map();
 const SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH = '/internal/ai-image-agents/execute/serum-bottle-secretless';
 const R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH =
     '/internal/ai-image-agents/execute/r2r-v2-trial-001-serum-detail-control';
+const R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH =
+    '/internal/ai-image-agents/execute/r2r-v2-trial-002-lantern-ecommerce-hero';
 
 function isSerumBottleSecretlessInternalRoute(req) {
     return req && (
         req.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH ||
-        req.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH
+        req.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH ||
+        req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH
     );
 }
 
@@ -1566,6 +1569,8 @@ app.post('/plugin-callback/:pluginName/:taskId', async (req, res) => {
 const SERUM_BOTTLE_SECRETLESS_AUTHORIZER_MODE = 'serum_bottle_secretless_internal_execute';
 const R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE =
     'r2r_v2_trial_001_serum_detail_control_secretless_internal_execute';
+const R2R_V2_TRIAL_002_SECRETLESS_AUTHORIZER_MODE =
+    'r2r_v2_trial_002_lantern_ecommerce_hero_secretless_internal_execute';
 const SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID =
     'AUTH-SECRETLESS-SERUM-LIVE-PROBE-20260603-018';
 const SERUM_BOTTLE_SECRETLESS_EXACT_PIPELINE_ID =
@@ -1588,6 +1593,18 @@ const R2R_V2_TRIAL_001_EXACT_OUTPUT_DIRECTORY_REF =
     'runs/real_generation/runtime_to_review_v2_trial_001_serum_detail_control/';
 const R2R_V2_TRIAL_001_ROUTE_ID =
     'r2r_v2_trial_001_serum_detail_control_secretless';
+const R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID =
+    'AUTH-R2R-V2-TRIAL-002-LANTERN-ECOMMERCE-HERO-20260609-BINDING-READY';
+const R2R_V2_TRIAL_002_EXACT_PIPELINE_ID =
+    'runtime_to_review_v2_trial_002_lantern_ecommerce_hero';
+const R2R_V2_TRIAL_002_EXACT_RECEIPT_REF =
+    'reports/runtime_to_review_v2/r2r_v2_trial_002_lantern_ecommerce_hero_receipt.json';
+const R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF =
+    'reports/runtime_to_review_v2/r2r_v2_trial_002_lantern_ecommerce_hero_artifact_record.json';
+const R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF =
+    'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/';
+const R2R_V2_TRIAL_002_ROUTE_ID =
+    'r2r_v2_trial_002_lantern_ecommerce_hero_secretless';
 const SERUM_BOTTLE_SECRETLESS_AUTHORIZED_ROUTE_IDS = new Set([
     'serum_bottle_vcptoolbox_route_owner_runtime',
     'serum_bottle_secretless_option_a',
@@ -1650,6 +1667,9 @@ function isNonEmptyString(value) {
 async function authorizeSerumBottleSecretlessExecution(request = {}) {
     if (request && request.mode === R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE) {
         return authorizeRuntimeToReviewV2Trial001SecretlessExecution(request);
+    }
+    if (request && request.mode === R2R_V2_TRIAL_002_SECRETLESS_AUTHORIZER_MODE) {
+        return authorizeRuntimeToReviewV2Trial002SecretlessExecution(request);
     }
 
     if (
@@ -1733,6 +1753,50 @@ async function authorizeRuntimeToReviewV2Trial001SecretlessExecution(request = {
         ok: true,
         operatorId: 'vcptoolbox-r2r-v2-trial-001-secretless-internal',
         authorizationId: `r2r-v2-trial-001-secretless-${crypto
+            .createHash('sha256')
+            .update(authorizationSeed)
+            .digest('hex')
+            .slice(0, 24)}`,
+        receiptId: request.receiptRef,
+    };
+}
+
+async function authorizeRuntimeToReviewV2Trial002SecretlessExecution(request = {}) {
+    if (
+        !request ||
+        typeof request !== 'object' ||
+        containsSerumBottleSecretlessForbiddenAuthorizerKey(request) ||
+        request.mode !== R2R_V2_TRIAL_002_SECRETLESS_AUTHORIZER_MODE ||
+        request.activationPackageId !== R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID ||
+        request.taskId !== R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID ||
+        request.pipelineId !== R2R_V2_TRIAL_002_EXACT_PIPELINE_ID ||
+        request.routeId !== R2R_V2_TRIAL_002_ROUTE_ID ||
+        request.receiptRef !== R2R_V2_TRIAL_002_EXACT_RECEIPT_REF ||
+        request.artifactRecordRef !== R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF ||
+        request.outputDirectoryRef !== R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF ||
+        !hasSerumBottleSecretlessExactBudget(request.budget) ||
+        !isNonEmptyString(request.nonSecretPayloadHash)
+    ) {
+        return { ok: false };
+    }
+
+    const authorizationSeed = JSON.stringify({
+        mode: request.mode,
+        activationPackageId: request.activationPackageId,
+        routeId: request.routeId,
+        taskId: request.taskId || null,
+        pipelineId: request.pipelineId || null,
+        receiptRef: request.receiptRef,
+        artifactRecordRef: request.artifactRecordRef,
+        outputDirectoryRef: request.outputDirectoryRef,
+        nonSecretPayloadHash: request.nonSecretPayloadHash,
+        budget: request.budget,
+    });
+
+    return {
+        ok: true,
+        operatorId: 'vcptoolbox-r2r-v2-trial-002-secretless-internal',
+        authorizationId: `r2r-v2-trial-002-secretless-${crypto
             .createHash('sha256')
             .update(authorizationSeed)
             .digest('hex')

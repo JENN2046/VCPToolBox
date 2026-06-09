@@ -28,6 +28,8 @@ const {
 const SERUM_BOTTLE_SECRETLESS_MODE = 'serum_bottle_secretless_internal_execute';
 const R2R_V2_TRIAL_001_SECRETLESS_MODE =
   'r2r_v2_trial_001_serum_detail_control_secretless_internal_execute';
+const R2R_V2_TRIAL_002_SECRETLESS_MODE =
+  'r2r_v2_trial_002_lantern_ecommerce_hero_secretless_internal_execute';
 const SERUM_BOTTLE_SECRETLESS_ALLOWED_PLUGIN = 'DoubaoGen';
 const SERUM_BOTTLE_SECRETLESS_ALLOWED_STEP_TYPE = 'generate_image';
 const SERUM_BOTTLE_SECRETLESS_MAX_PROMPT_LENGTH = 1200;
@@ -56,10 +58,28 @@ const R2R_V2_TRIAL_001_EXACT_OUTPUT_DIRECTORY_REF =
   'runs/real_generation/runtime_to_review_v2_trial_001_serum_detail_control/';
 const R2R_V2_TRIAL_001_ROUTE_ID =
   'r2r_v2_trial_001_serum_detail_control_secretless';
+const R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID =
+  'AUTH-R2R-V2-TRIAL-002-LANTERN-ECOMMERCE-HERO-20260609-BINDING-READY';
+const R2R_V2_TRIAL_002_EXACT_PIPELINE_ID =
+  'runtime_to_review_v2_trial_002_lantern_ecommerce_hero';
+const R2R_V2_TRIAL_002_EXACT_RECEIPT_REF =
+  'reports/runtime_to_review_v2/r2r_v2_trial_002_lantern_ecommerce_hero_receipt.json';
+const R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF =
+  'reports/runtime_to_review_v2/r2r_v2_trial_002_lantern_ecommerce_hero_artifact_record.json';
+const R2R_V2_TRIAL_002_EXACT_REVIEW_BRIDGE_REF =
+  'review_console/live_receipt_bridge/r2r_v2_trial_002_lantern_ecommerce_hero/bridge_entry.json';
+const R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF =
+  'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/';
+const R2R_V2_TRIAL_002_ROUTE_ID =
+  'r2r_v2_trial_002_lantern_ecommerce_hero_secretless';
+const R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE =
+  'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\runtime_to_review_v2_trial_002_lantern_ecommerce_hero';
 const SERUM_BOTTLE_SECRETLESS_OUTPUT_REF_PREFIX =
   'runs/real_generation/runtime_to_review_v1_guarded_live_probe_serum_bottle_secretless_attempt_';
 const R2R_V2_TRIAL_001_OUTPUT_REF_PREFIX =
   'runs/real_generation/runtime_to_review_v2_trial_001_serum_detail_control/';
+const R2R_V2_TRIAL_002_OUTPUT_REF_PREFIX =
+  'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/';
 const SERUM_BOTTLE_SECRETLESS_ARTIFACT_PATH_PREFIX = 'image/doubaogen/';
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const SERUM_BOTTLE_SECRETLESS_ALLOWED_MODELS = Object.freeze(new Set([
@@ -157,6 +177,8 @@ const AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES = Object.freeze({
     'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\v0_6_73_real_vcp_agent_generation_retry_007',
   'AUTH-DRAFT-NATIVE-DOUBAO-RUNTIME-TO-REVIEW-V1-20260529-001':
     'A:\\agent-image-lab\\agent-image-lab-v0.2\\runs\\real_generation\\runtime_to_review_v1_guarded_live_probe',
+  [R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID]:
+    R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE,
 });
 
 // ── Router 工厂 ──────────────────────────────────────────────────────────
@@ -205,6 +227,15 @@ function createAiImageAgentsRouter(options = {}) {
       const response = await handleRuntimeToReviewV2Trial001ExecutionRequest(req, options);
       sendJson(res, response);
     });
+
+    router.head('/execute/r2r-v2-trial-002-lantern-ecommerce-hero', (_req, res) => {
+      res.status(204).end();
+    });
+
+    router.post('/execute/r2r-v2-trial-002-lantern-ecommerce-hero', async (req, res) => {
+      const response = await handleRuntimeToReviewV2Trial002ExecutionRequest(req, options);
+      sendJson(res, response);
+    });
   }
 
   return router;
@@ -228,6 +259,15 @@ function createSerumBottleSecretlessInternalRouter(options = {}) {
 
   router.post('/execute/r2r-v2-trial-001-serum-detail-control', async (req, res) => {
     const response = await handleRuntimeToReviewV2Trial001ExecutionRequest(req, options);
+    sendJson(res, response);
+  });
+
+  router.head('/execute/r2r-v2-trial-002-lantern-ecommerce-hero', (_req, res) => {
+    res.status(204).end();
+  });
+
+  router.post('/execute/r2r-v2-trial-002-lantern-ecommerce-hero', async (req, res) => {
+    const response = await handleRuntimeToReviewV2Trial002ExecutionRequest(req, options);
     sendJson(res, response);
   });
 
@@ -548,6 +588,104 @@ async function handleRuntimeToReviewV2Trial001ExecutionRequest(req, options = {}
   }
 }
 
+async function handleRuntimeToReviewV2Trial002ExecutionRequest(req, options = {}) {
+  try {
+    const body = getRequestBody(req);
+    const routeInput = normalizeRouteInput(body);
+    const gate = validateRuntimeToReviewV2Trial002ExecutionRequest(body, routeInput, options);
+
+    if (gate.ok !== true) {
+      return createRuntimeToReviewV2Trial002Failure(gate.status, gate.detail);
+    }
+
+    let authorizationResult;
+    try {
+      authorizationResult = await options.authorizeSerumBottleSecretlessExecution({
+        mode: R2R_V2_TRIAL_002_SECRETLESS_MODE,
+        activationPackageId: gate.activationPackageId,
+        routeId: gate.routeId,
+        taskId: routeInput.taskId || null,
+        pipelineId: routeInput.pipelineId || null,
+        receiptRef: gate.receiptRef,
+        artifactRecordRef: gate.artifactRecordRef,
+        outputDirectoryRef: gate.outputDirectoryRef,
+        nonSecretPayloadHash: gate.nonSecretPayloadHash,
+        budget: gate.budget,
+        requestIp: getClientIp(req),
+      });
+    } catch (error) {
+      return createRuntimeToReviewV2Trial002Failure(
+        'r2r_v2_trial_002_internal_authorization_failed_closed',
+        { authorizationError: error instanceof Error ? error.name : 'unknown_error' }
+      );
+    }
+
+    const authorization = normalizeSerumBottleSecretlessAuthorizationResult(authorizationResult);
+    if (authorization.ok !== true) {
+      return createRuntimeToReviewV2Trial002Failure('r2r_v2_trial_002_internal_authorization_denied');
+    }
+
+    const delegateFacade = createNativeDoubaoDelegatePluginManagerFacade({
+      nativeImageDelegateRegistry: options.nativeImageDelegateRegistry,
+      strictInternalCommand: true,
+      boundOutputDirectoryRef: gate.outputDirectoryRef,
+    });
+
+    const delegatedRequest = {
+      ...(req || {}),
+      adminAuthUser: authorization.operatorId,
+      body: {
+        ...body,
+        dryRun: false,
+        confirm: true,
+        plan: {
+          steps: [{
+            ...gate.step,
+            output_directory_ref: gate.outputDirectoryRef,
+          }],
+        },
+        context: {
+          routeId: gate.routeId,
+          serumBottleSecretless: true,
+          serumBottleSecretlessAuthorizationId: authorization.publicReceipt.authorizationId,
+          doubaoProjectBasePathOverride: R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE,
+        },
+      },
+    };
+
+    const response = await handleAiImagePipelineRequest(delegatedRequest, {
+      ...options,
+      pluginManager: delegateFacade,
+      forceDryRun: false,
+      requireNativeDoubaoSecretlessRuntimeDelegate: false,
+      skipRequiredPluginRegistration: true,
+      allowSerumBottleSecretlessPipelineExecution: true,
+    });
+
+    if (response && response.result && typeof response.result === 'object') {
+      const outputRefs = collectSerumBottleSecretlessOutputRefs(response.result);
+      if (outputRefs.length > 0) {
+        response.result.outputRefs = outputRefs;
+      }
+      response.result.r2rV2Trial002SecretlessAuthorization = authorization.publicReceipt;
+      response.result.r2rV2Trial002RuntimeEvidence =
+        buildSerumBottleSecretlessRuntimeEvidence(
+          response.result,
+          delegateFacade.getInvocationEvidence(),
+          options.serumBottleSecretlessArtifactEvidenceReader,
+          gate.routeId
+        );
+    }
+
+    return response;
+  } catch (error) {
+    return createRuntimeToReviewV2Trial002Failure(
+      'r2r_v2_trial_002_route_failed',
+      { routeError: error instanceof Error ? error.name : 'unknown_error' }
+    );
+  }
+}
+
 function getRequestBody(req) {
   return req && req.body && typeof req.body === 'object'
     ? req.body
@@ -743,6 +881,326 @@ function validateRuntimeToReviewV2Trial001ExecutionRequest(body, routeInput, opt
     nonSecretPayloadHash: hashCanonicalPayload(body),
     step: schema.step,
   };
+}
+
+function validateRuntimeToReviewV2Trial002ExecutionRequest(body, routeInput, options) {
+  const forbiddenPayloadKeys = collectForbiddenSecretPayloadKeys(body);
+  if (forbiddenPayloadKeys.length > 0) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_contains_forbidden_secret_key',
+      detail: { forbiddenPayloadKeys },
+    };
+  }
+
+  const schema = validateRuntimeToReviewV2Trial002PayloadSchema(body);
+  if (schema.ok !== true) {
+    return {
+      ok: false,
+      status: schema.status,
+      detail: schema.detail,
+    };
+  }
+
+  if (options.enableAiImageRealExecution !== true) {
+    return { ok: false, status: 'r2r_v2_trial_002_real_execution_flag_disabled' };
+  }
+
+  if (options.enableNativeDoubaoSecretlessRuntimeDelegate !== true) {
+    return { ok: false, status: 'r2r_v2_trial_002_native_delegate_flag_disabled' };
+  }
+
+  const budget = resolveRuntimeToReviewV2Trial002Budget(body);
+  if (
+    budget.maxProviderCalls !== 1 ||
+    budget.maxPluginCalls !== 1 ||
+    budget.maxApiCalls !== 1 ||
+    budget.maxImages !== 1 ||
+    budget.retryAllowed !== false
+  ) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_budget_not_exact',
+      detail: { budget },
+    };
+  }
+
+  const exactBinding = validateRuntimeToReviewV2Trial002ExactBinding(body, routeInput, schema.outputDirectoryRef);
+  if (exactBinding.ok !== true) {
+    return {
+      ok: false,
+      status: exactBinding.status,
+      detail: exactBinding.detail,
+    };
+  }
+
+  const nativeImageDelegateRegistry = options.nativeImageDelegateRegistry;
+  if (!nativeImageDelegateRegistry || typeof nativeImageDelegateRegistry.invokeBoundDelegate !== 'function') {
+    return { ok: false, status: 'r2r_v2_trial_002_native_delegate_registry_missing' };
+  }
+
+  if (typeof nativeImageDelegateRegistry.hasCallable !== 'function' ||
+      nativeImageDelegateRegistry.hasCallable(SERUM_BOTTLE_SECRETLESS_DELEGATE_ID) !== true) {
+    return { ok: false, status: 'r2r_v2_trial_002_native_delegate_missing' };
+  }
+
+  if (typeof options.authorizeSerumBottleSecretlessExecution !== 'function') {
+    return { ok: false, status: 'r2r_v2_trial_002_internal_authorizer_missing' };
+  }
+
+  return {
+    ok: true,
+    activationPackageId: R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID,
+    routeId: R2R_V2_TRIAL_002_ROUTE_ID,
+    budget,
+    outputDirectoryRef: schema.outputDirectoryRef,
+    receiptRef: R2R_V2_TRIAL_002_EXACT_RECEIPT_REF,
+    artifactRecordRef: R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF,
+    nonSecretPayloadHash: hashCanonicalPayload(body),
+    step: schema.step,
+  };
+}
+
+function validateRuntimeToReviewV2Trial002PayloadSchema(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_schema_invalid',
+      detail: { reason: 'body_must_be_object' },
+    };
+  }
+
+  const unknownBodyKeys = Object.keys(body).filter((key) => !R2R_V2_TRIAL_001_BODY_KEYS.has(key));
+  if (unknownBodyKeys.length > 0) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_unknown_fields',
+      detail: { unknownFields: unknownBodyKeys.map((key) => `body.${key}`) },
+    };
+  }
+
+  const activation = body.activation && typeof body.activation === 'object'
+    ? body.activation
+    : null;
+  if (!activation || Array.isArray(activation)) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_schema_invalid',
+      detail: { reason: 'activation_required' },
+    };
+  }
+
+  const visualJobContract = body.visual_job_contract && typeof body.visual_job_contract === 'object'
+    ? body.visual_job_contract
+    : null;
+  if (!visualJobContract || Array.isArray(visualJobContract)) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_schema_invalid',
+      detail: { reason: 'visual_job_contract_required' },
+    };
+  }
+
+  const steps = body.plan && Array.isArray(body.plan.steps)
+    ? body.plan.steps
+    : null;
+  if (!steps || steps.length !== 1 || !steps[0] || typeof steps[0] !== 'object' || Array.isArray(steps[0])) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_schema_invalid',
+      detail: { reason: 'exactly_one_plan_step_required' },
+    };
+  }
+
+  const planKeys = Object.keys(body.plan || {});
+  const unknownPlanKeys = planKeys.filter((key) => key !== 'steps');
+  if (unknownPlanKeys.length > 0) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_unknown_fields',
+      detail: { unknownFields: unknownPlanKeys.map((key) => `body.plan.${key}`) },
+    };
+  }
+
+  const step = steps[0];
+  const unknownStepKeys = Object.keys(step).filter((key) => !R2R_V2_TRIAL_001_STEP_KEYS.has(key));
+  if (unknownStepKeys.length > 0) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_payload_unknown_fields',
+      detail: { unknownFields: unknownStepKeys.map((key) => `body.plan.steps[0].${key}`) },
+    };
+  }
+
+  if (step.type !== SERUM_BOTTLE_SECRETLESS_ALLOWED_STEP_TYPE) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_api_scope_not_authorized',
+      detail: { apiId: step.type || null },
+    };
+  }
+
+  if (step.plugin !== SERUM_BOTTLE_SECRETLESS_ALLOWED_PLUGIN) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_plugin_scope_not_authorized',
+      detail: { requiredPlugins: [step.plugin || null] },
+    };
+  }
+
+  if (typeof step.prompt !== 'string' || !step.prompt.trim()) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_prompt_invalid',
+      detail: { reason: 'prompt_required' },
+    };
+  }
+
+  if (step.prompt.length > R2R_V2_TRIAL_001_MAX_PROMPT_LENGTH) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_prompt_too_long',
+      detail: {
+        maxPromptLength: R2R_V2_TRIAL_001_MAX_PROMPT_LENGTH,
+        promptLength: step.prompt.length,
+      },
+    };
+  }
+
+  const model = readFirstString(step.model, body.model_id, body.modelId);
+  if (!model || !SERUM_BOTTLE_SECRETLESS_ALLOWED_MODELS.has(model)) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_model_not_allowed',
+      detail: { modelId: model || null },
+    };
+  }
+
+  if (step.resolution !== '1920x1920') {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_resolution_not_allowed',
+      detail: { resolution: step.resolution || null },
+    };
+  }
+
+  const outputDirectoryRef = readFirstString(
+    step.output_directory_ref,
+    step.outputDirectoryRef,
+    visualJobContract.output_directory_ref
+  );
+  const outputRef = validateRuntimeToReviewV2Trial002OutputDirectoryRef(outputDirectoryRef);
+  if (outputRef.ok !== true) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_output_directory_ref_invalid',
+      detail: outputRef.detail,
+    };
+  }
+
+  return {
+    ok: true,
+    outputDirectoryRef: outputRef.outputDirectoryRef,
+    step: {
+      type: step.type,
+      plugin: step.plugin,
+      prompt: step.prompt,
+      model: step.model,
+      resolution: step.resolution,
+    },
+  };
+}
+
+function validateRuntimeToReviewV2Trial002ExactBinding(body, routeInput, outputDirectoryRef) {
+  const activation = body.activation && typeof body.activation === 'object'
+    ? body.activation
+    : {};
+  const visualJobContract = body.visual_job_contract && typeof body.visual_job_contract === 'object'
+    ? body.visual_job_contract
+    : {};
+  const taskId = readFirstString(body.taskId, body.task_id, routeInput && routeInput.taskId);
+  const pipelineId = readFirstString(body.pipelineId, body.pipeline_id, routeInput && routeInput.pipelineId);
+  const receiptRef = readFirstString(visualJobContract.receipt_ref);
+  const artifactRecordRef = readFirstString(visualJobContract.artifact_record_ref);
+  const reviewBridgeRef = readFirstString(visualJobContract.review_bridge_ref);
+  const promptPackageRef = readFirstString(visualJobContract.prompt_package_ref);
+
+  const mismatches = [];
+  if (readFirstString(activation.activation_package_id) !== R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID) {
+    mismatches.push({
+      field: 'activation.activation_package_id',
+      expected: R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID,
+      received: readFirstString(activation.activation_package_id),
+    });
+  }
+  if (taskId !== R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID) {
+    mismatches.push({ field: 'task_id', expected: R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID, received: taskId || null });
+  }
+  if (pipelineId !== R2R_V2_TRIAL_002_EXACT_PIPELINE_ID) {
+    mismatches.push({ field: 'pipeline_id', expected: R2R_V2_TRIAL_002_EXACT_PIPELINE_ID, received: pipelineId || null });
+  }
+  if (promptPackageRef !== 'prompts/image_generation/product_lifestyle_premium_portable_led_camping_lantern_v2.yaml') {
+    mismatches.push({
+      field: 'visual_job_contract.prompt_package_ref',
+      expected: 'prompts/image_generation/product_lifestyle_premium_portable_led_camping_lantern_v2.yaml',
+      received: promptPackageRef || null,
+    });
+  }
+  if (receiptRef !== R2R_V2_TRIAL_002_EXACT_RECEIPT_REF) {
+    mismatches.push({ field: 'visual_job_contract.receipt_ref', expected: R2R_V2_TRIAL_002_EXACT_RECEIPT_REF, received: receiptRef || null });
+  }
+  if (artifactRecordRef !== R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF) {
+    mismatches.push({ field: 'visual_job_contract.artifact_record_ref', expected: R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF, received: artifactRecordRef || null });
+  }
+  if (reviewBridgeRef !== R2R_V2_TRIAL_002_EXACT_REVIEW_BRIDGE_REF) {
+    mismatches.push({ field: 'visual_job_contract.review_bridge_ref', expected: R2R_V2_TRIAL_002_EXACT_REVIEW_BRIDGE_REF, received: reviewBridgeRef || null });
+  }
+  if (outputDirectoryRef !== R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF) {
+    mismatches.push({ field: 'output_directory_ref', expected: R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF, received: outputDirectoryRef || null });
+  }
+
+  if (mismatches.length > 0) {
+    return {
+      ok: false,
+      status: 'r2r_v2_trial_002_exact_activation_binding_mismatch',
+      detail: { mismatches },
+    };
+  }
+
+  return { ok: true };
+}
+
+function resolveRuntimeToReviewV2Trial002Budget(body = {}) {
+  return resolveRuntimeToReviewV2Trial001Budget(body);
+}
+
+function validateRuntimeToReviewV2Trial002OutputDirectoryRef(value) {
+  const outputDirectoryRef = readFirstString(value);
+  if (!outputDirectoryRef) {
+    return { ok: false, detail: { reason: 'output_directory_ref_required' } };
+  }
+
+  if (
+    outputDirectoryRef.includes(':') ||
+    outputDirectoryRef.startsWith('/') ||
+    outputDirectoryRef.startsWith('\\') ||
+    outputDirectoryRef.includes('..')
+  ) {
+    return { ok: false, detail: { reason: 'output_directory_ref_must_be_repo_relative' } };
+  }
+
+  const normalized = outputDirectoryRef.replace(/\\/g, '/');
+  if (normalized !== R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF) {
+    return {
+      ok: false,
+      detail: {
+        reason: 'output_directory_ref_not_exact_trial_002',
+        expected: R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF,
+      },
+    };
+  }
+
+  return { ok: true, outputDirectoryRef: normalized };
 }
 
 function validateRuntimeToReviewV2Trial001PayloadSchema(body = {}) {
@@ -1389,6 +1847,26 @@ function createRuntimeToReviewV2Trial001Failure(status, detail = {}) {
   };
 }
 
+function createRuntimeToReviewV2Trial002Failure(status, detail = {}) {
+  return {
+    ok: false,
+    mode: R2R_V2_TRIAL_002_SECRETLESS_MODE,
+    result: {
+      ok: false,
+      mode: R2R_V2_TRIAL_002_SECRETLESS_MODE,
+      status,
+      provider_contact_performed: false,
+      plugin_call_performed: false,
+      api_call_performed: false,
+      image_generation_performed: false,
+      output_write_performed: false,
+      secret_value_read_performed: false,
+      authorization_header_constructed: false,
+      ...detail,
+    },
+  };
+}
+
 function normalizePathForComparison(value) {
   return typeof value === 'string'
     ? value.trim().replace(/\//g, '\\').replace(/\\+$/, '')
@@ -1474,6 +1952,7 @@ async function ensureRequiredPluginsRegistered(routeInput, pluginManager) {
 function createNativeDoubaoDelegatePluginManagerFacade(options = {}) {
   const nativeImageDelegateRegistry = options.nativeImageDelegateRegistry || null;
   const strictInternalCommand = options.strictInternalCommand === true;
+  const boundOutputDirectoryRef = readFirstString(options.boundOutputDirectoryRef);
   const invocationEvidence = [];
 
   return {
@@ -1526,12 +2005,43 @@ function createNativeDoubaoDelegatePluginManagerFacade(options = {}) {
         image_generation_performed: delegateResult.image_generation_performed === true,
       });
 
-      return delegateResult.result;
+      return bindDoubaoDelegateResultToOutputDirectory(
+        delegateResult.result,
+        boundOutputDirectoryRef
+      );
     },
     getInvocationEvidence() {
       return invocationEvidence.slice();
     },
   };
+}
+
+function bindDoubaoDelegateResultToOutputDirectory(result, outputDirectoryRef) {
+  if (!outputDirectoryRef || !result || typeof result !== 'object') {
+    return result;
+  }
+
+  const normalizedOutputDirectoryRef = outputDirectoryRef.replace(/\\/g, '/').replace(/\/?$/, '/');
+  const clone = {
+    ...result,
+  };
+  const details = clone.details && typeof clone.details === 'object'
+    ? { ...clone.details }
+    : null;
+  if (!details) {
+    return clone;
+  }
+
+  const fileName = readFirstString(details.fileName, details.filename);
+  if (!fileName || fileName.includes('/') || fileName.includes('\\') || fileName.includes('\0')) {
+    clone.details = details;
+    return clone;
+  }
+
+  details.serverPath = `${normalizedOutputDirectoryRef}image/doubaogen/${fileName}`;
+  details.boundOutputDirectoryRef = normalizedOutputDirectoryRef;
+  clone.details = details;
+  return clone;
 }
 
 function buildSerumBottleSecretlessRuntimeEvidence(
@@ -1637,7 +2147,8 @@ function normalizeSerumBottleSecretlessOutputRef(value) {
   if (
     !normalized.startsWith(SERUM_BOTTLE_SECRETLESS_ARTIFACT_PATH_PREFIX) &&
     !normalized.startsWith(SERUM_BOTTLE_SECRETLESS_OUTPUT_REF_PREFIX) &&
-    !normalized.startsWith(R2R_V2_TRIAL_001_OUTPUT_REF_PREFIX)
+    !normalized.startsWith(R2R_V2_TRIAL_001_OUTPUT_REF_PREFIX) &&
+    !normalized.startsWith(R2R_V2_TRIAL_002_OUTPUT_REF_PREFIX)
   ) {
     return null;
   }
@@ -1888,12 +2399,15 @@ module.exports = {
   handleAiImagePipelineRequest,
   handleSerumBottleSecretlessExecutionRequest,
   handleRuntimeToReviewV2Trial001ExecutionRequest,
+  handleRuntimeToReviewV2Trial002ExecutionRequest,
   createNativeDoubaoDelegatePluginManagerFacade,
   resolveAuthorizedDoubaoProjectBasePathOverride,
   validateSerumBottleSecretlessExecutionRequest,
   validateSerumBottleSecretlessPayloadSchema,
   validateRuntimeToReviewV2Trial001ExecutionRequest,
   validateRuntimeToReviewV2Trial001PayloadSchema,
+  validateRuntimeToReviewV2Trial002ExecutionRequest,
+  validateRuntimeToReviewV2Trial002PayloadSchema,
   hashCanonicalPayload,
   collectRequiredPlugins,
   ensureRequiredPluginsRegistered,
