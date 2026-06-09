@@ -23,6 +23,10 @@ export interface PluginStoreItem {
   downloadUrl?: string
   sourceId?: string
   sourceName?: string
+  installedSource?: 'core' | 'external' | string
+  installedRootId?: string
+  installedDisplayPath?: string
+  conflictReason?: string
   github?: {
     owner: string
     repo: string
@@ -39,11 +43,20 @@ export interface PluginSource {
   builtin?: boolean
 }
 
+export interface PluginStoreDiagnostic {
+  level?: string
+  code?: string
+  rootId?: string | null
+  message?: string | null
+}
+
 export interface PluginStoreListResponse {
   plugins: PluginStoreItem[]
   total: number
   sources?: PluginSource[]
   errors?: Array<{ sourceId: string; error: string }>
+  installMode?: 'legacy' | 'external' | string
+  diagnostics?: PluginStoreDiagnostic[]
 }
 
 export interface InstallTaskResponse {
@@ -57,6 +70,30 @@ export interface InstallFromPayload {
   githubUrl?: string
   downloadUrl?: string
   force?: boolean
+}
+
+export interface UninstallPluginPayload {
+  pluginName: string
+  installedSource?: string
+  installedRootId?: string
+}
+
+export interface UninstallPluginCandidate {
+  pluginName?: string
+  installedSource?: string
+  installedRootId?: string
+  installedDisplayPath?: string
+}
+
+export interface UninstallPluginResponse {
+  ok: boolean
+  message?: string
+  backupPath?: string
+  installedSource?: string
+  installedRootId?: string
+  code?: string
+  requiresInstalledRoot?: boolean
+  candidates?: UninstallPluginCandidate[]
 }
 
 export const pluginStoreApi = {
@@ -120,14 +157,17 @@ export const pluginStoreApi = {
   },
 
   async uninstallPlugin(
-    pluginName: string,
+    payloadOrPluginName: string | UninstallPluginPayload,
     uiOptions: RequestUiOptions = {}
-  ): Promise<{ ok: boolean; message?: string; backupPath?: string }> {
+  ): Promise<UninstallPluginResponse> {
+    const payload = typeof payloadOrPluginName === 'string'
+      ? { pluginName: payloadOrPluginName }
+      : payloadOrPluginName
     return requestWithUi(
       {
         url: '/admin_api/plugin-store/uninstall',
         method: 'POST',
-        body: { pluginName },
+        body: payload,
       },
       uiOptions
     )

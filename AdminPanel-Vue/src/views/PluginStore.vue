@@ -269,6 +269,22 @@
                         <span class="material-symbols-outlined mini-pill-icon">lan</span>
                         {{ plugin.sourceName }}
                       </span>
+                      <span v-if="installedSourceLabel(plugin)" class="mini-pill mini-pill--neutral">
+                        <span class="material-symbols-outlined mini-pill-icon">{{ installedSourceIcon(plugin) }}</span>
+                        {{ installedSourceLabel(plugin) }}
+                      </span>
+                      <span v-if="safeInstalledDisplayPath(plugin)" class="mini-pill mini-pill--neutral">
+                        <span class="material-symbols-outlined mini-pill-icon">folder</span>
+                        {{ safeInstalledDisplayPath(plugin) }}
+                      </span>
+                      <span
+                        v-if="safeConflictReason(plugin)"
+                        class="mini-pill mini-pill--changed"
+                        :title="safeConflictReason(plugin)"
+                      >
+                        <span class="material-symbols-outlined mini-pill-icon">warning</span>
+                        {{ safeConflictReason(plugin) }}
+                      </span>
                       <span v-if="plugin.author" class="mini-pill mini-pill--changed">
                         <span class="material-symbols-outlined mini-pill-icon">person</span>
                         {{ plugin.author }}
@@ -998,7 +1014,10 @@ async function refreshStore(syncPluginManager = true) {
     ])
     storePlugins.value = resp.plugins || []
     sources.value = resp.sources || []
-    sourceErrors.value = resp.errors || []
+    sourceErrors.value = (resp.errors || []).map((err) => ({
+      ...err,
+      error: sanitizeUserText(err.error),
+    }))
     if (syncError) {
       showMessage(`市场已刷新，但插件管理状态同步失败：${errMsg(syncError)}`, 'warning')
     }
@@ -1099,11 +1118,15 @@ async function uninstallFromCard(plugin: PluginStoreItem) {
   const key = pluginKey(plugin)
   uninstallingKey.value = key
   try {
-    const resp = await pluginStoreApi.uninstallPlugin(plugin.name)
-    showMessage(resp.message || `插件 ${displayName} 已卸载`, 'success')
+    const resp = await pluginStoreApi.uninstallPlugin({
+      pluginName: plugin.name,
+      installedSource: plugin.installedSource,
+      installedRootId: plugin.installedRootId,
+    })
+    showMessage(sanitizeUserText(resp.message || `插件 ${displayName} 已卸载`), 'success')
     await refreshStore(true)
   } catch (err) {
-    showMessage(`卸载失败：${errMsg(err)}`, 'error')
+    showMessage(`卸载失败：${uninstallErrorMessage(err)}`, 'error')
   } finally {
     if (uninstallingKey.value === key) {
       uninstallingKey.value = null
@@ -1213,17 +1236,18 @@ function subscribeLog(taskId: string) {
   unsubscribe?.()
   unsubscribe = pluginStoreApi.streamInstallLog(taskId, {
     onLog: (line) => {
-      logText.value += line.endsWith('\n') ? line : `${line}\n`
+      const safeLine = sanitizeUserText(line)
+      logText.value += safeLine.endsWith('\n') ? safeLine : `${safeLine}\n`
       scrollLogBottom()
     },
     onEnd: (payload) => {
       installStatus.value = normalizeFinalStatus(payload.status)
       installingKey.value = null
       if (installStatus.value === 'success') {
-        showMessage(payload.message || '插件安装完成', 'success')
+        showMessage(sanitizeUserText(payload.message || '插件安装完成'), 'success')
         void refreshAll()
       } else {
-        showMessage(payload.message || '安装未完成', 'error')
+        showMessage(sanitizeUserText(payload.message || '安装未完成'), 'error')
       }
     },
     onError: () => {
@@ -1250,7 +1274,74 @@ function clearLog() {
 }
 
 function errMsg(err: unknown) {
-  return err instanceof Error ? err.message : String(err)
+  return sanitizeUserText(err instanceof Error ? err.message : String(err))
+}
+
+function errorDetails(err: unknown): Record<string, unknown> | null {
+  if (!err || typeof err !== 'object' || !('details' in err)) {
+    return null
+  }
+  const details = (err as { details?: unknown }).details
+  return details && typeof details === 'object'
+    ? (details as Record<string, unknown>)
+    : null
+}
+
+function uninstallErrorMessage(err: unknown) {
+  const details = errorDetails(err)
+  if (
+    details?.code === 'ambiguous_plugin_uninstall_target'
+    || details?.requiresInstalledRoot === true
+  ) {
+    return '存在多个同名安装目标，请先根据安装来源选择明确目标。'
+  }
+  return errMsg(err)
+}
+
+function sanitizeUserText(input: unknown) {
+  let text = String(input || '')
+  text = text.replace(/\b(https?:\/\/)([^@\s/?#]+)@/gi, '$1[credentials]@')
+  text = text.replace(/([?&](?:access_token|api[_-]?key|apikey|auth|authorization|bearer|cookie|key|password|passwd|secret|session|token)=)[^&\s]+/gi, '$1[redacted]')
+  text = text.replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]')
+  text = text.replace(/\b(Authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]')
+  text = text.replace(/\b((?:access_token|api[_-]?key|apikey|auth|authorization|cookie|password|passwd|secret|session|token)\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]')
+  text = text.replace(/[A-Za-z]:[\\/][^\s"'<>|)]+/g, '[redacted path]')
+  text = text.replace(/(^|[\s("'=])\/(?:[^/\s"'<>|)]+\/)+[^/\s"'<>|)]*/g, '$1[redacted path]')
+  return text
+}
+
+function looksLikeAbsolutePath(value: string) {
+  return /^[A-Za-z]:[\\/]/.test(value) || /^\/(?:[^/\s]+\/)+/.test(value)
+}
+
+function safeInstalledDisplayPath(plugin: PluginStoreItem) {
+  const raw = typeof plugin.installedDisplayPath === 'string'
+    ? plugin.installedDisplayPath.trim()
+    : ''
+  if (!raw) return ''
+  if (looksLikeAbsolutePath(raw)) return '[redacted path]'
+  return sanitizeUserText(raw)
+}
+
+function installedSourceLabel(plugin: PluginStoreItem) {
+  if (!plugin.installed) return ''
+  if (plugin.installedSource === 'core') return 'Core'
+  if (plugin.installedSource === 'external') return 'External'
+  return ''
+}
+
+function installedSourceIcon(plugin: PluginStoreItem) {
+  return plugin.installedSource === 'external' ? 'hub' : 'deployed_code'
+}
+
+function safeConflictReason(plugin: PluginStoreItem) {
+  if (!plugin.conflictReason) return ''
+  const reason = sanitizeUserText(plugin.conflictReason)
+  const labels: Record<string, string> = {
+    core_priority_external_duplicate_ignored: 'Conflict: core priority',
+    external_duplicate_ignored: 'Conflict: duplicate external',
+  }
+  return labels[reason] || `Conflict: ${reason}`
 }
 
 // Clearing URL on type change avoids carrying a registry URL into github mode.
