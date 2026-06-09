@@ -1084,23 +1084,26 @@ function validateRuntimeToReviewV2Trial002PayloadSchema(body = {}) {
     };
   }
 
-  const outputDirectoryRef = readFirstString(
+  const stepOutputDirectoryRef = readFirstString(
     step.output_directory_ref,
-    step.outputDirectoryRef,
-    visualJobContract.output_directory_ref
+    step.outputDirectoryRef
   );
-  const outputRef = validateRuntimeToReviewV2Trial002OutputDirectoryRef(outputDirectoryRef);
-  if (outputRef.ok !== true) {
+  const contractOutputDirectoryRef = readFirstString(visualJobContract.output_directory_ref);
+  const outputRefAgreement = validateRuntimeToReviewV2Trial002OutputDirectoryRefAgreement({
+    stepOutputDirectoryRef,
+    contractOutputDirectoryRef,
+  });
+  if (outputRefAgreement.ok !== true) {
     return {
       ok: false,
       status: 'r2r_v2_trial_002_output_directory_ref_invalid',
-      detail: outputRef.detail,
+      detail: outputRefAgreement.detail,
     };
   }
 
   return {
     ok: true,
-    outputDirectoryRef: outputRef.outputDirectoryRef,
+    outputDirectoryRef: outputRefAgreement.outputDirectoryRef,
     step: {
       type: step.type,
       plugin: step.plugin,
@@ -1108,6 +1111,43 @@ function validateRuntimeToReviewV2Trial002PayloadSchema(body = {}) {
       model: step.model,
       resolution: step.resolution,
     },
+  };
+}
+
+function validateRuntimeToReviewV2Trial002OutputDirectoryRefAgreement({
+  stepOutputDirectoryRef,
+  contractOutputDirectoryRef,
+} = {}) {
+  const stepOutputRef = validateRuntimeToReviewV2Trial002OutputDirectoryRef(stepOutputDirectoryRef);
+  const contractOutputRef = validateRuntimeToReviewV2Trial002OutputDirectoryRef(contractOutputDirectoryRef);
+
+  if (stepOutputRef.ok !== true || contractOutputRef.ok !== true) {
+    return {
+      ok: false,
+      detail: {
+        reason: 'output_directory_ref_not_exact_trial_002',
+        step: stepOutputRef.ok === true ? stepOutputRef.outputDirectoryRef : stepOutputRef.detail,
+        contract: contractOutputRef.ok === true ? contractOutputRef.outputDirectoryRef : contractOutputRef.detail,
+        expected: R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF,
+      },
+    };
+  }
+
+  if (stepOutputRef.outputDirectoryRef !== contractOutputRef.outputDirectoryRef) {
+    return {
+      ok: false,
+      detail: {
+        reason: 'step_and_contract_output_directory_ref_mismatch',
+        step: stepOutputRef.outputDirectoryRef,
+        contract: contractOutputRef.outputDirectoryRef,
+        expected: R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    outputDirectoryRef: stepOutputRef.outputDirectoryRef,
   };
 }
 
