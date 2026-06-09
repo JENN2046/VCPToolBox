@@ -799,6 +799,47 @@ test('aiImageAgents runtime-to-review v2 Trial 002 helper fails closed on exact 
     });
 });
 
+test('aiImageAgents runtime-to-review v2 Trial 002 helper rejects contract output drift even when step is exact', async () => {
+    const calls = [];
+    const authorizerCalls = [];
+
+    await withRouteModule({
+        async executeAiImagePipelineV2(input, options) {
+            calls.push({ input, options });
+            return { ok: true, mode: 'real_execution' };
+        }
+    }, async ({ handleRuntimeToReviewV2Trial002ExecutionRequest }) => {
+        const body = createRuntimeToReviewV2Trial002Body({
+            visual_job_contract: {
+                ...createRuntimeToReviewV2Trial002Body().visual_job_contract,
+                output_directory_ref: 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero_wrong/'
+            }
+        });
+
+        const result = await handleRuntimeToReviewV2Trial002ExecutionRequest({
+            body
+        }, createSerumBottleSecretlessOptions({
+            async authorizeSerumBottleSecretlessExecution(request) {
+                authorizerCalls.push(request);
+                return { ok: true };
+            }
+        }));
+
+        assert.equal(result.ok, false);
+        assert.equal(result.result.status, 'r2r_v2_trial_002_output_directory_ref_invalid');
+        assert.equal(result.result.detail, undefined);
+        assert.equal(result.result.provider_contact_performed, false);
+        assert.equal(result.result.authorization_header_constructed, false);
+        assert.equal(authorizerCalls.length, 0);
+        assert.equal(calls.length, 0);
+        assert.equal(result.result.reason, 'output_directory_ref_not_exact_trial_002');
+        assert.equal(
+            result.result.expected,
+            'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/'
+        );
+    });
+});
+
 test('aiImageAgents runtime-to-review v2 Trial 002 helper rejects budget drift before authorization', async () => {
     const calls = [];
     const authorizerCalls = [];
