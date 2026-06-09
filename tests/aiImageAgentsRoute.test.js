@@ -100,6 +100,39 @@ function createRuntimeToReviewV2Trial001Body(overrides = {}) {
     };
 }
 
+function createRuntimeToReviewV2Trial002Body(overrides = {}) {
+    return {
+        pipeline_id: 'runtime_to_review_v2_trial_002_lantern_ecommerce_hero',
+        task_id: 'AUTH-R2R-V2-TRIAL-002-LANTERN-ECOMMERCE-HERO-20260609-BINDING-READY',
+        activation: {
+            activation_package_id: 'AUTH-R2R-V2-TRIAL-002-LANTERN-ECOMMERCE-HERO-20260609-BINDING-READY',
+            max_provider_calls: 1,
+            max_plugin_calls: 1,
+            max_api_calls: 1,
+            max_images: 1,
+            retry_allowed: false
+        },
+        visual_job_contract: {
+            prompt_package_ref: 'prompts/image_generation/product_lifestyle_premium_portable_led_camping_lantern_v2.yaml',
+            receipt_ref: 'reports/runtime_to_review_v2/r2r_v2_trial_002_lantern_ecommerce_hero_receipt.json',
+            artifact_record_ref: 'reports/runtime_to_review_v2/r2r_v2_trial_002_lantern_ecommerce_hero_artifact_record.json',
+            review_bridge_ref: 'review_console/live_receipt_bridge/r2r_v2_trial_002_lantern_ecommerce_hero/bridge_entry.json',
+            output_directory_ref: 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/'
+        },
+        plan: {
+            steps: [{
+                type: 'generate_image',
+                plugin: 'DoubaoGen',
+                prompt: 'Trial 002 controlled premium portable camping lantern ecommerce hero prompt',
+                model: 'doubao-seedream-5-0-260128',
+                resolution: '1920x1920',
+                output_directory_ref: 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/'
+            }]
+        },
+        ...overrides
+    };
+}
+
 function canonicalJson(value) {
     if (Array.isArray(value)) {
         return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
@@ -600,6 +633,180 @@ test('aiImageAgents runtime-to-review v2 Trial 001 helper rejects budget drift b
 
         assert.equal(result.ok, false);
         assert.equal(result.result.status, 'r2r_v2_trial_001_budget_not_exact');
+        assert.equal(authorizerCalls.length, 0);
+        assert.equal(calls.length, 0);
+    });
+});
+
+test('aiImageAgents runtime-to-review v2 Trial 002 helper authorizes exact secretless activation', async () => {
+    const calls = [];
+    const authorizerCalls = [];
+    const events = [];
+
+    await withRouteModule({
+        async executeAiImagePipelineV2(input, options) {
+            events.push('executor');
+            calls.push({ input, options });
+            await options.pluginManager.processToolCall(
+                'DoubaoGen',
+                {
+                    command: 'generate',
+                    prompt: input.plan.steps[0].prompt,
+                    model: input.plan.steps[0].model
+                },
+                '127.0.0.1',
+                options.executionContext
+            );
+            return {
+                ok: true,
+                mode: 'real_execution',
+                images: [{
+                    plugin: 'DoubaoGen',
+                    path: 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/one.jpg',
+                    sha256: '2'.repeat(64),
+                    mime: 'image/jpeg',
+                    dimensions: { width: 1920, height: 1920 }
+                }]
+            };
+        }
+    }, async ({ handleRuntimeToReviewV2Trial002ExecutionRequest }) => {
+        const result = await handleRuntimeToReviewV2Trial002ExecutionRequest({
+            ip: '::ffff:127.0.0.1',
+            body: createRuntimeToReviewV2Trial002Body()
+        }, createSerumBottleSecretlessOptions({
+            async authorizeSerumBottleSecretlessExecution(request) {
+                events.push('authorizer');
+                authorizerCalls.push(request);
+                return {
+                    ok: true,
+                    operatorId: 'vcptoolbox-r2r-v2-trial-002-secretless-internal',
+                    authorizationId: 'trial-002-internal-auth-001',
+                    receiptId: 'trial-002-internal-receipt-001'
+                };
+            }
+        }));
+
+        assert.equal(result.ok, true);
+        assert.deepEqual(events, ['authorizer', 'executor']);
+        assert.equal(authorizerCalls.length, 1);
+        assert.equal(authorizerCalls[0].mode, 'r2r_v2_trial_002_lantern_ecommerce_hero_secretless_internal_execute');
+        assert.equal(
+            authorizerCalls[0].activationPackageId,
+            'AUTH-R2R-V2-TRIAL-002-LANTERN-ECOMMERCE-HERO-20260609-BINDING-READY'
+        );
+        assert.equal(authorizerCalls[0].routeId, 'r2r_v2_trial_002_lantern_ecommerce_hero_secretless');
+        assert.equal(
+            authorizerCalls[0].receiptRef,
+            'reports/runtime_to_review_v2/r2r_v2_trial_002_lantern_ecommerce_hero_receipt.json'
+        );
+        assert.deepEqual(authorizerCalls[0].budget, {
+            maxProviderCalls: 1,
+            maxPluginCalls: 1,
+            maxApiCalls: 1,
+            maxImages: 1,
+            retryAllowed: false
+        });
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].options.dryRun, false);
+        assert.equal(calls[0].options.allowExecutionWithoutEnvGate, true);
+        assert.equal(typeof calls[0].options.pluginManager.processToolCall, 'function');
+        assert.deepEqual(calls[0].input.plan.steps, [{
+            type: 'generate_image',
+            plugin: 'DoubaoGen',
+            prompt: 'Trial 002 controlled premium portable camping lantern ecommerce hero prompt',
+            model: 'doubao-seedream-5-0-260128',
+            resolution: '1920x1920',
+            output_directory_ref: 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/'
+        }]);
+        assert.deepEqual(calls[0].options.executionContext, {
+            requestSource: 'ai-image-pipeline',
+            operatorId: 'vcptoolbox-r2r-v2-trial-002-secretless-internal',
+            taskId: 'AUTH-R2R-V2-TRIAL-002-LANTERN-ECOMMERCE-HERO-20260609-BINDING-READY',
+            invocationId: 'runtime_to_review_v2_trial_002_lantern_ecommerce_hero',
+            routeId: 'r2r_v2_trial_002_lantern_ecommerce_hero_secretless',
+            serumBottleSecretless: true,
+            serumBottleSecretlessAuthorizationId: 'trial-002-internal-auth-001'
+        });
+        assert.equal(
+            result.result.r2rV2Trial002SecretlessAuthorization.authorizationId,
+            'trial-002-internal-auth-001'
+        );
+        assert.deepEqual(result.result.outputRefs, [
+            'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero/one.jpg'
+        ]);
+        assert.equal(
+            result.result.r2rV2Trial002RuntimeEvidence.routeId,
+            'r2r_v2_trial_002_lantern_ecommerce_hero_secretless'
+        );
+        assert.equal(result.result.r2rV2Trial002RuntimeEvidence.providerCalls, 1);
+        assert.equal(result.result.r2rV2Trial002RuntimeEvidence.pluginCalls, 1);
+        assert.equal(result.result.r2rV2Trial002RuntimeEvidence.apiCalls, 1);
+    });
+});
+
+test('aiImageAgents runtime-to-review v2 Trial 002 helper fails closed on exact binding drift', async () => {
+    const calls = [];
+    const authorizerCalls = [];
+
+    await withRouteModule({
+        async executeAiImagePipelineV2(input, options) {
+            calls.push({ input, options });
+            return { ok: true, mode: 'real_execution' };
+        }
+    }, async ({ handleRuntimeToReviewV2Trial002ExecutionRequest }) => {
+        const body = createRuntimeToReviewV2Trial002Body({
+            visual_job_contract: {
+                ...createRuntimeToReviewV2Trial002Body().visual_job_contract,
+                output_directory_ref: 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero_wrong/'
+            }
+        });
+        body.plan.steps[0].output_directory_ref = 'runs/real_generation/runtime_to_review_v2_trial_002_lantern_ecommerce_hero_wrong/';
+
+        const result = await handleRuntimeToReviewV2Trial002ExecutionRequest({
+            body
+        }, createSerumBottleSecretlessOptions({
+            async authorizeSerumBottleSecretlessExecution(request) {
+                authorizerCalls.push(request);
+                return { ok: true };
+            }
+        }));
+
+        assert.equal(result.ok, false);
+        assert.equal(result.result.status, 'r2r_v2_trial_002_output_directory_ref_invalid');
+        assert.equal(result.result.provider_contact_performed, false);
+        assert.equal(result.result.authorization_header_constructed, false);
+        assert.equal(authorizerCalls.length, 0);
+        assert.equal(calls.length, 0);
+    });
+});
+
+test('aiImageAgents runtime-to-review v2 Trial 002 helper rejects budget drift before authorization', async () => {
+    const calls = [];
+    const authorizerCalls = [];
+
+    await withRouteModule({
+        async executeAiImagePipelineV2(input, options) {
+            calls.push({ input, options });
+            return { ok: true, mode: 'real_execution' };
+        }
+    }, async ({ handleRuntimeToReviewV2Trial002ExecutionRequest }) => {
+        const body = createRuntimeToReviewV2Trial002Body({
+            activation: {
+                ...createRuntimeToReviewV2Trial002Body().activation,
+                max_plugin_calls: 2
+            }
+        });
+        const result = await handleRuntimeToReviewV2Trial002ExecutionRequest({
+            body
+        }, createSerumBottleSecretlessOptions({
+            async authorizeSerumBottleSecretlessExecution(request) {
+                authorizerCalls.push(request);
+                return { ok: true };
+            }
+        }));
+
+        assert.equal(result.ok, false);
+        assert.equal(result.result.status, 'r2r_v2_trial_002_budget_not_exact');
         assert.equal(authorizerCalls.length, 0);
         assert.equal(calls.length, 0);
     });
