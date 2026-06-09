@@ -5,6 +5,7 @@ const path = require('path');
 
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
 const BLOCKED_MANIFEST_SUFFIX = '.block';
+const BLOCKED_MANIFEST_FILE_NAME = `${LEGACY_MANIFEST_FILE_NAME}${BLOCKED_MANIFEST_SUFFIX}`;
 const VCP_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';
 const VCP_PLUGIN_ALLOWED_ROOTS_ENV = 'VCP_PLUGIN_ALLOWED_ROOTS';
 
@@ -48,6 +49,11 @@ function isSubPath(candidate, parent) {
     return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
+function pathKey(targetPath) {
+    const resolved = path.resolve(targetPath);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
 function toDisplayPath(projectRoot, absolutePath, source = 'external') {
     const resolved = path.resolve(absolutePath);
     const resolvedProjectRoot = path.resolve(projectRoot);
@@ -57,6 +63,31 @@ function toDisplayPath(projectRoot, absolutePath, source = 'external') {
     }
 
     return `[${source}]/${path.basename(resolved)}`;
+}
+
+async function isManagedPathInsideRoot(candidatePath, rootPath) {
+    const rootRealPath = await realpathOrResolve(rootPath);
+    const candidateParentRealPath = await realpathOrResolve(path.dirname(candidatePath));
+    return isSubPath(candidateParentRealPath, rootRealPath);
+}
+
+async function isPathInsideRootByRealpath(candidatePath, rootPath) {
+    if (!candidatePath || !rootPath) return false;
+    const rootRealPath = await realpathOrResolve(rootPath);
+    const candidateRealPath = await realpathOrResolve(candidatePath);
+    return isSubPath(candidateRealPath, rootRealPath);
+}
+
+function toRootRelativeDisplayPath(rootInfo, targetPath) {
+    const source = rootInfo?.source === 'external' ? 'external' : 'core';
+    if (!rootInfo?.rootPath || !targetPath) return `[${source}]/unknown`;
+
+    const relative = path.relative(path.resolve(rootInfo.rootPath), path.resolve(targetPath));
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+        return `[${source}]/${path.basename(path.resolve(targetPath))}`;
+    }
+
+    return `[${source}]/${relative.replace(/\\/g, '/')}`;
 }
 
 function isUnsafeRoot(projectRoot, rootPath) {
@@ -102,6 +133,169 @@ function realpathOrResolveSync(targetPath) {
     } catch {
         return path.resolve(targetPath);
     }
+}
+
+async function readManifestCandidate(filePath, state, fsPromises = fsp) {
+    try {
+        const stat = await fsPromises.lstat(filePath);
+        if (stat.isSymbolicLink()) {
+            return {
+                exists: true,
+                state,
+                skipped: true,
+                code: 'manifest_symlink_unsupported'
+            };
+        }
+        if (!stat.isFile()) {
+            return {
+                exists: true,
+                state,
+                skipped: true,
+                code: 'manifest_not_file'
+            };
+        }
+
+        const raw = await fsPromises.readFile(filePath, 'utf-8');
+        return {
+            exists: true,
+            state,
+            manifest: JSON.parse(raw),
+            manifestPath: filePath
+        };
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return { exists: false, state };
+        }
+
+        return {
+            exists: true,
+            state,
+            skipped: true,
+            code: error instanceof SyntaxError ? 'manifest_json_invalid' : 'manifest_read_error',
+            errorCode: error.code || null
+        };
+    }
+}
+
+async function discoverLegacyManifestRecordsFromRoot(rootInfo, options = {}) {
+    const fsPromises = options.fsPromises || fsp;
+    const diagnostics = [];
+    const records = [];
+
+    if (!rootInfo || !rootInfo.rootPath) {
+        return {
+            records,
+            diagnostics: [{ level: 'warn', code: 'missing_root_info', rootId: 'unknown' }]
+        };
+    }
+
+    let folders;
+    try {
+        folders = await fsPromises.readdir(rootInfo.rootPath, { withFileTypes: true });
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            diagnostics.push({
+                level: 'warn',
+                code: 'managed_root_read_error',
+                rootId: rootInfo.rootId || 'unknown',
+                root: rootInfo.displayPath || toRootRelativeDisplayPath(rootInfo, rootInfo.rootPath),
+                errorCode: error.code || 'UNKNOWN'
+            });
+        }
+        return { records, diagnostics };
+    }
+
+    for (const folder of folders) {
+        if (!folder.isDirectory()) continue;
+
+        const pluginPath = path.join(rootInfo.rootPath, folder.name);
+        if (!isSubPath(pluginPath, rootInfo.rootPath)) {
+            diagnostics.push({
+                level: 'warn',
+                code: 'plugin_path_outside_root',
+                rootId: rootInfo.rootId || 'unknown',
+                folder: folder.name
+            });
+            continue;
+        }
+
+        const activeManifestPath = path.join(pluginPath, LEGACY_MANIFEST_FILE_NAME);
+        const blockedManifestPath = path.join(pluginPath, BLOCKED_MANIFEST_FILE_NAME);
+        const active = await readManifestCandidate(activeManifestPath, 'enabled', fsPromises);
+        const blocked = await readManifestCandidate(blockedManifestPath, 'disabled', fsPromises);
+
+        if (active.exists && blocked.exists && !active.skipped) {
+            diagnostics.push({
+                level: 'warn',
+                code: 'blocked_manifest_shadowed',
+                rootId: rootInfo.rootId || 'unknown',
+                folder: folder.name
+            });
+        }
+
+        const selected = active.exists && !active.skipped ? active : (blocked.exists && !blocked.skipped ? blocked : null);
+        for (const candidate of [active, blocked]) {
+            if (candidate.exists && candidate.skipped) {
+                diagnostics.push({
+                    level: 'warn',
+                    code: candidate.code,
+                    rootId: rootInfo.rootId || 'unknown',
+                    folder: folder.name,
+                    state: candidate.state,
+                    errorCode: candidate.errorCode || null
+                });
+            }
+        }
+
+        if (!selected) continue;
+        if (!selected.manifest || typeof selected.manifest !== 'object' || !selected.manifest.name) {
+            diagnostics.push({
+                level: 'warn',
+                code: 'manifest_missing_name',
+                rootId: rootInfo.rootId || 'unknown',
+                folder: folder.name,
+                state: selected.state
+            });
+            continue;
+        }
+
+        records.push({
+            name: selected.manifest.name,
+            folderName: folder.name,
+            manifest: selected.manifest,
+            manifestPath: selected.manifestPath,
+            activeManifestPath,
+            blockedManifestPath,
+            pluginPath,
+            enabled: selected.state === 'enabled',
+            source: rootInfo.source || 'core',
+            rootId: rootInfo.rootId || null,
+            rootPath: rootInfo.rootPath,
+            rootDisplayPath: rootInfo.displayPath || null,
+            allowConfigEnv: rootInfo.allowConfigEnv !== false,
+            displayPath: toRootRelativeDisplayPath(rootInfo, pluginPath),
+            pathKey: pathKey(pluginPath)
+        });
+    }
+
+    return { records, diagnostics };
+}
+
+async function discoverAdminLegacyManifestRecords(rootSnapshot, options = {}) {
+    const roots = [
+        rootSnapshot?.coreLegacyRoot,
+        ...(rootSnapshot?.externalLegacyRoots || [])
+    ].filter(Boolean);
+    const records = [];
+    const diagnostics = [];
+
+    for (const rootInfo of roots) {
+        const result = await discoverLegacyManifestRecordsFromRoot(rootInfo, options);
+        records.push(...result.records);
+        diagnostics.push(...result.diagnostics);
+    }
+
+    return { records, diagnostics };
 }
 
 class PluginRootResolver {
@@ -307,6 +501,13 @@ module.exports = {
     toDisplayPath,
     LEGACY_MANIFEST_FILE_NAME,
     BLOCKED_MANIFEST_SUFFIX,
+    BLOCKED_MANIFEST_FILE_NAME,
     VCP_PLUGIN_DIRS_ENV,
-    VCP_PLUGIN_ALLOWED_ROOTS_ENV
+    VCP_PLUGIN_ALLOWED_ROOTS_ENV,
+    discoverAdminLegacyManifestRecords,
+    discoverLegacyManifestRecordsFromRoot,
+    isManagedPathInsideRoot,
+    isPathInsideRootByRealpath,
+    pathKey,
+    toRootRelativeDisplayPath
 };
