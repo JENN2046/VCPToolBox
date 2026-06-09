@@ -655,6 +655,10 @@ function isSerumBottleSecretlessInternalRoute(req) {
     );
 }
 
+function isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) {
+    return req && req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH;
+}
+
 // Authentication middleware for Admin Panel and Admin API
 const adminAuth = (req, res, next) => {
     // This middleware protects both the Admin Panel static files and its API endpoints.
@@ -858,7 +862,13 @@ app.use((req, res, next) => {
     }
 
     if (isSerumBottleSecretlessInternalRoute(req)) {
-        if (req.method === 'HEAD' && isLoopbackSocket(req)) {
+        const isAllowedSecretlessInternalHead =
+            req.method === 'HEAD' && isLoopbackSocket(req);
+        const isAllowedTrial002SecretlessInternalPost =
+            req.method === 'POST' &&
+            isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) &&
+            isLoopbackSocket(req);
+        if (isAllowedSecretlessInternalHead || isAllowedTrial002SecretlessInternalPost) {
             return next();
         }
     }

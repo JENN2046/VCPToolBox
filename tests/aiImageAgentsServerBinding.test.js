@@ -57,11 +57,11 @@ test('runtime-to-review Trial 001 internal POST remains behind bearer auth', () 
 
     assert.match(
         serverSource,
-        /if \(isSerumBottleSecretlessInternalRoute\(req\)\) \{\s+if \(req\.method === 'HEAD' && isLoopbackSocket\(req\)\) \{\s+return next\(\);\s+\}\s+\}/
+        /const isAllowedSecretlessInternalHead =\s+req\.method === 'HEAD' && isLoopbackSocket\(req\);/
     );
     assert.doesNotMatch(
         serverSource,
-        /req\.method === 'POST'[\s\S]{0,80}isLoopbackSocket\(req\)[\s\S]{0,80}return next\(\);/
+        /req\.method === 'POST'[\s\S]{0,120}R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH[\s\S]{0,120}return next\(\);/
     );
     assert.match(serverSource, /R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE/);
     assert.match(serverSource, /authorizeRuntimeToReviewV2Trial001SecretlessExecution\(request\)/);
@@ -89,17 +89,21 @@ test('runtime-to-review Trial 002 server authorizer binding matches route exact 
     );
 });
 
-test('runtime-to-review Trial 002 internal POST remains behind bearer auth', () => {
+test('runtime-to-review Trial 002 internal POST reaches route-level secretless authorizer', () => {
     const serverSource = read('server.js');
     const routeSource = read('routes/admin/aiImageAgents.js');
 
     assert.match(
         serverSource,
-        /if \(isSerumBottleSecretlessInternalRoute\(req\)\) \{\s+if \(req\.method === 'HEAD' && isLoopbackSocket\(req\)\) \{\s+return next\(\);\s+\}\s+\}/
+        /function isRuntimeToReviewV2Trial002SecretlessInternalRoute\(req\) \{\s+return req && req\.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH;\s+\}/
     );
-    assert.doesNotMatch(
+    assert.match(
         serverSource,
-        /req\.method === 'POST'[\s\S]{0,80}isLoopbackSocket\(req\)[\s\S]{0,80}return next\(\);/
+        /const isAllowedTrial002SecretlessInternalPost =\s+req\.method === 'POST' &&\s+isRuntimeToReviewV2Trial002SecretlessInternalRoute\(req\) &&\s+isLoopbackSocket\(req\);/
+    );
+    assert.match(
+        serverSource,
+        /if \(isAllowedSecretlessInternalHead \|\| isAllowedTrial002SecretlessInternalPost\) \{\s+return next\(\);\s+\}/
     );
     assert.match(serverSource, /R2R_V2_TRIAL_002_SECRETLESS_AUTHORIZER_MODE/);
     assert.match(serverSource, /authorizeRuntimeToReviewV2Trial002SecretlessExecution\(request\)/);
