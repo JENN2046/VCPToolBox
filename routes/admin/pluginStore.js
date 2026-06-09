@@ -20,12 +20,19 @@ const net = require('net');
 const multer = require('multer');
 const extract = require('extract-zip');
 const tar = require('tar');
+const {
+    createPluginRootResolver,
+    discoverLegacyManifestRecordsFromRoot,
+    isManagedPathInsideRoot,
+    isPathInsideRootByRealpath,
+    pathKey,
+    toRootRelativeDisplayPath,
+} = require('../../modules/pluginRootResolver');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PLUGIN_DIR = path.join(ROOT, 'Plugin');
 const TMP_DIR = path.join(ROOT, 'tmp');
 const UPLOAD_DIR = path.join(TMP_DIR, 'uploads');
-const BACKUP_DIR = path.join(PLUGIN_DIR, '.backup');
 const SOURCES_FILE = path.join(ROOT, 'pluginStoreSources.json');
 
 const MANIFEST_NAME = 'plugin-manifest.json';
@@ -105,16 +112,20 @@ async function moveDir(src, dst) {
 
 // Safe path join against a base dir; rejects traversal
 function safeJoin(base, rel) {
-    const normalized = path.normalize(rel).replace(/^(\.\.[\\/])+/, '');
+    const normalized = path.normalize(String(rel || ''));
+    if (!normalized || path.isAbsolute(normalized)) {
+        throw new Error(`Unsafe path: ${rel}`);
+    }
     const target = path.resolve(base, normalized);
-    if (!target.startsWith(path.resolve(base))) {
+    const resolvedBase = path.resolve(base);
+    if (target !== resolvedBase && !target.startsWith(resolvedBase + path.sep)) {
         throw new Error(`Unsafe path: ${rel}`);
     }
     return target;
 }
 
 // Validate plugin name: only safe chars, no dot prefix, no Windows reserved names.
-// Prevents a malicious manifest from redirecting the install target outside PLUGIN_DIR.
+// Prevents a malicious manifest from redirecting the install target outside a managed root.
 function assertSafePluginName(name) {
     if (typeof name !== 'string') {
         throw new Error('plugin-manifest.json 的 name 字段必须是字符串');
@@ -134,14 +145,75 @@ function assertSafePluginName(name) {
     return trimmed;
 }
 
-// Resolve target dir under PLUGIN_DIR and ensure no traversal.
-function resolvePluginTarget(safeName) {
-    const target = path.resolve(PLUGIN_DIR, safeName);
-    const base = path.resolve(PLUGIN_DIR);
+function createRootResolver() {
+    return createPluginRootResolver({
+        projectRoot: ROOT,
+        coreLegacyRoot: PLUGIN_DIR,
+    });
+}
+
+async function resolveStoreInstallRoot() {
+    return createRootResolver().getPluginStoreInstallRoot();
+}
+
+function displayPathFor(rootInfo, targetPath) {
+    return toRootRelativeDisplayPath(rootInfo, targetPath);
+}
+
+function resolvePluginTarget(rootInfo, safeName) {
+    const target = path.resolve(rootInfo.rootPath, safeName);
+    const base = path.resolve(rootInfo.rootPath);
     if (target !== base && !target.startsWith(base + path.sep)) {
         throw new Error(`插件目标路径越界：${safeName}`);
     }
     return target;
+}
+
+async function assertManagedTarget(rootInfo, targetPath, { existing = false, code = 'plugin_store_target_outside_root' } = {}) {
+    const insideRoot = existing
+        ? await isPathInsideRootByRealpath(targetPath, rootInfo.rootPath)
+        : await isManagedPathInsideRoot(targetPath, rootInfo.rootPath);
+    if (!insideRoot) {
+        const error = new Error('Plugin Store target is outside the managed root.');
+        error.code = code;
+        throw error;
+    }
+}
+
+async function resolveBackupTarget(rootInfo, safeName, action) {
+    const backupRoot = path.join(rootInfo.rootPath, '.backup');
+    const backupPath = path.join(backupRoot, `${safeName}-${action}-${Date.now()}`);
+    await assertManagedTarget(rootInfo, backupRoot, { code: 'plugin_store_backup_root_outside_root' });
+    await assertManagedTarget(rootInfo, backupPath, { code: 'plugin_store_backup_target_outside_root' });
+    return { backupRoot, backupPath };
+}
+
+function replaceKnownPath(text, targetPath, label) {
+    if (!targetPath) return text;
+    const escaped = path.resolve(targetPath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return text.replace(new RegExp(escaped, 'gi'), label);
+}
+
+function scrubPluginStoreLog(line) {
+    let text = String(line || '');
+    text = text.replace(/\b(https?:\/\/)([^@\s/?#]+)@/gi, '$1[credentials]@');
+    text = text.replace(/([?&](?:access_token|api[_-]?key|apikey|auth|authorization|bearer|cookie|key|password|passwd|secret|session|token)=)[^&\s]+/gi, '$1[redacted]');
+    text = text.replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]');
+    text = text.replace(/\b(Authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
+    text = text.replace(/\b((?:access_token|api[_-]?key|apikey|auth|authorization|cookie|password|passwd|secret|session|token)\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
+
+    text = replaceKnownPath(text, UPLOAD_DIR, '[tmp]/uploads');
+    text = replaceKnownPath(text, TMP_DIR, '[tmp]');
+    text = replaceKnownPath(text, PLUGIN_DIR, '[core]');
+    text = replaceKnownPath(text, ROOT, '[repo]');
+    text = text.replace(/[A-Za-z]:[\\/][^\s"'<>|)]+/g, '[path]');
+    text = text.replace(/(^|[\s("'=])\/(?:[^/\s"'<>|)]+\/)+[^/\s"'<>|)]*/g, '$1[path]');
+    return text;
+}
+
+function safeErrorMessage(error) {
+    if (!error) return 'UNKNOWN';
+    return scrubPluginStoreLog(error.message || String(error));
 }
 
 // Walk an extracted tree and refuse symlinks or entries whose realpath escapes base.
@@ -284,14 +356,15 @@ function createTask() {
 }
 
 function pushLog(task, line) {
-    task.logs.push(line);
-    task.bus.emit('log', line);
+    const safeLine = scrubPluginStoreLog(line);
+    task.logs.push(safeLine);
+    task.bus.emit('log', safeLine);
 }
 
 function finishTask(task, status, message) {
     task.status = status;
-    task.message = message;
-    task.bus.emit('end', { status, message });
+    task.message = scrubPluginStoreLog(message);
+    task.bus.emit('end', { status, message: task.message });
 }
 
 // =============================================================================
@@ -788,13 +861,119 @@ async function listPluginsFromSource(source) {
     return [];
 }
 
+async function scanInstalledRecordsFromRoot(rootInfo) {
+    const result = await discoverLegacyManifestRecordsFromRoot(rootInfo);
+    return {
+        records: result.records.map(record => ({
+            name: String(record.name || '').trim(),
+            version: typeof record.manifest?.version === 'string' ? record.manifest.version.trim() : '',
+            source: record.source === 'external' ? 'external' : 'core',
+            rootId: record.rootId || null,
+            rootInfo,
+            pluginPath: record.pluginPath,
+            displayPath: record.displayPath,
+            enabled: record.enabled,
+            pathKey: record.pathKey || pathKey(record.pluginPath),
+        })).filter(record => record.name),
+        diagnostics: result.diagnostics || [],
+    };
+}
+
+async function buildInstalledIndex() {
+    const resolver = createRootResolver();
+    const snapshot = await resolver.getPluginRootSnapshot();
+    const roots = [
+        snapshot.coreLegacyRoot,
+        ...(snapshot.externalLegacyRoots || []),
+    ].filter(Boolean);
+    const records = [];
+    const diagnostics = [...(snapshot.diagnostics || [])];
+
+    for (const rootInfo of roots) {
+        const scanned = await scanInstalledRecordsFromRoot(rootInfo);
+        records.push(...scanned.records);
+        diagnostics.push(...scanned.diagnostics);
+    }
+
+    const byName = new Map();
+    for (const record of records) {
+        if (!byName.has(record.name)) byName.set(record.name, []);
+        byName.get(record.name).push(record);
+    }
+
+    const preferred = new Map();
+    for (const [name, matches] of byName.entries()) {
+        const coreMatch = matches.find(record => record.source === 'core');
+        const selected = coreMatch || matches[0];
+        if (matches.length > 1) {
+            const duplicateCode = coreMatch
+                ? 'core_priority_external_duplicate_ignored'
+                : 'external_duplicate_ignored';
+            selected.conflictReason = duplicateCode;
+            for (const record of matches) {
+                if (record !== selected) {
+                    record.ignored = true;
+                    record.conflictReason = duplicateCode;
+                }
+            }
+        }
+        preferred.set(name, selected);
+    }
+
+    return { byName, preferred, records, diagnostics };
+}
+
+function toInstalledApiFields(record) {
+    if (!record) return {};
+    return {
+        installedVersion: record.version || undefined,
+        installedSource: record.source,
+        installedRootId: record.rootId,
+        installedDisplayPath: record.displayPath,
+        conflictReason: record.conflictReason || undefined,
+    };
+}
+
+function getUninstallCriteria(body = {}) {
+    const installedSource = body.installedSource === 'external' || body.installedSource === 'core'
+        ? body.installedSource
+        : null;
+    const installedRootId = typeof body.installedRootId === 'string' && body.installedRootId.trim()
+        ? body.installedRootId.trim()
+        : null;
+    return { installedSource, installedRootId };
+}
+
+function resolveUninstallTarget(installedIndex, safeName, criteria = {}) {
+    let matches = installedIndex.byName.get(safeName) || [];
+    if (criteria.installedSource) {
+        matches = matches.filter(record => record.source === criteria.installedSource);
+    }
+    if (criteria.installedRootId) {
+        matches = matches.filter(record => record.rootId === criteria.installedRootId);
+    }
+    if (matches.length === 0) return null;
+    if (matches.length > 1) {
+        const error = new Error('Plugin uninstall target is ambiguous. Provide installedSource and installedRootId.');
+        error.code = 'EAMBIGUOUS';
+        error.candidates = matches.map(record => ({
+            installedSource: record.source,
+            installedRootId: record.rootId,
+            installedDisplayPath: record.displayPath,
+        }));
+        throw error;
+    }
+    return matches[0];
+}
+
 // =============================================================================
 // Install pipeline
 // =============================================================================
 
-function runNpmInstall(cwd, task) {
+function runNpmInstall(cwd, task, rootInfo) {
     return new Promise((resolve) => {
-        pushLog(task, `$ npm install --omit=dev  (cwd: ${cwd})`);
+        const cwdDisplay = rootInfo ? displayPathFor(rootInfo, cwd) : cwd;
+        pushLog(task, `$ npm install --omit=dev  (cwd: ${cwdDisplay})`);
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
         const child = spawn(npmCmd, ['install', '--omit=dev', '--no-audit', '--no-fund'], {
             cwd,
@@ -804,8 +983,8 @@ function runNpmInstall(cwd, task) {
         child.stdout.on('data', d => pushLog(task, d.toString()));
         child.stderr.on('data', d => pushLog(task, d.toString()));
         child.on('error', err => {
-            pushLog(task, `[error] ${err.message}`);
-            resolve({ ok: false, error: err.message });
+            pushLog(task, `[error] ${safeErrorMessage(err)}`);
+            resolve({ ok: false, error: safeErrorMessage(err) });
         });
         child.on('close', code => {
             pushLog(task, `[npm exit ${code}]`);
@@ -821,26 +1000,51 @@ async function installFromDir(sourceDir, task, { force = false, pluginManager } 
     if (!manifest.name) throw new Error('plugin-manifest.json 缺少 name 字段');
 
     const safeName = assertSafePluginName(manifest.name);
-    const target = resolvePluginTarget(safeName);
+    const installRoot = await resolveStoreInstallRoot();
+    const target = resolvePluginTarget(installRoot, safeName);
+    await assertManagedTarget(installRoot, target, { code: 'plugin_store_install_target_outside_root' });
+
+    if (installRoot.source === 'external') {
+        const coreRootInfo = {
+            source: 'core',
+            rootId: 'core:legacy',
+            rootPath: PLUGIN_DIR,
+            displayPath: 'Plugin',
+        };
+        const coreTarget = resolvePluginTarget(coreRootInfo, safeName);
+        if (await pathExists(coreTarget)) {
+            const err = new Error(`Core plugin ${safeName} already exists; external install cannot overwrite core plugin.`);
+            err.code = 'ECORECONFLICT';
+            throw err;
+        }
+    }
 
     if (await pathExists(target)) {
+        await assertManagedTarget(installRoot, target, {
+            existing: true,
+            code: 'plugin_store_existing_target_outside_root'
+        });
         if (!force) {
             const err = new Error(`插件目录 ${safeName} 已存在`);
             err.code = 'EEXIST';
             throw err;
         }
-        await ensureDir(BACKUP_DIR);
-        const backupPath = path.join(BACKUP_DIR, `${safeName}-${Date.now()}`);
-        pushLog(task, `[backup] ${target} -> ${backupPath}`);
+        const { backupRoot, backupPath } = await resolveBackupTarget(installRoot, safeName, 'backup');
+        await ensureDir(backupRoot);
+        pushLog(task, `[backup] ${displayPathFor(installRoot, target)} -> ${displayPathFor(installRoot, backupPath)}`);
         await moveDir(target, backupPath);
     }
 
-    pushLog(task, `[copy] ${root} -> ${target}`);
+    pushLog(task, `[copy] ${root} -> ${displayPathFor(installRoot, target)}`);
     await moveDir(root, target);
+    await assertManagedTarget(installRoot, target, {
+        existing: true,
+        code: 'plugin_store_installed_target_outside_root'
+    });
 
     // npm install if package.json exists
     if (await pathExists(path.join(target, 'package.json'))) {
-        const result = await runNpmInstall(target, task);
+        const result = await runNpmInstall(target, task, installRoot);
         if (!result.ok) {
             pushLog(task, `[warn] npm install 失败，插件已安装但依赖可能不完整。请手动处理。`);
         }
@@ -855,10 +1059,16 @@ async function installFromDir(sourceDir, task, { force = false, pluginManager } 
             pushLog(task, '[reload] 插件已热加载');
         }
     } catch (err) {
-        pushLog(task, `[warn] 热加载失败: ${err.message}`);
+        pushLog(task, `[warn] 热加载失败: ${safeErrorMessage(err)}`);
     }
 
-    return { name: safeName, displayName: manifest.displayName || safeName };
+    return {
+        name: safeName,
+        displayName: manifest.displayName || safeName,
+        installRoot: installRoot.source,
+        installedRootId: installRoot.rootId,
+        installedDisplayPath: displayPathFor(installRoot, target),
+    };
 }
 
 async function downloadToFile(url, destFile) {
@@ -956,7 +1166,7 @@ module.exports = function (options) {
         try {
             res.json({ sources: await loadSources() });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
     });
 
@@ -982,7 +1192,7 @@ module.exports = function (options) {
             await saveUserSources([...existing.filter(s => !s.builtin), entry]);
             res.json({ source: entry });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
     });
 
@@ -995,7 +1205,7 @@ module.exports = function (options) {
             await saveUserSources(list.filter(s => s.id !== req.params.id));
             res.json({ ok: true });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
     });
 
@@ -1004,25 +1214,9 @@ module.exports = function (options) {
     // ---------------------------------------------------------------------
     router.get('/plugin-store', async (req, res) => {
         try {
+            const installRoot = await resolveStoreInstallRoot();
             const sources = await loadSources();
-            const installed = new Map();
-            try {
-                const entries = await fsp.readdir(PLUGIN_DIR, { withFileTypes: true });
-                for (const e of entries) {
-                    if (!e.isDirectory()) continue;
-                    const m1 = path.join(PLUGIN_DIR, e.name, MANIFEST_NAME);
-                    const m2 = m1 + BLOCKED_EXT;
-                    try {
-                        const content = await fsp.readFile(await pathExists(m1) ? m1 : m2, 'utf-8');
-                        const mf = JSON.parse(content);
-                        if (mf.name) {
-                            installed.set(mf.name, {
-                                version: typeof mf.version === 'string' ? mf.version.trim() : '',
-                            });
-                        }
-                    } catch {}
-                }
-            } catch {}
+            const installed = await buildInstalledIndex();
 
             // Fetch all sources in parallel so one slow source doesn't block the rest.
             const results = await Promise.allSettled(
@@ -1035,11 +1229,9 @@ module.exports = function (options) {
                 const source = sources[idx];
                 if (result.status === 'fulfilled') {
                     for (const p of result.value) {
-                        const local = installed.get(p.name);
+                        const local = installed.preferred.get(p.name);
                         p.installed = !!local;
-                        if (local?.version) {
-                            p.installedVersion = local.version;
-                        }
+                        Object.assign(p, toInstalledApiFields(local));
                         if (p.installed && p.version && local?.version) {
                             p.updateAvailable = isRemoteVersionNewer(p.version, local.version);
                         } else {
@@ -1051,13 +1243,25 @@ module.exports = function (options) {
                     const reason = result.reason;
                     errors.push({
                         sourceId: source.id,
-                        error: reason && reason.message ? reason.message : String(reason),
+                        error: safeErrorMessage(reason),
                     });
                 }
             });
-            res.json({ plugins: all, total: all.length, sources, errors });
+            res.json({
+                plugins: all,
+                total: all.length,
+                sources,
+                errors,
+                installMode: installRoot.mode,
+                diagnostics: installed.diagnostics.map(item => ({
+                    level: item.level || 'warn',
+                    code: item.code || 'unknown',
+                    rootId: item.rootId || null,
+                    message: item.message || null,
+                })),
+            });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
     });
 
@@ -1119,8 +1323,9 @@ module.exports = function (options) {
 
                 finishTask(task, 'success', '安装完成');
             } catch (err) {
-                pushLog(task, `[fatal] ${err.message}`);
-                finishTask(task, err.code === 'EEXIST' ? 'conflict' : 'error', err.message);
+                const isConflict = err.code === 'EEXIST' || err.code === 'ECORECONFLICT';
+                pushLog(task, `[fatal] ${safeErrorMessage(err)}`);
+                finishTask(task, isConflict ? 'conflict' : 'error', safeErrorMessage(err));
             }
         })();
     });
@@ -1136,15 +1341,20 @@ module.exports = function (options) {
             }
 
             const safeName = assertSafePluginName(pluginName);
-            const target = resolvePluginTarget(safeName);
+            const installedIndex = await buildInstalledIndex();
+            const targetRecord = resolveUninstallTarget(installedIndex, safeName, getUninstallCriteria(req.body));
 
-            if (!(await pathExists(target))) {
+            if (!targetRecord || !(await pathExists(targetRecord.pluginPath))) {
                 return res.status(404).json({ error: `插件 ${safeName} 不存在` });
             }
 
-            await ensureDir(BACKUP_DIR);
-            const backupPath = path.join(BACKUP_DIR, `${safeName}-removed-${Date.now()}`);
-            await moveDir(target, backupPath);
+            await assertManagedTarget(targetRecord.rootInfo, targetRecord.pluginPath, {
+                existing: true,
+                code: 'plugin_store_uninstall_target_outside_root'
+            });
+            const { backupRoot, backupPath } = await resolveBackupTarget(targetRecord.rootInfo, safeName, 'removed');
+            await ensureDir(backupRoot);
+            await moveDir(targetRecord.pluginPath, backupPath);
 
             if (pluginManager?.loadPlugins) {
                 try {
@@ -1152,7 +1362,7 @@ module.exports = function (options) {
                 } catch (reloadErr) {
                     return res.status(500).json({
                         error: '插件目录已移除，但热加载失败',
-                        details: reloadErr.message,
+                        details: safeErrorMessage(reloadErr),
                     });
                 }
             }
@@ -1160,10 +1370,20 @@ module.exports = function (options) {
             res.json({
                 ok: true,
                 message: `插件 ${safeName} 已卸载`,
-                backupPath: path.relative(ROOT, backupPath),
+                backupPath: displayPathFor(targetRecord.rootInfo, backupPath),
+                installedSource: targetRecord.source,
+                installedRootId: targetRecord.rootId,
             });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            if (err.code === 'EAMBIGUOUS') {
+                return res.status(409).json({
+                    error: safeErrorMessage(err),
+                    code: 'ambiguous_plugin_uninstall_target',
+                    requiresInstalledRoot: true,
+                    candidates: err.candidates || [],
+                });
+            }
+            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
     });
 
@@ -1226,8 +1446,9 @@ module.exports = function (options) {
 
                 finishTask(task, 'success', '安装完成');
             } catch (err) {
-                pushLog(task, `[fatal] ${err.message}`);
-                finishTask(task, err.code === 'EEXIST' ? 'conflict' : 'error', err.message);
+                const isConflict = err.code === 'EEXIST' || err.code === 'ECORECONFLICT';
+                pushLog(task, `[fatal] ${safeErrorMessage(err)}`);
+                finishTask(task, isConflict ? 'conflict' : 'error', safeErrorMessage(err));
             }
         })();
     });

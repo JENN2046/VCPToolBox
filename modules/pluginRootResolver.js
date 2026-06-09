@@ -8,6 +8,7 @@ const BLOCKED_MANIFEST_SUFFIX = '.block';
 const BLOCKED_MANIFEST_FILE_NAME = `${LEGACY_MANIFEST_FILE_NAME}${BLOCKED_MANIFEST_SUFFIX}`;
 const VCP_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';
 const VCP_PLUGIN_ALLOWED_ROOTS_ENV = 'VCP_PLUGIN_ALLOWED_ROOTS';
+const VCP_PLUGIN_INSTALL_DIR_ENV = 'VCP_PLUGIN_INSTALL_DIR';
 
 function uniqueByResolvedPath(paths) {
     const seen = new Set();
@@ -320,6 +321,14 @@ class PluginRootResolver {
         }));
     }
 
+    resolveSinglePath(rawValue) {
+        const normalized = path.normalize(String(rawValue || '').trim());
+        if (!normalized) return null;
+        return path.isAbsolute(normalized)
+            ? normalized
+            : path.resolve(this.projectRoot, normalized);
+    }
+
     getAllowedRootsSync() {
         return this.resolvePathList(this.env[VCP_PLUGIN_ALLOWED_ROOTS_ENV])
             .map(root => realpathOrResolveSync(root.rootPath));
@@ -487,6 +496,61 @@ class PluginRootResolver {
             diagnostics
         };
     }
+
+    async getPluginStoreInstallRoot() {
+        const rawInstallDir = this.env[VCP_PLUGIN_INSTALL_DIR_ENV];
+        if (typeof rawInstallDir !== 'string' || rawInstallDir.trim() === '') {
+            const coreLegacyRealPath = await realpathOrResolve(this.coreLegacyRoot);
+            return {
+                mode: 'legacy',
+                source: 'core',
+                rootId: 'core:legacy',
+                rootPath: coreLegacyRealPath,
+                displayPath: toDisplayPath(this.projectRoot, coreLegacyRealPath, 'core'),
+                allowConfigEnv: true,
+                diagnostics: []
+            };
+        }
+
+        const requestedRoot = this.resolveSinglePath(rawInstallDir);
+        const requestedRealPath = await realpathOrResolve(requestedRoot);
+        const requestedDisplayPath = toDisplayPath(this.projectRoot, requestedRealPath, 'external');
+        const allowedRoots = await this.getAllowedRoots();
+        const { roots: externalLegacyRoots, diagnostics } = await this.getExternalLegacyRoots();
+
+        if (allowedRoots.length === 0) {
+            const error = new Error('VCP_PLUGIN_INSTALL_DIR requires VCP_PLUGIN_ALLOWED_ROOTS.');
+            error.code = 'plugin_install_root_allowlist_required';
+            error.displayPath = requestedDisplayPath;
+            throw error;
+        }
+
+        const insideAllowedRoot = allowedRoots.some(allowedRoot => isSubPath(requestedRealPath, allowedRoot));
+        if (!insideAllowedRoot) {
+            const error = new Error('VCP_PLUGIN_INSTALL_DIR is outside VCP_PLUGIN_ALLOWED_ROOTS.');
+            error.code = 'plugin_install_root_not_allowed';
+            error.displayPath = requestedDisplayPath;
+            throw error;
+        }
+
+        const matchedRoot = externalLegacyRoots.find(root => pathKey(root.rootPath) === pathKey(requestedRealPath));
+        if (!matchedRoot) {
+            const error = new Error('VCP_PLUGIN_INSTALL_DIR must match a current allowlisted external legacy root.');
+            error.code = 'plugin_install_root_not_managed';
+            error.displayPath = requestedDisplayPath;
+            throw error;
+        }
+
+        return {
+            mode: 'external',
+            source: 'external',
+            rootId: matchedRoot.rootId,
+            rootPath: matchedRoot.rootPath,
+            displayPath: matchedRoot.displayPath,
+            allowConfigEnv: false,
+            diagnostics
+        };
+    }
 }
 
 function createPluginRootResolver(options = {}) {
@@ -504,6 +568,7 @@ module.exports = {
     BLOCKED_MANIFEST_FILE_NAME,
     VCP_PLUGIN_DIRS_ENV,
     VCP_PLUGIN_ALLOWED_ROOTS_ENV,
+    VCP_PLUGIN_INSTALL_DIR_ENV,
     discoverAdminLegacyManifestRecords,
     discoverLegacyManifestRecordsFromRoot,
     isManagedPathInsideRoot,
