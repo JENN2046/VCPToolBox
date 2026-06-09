@@ -254,3 +254,35 @@ Next safe action:
   topology branch deletion, EP3 remote old-line archive/delete, dirty worktree
   retention/archive/cleanup, merge/cherry-pick/intake from retained feature
   lines, tag, release, deploy, or production write.
+
+---
+
+Time: 2026-06-09 Asia/Shanghai.
+
+Goal completed:
+
+- `VCPToolBox P0 Adapter + Trial002 Binding Local/Remote Merge`.
+
+Current safe state:
+
+- Main worktree: `A:/AGENTS_OS_Workspace/runtime/VCPToolBox`.
+- Branch: `main`.
+- Final local and remote head: `09a4b14b45e91e8f450bdc8a9575a79069a4df8f`.
+- Included commits:
+  - `409821a0` P0 plugin-root hardening.
+  - `002139ea` Trial002 secretless authorizer binding.
+  - `09a4b14b` merge integrating remote `origin/main` before push.
+- `origin/main` was pushed successfully to `09a4b14b`.
+- Release: not performed.
+- Deploy: not performed.
+
+Preserved state:
+
+- Protected stash remains intentionally untouched:
+  `stash@{0}: On main: codex preserve local agent_board before main fast-forward`.
+
+Deferred:
+
+- Cleanup of P0 temporary branches/worktrees is deferred to a separate small task.
+- P1 is not started. Future P1 scope is:
+  Admin external plugin management / Plugin Store external install dir.
