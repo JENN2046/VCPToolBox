@@ -42,6 +42,7 @@ const BUILTIN_SOURCES = [];
 
 // Safety limits
 const FETCH_TIMEOUT_MS = 20_000;
+const MAX_PLUGIN_STORE_REDIRECTS = 5;
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_UPLOAD_FILES = 2000;
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
@@ -305,64 +306,104 @@ async function assertSafeExtractedTree(baseDir) {
     await walk(baseDir);
 }
 
+function createPluginStorePolicyError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+}
+
+function isRedirectStatus(status) {
+    return [301, 302, 303, 307, 308].includes(Number(status));
+}
+
+function getHeaderValue(headers, name) {
+    if (!headers) return null;
+    if (typeof headers.get === 'function') return headers.get(name);
+    const target = String(name).toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+        if (String(key).toLowerCase() === target) return value;
+    }
+    return null;
+}
+
 // SSRF guard: reject private / loopback / link-local / multicast targets.
 function isPrivateIp(ip) {
     if (!ip) return true;
     const family = net.isIP(ip);
     if (family === 4) {
         const parts = ip.split('.').map(Number);
-        const [a, b] = parts;
+        if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) {
+            return true;
+        }
+        const [a, b, c] = parts;
         if (a === 0 || a === 10 || a === 127) return true;
+        if (a === 100 && b >= 64 && b <= 127) return true; // carrier-grade NAT
         if (a === 169 && b === 254) return true;
         if (a === 172 && b >= 16 && b <= 31) return true;
+        if (a === 192 && b === 0) return true;
         if (a === 192 && b === 168) return true;
+        if (a === 198 && (b === 18 || b === 19)) return true; // benchmark networks
+        if (a === 198 && b === 51 && c === 100) return true; // documentation
+        if (a === 203 && b === 0 && c === 113) return true; // documentation
         if (a >= 224) return true; // multicast + reserved
         return false;
     }
     if (family === 6) {
         const lower = ip.toLowerCase();
         if (lower === '::' || lower === '::1') return true;
-        if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA
-        if (lower.startsWith('fe80')) return true; // link-local
         const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
         if (mapped) return isPrivateIp(mapped[1]);
+        const firstHextet = Number.parseInt(lower.split(':')[0] || '0', 16);
+        if (Number.isNaN(firstHextet)) return true;
+        if ((firstHextet & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
+        if ((firstHextet & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+        if ((firstHextet & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local
+        if ((firstHextet & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+        if (/^2001:0?db8:/i.test(lower)) return true; // documentation
+        if (/^2001:0{1,4}:/i.test(lower)) return true; // Teredo
+        if (lower.startsWith('2002:')) return true; // 6to4
         return false;
     }
     return true; // not a valid IP literal -> be conservative
 }
 
-async function assertPublicHost(urlStr) {
+async function assertPublicHost(urlStr, options = {}) {
     let u;
     try { u = new URL(urlStr); } catch {
-        throw new Error(`非法 URL: ${urlStr}`);
+        throw createPluginStorePolicyError('plugin_store_url_invalid', '非法 URL');
     }
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        throw new Error(`仅允许 http/https，当前：${u.protocol}`);
+        throw createPluginStorePolicyError('plugin_store_url_protocol_blocked', '仅允许 http/https URL');
     }
     const host = u.hostname;
     const lowered = host.toLowerCase();
-    if (!lowered) throw new Error(`URL 缺少 host: ${urlStr}`);
+    if (!lowered) {
+        throw createPluginStorePolicyError('plugin_store_url_missing_host', 'URL 缺少 host');
+    }
     if (lowered === 'localhost' || lowered.endsWith('.localhost')) {
-        throw new Error(`禁止访问 localhost: ${host}`);
+        throw createPluginStorePolicyError('plugin_store_url_localhost_blocked', '禁止访问 localhost');
     }
     // If host is already an IP literal, check directly. Otherwise resolve DNS.
     if (net.isIP(host)) {
         if (isPrivateIp(host)) {
-            throw new Error(`禁止访问内网地址：${host}`);
+            throw createPluginStorePolicyError('plugin_store_url_private_host_blocked', '禁止访问非公网地址');
         }
         return;
     }
+    const lookup = options.lookup || dns.lookup;
     try {
-        const records = await dns.lookup(host, { all: true });
+        const records = await lookup(host, { all: true });
+        if (!Array.isArray(records) || records.length === 0) {
+            throw createPluginStorePolicyError('plugin_store_url_dns_failed', 'URL host DNS 解析失败');
+        }
         for (const r of records) {
             if (isPrivateIp(r.address)) {
-                throw new Error(`目标主机 ${host} 解析到内网地址 ${r.address}，已拦截`);
+                throw createPluginStorePolicyError('plugin_store_url_private_dns_blocked', 'URL host 解析到非公网地址，已拦截');
             }
         }
     } catch (err) {
-        if (err && typeof err.message === 'string' && err.message.includes('禁止访问')) throw err;
-        if (err && typeof err.message === 'string' && err.message.includes('拦截')) throw err;
-        // DNS failure -> let fetch itself error out downstream
+        if (err && err.code && String(err.code).startsWith('plugin_store_url_')) throw err;
+        throw createPluginStorePolicyError('plugin_store_url_dns_failed', 'URL host DNS 解析失败');
     }
 }
 
@@ -372,17 +413,59 @@ function githubAuthHeaders() {
 }
 
 async function fetchWithGuard(url, opts = {}) {
-    await assertPublicHost(url);
+    const {
+        timeout,
+        maxRedirects = MAX_PLUGIN_STORE_REDIRECTS,
+        fetchImpl = fetch,
+        lookup,
+        ...fetchOptions
+    } = opts;
     const controller = new AbortController();
-    const timeoutMs = typeof opts.timeout === 'number' ? opts.timeout : FETCH_TIMEOUT_MS;
+    const timeoutMs = typeof timeout === 'number' ? timeout : FETCH_TIMEOUT_MS;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const isGithubApi = /^https:\/\/api\.github\.com\//i.test(url);
-        const headers = {
-            ...(opts.headers || {}),
-            ...(isGithubApi ? githubAuthHeaders() : {}),
-        };
-        return await fetch(url, { ...opts, headers, signal: controller.signal });
+        let currentUrl = String(url);
+        let method = fetchOptions.method;
+        let body = fetchOptions.body;
+
+        for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+            await assertPublicHost(currentUrl, { lookup });
+            const isGithubApi = /^https:\/\/api\.github\.com\//i.test(currentUrl);
+            const headers = {
+                ...(fetchOptions.headers || {}),
+                ...(isGithubApi ? githubAuthHeaders() : {}),
+            };
+            const response = await fetchImpl(currentUrl, {
+                ...fetchOptions,
+                method,
+                body,
+                headers,
+                redirect: 'manual',
+                signal: controller.signal
+            });
+
+            if (!isRedirectStatus(response.status)) return response;
+
+            const location = getHeaderValue(response.headers, 'location');
+            if (!location) return response;
+            if (redirectCount >= maxRedirects) {
+                throw createPluginStorePolicyError('plugin_store_url_redirect_limit', 'URL redirect 次数过多');
+            }
+
+            try {
+                currentUrl = new URL(location, currentUrl).toString();
+            } catch {
+                throw createPluginStorePolicyError('plugin_store_url_redirect_invalid', 'URL redirect location 无效');
+            }
+
+            const methodName = String(method || 'GET').toUpperCase();
+            if (response.status === 303 && methodName !== 'GET' && methodName !== 'HEAD') {
+                method = 'GET';
+                body = undefined;
+            }
+        }
+
+        throw createPluginStorePolicyError('plugin_store_url_redirect_limit', 'URL redirect 次数过多');
     } finally {
         clearTimeout(timer);
     }
@@ -1575,7 +1658,10 @@ function createPluginStoreRouter(options) {
 
 module.exports = createPluginStoreRouter;
 module.exports._test = {
+    assertPublicHost,
     buildPluginInstallEnv,
+    fetchWithGuard,
+    isPrivateIp,
     runNpmInstall,
     scrubPluginStoreLog,
 };
