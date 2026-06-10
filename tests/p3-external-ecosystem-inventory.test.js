@@ -91,6 +91,117 @@ test('classifyPath applies P3-E taxonomy refinement rules', () => {
     assert.equal(classifyPath('.agent_board/HANDOFF.md').surface, 'protected-agent-board');
 });
 
+test('classifyPath applies P3-F remaining unknown taxonomy rules', () => {
+    assert.deepEqual(
+        classifyPath('.github/workflows/ci.yml'),
+        {
+            decision: 'keep_core',
+            surface: 'repo-metadata',
+            target: null,
+            reasons: ['repository_metadata_stays_core']
+        }
+    );
+    assert.deepEqual(
+        classifyPath('logs/codex-memory-bridge.jsonl'),
+        {
+            decision: 'blocked',
+            surface: 'local-cache-state',
+            target: null,
+            reasons: ['local_cache_state_never_move_automatically']
+        }
+    );
+    assert.equal(classifyPath('.file_cache').surface, 'local-cache-state');
+    assert.equal(classifyPath('.omc/state/last-tool-error.json').decision, 'blocked');
+    assert.equal(classifyPath('data/photo-studio/.gitkeep').surface, 'local-cache-state');
+    assert.equal(classifyPath('tmp/uploads').surface, 'local-cache-state');
+    assert.deepEqual(
+        classifyPath('server.js'),
+        {
+            decision: 'keep_core',
+            surface: 'runtime-entrypoint',
+            target: null,
+            reasons: ['root_runtime_entrypoint_stays_core']
+        }
+    );
+    assert.equal(classifyPath('adminServer.js').surface, 'runtime-entrypoint');
+    assert.equal(classifyPath('WebSocketServer.js').surface, 'runtime-entrypoint');
+    assert.deepEqual(
+        classifyPath('package.json'),
+        {
+            decision: 'keep_core',
+            surface: 'repo-build-config',
+            target: null,
+            reasons: ['repository_build_config_stays_core']
+        }
+    );
+    assert.equal(classifyPath('docker-compose.yml').surface, 'repo-build-config');
+    assert.equal(classifyPath('requirements.txt').surface, 'repo-build-config');
+    assert.deepEqual(
+        classifyPath('ToolConfigs/dynamic_tool_catalog.json'),
+        {
+            decision: 'deferred',
+            surface: 'operator-config',
+            target: null,
+            reasons: ['operator_config_requires_separate_review']
+        }
+    );
+    assert.equal(classifyPath('agent_map.json.example').surface, 'operator-config');
+    assert.equal(classifyPath('tag-processor-config.env.example').surface, 'operator-config');
+    assert.deepEqual(
+        classifyPath('README For VCPChat.md'),
+        {
+            decision: 'docs_only',
+            surface: 'documentation',
+            target: 'governance/',
+            reasons: ['root_documentation_catalog_only']
+        }
+    );
+    assert.equal(classifyPath('AGENTS.override.md').surface, 'documentation');
+    assert.equal(classifyPath('VCP记忆管理系统.md').surface, 'documentation');
+    assert.deepEqual(
+        classifyPath('示例1服务器面板.jpg'),
+        {
+            decision: 'deferred',
+            surface: 'example-media',
+            target: null,
+            reasons: ['example_media_requires_asset_review']
+        }
+    );
+    assert.equal(classifyPath('VCPLogo.png').surface, 'example-media');
+    assert.deepEqual(
+        classifyPath('repair_database.js'),
+        {
+            decision: 'keep_core',
+            surface: 'maintenance-tooling',
+            target: null,
+            reasons: ['root_maintenance_tooling_stays_core']
+        }
+    );
+    assert.equal(classifyPath('update.bat').surface, 'maintenance-tooling');
+    assert.equal(classifyPath('timeline整理器.py').surface, 'maintenance-tooling');
+    assert.deepEqual(
+        classifyPath('vcp-installer-一键安装脚本.exe'),
+        {
+            decision: 'deferred',
+            surface: 'installer-binary',
+            target: null,
+            reasons: ['installer_binary_requires_package_provenance_review']
+        }
+    );
+    assert.deepEqual(
+        classifyPath('VCPTimedContacts'),
+        {
+            decision: 'deferred',
+            surface: 'contact-state',
+            target: null,
+            reasons: ['contact_state_requires_operator_data_review']
+        }
+    );
+    assert.equal(classifyPath('ToolConfigs/private-token.config.json').surface, 'secret-like-path');
+    assert.equal(classifyPath('logs/private.pem').surface, 'key-material');
+    assert.equal(classifyPath('data/private.key').surface, 'key-material');
+});
+
 test('classifyPath blocks secret, config, runtime, and private store paths', () => {
     assert.equal(isRealEnvOrConfig('config.env'), true);
     assert.equal(isRealEnvOrConfig('Plugin/Foo/config.env'), true);
