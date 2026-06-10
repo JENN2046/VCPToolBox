@@ -216,6 +216,72 @@ function safeErrorMessage(error) {
     return scrubPluginStoreLog(error.message || String(error));
 }
 
+const DEFAULT_PLUGIN_INSTALL_ENV_KEYS = new Set([
+    'PATH',
+    'Path',
+    'HOME',
+    'USERPROFILE',
+    'TEMP',
+    'TMP',
+    'TMPDIR',
+    'SystemRoot',
+    'windir',
+    'ComSpec',
+    'NO_COLOR',
+    'CI',
+]);
+
+const PLUGIN_INSTALL_ENV_DENY_PATTERNS = [
+    /admin.*pass/i,
+    /password|passwd|pwd/i,
+    /secret/i,
+    /token/i,
+    /api[_-]?key|apikey/i,
+    /authorization|bearer/i,
+    /cookie|session/i,
+    /credential/i,
+    /private[_-]?key/i,
+    /github_token|gh_token/i,
+    /openai|anthropic|gemini|google|azure|aws|s3|slack|discord|telegram|dingtalk|feishu|wecom/i,
+    /(^|[_-])key($|[_-])/i,
+];
+
+function isPluginInstallEnvKeyDenied(key) {
+    return PLUGIN_INSTALL_ENV_DENY_PATTERNS.some(pattern => pattern.test(String(key || '')));
+}
+
+function parsePluginInstallEnvAllowlist(baseEnv = {}, options = {}) {
+    const raw = options.allowlist !== undefined
+        ? options.allowlist
+        : baseEnv.VCP_PLUGIN_STORE_INSTALL_ENV_ALLOWLIST;
+    if (Array.isArray(raw)) {
+        return raw.map(item => String(item || '').trim()).filter(Boolean);
+    }
+    if (typeof raw === 'string') {
+        return raw.split(',').map(item => item.trim()).filter(Boolean);
+    }
+    return [];
+}
+
+function buildPluginInstallEnv(baseEnv = process.env, options = {}) {
+    const env = {};
+    const allowedKeys = new Set(DEFAULT_PLUGIN_INSTALL_ENV_KEYS);
+    for (const key of parsePluginInstallEnvAllowlist(baseEnv, options)) {
+        if (!key.includes('*')) {
+            allowedKeys.add(key);
+        }
+    }
+
+    for (const key of allowedKeys) {
+        if (!Object.prototype.hasOwnProperty.call(baseEnv, key)) continue;
+        if (isPluginInstallEnvKeyDenied(key)) continue;
+        const value = baseEnv[key];
+        if (value === undefined || value === null) continue;
+        env[key] = String(value);
+    }
+    return env;
+}
+
 // Walk an extracted tree and refuse symlinks or entries whose realpath escapes base.
 // Defends against zip-slip / tar-slip regardless of the extractor's own safeguards.
 async function assertSafeExtractedTree(baseDir) {
@@ -970,14 +1036,15 @@ function resolveUninstallTarget(installedIndex, safeName, criteria = {}) {
 // Install pipeline
 // =============================================================================
 
-function runNpmInstall(cwd, task, rootInfo) {
+function runNpmInstall(cwd, task, rootInfo, options = {}) {
     return new Promise((resolve) => {
         const cwdDisplay = rootInfo ? displayPathFor(rootInfo, cwd) : cwd;
         pushLog(task, `$ npm install --omit=dev  (cwd: ${cwdDisplay})`);
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        const child = spawn(npmCmd, ['install', '--omit=dev', '--no-audit', '--no-fund'], {
+        const spawnImpl = options.spawn || spawn;
+        const child = spawnImpl(npmCmd, ['install', '--omit=dev', '--no-audit', '--no-fund'], {
             cwd,
-            env: { ...process.env },
+            env: buildPluginInstallEnv(options.baseEnv || process.env, options.envOptions || {}),
             windowsHide: true,
         });
         child.stdout.on('data', d => pushLog(task, d.toString()));
@@ -1140,7 +1207,7 @@ async function installFromGithub(parsed, task, options) {
 // Router
 // =============================================================================
 
-module.exports = function (options) {
+function createPluginStoreRouter(options) {
     const router = express.Router();
     const { pluginManager } = options;
 
@@ -1504,4 +1571,11 @@ module.exports = function (options) {
     });
 
     return router;
+}
+
+module.exports = createPluginStoreRouter;
+module.exports._test = {
+    buildPluginInstallEnv,
+    runNpmInstall,
+    scrubPluginStoreLog,
 };
