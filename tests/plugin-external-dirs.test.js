@@ -95,10 +95,41 @@ test('legacy external discovery reads plugin-manifest.json without executing plu
     }
 });
 
-test('PluginManager registers built-in legacy plugins before external legacy plugins', () => {
+test('PluginManager discovers resolver legacy roots in core-first order', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'Plugin.js'), 'utf8');
 
-    assert.match(source, /_discoverLegacyPluginManifestsFromDir\(LEGACY_PLUGIN_DIR, 'legacy'\)/);
-    assert.match(source, /for \(const externalDir of this\._getExternalLegacyPluginDirs\(\)\)/);
+    assert.match(source, /for \(const rootInfo of rootSnapshot\.legacyLoadRoots\)/);
+    assert.match(source, /_discoverLegacyPluginManifestsFromDir\(\s+rootInfo\.rootPath,\s+rootInfo\.source,\s+rootInfo\s+\)/s);
     assert.match(source, /if \(this\.plugins\.has\(manifest\.name\)\) continue;\s+await this\._registerLocalPlugin\(manifest/s);
+
+    const firstExternalRoot = makeTempDir();
+    const secondExternalRoot = makeTempDir();
+    const previousDirs = process.env.VCP_PLUGIN_DIRS;
+    const previousAllowedRoots = process.env.VCP_PLUGIN_ALLOWED_ROOTS;
+
+    try {
+        process.env.VCP_PLUGIN_ALLOWED_ROOTS = [firstExternalRoot, secondExternalRoot].join(path.delimiter);
+        process.env.VCP_PLUGIN_DIRS = [secondExternalRoot, firstExternalRoot].join(path.delimiter);
+
+        const snapshot = pluginManager.pluginRootResolver.getPluginRootSnapshotSync();
+        assert.equal(snapshot.legacyLoadRoots[0].source, 'core');
+        assert.equal(snapshot.legacyLoadRoots[0].rootId, 'core:legacy');
+        assert.deepEqual(
+            snapshot.legacyLoadRoots.slice(1).map(rootInfo => rootInfo.rootPath),
+            [secondExternalRoot, firstExternalRoot]
+        );
+        assert.deepEqual(
+            snapshot.legacyLoadRoots.slice(1).map(rootInfo => rootInfo.source),
+            ['external', 'external']
+        );
+    } finally {
+        if (previousDirs === undefined) delete process.env.VCP_PLUGIN_DIRS;
+        else process.env.VCP_PLUGIN_DIRS = previousDirs;
+
+        if (previousAllowedRoots === undefined) delete process.env.VCP_PLUGIN_ALLOWED_ROOTS;
+        else process.env.VCP_PLUGIN_ALLOWED_ROOTS = previousAllowedRoots;
+
+        fs.rmSync(firstExternalRoot, { recursive: true, force: true });
+        fs.rmSync(secondExternalRoot, { recursive: true, force: true });
+    }
 });
