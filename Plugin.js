@@ -715,6 +715,26 @@ class PluginManager extends EventEmitter {
         return '[external]';
     }
 
+    _isExternalDirectOrHybridSameProcess(manifest) {
+        if (!manifest || manifest.pluginSource !== 'external') {
+            return false;
+        }
+        const protocol = manifest?.communication?.protocol;
+        return protocol === 'direct' && typeof manifest.entryPoint?.script === 'string' && manifest.entryPoint.script.trim();
+    }
+
+    _getExternalDirectRuntimeBlockReason(manifest) {
+        if (manifest?.requiresAdmin === true) {
+            return 'external_direct_requires_admin_denied';
+        }
+
+        if (manifest?.pluginType === 'hybridservice') {
+            return 'external_hybrid_runtime_denied';
+        }
+
+        return 'external_direct_runtime_denied';
+    }
+
     _evaluateExternalPluginRuntimeRegistration(manifest) {
         if (!manifest || manifest.pluginSource !== 'external') {
             return {
@@ -730,6 +750,21 @@ class PluginManager extends EventEmitter {
             isExternal: true,
             builtInPluginNames: Array.from(this.plugins.keys())
         });
+        const isSameProcess = this._isExternalDirectOrHybridSameProcess(manifest);
+        if (isSameProcess) {
+            return {
+                allowed: false,
+                decision: 'blocked',
+                code: this._getExternalDirectRuntimeBlockReason(manifest),
+                pluginName: classification.pluginName,
+                pluginSource: 'external',
+                pluginRootId: this._sanitizeExternalRuntimeRootId(manifest.pluginRootId),
+                pluginRootDisplayPath: this._sanitizeExternalRuntimeDisplayPath(manifest.pluginRootDisplayPath),
+                risk: classification.risk,
+                entryPointKind: classification.entryPointKind
+            };
+        }
+
         const policyDecision = evaluateExternalPluginAllowPolicy(
             classification,
             this._getExternalPluginRuntimeAllowPolicy(),
