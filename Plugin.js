@@ -14,10 +14,13 @@ const { hasFoldMarkers, buildDynamicFoldObject } = require('./modules/foldProtoc
 const { normalizeExecutionContext } = require('./modules/toolExecutionContext');
 const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
 const { createPluginRootResolver } = require('./modules/pluginRootResolver');
+const { classifyExternalPluginManifest } = require('./modules/externalPluginSafetyGate');
+const { evaluateExternalPluginAllowPolicy } = require('./modules/externalPluginAllowPolicy');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
 const EXTERNAL_LEGACY_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';
+const EXTERNAL_PLUGIN_ALLOWLIST_ENV = 'VCP_EXTERNAL_PLUGIN_ALLOWLIST';
 const MODERN_PLUGIN_DIR = path.join(__dirname, 'plugins');
 const MODERN_PLUGIN_REGISTRY_FILE = path.join(MODERN_PLUGIN_DIR, 'registry.json');
 const MODERN_MANIFEST_FILE_NAME = 'plugin.json';
@@ -658,6 +661,91 @@ class PluginManager extends EventEmitter {
         return path.basename(filePath);
     }
 
+    _getExternalPluginRuntimeAllowPolicy() {
+        return process.env[EXTERNAL_PLUGIN_ALLOWLIST_ENV] || '';
+    }
+
+    _getExternalRegistrationReasonCode(policyDecision, classification) {
+        const reasons = [
+            ...(classification?.reasons || []),
+            ...(policyDecision?.reasons || [])
+        ].join('\n');
+
+        if (classification?.duplicateOfBuiltIn) return 'external_runtime_duplicate_core_name';
+        if (/missing a concrete plugin name|missing a plugin name/i.test(reasons)) return 'external_runtime_missing_name';
+        if (/missing a base path/i.test(reasons)) return 'external_runtime_missing_base_path';
+        if (/invalid entries/i.test(reasons)) return 'external_runtime_invalid_policy';
+        if (/source directory did not match/i.test(reasons)) return 'external_runtime_source_mismatch';
+        if (/requires explicit name and source directory allow policy/i.test(reasons)) return 'external_runtime_allowlist_required';
+        if (/entrypoint is missing or unsupported/i.test(reasons)) return 'external_runtime_unsupported_entrypoint';
+        return 'external_runtime_registration_blocked';
+    }
+
+    _sanitizeExternalRuntimeRootId(rootId) {
+        if (typeof rootId === 'string' && rootId.startsWith('external:')) {
+            return rootId.split(':').slice(0, 2).join(':');
+        }
+        return 'external:unknown';
+    }
+
+    _sanitizeExternalRuntimeDisplayPath(displayPath) {
+        if (typeof displayPath === 'string' && displayPath.startsWith('[external]')) {
+            return displayPath;
+        }
+        return '[external]';
+    }
+
+    _evaluateExternalPluginRuntimeRegistration(manifest) {
+        if (!manifest || manifest.pluginSource !== 'external') {
+            return {
+                allowed: true,
+                decision: 'observe',
+                pluginName: manifest?.name || 'unknown',
+                pluginSource: manifest?.pluginSource || 'core'
+            };
+        }
+
+        const classification = classifyExternalPluginManifest(manifest, {
+            projectRoot: __dirname,
+            isExternal: true,
+            builtInPluginNames: Array.from(this.plugins.keys())
+        });
+        const policyDecision = evaluateExternalPluginAllowPolicy(
+            classification,
+            this._getExternalPluginRuntimeAllowPolicy(),
+            { projectRoot: __dirname }
+        );
+        const duplicateExisting = Boolean(manifest.name && this.plugins.has(manifest.name));
+        const allowed = policyDecision.decision === 'would_allow'
+            && classification.duplicateOfBuiltIn !== true
+            && duplicateExisting !== true;
+
+        return {
+            allowed,
+            decision: allowed ? 'allowed' : 'blocked',
+            code: allowed
+                ? 'external_runtime_registration_allowed'
+                : this._getExternalRegistrationReasonCode(policyDecision, {
+                    ...classification,
+                    duplicateOfBuiltIn: classification.duplicateOfBuiltIn || duplicateExisting
+                }),
+            pluginName: classification.pluginName,
+            pluginSource: 'external',
+            pluginRootId: this._sanitizeExternalRuntimeRootId(manifest.pluginRootId),
+            pluginRootDisplayPath: this._sanitizeExternalRuntimeDisplayPath(manifest.pluginRootDisplayPath),
+            risk: classification.risk,
+            entryPointKind: classification.entryPointKind
+        };
+    }
+
+    _warnExternalPluginRegistrationBlocked(decision) {
+        const pluginName = decision?.pluginName || 'unknown';
+        const rootId = decision?.pluginRootId || 'external:unknown';
+        const rootLabel = decision?.pluginRootDisplayPath || '[external]';
+        const code = decision?.code || 'external_runtime_registration_blocked';
+        console.warn(`[PluginManager] Skipped external plugin runtime registration: ${pluginName} (${rootId}, ${rootLabel}) ${code}`);
+    }
+
     async _discoverLegacyPluginManifestsFromDir(pluginRoot, sourceLabel = 'legacy', rootInfo = null) {
         try {
             const pluginFolders = await fs.readdir(pluginRoot, { withFileTypes: true });
@@ -723,6 +811,12 @@ class PluginManager extends EventEmitter {
     }
 
     async _registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize) {
+        const registrationDecision = this._evaluateExternalPluginRuntimeRegistration(manifest);
+        if (!registrationDecision.allowed) {
+            this._warnExternalPluginRegistrationBlocked(registrationDecision);
+            return false;
+        }
+
         this.plugins.set(manifest.name, manifest);
         console.log(`[PluginManager] Loaded manifest: ${manifest.displayName} (${manifest.name}, Type: ${manifest.pluginType})`);
 
@@ -746,6 +840,8 @@ class PluginManager extends EventEmitter {
                 console.error(`[PluginManager] Error loading module for ${manifest.name}:`, error);
             }
         }
+
+        return true;
     }
 
     async loadPlugins() {
