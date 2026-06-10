@@ -10,9 +10,12 @@ const {
     classifyPath,
     isEnvExample,
     isRealEnvOrConfig,
+    parseArgs,
     summarizeRecords,
     walkPathOnly
 } = require('../scripts/p3-external-ecosystem-inventory');
+
+const INVENTORY_SCRIPT = path.join(__dirname, '..', 'scripts', 'p3-external-ecosystem-inventory.js');
 
 function makeTempDir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-p3c-inventory-'));
@@ -22,6 +25,19 @@ function writeFixture(root, relativePath, content = '') {
     const targetPath = path.join(root, relativePath);
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.writeFileSync(targetPath, content, 'utf8');
+}
+
+function runCliExpectFailure(args, expectedMessage) {
+    try {
+        execFileSync(process.execPath, [INVENTORY_SCRIPT, ...args], {
+            encoding: 'utf8',
+            stdio: 'pipe'
+        });
+        assert.fail(`expected CLI failure for args: ${args.join(' ')}`);
+    } catch (error) {
+        assert.equal(error.status, 2);
+        assert.match(String(error.stderr), expectedMessage);
+    }
 }
 
 test('classifyPath keeps P3 core adapter files in core', () => {
@@ -250,6 +266,8 @@ test('summarizeRecords counts decisions and surfaces', () => {
     ];
     assert.deepEqual(summarizeRecords(records), {
         total: 3,
+        truncated: false,
+        limit: 100000,
         byDecision: {
             keep_core: 1,
             blocked: 2
@@ -262,6 +280,39 @@ test('summarizeRecords counts decisions and surfaces', () => {
     });
 });
 
+test('buildInventory exposes truncation metadata when maxEntries is reached', () => {
+    const root = makeTempDir();
+    try {
+        writeFixture(root, 'a.txt', 'alpha');
+        writeFixture(root, 'b.txt', 'bravo');
+        writeFixture(root, 'c.txt', 'charlie');
+
+        const records = walkPathOnly(root, { maxEntries: 2 });
+        assert.equal(records.length, 2);
+        assert.equal(records.truncated, true);
+        assert.equal(records.limit, 2);
+
+        const inventory = buildInventory(root, {
+            generatedAt: 'test-time',
+            maxEntries: 2
+        });
+        assert.equal(inventory.truncated, true);
+        assert.equal(inventory.limit, 2);
+        assert.equal(inventory.summary.truncated, true);
+        assert.equal(inventory.summary.limit, 2);
+        assert.equal(inventory.records.length, 2);
+
+        const fullInventory = buildInventory(root, {
+            generatedAt: 'test-time',
+            maxEntries: 10
+        });
+        assert.equal(fullInventory.truncated, false);
+        assert.equal(fullInventory.summary.truncated, false);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
 test('CLI --summary emits JSON summary without fixture file contents', () => {
     const root = makeTempDir();
     const secretContent = 'CLI_SHOULD_NOT_PRINT_THIS';
@@ -270,14 +321,65 @@ test('CLI --summary emits JSON summary without fixture file contents', () => {
         writeFixture(root, 'Plugin/PhotoStudioProjectRecord/plugin-manifest.json', '{"name":"fixture"}');
         const output = execFileSync(
             process.execPath,
-            [path.join(__dirname, '..', 'scripts', 'p3-external-ecosystem-inventory.js'), '--root', root, '--summary'],
+            [INVENTORY_SCRIPT, '--root', root, '--summary'],
             { encoding: 'utf8' }
         );
         const parsed = JSON.parse(output);
         assert.equal(parsed.mode, 'path-only');
+        assert.equal(parsed.truncated, false);
+        assert.equal(parsed.limit, 100000);
+        assert.equal(parsed.summary.truncated, false);
+        assert.equal(parsed.summary.limit, 100000);
         assert.equal(parsed.summary.byDecision.blocked >= 1, true);
         assert.equal(parsed.summary.byDecision.externalizable >= 1, true);
         assert.equal(output.includes(secretContent), false);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('CLI fails closed on missing values and unknown arguments', () => {
+    assert.throws(
+        () => parseArgs(['--root']),
+        /--root requires a value/
+    );
+    assert.throws(
+        () => parseArgs(['--root', '--summary']),
+        /--root requires a value/
+    );
+    assert.throws(
+        () => parseArgs(['--unknown']),
+        /unknown argument: --unknown/
+    );
+    assert.throws(
+        () => parseArgs(['--max-entries', '0']),
+        /--max-entries requires a positive integer/
+    );
+
+    runCliExpectFailure(['--root'], /--root requires a value/);
+    runCliExpectFailure(['--root', '--summary'], /--root requires a value/);
+    runCliExpectFailure(['--unknown'], /unknown argument: --unknown/);
+    runCliExpectFailure(['--max-entries', '0'], /--max-entries requires a positive integer/);
+});
+
+test('CLI --summary reports maxEntries truncation metadata', () => {
+    const root = makeTempDir();
+    try {
+        writeFixture(root, 'a.txt', 'alpha');
+        writeFixture(root, 'b.txt', 'bravo');
+        writeFixture(root, 'c.txt', 'charlie');
+
+        const output = execFileSync(
+            process.execPath,
+            [INVENTORY_SCRIPT, '--root', root, '--summary', '--max-entries', '2'],
+            { encoding: 'utf8' }
+        );
+        const parsed = JSON.parse(output);
+        assert.equal(parsed.truncated, true);
+        assert.equal(parsed.limit, 2);
+        assert.equal(parsed.summary.truncated, true);
+        assert.equal(parsed.summary.limit, 2);
+        assert.equal(parsed.summary.total, 2);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }

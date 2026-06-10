@@ -660,14 +660,22 @@ function shouldSkipDirectory(dirName, relativePath, options = {}) {
         || normalized.endsWith('/node_modules');
 }
 
+function normalizeMaxEntries(value) {
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 100000;
+}
+
 function walkPathOnly(rootDir, options = {}) {
     const root = path.resolve(rootDir || process.cwd());
-    const maxEntries = Number.isFinite(options.maxEntries) ? options.maxEntries : 100000;
+    const maxEntries = normalizeMaxEntries(options.maxEntries);
     const includeDirectories = options.includeDirectories !== false;
     const records = [];
+    let truncated = false;
 
     function visit(relativeDir) {
-        if (records.length >= maxEntries) return;
+        if (records.length >= maxEntries) {
+            truncated = true;
+            return;
+        }
         const absoluteDir = path.join(root, relativeDir);
         let entries = [];
         try {
@@ -687,7 +695,10 @@ function walkPathOnly(rootDir, options = {}) {
 
         entries.sort((a, b) => a.name.localeCompare(b.name));
         for (const entry of entries) {
-            if (records.length >= maxEntries) break;
+            if (records.length >= maxEntries) {
+                truncated = true;
+                break;
+            }
             const relativePath = toPosixPath(path.join(relativeDir, entry.name));
             const entryType = entry.isDirectory()
                 ? 'directory'
@@ -712,12 +723,24 @@ function walkPathOnly(rootDir, options = {}) {
     }
 
     visit('');
+    Object.defineProperty(records, 'truncated', {
+        value: truncated,
+        enumerable: false
+    });
+    Object.defineProperty(records, 'limit', {
+        value: maxEntries,
+        enumerable: false
+    });
     return records;
 }
 
-function summarizeRecords(records) {
+function summarizeRecords(records, options = {}) {
+    const truncated = Boolean(options.truncated);
+    const limit = normalizeMaxEntries(options.limit);
     const summary = {
         total: records.length,
+        truncated,
+        limit,
         byDecision: {},
         bySurface: {}
     };
@@ -732,32 +755,68 @@ function summarizeRecords(records) {
 
 function buildInventory(rootDir, options = {}) {
     const records = walkPathOnly(rootDir, options);
+    const truncated = Boolean(records.truncated);
+    const limit = normalizeMaxEntries(records.limit);
     return {
         schemaVersion: 'p3c.path-only.inventory.v1',
         mode: 'path-only',
         rootLabel: options.rootLabel || '[repo]',
         generatedAt: options.generatedAt || new Date().toISOString(),
-        summary: summarizeRecords(records),
+        truncated,
+        limit,
+        summary: summarizeRecords(records, { truncated, limit }),
         records
     };
+}
+
+class CliUsageError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'CliUsageError';
+    }
+}
+
+function readOptionValue(argv, index, flagName) {
+    const value = argv[index + 1];
+    if (!value || value.startsWith('--')) {
+        throw new CliUsageError(`${flagName} requires a value`);
+    }
+    return value;
+}
+
+function parsePositiveInteger(value, flagName) {
+    if (!/^\d+$/.test(String(value))) {
+        throw new CliUsageError(`${flagName} requires a positive integer`);
+    }
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+        throw new CliUsageError(`${flagName} requires a positive integer`);
+    }
+    return parsed;
 }
 
 function parseArgs(argv) {
     const args = {
         root: process.cwd(),
         summaryOnly: false,
-        includeDirectories: true
+        includeDirectories: true,
+        maxEntries: 100000
     };
 
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
         if (arg === '--root') {
-            args.root = argv[index + 1];
+            args.root = readOptionValue(argv, index, '--root');
             index += 1;
         } else if (arg === '--summary') {
             args.summaryOnly = true;
         } else if (arg === '--files-only') {
             args.includeDirectories = false;
+        } else if (arg === '--max-entries') {
+            args.maxEntries = parsePositiveInteger(readOptionValue(argv, index, '--max-entries'), '--max-entries');
+            index += 1;
+        } else {
+            throw new CliUsageError(`unknown argument: ${arg}`);
         }
     }
 
@@ -765,9 +824,21 @@ function parseArgs(argv) {
 }
 
 function main() {
-    const args = parseArgs(process.argv.slice(2));
+    let args;
+    try {
+        args = parseArgs(process.argv.slice(2));
+    } catch (error) {
+        if (error instanceof CliUsageError) {
+            process.stderr.write(`p3-external-ecosystem-inventory: ${error.message}\n`);
+            process.exitCode = 2;
+            return;
+        }
+        throw error;
+    }
+
     const inventory = buildInventory(args.root, {
-        includeDirectories: args.includeDirectories
+        includeDirectories: args.includeDirectories,
+        maxEntries: args.maxEntries
     });
 
     const payload = args.summaryOnly
@@ -775,6 +846,8 @@ function main() {
             schemaVersion: inventory.schemaVersion,
             mode: inventory.mode,
             rootLabel: inventory.rootLabel,
+            truncated: inventory.truncated,
+            limit: inventory.limit,
             summary: inventory.summary
         }
         : inventory;
@@ -791,6 +864,7 @@ module.exports = {
     classifyPath,
     isEnvExample,
     isRealEnvOrConfig,
+    parseArgs,
     summarizeRecords,
     toPosixPath,
     walkPathOnly
