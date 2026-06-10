@@ -1,0 +1,495 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+
+const DEFAULT_SKIP_DIRS = new Set([
+    '.git',
+    'node_modules',
+    '.local-retain'
+]);
+
+const CORE_EXACT_PATHS = new Set([
+    'Plugin.js',
+    'modules/pluginRootResolver.js',
+    'routes/admin/plugins.js',
+    'routes/admin/pluginStore.js',
+    'modules/agentManager.js',
+    'agent_map.json'
+]);
+
+const RUNTIME_ROOTS = new Set([
+    'state',
+    'cache',
+    'DebugLog',
+    'image',
+    'LocalState'
+]);
+
+const SECRET_LIKE_RE = /(secret|token|password|passwd|apikey|api_key|credential|private[_-]?key|cookie|authorization)/i;
+const KEY_MATERIAL_RE = /\.(pem|p12|pfx|key)$/i;
+const VECTOR_OR_DB_RE = /(^|\/)(VectorStore[^/]*|.*\.(sqlite|sqlite3|db|db3|duckdb|parquet|faiss|index))$/i;
+
+function toPosixPath(value) {
+    return String(value || '').replace(/\\/g, '/').replace(/^\.\/+/, '');
+}
+
+function splitPath(relativePath) {
+    return toPosixPath(relativePath).split('/').filter(Boolean);
+}
+
+function isRealEnvOrConfig(relativePath) {
+    const normalized = toPosixPath(relativePath);
+    return /(^|\/)\.env$/i.test(normalized)
+        || /(^|\/)config\.env$/i.test(normalized)
+        || /^Plugin\/[^/]+\/config\.env$/i.test(normalized);
+}
+
+function isEnvExample(relativePath) {
+    const normalized = toPosixPath(relativePath);
+    return /(^|\/)(\.env\.example|config\.env\.example)$/i.test(normalized);
+}
+
+function firstPluginName(parts) {
+    return parts[0] === 'Plugin' && parts.length > 1 ? parts[1] : null;
+}
+
+function classifyPluginPath(parts, relativePath) {
+    const pluginName = firstPluginName(parts);
+    if (!pluginName) {
+        return {
+            decision: 'keep_core',
+            surface: 'plugin-root',
+            target: null,
+            reasons: ['core_plugin_root']
+        };
+    }
+
+    if (relativePath === 'Plugin/AGENTS.md') {
+        return {
+            decision: 'keep_core',
+            surface: 'plugin-governance',
+            target: null,
+            reasons: ['core_plugin_governance_file']
+        };
+    }
+
+    if (isEnvExample(relativePath)) {
+        return {
+            decision: 'externalizable',
+            surface: 'env-example',
+            target: 'env-examples/',
+            reasons: ['placeholder_env_example_requires_secret_pattern_review']
+        };
+    }
+
+    if (/^PhotoStudio/.test(pluginName)) {
+        return {
+            decision: 'externalizable',
+            surface: 'plugin-legacy',
+            target: 'adapters/photography/',
+            reasons: ['photo_studio_plugin_family']
+        };
+    }
+
+    const adapterMatch = pluginName.match(/^vcp-(dingtalk|feishu|wecom|onebot)-adapter$/i);
+    if (adapterMatch) {
+        return {
+            decision: 'externalizable',
+            surface: 'adapter',
+            target: `adapters/${adapterMatch[1].toLowerCase()}/`,
+            reasons: ['channel_adapter_pack']
+        };
+    }
+
+    if (/^(CodexMemoryBridge)$/i.test(pluginName)) {
+        return {
+            decision: 'externalizable',
+            surface: 'adapter',
+            target: 'adapters/codex/',
+            reasons: ['codex_bridge_adapter']
+        };
+    }
+
+    if (/^(VCPTavern|VCPForum|VCPForumLister|VCPForumOnline|VCPForumOnlinePatrol)$/i.test(pluginName)) {
+        return {
+            decision: 'externalizable',
+            surface: 'adapter',
+            target: 'adapters/vcpchat/',
+            reasons: ['vcpchat_integration_adapter']
+        };
+    }
+
+    if (/^(AIGent|Agent|MagiAgent)/i.test(pluginName)) {
+        return {
+            decision: 'externalizable',
+            surface: 'plugin-legacy',
+            target: 'plugins-legacy/',
+            reasons: ['jenn_agent_related_legacy_plugin_candidate']
+        };
+    }
+
+    if (/Bridge$/i.test(pluginName)) {
+        return {
+            decision: 'deferred',
+            surface: 'adapter',
+            target: 'adapters/',
+            reasons: ['bridge_plugin_needs_adapter_shim_review']
+        };
+    }
+
+    return {
+        decision: 'externalizable',
+        surface: 'plugin-legacy',
+        target: 'plugins-legacy/',
+        reasons: ['selected_legacy_plugin_candidate_needs_review']
+    };
+}
+
+function classifyPath(relativePath, entryType = 'file') {
+    const normalized = toPosixPath(relativePath);
+    const parts = splitPath(normalized);
+    const first = parts[0] || '';
+
+    if (!normalized) {
+        return {
+            decision: 'keep_core',
+            surface: 'repository-root',
+            target: null,
+            reasons: ['repository_root']
+        };
+    }
+
+    if (isRealEnvOrConfig(normalized)) {
+        return {
+            decision: 'blocked',
+            surface: 'secret-config',
+            target: null,
+            reasons: ['real_env_or_config_file_never_move_automatically']
+        };
+    }
+
+    if (SECRET_LIKE_RE.test(normalized) && !isEnvExample(normalized)) {
+        return {
+            decision: 'blocked',
+            surface: 'secret-like-path',
+            target: null,
+            reasons: ['secret_like_path_needs_manual_review']
+        };
+    }
+
+    if (KEY_MATERIAL_RE.test(normalized)) {
+        return {
+            decision: 'blocked',
+            surface: 'key-material',
+            target: null,
+            reasons: ['key_material_path_needs_manual_review']
+        };
+    }
+
+    if (RUNTIME_ROOTS.has(first)) {
+        return {
+            decision: 'blocked',
+            surface: 'runtime-state',
+            target: null,
+            reasons: ['runtime_cache_state_log_image_or_operator_data']
+        };
+    }
+
+    if (VECTOR_OR_DB_RE.test(normalized)) {
+        return {
+            decision: 'blocked',
+            surface: 'private-store',
+            target: null,
+            reasons: ['sqlite_vector_or_private_store_never_move_automatically']
+        };
+    }
+
+    if (CORE_EXACT_PATHS.has(normalized)) {
+        return {
+            decision: 'keep_core',
+            surface: 'adapter-core',
+            target: null,
+            reasons: ['p3_contract_keep_core']
+        };
+    }
+
+    if (first === 'AdminPanel-Vue') {
+        return {
+            decision: 'keep_core',
+            surface: 'admin-panel',
+            target: null,
+            reasons: ['adminpanel_extension_loader_deferred']
+        };
+    }
+
+    if (first === 'Agent') {
+        if (normalized === 'Agent/.gitignore') {
+            return {
+                decision: 'keep_core',
+                surface: 'agent-governance',
+                target: null,
+                reasons: ['agent_directory_ignore_policy']
+            };
+        }
+        return {
+            decision: 'externalizable',
+            surface: 'agent',
+            target: 'agents/',
+            reasons: ['jenn_agent_pack_candidate']
+        };
+    }
+
+    if (first === 'dailynote') {
+        return {
+            decision: 'deferred',
+            surface: 'memory',
+            target: 'memory/',
+            reasons: ['private_operator_adjacent_memory_content']
+        };
+    }
+
+    if (first === 'Plugin') {
+        return classifyPluginPath(parts, normalized);
+    }
+
+    if (first === 'plugins') {
+        if (normalized.startsWith('plugins/custom/shared/photo_studio_data/')) {
+            return {
+                decision: 'deferred',
+                surface: 'shared-state',
+                target: 'shared/photo-studio-data/',
+                reasons: ['photo_studio_shared_data_requires_state_policy']
+            };
+        }
+        return {
+            decision: 'deferred',
+            surface: 'plugin-modern',
+            target: 'plugins-modern/',
+            reasons: ['external_modern_plugin_registry_deferred']
+        };
+    }
+
+    if (first === 'modules') {
+        if (normalized.startsWith('modules/photoStudio/')) {
+            return {
+                decision: 'deferred',
+                surface: 'adapter',
+                target: 'adapters/photography/',
+                reasons: ['photo_studio_core_business_logic_split_required']
+            };
+        }
+        if (normalized.startsWith('modules/channelHub/')) {
+            return {
+                decision: 'keep_core',
+                surface: 'adapter-core',
+                target: null,
+                reasons: ['channelhub_contracts_remain_core_until_split']
+            };
+        }
+        if (/^modules\/(codex|aiImage)/i.test(normalized)) {
+            return {
+                decision: 'deferred',
+                surface: 'adapter',
+                target: 'adapters/codex/',
+                reasons: ['codex_or_ai_image_adapter_split_requires_shim']
+            };
+        }
+    }
+
+    if (first === 'routes') {
+        if (normalized.startsWith('routes/admin/plugins.js') || normalized.startsWith('routes/admin/pluginStore.js')) {
+            return {
+                decision: 'keep_core',
+                surface: 'admin-adapter-core',
+                target: null,
+                reasons: ['p3_contract_keep_core']
+            };
+        }
+        if (/^routes\/(codex|admin\/(codex|aiImage|agent))/i.test(normalized)) {
+            return {
+                decision: 'deferred',
+                surface: 'admin-or-adapter-route',
+                target: 'adapters/',
+                reasons: ['admin_or_adapter_route_needs_separate_design']
+            };
+        }
+    }
+
+    if (first === 'docs') {
+        if (normalized.startsWith('docs/governance/')) {
+            return {
+                decision: 'docs_only',
+                surface: 'governance',
+                target: 'governance/',
+                reasons: ['governance_receipt_or_design_doc']
+            };
+        }
+        return {
+            decision: 'docs_only',
+            surface: 'documentation',
+            target: 'governance/',
+            reasons: ['documentation_requires_context_review']
+        };
+    }
+
+    if (isEnvExample(normalized)) {
+        return {
+            decision: 'externalizable',
+            surface: 'env-example',
+            target: 'env-examples/',
+            reasons: ['placeholder_env_example_requires_secret_pattern_review']
+        };
+    }
+
+    return {
+        decision: 'unknown',
+        surface: entryType === 'directory' ? 'directory' : 'file',
+        target: null,
+        reasons: ['no_p3c_rule_matched']
+    };
+}
+
+function shouldSkipDirectory(dirName, relativePath, options = {}) {
+    const skipDirs = options.skipDirs || DEFAULT_SKIP_DIRS;
+    if (skipDirs.has(dirName)) return true;
+    const normalized = toPosixPath(relativePath);
+    return normalized === 'AdminPanel-Vue/node_modules'
+        || normalized.endsWith('/node_modules');
+}
+
+function walkPathOnly(rootDir, options = {}) {
+    const root = path.resolve(rootDir || process.cwd());
+    const maxEntries = Number.isFinite(options.maxEntries) ? options.maxEntries : 100000;
+    const includeDirectories = options.includeDirectories !== false;
+    const records = [];
+
+    function visit(relativeDir) {
+        if (records.length >= maxEntries) return;
+        const absoluteDir = path.join(root, relativeDir);
+        let entries = [];
+        try {
+            entries = fs.readdirSync(absoluteDir, { withFileTypes: true });
+        } catch (error) {
+            records.push({
+                path: toPosixPath(relativeDir || '.'),
+                entryType: 'unreadable-directory',
+                decision: 'blocked',
+                surface: 'unreadable',
+                target: null,
+                reasons: ['directory_unreadable_path_only'],
+                errorCode: error.code || 'UNKNOWN'
+            });
+            return;
+        }
+
+        entries.sort((a, b) => a.name.localeCompare(b.name));
+        for (const entry of entries) {
+            if (records.length >= maxEntries) break;
+            const relativePath = toPosixPath(path.join(relativeDir, entry.name));
+            const entryType = entry.isDirectory()
+                ? 'directory'
+                : (entry.isSymbolicLink() ? 'symlink' : 'file');
+
+            if (entryType === 'directory' && shouldSkipDirectory(entry.name, relativePath, options)) {
+                continue;
+            }
+
+            if (includeDirectories || entryType !== 'directory') {
+                records.push({
+                    path: relativePath,
+                    entryType,
+                    ...classifyPath(relativePath, entryType)
+                });
+            }
+
+            if (entryType === 'directory') {
+                visit(relativePath);
+            }
+        }
+    }
+
+    visit('');
+    return records;
+}
+
+function summarizeRecords(records) {
+    const summary = {
+        total: records.length,
+        byDecision: {},
+        bySurface: {}
+    };
+
+    for (const record of records) {
+        summary.byDecision[record.decision] = (summary.byDecision[record.decision] || 0) + 1;
+        summary.bySurface[record.surface] = (summary.bySurface[record.surface] || 0) + 1;
+    }
+
+    return summary;
+}
+
+function buildInventory(rootDir, options = {}) {
+    const records = walkPathOnly(rootDir, options);
+    return {
+        schemaVersion: 'p3c.path-only.inventory.v1',
+        mode: 'path-only',
+        rootLabel: options.rootLabel || '[repo]',
+        generatedAt: options.generatedAt || new Date().toISOString(),
+        summary: summarizeRecords(records),
+        records
+    };
+}
+
+function parseArgs(argv) {
+    const args = {
+        root: process.cwd(),
+        summaryOnly: false,
+        includeDirectories: true
+    };
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === '--root') {
+            args.root = argv[index + 1];
+            index += 1;
+        } else if (arg === '--summary') {
+            args.summaryOnly = true;
+        } else if (arg === '--files-only') {
+            args.includeDirectories = false;
+        }
+    }
+
+    return args;
+}
+
+function main() {
+    const args = parseArgs(process.argv.slice(2));
+    const inventory = buildInventory(args.root, {
+        includeDirectories: args.includeDirectories
+    });
+
+    const payload = args.summaryOnly
+        ? {
+            schemaVersion: inventory.schemaVersion,
+            mode: inventory.mode,
+            rootLabel: inventory.rootLabel,
+            summary: inventory.summary
+        }
+        : inventory;
+
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+}
+
+if (require.main === module) {
+    main();
+}
+
+module.exports = {
+    buildInventory,
+    classifyPath,
+    isEnvExample,
+    isRealEnvOrConfig,
+    summarizeRecords,
+    toPosixPath,
+    walkPathOnly
+};
