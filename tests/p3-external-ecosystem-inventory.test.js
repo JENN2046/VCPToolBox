@@ -59,6 +59,38 @@ test('classifyPath defers surfaces that need separate migration design', () => {
     assert.equal(classifyPath('dailynote/Codex/example.txt').decision, 'deferred');
 });
 
+test('classifyPath applies P3-E taxonomy refinement rules', () => {
+    assert.deepEqual(
+        classifyPath('rust-vexus-lite/target/release/build/output.o'),
+        {
+            decision: 'blocked',
+            surface: 'generated-build-artifact',
+            target: null,
+            reasons: ['native_build_output_never_move_automatically']
+        }
+    );
+    assert.deepEqual(
+        classifyPath('rust-vexus-lite/src/lib.rs'),
+        {
+            decision: 'deferred',
+            surface: 'native-module-source',
+            target: 'adapters/',
+            reasons: ['native_module_source_requires_package_build_contract']
+        }
+    );
+    assert.equal(classifyPath('VectorStore/index_global_tags.usearch').decision, 'blocked');
+    assert.equal(classifyPath('tests/plugin-external-dirs.test.js').surface, 'validation');
+    assert.equal(classifyPath('modules/toolApprovalManager.js').surface, 'runtime-support');
+    assert.equal(classifyPath('routes/taskScheduler.js').surface, 'runtime-support');
+    assert.equal(classifyPath('vcp-installer-source/src/main.rs').target, 'adapters/installer/');
+    assert.equal(classifyPath('scripts/rebuild_vector_indexes.js').surface, 'tooling');
+    assert.equal(classifyPath('VCPChrome/manifest.json').target, 'adapters/vcpchrome/');
+    assert.equal(classifyPath('SillyTavernSub/plugin.js').target, 'adapters/vcpchat/');
+    assert.equal(classifyPath('OpenWebUISub/renderer.py').target, 'adapters/openwebui/');
+    assert.equal(classifyPath('TVStxt/FileToolBox.txt').surface, 'operator-tool-prompts');
+    assert.equal(classifyPath('.agent_board/HANDOFF.md').surface, 'protected-agent-board');
+});
+
 test('classifyPath blocks secret, config, runtime, and private store paths', () => {
     assert.equal(isRealEnvOrConfig('config.env'), true);
     assert.equal(isRealEnvOrConfig('Plugin/Foo/config.env'), true);
@@ -71,6 +103,8 @@ test('classifyPath blocks secret, config, runtime, and private store paths', () 
     assert.equal(classifyPath('image/output.png').decision, 'blocked');
     assert.equal(classifyPath('VectorStore/main.sqlite').decision, 'blocked');
     assert.equal(classifyPath('certs/private.pem').decision, 'blocked');
+    assert.equal(classifyPath('scripts/private-token-helper.js').decision, 'blocked');
+    assert.equal(classifyPath('rust-vexus-lite/target/private-key.pem').decision, 'blocked');
 });
 
 test('walkPathOnly and buildInventory never include file contents', () => {

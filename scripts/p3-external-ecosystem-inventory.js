@@ -205,6 +205,24 @@ function classifyPath(relativePath, entryType = 'file') {
         };
     }
 
+    if (first === 'VectorStore') {
+        return {
+            decision: 'blocked',
+            surface: 'private-store',
+            target: null,
+            reasons: ['vector_store_never_move_automatically']
+        };
+    }
+
+    if (first === '.agent_board') {
+        return {
+            decision: 'blocked',
+            surface: 'protected-agent-board',
+            target: null,
+            reasons: ['protected_agent_board_never_move_automatically']
+        };
+    }
+
     if (CORE_EXACT_PATHS.has(normalized)) {
         return {
             decision: 'keep_core',
@@ -220,6 +238,23 @@ function classifyPath(relativePath, entryType = 'file') {
             surface: 'admin-panel',
             target: null,
             reasons: ['adminpanel_extension_loader_deferred']
+        };
+    }
+
+    if (first === 'rust-vexus-lite') {
+        if (normalized === 'rust-vexus-lite/target' || normalized.startsWith('rust-vexus-lite/target/')) {
+            return {
+                decision: 'blocked',
+                surface: 'generated-build-artifact',
+                target: null,
+                reasons: ['native_build_output_never_move_automatically']
+            };
+        }
+        return {
+            decision: 'deferred',
+            surface: 'native-module-source',
+            target: 'adapters/',
+            reasons: ['native_module_source_requires_package_build_contract']
         };
     }
 
@@ -295,6 +330,12 @@ function classifyPath(relativePath, entryType = 'file') {
                 reasons: ['codex_or_ai_image_adapter_split_requires_shim']
             };
         }
+        return {
+            decision: 'keep_core',
+            surface: 'runtime-support',
+            target: null,
+            reasons: ['runtime_module_stays_core_by_default']
+        };
     }
 
     if (first === 'routes') {
@@ -314,6 +355,12 @@ function classifyPath(relativePath, entryType = 'file') {
                 reasons: ['admin_or_adapter_route_needs_separate_design']
             };
         }
+        return {
+            decision: 'keep_core',
+            surface: 'runtime-support',
+            target: null,
+            reasons: ['server_route_stays_core_by_default']
+        };
     }
 
     if (first === 'docs') {
@@ -339,6 +386,69 @@ function classifyPath(relativePath, entryType = 'file') {
             surface: 'env-example',
             target: 'env-examples/',
             reasons: ['placeholder_env_example_requires_secret_pattern_review']
+        };
+    }
+
+    if (first === 'tests') {
+        return {
+            decision: 'keep_core',
+            surface: 'validation',
+            target: null,
+            reasons: ['repository_validation_stays_core']
+        };
+    }
+
+    if (first === 'vcp-installer-source') {
+        return {
+            decision: 'deferred',
+            surface: 'installer-source',
+            target: 'adapters/installer/',
+            reasons: ['installer_source_requires_packaging_review']
+        };
+    }
+
+    if (first === 'scripts') {
+        return {
+            decision: 'keep_core',
+            surface: 'tooling',
+            target: null,
+            reasons: ['repository_tooling_stays_core_by_default']
+        };
+    }
+
+    if (first === 'VCPChrome') {
+        return {
+            decision: 'deferred',
+            surface: 'client-subproject',
+            target: 'adapters/vcpchrome/',
+            reasons: ['browser_extension_packaging_requires_client_review']
+        };
+    }
+
+    if (first === 'SillyTavernSub') {
+        return {
+            decision: 'deferred',
+            surface: 'client-subproject',
+            target: 'adapters/vcpchat/',
+            reasons: ['sillytavern_integration_requires_adapter_packaging_review']
+        };
+    }
+
+    if (first === 'OpenWebUISub') {
+        return {
+            decision: 'deferred',
+            surface: 'client-subproject',
+            target: 'adapters/openwebui/',
+            reasons: ['openwebui_integration_requires_adapter_packaging_review']
+        };
+    }
+
+    if (first === 'TVStxt') {
+        return {
+            decision: 'deferred',
+            surface: 'operator-tool-prompts',
+            target: 'capability-maps/',
+            reasons: ['operator_tool_prompts_need_evidence_policy']
         };
     }
 
