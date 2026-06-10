@@ -145,7 +145,7 @@
         </div>
         <ul>
           <li v-for="err in sourceErrors" :key="err.sourceId">
-            <strong>{{ sourceName(err.sourceId) }}</strong>：{{ err.error }}
+            <strong>{{ sourceName(err.sourceId) }}</strong>：{{ sanitizeUserText(err.error) }}
           </li>
         </ul>
       </div>
@@ -418,7 +418,7 @@
                 <td>
                   <span class="mini-pill mini-pill--changed">{{ s.type }}</span>
                 </td>
-                <td class="url-cell"><code>{{ s.url }}</code></td>
+                <td class="url-cell"><code>{{ safeSourceUrlDisplay(s.url) }}</code></td>
                 <td class="col-actions">
                   <button
                     type="button"
@@ -1308,6 +1308,10 @@ function sanitizeUserText(input: unknown) {
   text = text.replace(/[A-Za-z]:[\\/][^\s"'<>|)]+/g, '[redacted path]')
   text = text.replace(/(^|[\s("'=])\/(?:[^/\s"'<>|)]+\/)+[^/\s"'<>|)]*/g, '$1[redacted path]')
   return text
+}
+
+function safeSourceUrlDisplay(raw: unknown) {
+  return sanitizeUserText(raw).trim()
 }
 
 function looksLikeAbsolutePath(value: string) {
