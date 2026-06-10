@@ -16,6 +16,7 @@ const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
 const { createPluginRootResolver } = require('./modules/pluginRootResolver');
 const { classifyExternalPluginManifest } = require('./modules/externalPluginSafetyGate');
 const { evaluateExternalPluginAllowPolicy } = require('./modules/externalPluginAllowPolicy');
+const { buildExternalPluginRuntimeEnv } = require('./modules/pluginRuntimeEnvSandbox');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
@@ -192,6 +193,30 @@ class PluginManager extends EventEmitter {
         return true;
     }
 
+    _isExternalPluginManifest(plugin) {
+        return plugin?.pluginSource === 'external';
+    }
+
+    _spawnPluginProcess(command, args, options) {
+        return spawn(command, args, options);
+    }
+
+    _buildPluginProcessEnv(plugin, pluginConfig = {}, additionalEnv = {}) {
+        if (this._isExternalPluginManifest(plugin)) {
+            return buildExternalPluginRuntimeEnv(process.env, pluginConfig, additionalEnv);
+        }
+
+        return {
+            ...process.env,
+            ...Object.fromEntries(
+                Object.entries(pluginConfig || {})
+                    .filter(([, value]) => value !== undefined)
+                    .map(([key, value]) => [key, String(value)])
+            ),
+            ...additionalEnv
+        };
+    }
+
     async _executeStaticPluginCommand(plugin) {
         if (!plugin || plugin.pluginType !== 'static' || !plugin.entryPoint || !plugin.entryPoint.command) {
             console.error(`[PluginManager] Invalid static plugin or command for execution: ${plugin ? plugin.name : 'Unknown'}`);
@@ -200,19 +225,14 @@ class PluginManager extends EventEmitter {
 
         return new Promise((resolve, reject) => {
             const pluginConfig = this._getPluginConfig(plugin);
-            const envForProcess = { ...process.env };
-            for (const key in pluginConfig) {
-                if (pluginConfig.hasOwnProperty(key) && pluginConfig[key] !== undefined) {
-                    envForProcess[key] = String(pluginConfig[key]);
-                }
-            }
+            const additionalEnv = {};
             if (this.projectBasePath) { // Add projectBasePath for static plugins too if needed
-                envForProcess.PROJECT_BASE_PATH = this.projectBasePath;
+                additionalEnv.PROJECT_BASE_PATH = this.projectBasePath;
             }
-
+            const envForProcess = this._buildPluginProcessEnv(plugin, pluginConfig, additionalEnv);
 
             const [command, ...args] = plugin.entryPoint.command.split(' ');
-            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess, windowsHide: true });
+            const pluginProcess = this._spawnPluginProcess(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess, windowsHide: true });
             let output = '';
             let errorOutput = '';
             let processExited = false;
@@ -1426,13 +1446,6 @@ class PluginManager extends EventEmitter {
         }
 
         const pluginConfig = this._getPluginConfig(plugin);
-        const envForProcess = { ...process.env };
-
-        for (const key in pluginConfig) {
-            if (pluginConfig.hasOwnProperty(key) && pluginConfig[key] !== undefined) {
-                envForProcess[key] = String(pluginConfig[key]);
-            }
-        }
 
         const normalizedExecutionContext = normalizeExecutionContext(executionContext, { nullWhenMissing: true });
         const doubaoProjectBasePathOverride = normalizedExecutionContext &&
@@ -1453,6 +1466,9 @@ class PluginManager extends EventEmitter {
 
         // 如果插件需要管理员权限，则获取解密后的验证码并注入环境变量
         if (plugin.requiresAdmin) {
+            if (this._isExternalPluginManifest(plugin)) {
+                throw new Error(JSON.stringify({ plugin_error: `External plugin "${pluginName}" cannot receive admin authentication through runtime environment. Execution denied.` }));
+            }
             const decryptedCode = await this._getDecryptedAuthCode();
             if (decryptedCode) {
                 additionalEnv.DECRYPTED_AUTH_CODE = decryptedCode;
@@ -1525,10 +1541,14 @@ class PluginManager extends EventEmitter {
 
         // Force Python stdio encoding to UTF-8
         additionalEnv.PYTHONIOENCODING = 'utf-8';
-        const finalEnv = { ...envForProcess, ...additionalEnv };
+        const finalEnv = this._buildPluginProcessEnv(plugin, pluginConfig, additionalEnv);
 
         if (this.debugMode && plugin.pluginType === 'asynchronous') {
-            console.log(`[PluginManager executePlugin] Final ENV for async plugin ${pluginName}:`, JSON.stringify(finalEnv, null, 2).substring(0, 500) + "...");
+            if (this._isExternalPluginManifest(plugin)) {
+                console.log(`[PluginManager executePlugin] External async plugin ${pluginName} runtime env sandbox keys:`, Object.keys(finalEnv).sort().join(','));
+            } else {
+                console.log(`[PluginManager executePlugin] Final ENV for async plugin ${pluginName}:`, JSON.stringify(finalEnv, null, 2).substring(0, 500) + "...");
+            }
         }
 
         return new Promise((resolve, reject) => {
@@ -1536,7 +1556,7 @@ class PluginManager extends EventEmitter {
             const [command, ...args] = plugin.entryPoint.command.split(' ');
             if (this.debugMode) console.log(`[PluginManager executePlugin Internal] Attempting to spawn command: "${command}" with args: [${args.join(', ')}] in cwd: ${plugin.basePath}`);
 
-            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: finalEnv, windowsHide: true });
+            const pluginProcess = this._spawnPluginProcess(command, args, { cwd: plugin.basePath, shell: true, env: finalEnv, windowsHide: true });
 
 
             let outputBuffer = ''; // Buffer to accumulate data chunks
