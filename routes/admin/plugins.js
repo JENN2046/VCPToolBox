@@ -370,6 +370,55 @@ function resolveAdminPluginRecord(catalog, pluginName, criteria = {}) {
     return selectPreferredPluginRecord(matches);
 }
 
+function createAdminPluginTargetCandidate(record) {
+    return {
+        pluginRootId: record.pluginRootId,
+        pluginSource: record.pluginSource,
+        enabled: record.enabled,
+        loaded: record.loaded,
+        displayPath: record.displayPath || null
+    };
+}
+
+function getDistinctAdminPluginTargets(records) {
+    const seen = new Set();
+    const distinct = [];
+
+    for (const record of records) {
+        const targetKey = record.pathKey || `${record.pluginSource}:${record.pluginRootId}:${record.name}:${record.enabled ? 'enabled' : 'disabled'}`;
+        if (seen.has(targetKey)) continue;
+        seen.add(targetKey);
+        distinct.push(record);
+    }
+
+    return distinct;
+}
+
+function resolveAdminPluginRecordForManagedWrite(catalog, pluginName, criteria = {}) {
+    let matches = catalog.records.filter(record => record.name === pluginName);
+
+    if (criteria.pluginRootId) {
+        matches = matches.filter(record => record.pluginRootId === criteria.pluginRootId);
+    }
+    if (criteria.pluginSource) {
+        matches = matches.filter(record => record.pluginSource === criteria.pluginSource);
+    }
+
+    const distinctTargets = getDistinctAdminPluginTargets(matches);
+    if (distinctTargets.length === 0) {
+        return { status: 'not_found', target: null, candidates: [] };
+    }
+    if (distinctTargets.length > 1) {
+        return {
+            status: 'ambiguous',
+            target: null,
+            candidates: distinctTargets.map(createAdminPluginTargetCandidate)
+        };
+    }
+
+    return { status: 'resolved', target: distinctTargets[0], candidates: [] };
+}
+
 function isWritableLegacyRecord(record) {
     return Boolean(record && record.pluginPath && record.pluginRoot && record.manifestPath && !record.isDistributed);
 }
@@ -677,57 +726,56 @@ module.exports = function(options) {
     router.post('/plugins/:pluginName/commands/:commandIdentifier/description', async (req, res) => {
         const { pluginName, commandIdentifier } = req.params;
         const { description } = req.body;
-        const PLUGIN_DIR = path.join(__dirname, '..', '..', 'Plugin');
 
         if (typeof description !== 'string') {
             return res.status(400).json({ error: 'Invalid request body. Expected { description: string }.' });
         }
 
         try {
-            const pluginFolders = await fs.readdir(PLUGIN_DIR, { withFileTypes: true });
-            let targetManifestPath = null;
-            let manifest = null;
-            let pluginFound = false;
+            const catalog = await buildAdminPluginCatalog(pluginManager);
+            const resolution = resolveAdminPluginRecordForManagedWrite(catalog, pluginName, getLookupCriteria(req));
 
-            for (const folder of pluginFolders) {
-                if (folder.isDirectory()) {
-                    const potentialPluginPath = path.join(PLUGIN_DIR, folder.name);
-                    const potentialManifestPath = path.join(potentialPluginPath, manifestFileName);
-                    const potentialBlockedPath = potentialManifestPath + blockedManifestExtension;
-                    let currentPath = null;
-                    let manifestContent = null;
-
-                    try {
-                        manifestContent = await fs.readFile(potentialManifestPath, 'utf-8');
-                        currentPath = potentialManifestPath;
-                    } catch (err) {
-                        if (err.code === 'ENOENT') {
-                            try {
-                                manifestContent = await fs.readFile(potentialBlockedPath, 'utf-8');
-                                currentPath = potentialBlockedPath;
-                            } catch (blockedErr) { continue; }
-                        } else { continue; }
-                    }
-
-                    try {
-                        const parsedManifest = JSON.parse(manifestContent);
-                        if (parsedManifest.name === pluginName) {
-                            targetManifestPath = currentPath;
-                            manifest = parsedManifest;
-                            pluginFound = true;
-                            break;
-                        }
-                    } catch (parseErr) {
-                        console.warn(`[AdminPanelRoutes] Error parsing manifest for ${folder.name}: ${parseErr.message}`);
-                        continue;
-                    }
-                }
-            }
-
-            if (!pluginFound || !manifest) {
+            if (resolution.status === 'not_found') {
                 return res.status(404).json({ error: `Plugin '${pluginName}' or its manifest file not found.` });
             }
+            if (resolution.status === 'ambiguous') {
+                return res.status(409).json({
+                    error: `Multiple managed plugin targets match '${pluginName}'. Please specify pluginRootId or pluginSource.`,
+                    code: 'ambiguous_admin_plugin_target',
+                    requiresPluginRoot: true,
+                    candidates: resolution.candidates
+                });
+            }
 
+            const target = resolution.target;
+
+            if (!isWritableLegacyRecord(target)) {
+                return res.status(403).json({
+                    error: 'Plugin is not a managed legacy command description target.',
+                    code: 'managed_legacy_manifest_required'
+                });
+            }
+
+            try {
+                await assertManagedManifestRecord(target);
+            } catch (managedError) {
+                return res.status(403).json({
+                    error: 'Managed plugin command description target rejected.',
+                    code: managedError.code || 'managed_manifest_rejected'
+                });
+            }
+
+            if (target.pluginSource === 'external' || isExternalPluginManifest(target.manifest)) {
+                return res.status(403).json({
+                    error: 'External plugin command description editing is deferred.',
+                    code: 'external_command_description_deferred',
+                    status: 'deferred',
+                    pluginRootId: target.pluginRootId,
+                    pluginSource: target.pluginSource
+                });
+            }
+
+            const manifest = JSON.parse(await fs.readFile(target.manifestPath, 'utf-8'));
             let commandUpdated = false;
             if (manifest.capabilities && manifest.capabilities.invocationCommands && Array.isArray(manifest.capabilities.invocationCommands)) {
                 const commandIndex = manifest.capabilities.invocationCommands.findIndex(cmd => cmd.commandIdentifier === commandIdentifier || cmd.command === commandIdentifier);
@@ -741,9 +789,14 @@ module.exports = function(options) {
                 return res.status(404).json({ error: `Command '${commandIdentifier}' not found in plugin '${pluginName}'.` });
             }
 
-            await fs.writeFile(targetManifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+            await fs.writeFile(target.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
             await pluginManager.loadPlugins();
-            res.json({ message: `指令 '${commandIdentifier}' 在插件 '${pluginName}' 中的描述已更新并重新加载。` });
+            res.json({
+                message: `指令 '${commandIdentifier}' 在插件 '${pluginName}' 中的描述已更新并重新加载。`,
+                pluginRootId: target.pluginRootId,
+                pluginSource: target.pluginSource,
+                diagnostics: target.diagnostics || []
+            });
         } catch (error) {
             console.error(`[AdminPanelRoutes] Error updating command description for plugin ${pluginName}, command ${commandIdentifier}: ${safeErrorDetails(error)}`);
             res.status(500).json({ error: `更新指令描述时出错`, details: safeErrorDetails(error) });
