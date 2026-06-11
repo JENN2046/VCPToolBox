@@ -133,3 +133,59 @@ test('PluginManager discovers resolver legacy roots in core-first order', () => 
         fs.rmSync(secondExternalRoot, { recursive: true, force: true });
     }
 });
+
+test('PluginManager discovers duplicate legacy plugin manifests in resolver order', async () => {
+    const root = makeTempDir();
+    const coreRoot = path.join(root, 'core');
+    const externalRoot = path.join(root, 'external');
+    const manifest = {
+        name: 'SharedLegacyPlugin',
+        displayName: 'Shared Legacy Plugin',
+        pluginType: 'synchronous',
+        entryPoint: { command: 'node plugin.js' },
+        communication: { protocol: 'stdio', timeout: 1000 }
+    };
+    writeLegacyManifest(coreRoot, 'SharedLegacyPlugin', manifest);
+    writeLegacyManifest(externalRoot, 'SharedLegacyPlugin', manifest);
+
+    const originalResolver = pluginManager.pluginRootResolver;
+    const originalSnapshot = pluginManager.lastPluginRootSnapshot;
+
+    try {
+        pluginManager.pluginRootResolver = {
+            getPluginRootSnapshot: async () => ({
+                diagnostics: [],
+                legacyLoadRoots: [
+                    {
+                        rootId: 'core:legacy',
+                        source: 'core',
+                        rootPath: coreRoot,
+                        displayPath: 'Plugin',
+                        allowConfigEnv: true
+                    },
+                    {
+                        rootId: 'external:1',
+                        source: 'external',
+                        rootPath: externalRoot,
+                        displayPath: '[external]/plugins',
+                        allowConfigEnv: false
+                    }
+                ]
+            })
+        };
+
+        const manifests = await pluginManager._discoverLegacyPluginManifests();
+
+        assert.equal(manifests.length, 2);
+        assert.equal(manifests[0].name, 'SharedLegacyPlugin');
+        assert.equal(manifests[0].pluginSource, 'core');
+        assert.equal(manifests[0].pluginRootId, 'core:legacy');
+        assert.equal(manifests[1].name, 'SharedLegacyPlugin');
+        assert.equal(manifests[1].pluginSource, 'external');
+        assert.equal(manifests[1].pluginRootId, 'external:1');
+    } finally {
+        pluginManager.pluginRootResolver = originalResolver;
+        pluginManager.lastPluginRootSnapshot = originalSnapshot;
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
