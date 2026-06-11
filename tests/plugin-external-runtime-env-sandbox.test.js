@@ -4,6 +4,11 @@ const { EventEmitter } = require('node:events');
 
 const pluginManager = require('../Plugin.js');
 const {
+    DEFAULT_MAX_FUTURE_MS,
+    derivePluginCallbackSecret,
+    verifyPluginCallbackAuth
+} = require('../modules/pluginCallbackAuth');
+const {
     buildExternalPluginRuntimeEnv,
     isPluginRuntimeEnvKeyDenied
 } = require('../modules/pluginRuntimeEnvSandbox');
@@ -110,6 +115,7 @@ async function withPluginManagerState(run) {
         OPENAI_API_KEY: process.env.OPENAI_API_KEY,
         GITHUB_TOKEN: process.env.GITHUB_TOKEN,
         Key: process.env.Key,
+        PLUGIN_CALLBACK_SECRET: process.env.PLUGIN_CALLBACK_SECRET,
         PORT: process.env.PORT
     };
 
@@ -119,6 +125,7 @@ async function withPluginManagerState(run) {
     process.env.OPENAI_API_KEY = 'openai-secret';
     process.env.GITHUB_TOKEN = 'github-secret';
     process.env.Key = 'global-key';
+    process.env.PLUGIN_CALLBACK_SECRET = 'callback-secret';
     process.env.PORT = '5890';
 
     try {
@@ -227,6 +234,78 @@ test('external stdio plugin spawn receives sanitized env', async () => {
         assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'GITHUB_TOKEN'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'Key'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'SECRET_TOKEN'), false);
+    });
+});
+
+test('external async plugin keeps configured callback base with scoped callback secret', async () => {
+    await withPluginManagerState(async () => {
+        const pluginName = 'ExternalAsyncRuntimeEnvFixture';
+        const plugin = makeExternalPlugin(pluginName, {
+            pluginType: 'asynchronous'
+        });
+        let spawnCall = null;
+
+        pluginManager.plugins.set(pluginName, plugin);
+        pluginManager._spawnPluginProcess = (command, args, options) => {
+            spawnCall = { command, args, options };
+            return makeFakeChild('{"status":"success","result":"ok"}\n');
+        };
+
+        const result = await pluginManager.executePlugin(pluginName, '{"requestId":"async-req-1"}');
+
+        assert.equal(result.status, 'success');
+        assert.ok(spawnCall);
+        assert.equal(spawnCall.options.env.CALLBACK_BASE_URL, 'https://callback.example.test');
+        assert.equal(spawnCall.options.env.CALLBACK_AUTH_SECRET, 'callback-secret');
+        assert.ok(spawnCall.options.env.PLUGIN_CALLBACK_URL);
+        const callbackUrl = new URL(spawnCall.options.env.PLUGIN_CALLBACK_URL);
+        assert.equal(callbackUrl.origin + callbackUrl.pathname, 'https://callback.example.test/plugin-callback/ExternalAsyncRuntimeEnvFixture/async-req-1');
+        const remainingMs = Number(callbackUrl.searchParams.get('vcp_cb_expires')) - Date.now();
+        assert.ok(remainingMs > 60 * 60 * 1000);
+        assert.ok(remainingMs <= DEFAULT_MAX_FUTURE_MS);
+        assert.ok(callbackUrl.searchParams.get('vcp_cb_expires'));
+        assert.ok(callbackUrl.searchParams.get('vcp_cb_nonce'));
+        assert.ok(callbackUrl.searchParams.get('vcp_cb_sig'));
+        assert.equal(spawnCall.options.env.PLUGIN_NAME_FOR_CALLBACK, pluginName);
+        assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'Key'), false);
+    });
+});
+
+test('external async plugin receives derived callback secret when callback secret is unset', async () => {
+    await withPluginManagerState(async () => {
+        const pluginName = 'ExternalAsyncDerivedSecretFixture';
+        const plugin = makeExternalPlugin(pluginName, {
+            pluginType: 'asynchronous'
+        });
+        let spawnCall = null;
+
+        delete process.env.PLUGIN_CALLBACK_SECRET;
+        pluginManager.plugins.set(pluginName, plugin);
+        pluginManager._spawnPluginProcess = (command, args, options) => {
+            spawnCall = { command, args, options };
+            return makeFakeChild('{"status":"success","result":"ok"}\n');
+        };
+
+        const result = await pluginManager.executePlugin(pluginName, '{"requestId":"derived-req-1"}');
+
+        assert.equal(result.status, 'success');
+        assert.ok(spawnCall);
+        const expectedSecret = derivePluginCallbackSecret('global-key', pluginName);
+        assert.equal(spawnCall.options.env.CALLBACK_AUTH_SECRET, expectedSecret);
+        assert.notEqual(spawnCall.options.env.CALLBACK_AUTH_SECRET, 'global-key');
+        assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'Key'), false);
+
+        const callbackUrl = new URL(spawnCall.options.env.PLUGIN_CALLBACK_URL);
+        assert.equal(callbackUrl.origin + callbackUrl.pathname, `https://callback.example.test/plugin-callback/${pluginName}/derived-req-1`);
+        assert.equal(verifyPluginCallbackAuth({
+            secret: expectedSecret,
+            pluginName,
+            taskId: 'derived-req-1',
+            expiresAt: callbackUrl.searchParams.get('vcp_cb_expires'),
+            nonce: callbackUrl.searchParams.get('vcp_cb_nonce'),
+            signature: callbackUrl.searchParams.get('vcp_cb_sig'),
+            now: Date.now()
+        }).ok, true);
     });
 });
 

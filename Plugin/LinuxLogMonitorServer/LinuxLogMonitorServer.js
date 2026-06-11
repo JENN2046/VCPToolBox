@@ -218,6 +218,7 @@ class LinuxLogMonitorServer {
                 process.env.CALLBACK_BASE_URL ||
                 'http://localhost:5000',
             pluginName: 'LinuxLogMonitor',
+            callbackAuthSecret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key,
             debug: config.debug || false
         });
 

@@ -2,6 +2,11 @@ const fs = require('fs/promises');
 const path = require('path');
 const dotenv = require('dotenv');
 const axios = require('axios');
+const {
+    buildLocalPluginCallbackBaseUrl,
+    createSignedPluginCallbackUrl,
+    redactPluginCallbackUrlForLog
+} = require('../../modules/pluginCallbackAuth');
 // 在 CJS 环境中，__dirname 是全局可用的。
 
 // --- 全局变量和配置 ---
@@ -236,7 +241,10 @@ async function conductMagiDiscussion(meetingId) {
     await sendCompletionCallback(meeting);
 }
 async function sendCompletionCallback(meeting) {
-    if (!serverConfig.CALLBACK_BASE_URL) {
+    const callbackBaseUrl =
+        serverConfig.CALLBACK_BASE_URL ||
+        buildLocalPluginCallbackBaseUrl(serverConfig.PORT || process.env.PORT || process.env.SERVER_PORT);
+    if (!callbackBaseUrl) {
         console.error(`[MagiAgent] CALLBACK_BASE_URL not configured. Cannot send completion notification for meeting ${meeting.id}.`);
         if (sendVcpLog) {
              sendVcpLog({
@@ -247,7 +255,13 @@ async function sendCompletionCallback(meeting) {
         }
         return;
     }
-    const callbackUrl = `${serverConfig.CALLBACK_BASE_URL}/MagiAgent/${meeting.id}`;
+    const callbackUrl = createSignedPluginCallbackUrl({
+        baseUrl: callbackBaseUrl,
+        pluginName: 'MagiAgent',
+        taskId: meeting.id,
+        secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || serverConfig.PLUGIN_CALLBACK_SECRET || serverConfig.Key
+    });
+    const logCallbackUrl = redactPluginCallbackUrlForLog(callbackUrl);
     try {
         const resultPayload = await formatMeetingResult(meeting);
         const callbackPayload = {
@@ -257,7 +271,7 @@ async function sendCompletionCallback(meeting) {
             message: resultPayload.result,
             ...(meeting.status === 'failed' && { reason: meeting.error })
         };
-        console.log(`[MagiAgent] Sending completion callback for meeting ${meeting.id} to ${callbackUrl}`);
+        console.log(`[MagiAgent] Sending completion callback for meeting ${meeting.id} to ${logCallbackUrl}`);
         await axios.post(callbackUrl, callbackPayload, {
             headers: { 'Content-Type': 'application/json' }
         });

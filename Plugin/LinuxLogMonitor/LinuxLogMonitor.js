@@ -15,6 +15,7 @@
  */
 
 const path = require('path');
+const { buildLocalPluginCallbackBaseUrl } = require('../../modules/pluginCallbackAuth');
 
 // 加载配置
 require('dotenv').config({ path: path.join(__dirname, 'config.env') });
@@ -25,7 +26,10 @@ const MonitorManager = require('./core/MonitorManager');
 
 // 环境变量
 const DEBUG_MODE = (process.env.DebugMode || 'false').toLowerCase() === 'true';
-const CALLBACK_BASE_URL = process.env.CALLBACK_BASE_URL || `http://localhost:${process.env.SERVER_PORT || 5000}`;
+const CALLBACK_BASE_URL =
+    process.env.CALLBACK_BASE_URL ||
+    buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
+    `http://localhost:${process.env.SERVER_PORT || 5000}`;
 const PLUGIN_NAME = 'LinuxLogMonitor';
 
 let directManager = null;
@@ -83,7 +87,11 @@ function resolveDebugMode(config = {}) {
 
 function createMonitorManager() {
     return new MonitorManager({
-        callbackBaseUrl: pluginConfig.CALLBACK_BASE_URL || CALLBACK_BASE_URL,
+        callbackBaseUrl:
+            pluginConfig.CALLBACK_BASE_URL ||
+            CALLBACK_BASE_URL ||
+            buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT),
+        callbackAuthSecret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key,
         pluginName: PLUGIN_NAME,
         debug: resolveDebugMode(pluginConfig)
     });
