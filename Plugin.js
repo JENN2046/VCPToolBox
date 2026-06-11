@@ -20,6 +20,9 @@ const {
     buildExternalPluginRuntimeEnv,
     isPluginRuntimeEnvKeyDenied
 } = require('./modules/pluginRuntimeEnvSandbox');
+const {
+    buildLocalPluginCallbackBaseUrl
+} = require('./modules/pluginCallbackAuth');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
@@ -1670,7 +1673,10 @@ class PluginManager extends EventEmitter {
 
         // Pass CALLBACK_BASE_URL and PLUGIN_NAME to asynchronous plugins
         if (plugin.pluginType === 'asynchronous') {
-            const callbackBaseUrl = pluginConfig.CALLBACK_BASE_URL || process.env.CALLBACK_BASE_URL; // Prefer plugin-specific, then global
+            const callbackBaseUrl =
+                buildLocalPluginCallbackBaseUrl(process.env.PORT || process.env.SERVER_PORT) ||
+                pluginConfig.CALLBACK_BASE_URL ||
+                process.env.CALLBACK_BASE_URL;
             if (callbackBaseUrl) {
                 additionalEnv.CALLBACK_BASE_URL = callbackBaseUrl;
             } else {

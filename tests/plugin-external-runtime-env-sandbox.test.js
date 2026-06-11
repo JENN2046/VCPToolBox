@@ -230,6 +230,31 @@ test('external stdio plugin spawn receives sanitized env', async () => {
     });
 });
 
+test('external async plugin callback base prefers local loopback over configured public callback', async () => {
+    await withPluginManagerState(async () => {
+        const pluginName = 'ExternalAsyncRuntimeEnvFixture';
+        const plugin = makeExternalPlugin(pluginName, {
+            pluginType: 'asynchronous'
+        });
+        let spawnCall = null;
+
+        pluginManager.plugins.set(pluginName, plugin);
+        pluginManager._spawnPluginProcess = (command, args, options) => {
+            spawnCall = { command, args, options };
+            return makeFakeChild('{"status":"success","result":"ok"}\n');
+        };
+
+        const result = await pluginManager.executePlugin(pluginName, '{}');
+
+        assert.equal(result.status, 'success');
+        assert.ok(spawnCall);
+        assert.equal(spawnCall.options.env.CALLBACK_BASE_URL, 'http://127.0.0.1:5890/plugin-callback');
+        assert.equal(spawnCall.options.env.PLUGIN_NAME_FOR_CALLBACK, pluginName);
+        assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'Key'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'PLUGIN_CALLBACK_SECRET'), false);
+    });
+});
+
 test('external static plugin spawn receives sanitized env', async () => {
     await withPluginManagerState(async () => {
         const plugin = makeExternalPlugin('ExternalStaticRuntimeEnvFixture', {

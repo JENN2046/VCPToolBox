@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+    buildLocalPluginCallbackBaseUrl,
     hasPluginCallbackProxyHeaders,
     signPluginCallback,
     verifyPluginCallbackAuth,
@@ -36,6 +37,15 @@ test('plugin callback auth accepts a valid signed request', () => {
     assert.equal(result.ok, true);
     assert.equal(result.expiresAt, now + 60_000);
     assert.equal(result.nonce, nonce);
+});
+
+test('plugin callback helper builds loopback callback base only for numeric ports', () => {
+    assert.equal(
+        buildLocalPluginCallbackBaseUrl('5890'),
+        'http://127.0.0.1:5890/plugin-callback'
+    );
+    assert.equal(buildLocalPluginCallbackBaseUrl(''), '');
+    assert.equal(buildLocalPluginCallbackBaseUrl('5890/path'), '');
 });
 
 test('plugin callback auth rejects missing, expired, and tampered signatures', () => {

@@ -67,6 +67,14 @@ function hasPluginCallbackProxyHeaders(req) {
     return PLUGIN_CALLBACK_PROXY_HEADER_NAMES.some((name) => Boolean(getHeader(headers, name)));
 }
 
+function buildLocalPluginCallbackBaseUrl(port) {
+    const normalizedPort = String(port || '').trim();
+    if (!/^\d+$/.test(normalizedPort)) {
+        return '';
+    }
+    return `http://127.0.0.1:${normalizedPort}/plugin-callback`;
+}
+
 function buildPluginCallbackSigningPayload(pluginName, taskId, expiresAt, nonce) {
     return [
         String(pluginName || ''),
@@ -183,6 +191,7 @@ function verifyPluginCallbackRequest(req, options = {}) {
 
 module.exports = {
     DEFAULT_MAX_FUTURE_MS,
+    buildLocalPluginCallbackBaseUrl,
     buildPluginCallbackSigningPayload,
     getCallbackAuthFields,
     hasPluginCallbackProxyHeaders,

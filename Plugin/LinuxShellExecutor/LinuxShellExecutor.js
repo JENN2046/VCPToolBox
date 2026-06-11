@@ -1971,8 +1971,12 @@ class LinuxShellExecutor {
         // MEU-4: 初始化监控管理器（逻辑注入方案）
         try {
             const MonitorManager = require('../LinuxLogMonitor/core/MonitorManager');
+            const { buildLocalPluginCallbackBaseUrl } = require('../../modules/pluginCallbackAuth');
             this.monitorManager = new MonitorManager({
-                callbackBaseUrl: process.env.CALLBACK_BASE_URL || `http://localhost:${process.env.SERVER_PORT || 5000}`,
+                callbackBaseUrl:
+                    buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
+                    process.env.CALLBACK_BASE_URL ||
+                    `http://localhost:${process.env.SERVER_PORT || 5000}`,
                 pluginName: 'LinuxShellExecutor',
                 debug: isDebugMode()
             });
