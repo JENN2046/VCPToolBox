@@ -286,6 +286,68 @@ function normalizePluginSource(source, isDistributed = false) {
     return 'core';
 }
 
+function normalizePluginType(pluginType) {
+    return typeof pluginType === 'string' ? pluginType.trim().toLowerCase() : '';
+}
+
+function normalizeCommunicationProtocol(manifest) {
+    return typeof manifest?.communication?.protocol === 'string'
+        ? manifest.communication.protocol.trim().toLowerCase()
+        : '';
+}
+
+function buildRuntimeTrustMetadata(record) {
+    const pluginSource = normalizePluginSource(record?.pluginSource, record?.isDistributed);
+    const manifest = record?.manifest || {};
+    const pluginType = normalizePluginType(manifest.pluginType);
+    const protocol = normalizeCommunicationProtocol(manifest);
+
+    if (pluginSource === 'distributed') {
+        return {
+            boundary: 'distributed_remote_tool',
+            execution: 'remote_server',
+            environmentSandbox: null,
+            processSandbox: null,
+            fileSystemSandbox: null,
+            untrustedSandbox: false
+        };
+    }
+
+    if (pluginSource !== 'external') {
+        return {
+            boundary: 'trusted_core',
+            execution: 'local_trusted_runtime',
+            environmentSandbox: false,
+            processSandbox: false,
+            fileSystemSandbox: false,
+            untrustedSandbox: false
+        };
+    }
+
+    const isSameProcess = protocol === 'direct' || pluginType === 'hybridservice' || pluginType === 'direct';
+    if (isSameProcess) {
+        return {
+            boundary: 'external_same_process_denied',
+            execution: 'denied_by_runtime_gate',
+            environmentSandbox: false,
+            processSandbox: false,
+            fileSystemSandbox: false,
+            untrustedSandbox: false,
+            warningCode: 'external_same_process_not_supported'
+        };
+    }
+
+    return {
+        boundary: 'trusted_external_process',
+        execution: 'local_child_process',
+        environmentSandbox: true,
+        processSandbox: false,
+        fileSystemSandbox: false,
+        untrustedSandbox: false,
+        warningCode: 'external_process_not_untrusted_sandbox'
+    };
+}
+
 function createManifestRecord(record) {
     const pluginSource = normalizePluginSource(record.source);
     const manifest = {
@@ -575,6 +637,7 @@ function createAdminPluginResponseRecord(record) {
         pluginSource: record.pluginSource,
         configEnvContent: null,
         configEnvStatus: { exists: false, readable: false, redacted: true },
+        runtimeTrust: buildRuntimeTrustMetadata(record),
         isDistributed: record.isDistributed || false,
         serverId: record.serverId || null,
         adminDiagnostics: record.diagnostics || []

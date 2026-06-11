@@ -231,6 +231,30 @@ function assertNoAbsolutePathLeak(payload, pathsToProtect) {
     assert.doesNotMatch(serialized, /[A-Za-z]:\\/);
 }
 
+test('plugin list marks external stdio runtime as trusted process not untrusted sandbox', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace, true);
+    writeLegacyManifest(snapshot.externalLegacyRoots[0].rootPath, 'ExternalEcho');
+    const pluginManager = makePluginManager(snapshot);
+
+    const res = await callAdminPluginList(pluginManager);
+
+    assert.equal(res.statusCode, 200);
+    const externalRecord = res.body.find(record => record.name === 'ManagedEcho');
+    assert.ok(externalRecord);
+    assert.equal(externalRecord.pluginSource, 'external');
+    assert.deepEqual(externalRecord.runtimeTrust, {
+        boundary: 'trusted_external_process',
+        execution: 'local_child_process',
+        environmentSandbox: true,
+        processSandbox: false,
+        fileSystemSandbox: false,
+        untrustedSandbox: false,
+        warningCode: 'external_process_not_untrusted_sandbox'
+    });
+    assertNoAbsolutePathLeak(externalRecord, [workspace, snapshot.externalLegacyRoots[0].rootPath]);
+});
+
 test('core-only command description writes selected core manifest', async (t) => {
     const workspace = makeTempWorkspace(t);
     const snapshot = makeSnapshot(workspace);

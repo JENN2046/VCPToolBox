@@ -87,6 +87,26 @@ external child processes is deferred.
 This patch does not sandbox external direct/hybrid plugins. Direct plugins are
 same-process trusted code and remain governed by the runtime registration gate.
 
+## Admin Runtime Trust Metadata
+
+Admin plugin list responses expose `runtimeTrust` metadata so operators and UI
+surfaces can distinguish trusted external child-process execution from a real
+untrusted sandbox.
+
+For external stdio/static plugins the metadata is:
+
+- `boundary: "trusted_external_process"`
+- `execution: "local_child_process"`
+- `environmentSandbox: true`
+- `processSandbox: false`
+- `fileSystemSandbox: false`
+- `untrustedSandbox: false`
+- `warningCode: "external_process_not_untrusted_sandbox"`
+
+This metadata is descriptive only. It does not allow a plugin to run, does not
+change runtime registration, and does not add a bypass for the existing external
+allowlist.
+
 ## Debug Logging
 
 For external asynchronous stdio plugins, debug logging reports sandboxed env key
