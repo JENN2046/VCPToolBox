@@ -292,6 +292,7 @@ requiredChecks.push({
 });
 
 const pluginStoreRoute = readText('routes/admin/pluginStore.js');
+const pluginStoreView = readText('AdminPanel-Vue/src/views/PluginStore.vue');
 const pluginStoreInstallTests = readText('tests/plugin-store-install-env-sandbox.test.js');
 const pluginStoreSsrfTests = readText('tests/plugin-store-ssrf-policy.test.js');
 const pluginStoreSourceTests = readText('tests/plugin-store-source-redaction.test.js');
@@ -304,6 +305,17 @@ requiredChecks.push({
     && pluginStoreInstallTests.includes("['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund']")
     && pluginStoreInstallTests.includes('resolveLifecycleScriptApproval')
     && pluginStoreInstallTests.includes('plugin_store_direct_download_url_disabled'),
+});
+requiredChecks.push({
+  label: 'Plugin Store UI requires explicit lifecycle script confirmation retry',
+  ok: pluginStoreView.includes("const LIFECYCLE_SCRIPT_CONFIRMATION = 'ALLOW_NPM_LIFECYCLE_SCRIPTS'")
+    && pluginStoreView.includes('function isLifecycleConfirmationRequired')
+    && pluginStoreView.includes('function confirmLifecycleScripts')
+    && pluginStoreView.includes('allowLifecycleScripts: true')
+    && pluginStoreView.includes('lifecycleScriptsConfirmation: LIFECYCLE_SCRIPT_CONFIRMATION')
+    && pluginStoreView.includes('createUploadFormData(files, relPaths, true)')
+    && pluginStoreView.includes('保持禁用')
+    && pluginStoreView.includes('仅在确认来源可信时继续'),
 });
 requiredChecks.push({
   label: 'Plugin Store remote downloads enforce byte quota and cleanup',

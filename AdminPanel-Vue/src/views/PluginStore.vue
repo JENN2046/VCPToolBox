@@ -554,6 +554,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   pluginStoreApi,
+  type InstallFromPayload,
   type PluginSource,
   type PluginStoreItem,
 } from '@/api'
@@ -634,6 +635,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 const SUPPORTED_ARCHIVE_EXTS = ['.zip', '.tar', '.tar.gz', '.tgz'] as const
 const supportedArchiveAccept = SUPPORTED_ARCHIVE_EXTS.join(',')
 const supportedArchiveHint = SUPPORTED_ARCHIVE_EXTS.join(' / ')
+const LIFECYCLE_SCRIPT_CONFIRMATION = 'ALLOW_NPM_LIFECYCLE_SCRIPTS'
+const START_INSTALL_UI_OPTIONS = { suppressErrorMessage: true } as const
 
 const collapsedCategoryGroups = ref<Record<string, boolean>>({})
 
@@ -1082,8 +1085,16 @@ async function installFromCard(plugin: PluginStoreItem, force = false) {
       pluginName: payload.pluginName,
       downloadUrl: payload.downloadUrl,
       force: payload.force,
-    }),
+    }, START_INSTALL_UI_OPTIONS),
     payload.key,
+    {
+      lifecycleRetry: () => pluginStoreApi.install(withLifecycleApproval({
+        sourceId: payload.sourceId,
+        pluginName: payload.pluginName,
+        downloadUrl: payload.downloadUrl,
+        force: payload.force,
+      }), START_INSTALL_UI_OPTIONS),
+    },
   )
 }
 
@@ -1139,7 +1150,16 @@ async function installFromGithub() {
   if (!url) return
   const payload: InstallPayload = { kind: 'github', githubUrl: url, key: `github:${url}` }
   lastInstall.value = payload
-  await startInstall(() => pluginStoreApi.install({ githubUrl: url }), payload.key)
+  await startInstall(
+    () => pluginStoreApi.install({ githubUrl: url }, START_INSTALL_UI_OPTIONS),
+    payload.key,
+    {
+      lifecycleRetry: () => pluginStoreApi.install(
+        withLifecycleApproval({ githubUrl: url }),
+        START_INSTALL_UI_OPTIONS,
+      ),
+    },
+  )
 }
 
 async function retryWithForce() {
@@ -1156,13 +1176,33 @@ async function retryWithForce() {
         pluginName: last.pluginName,
         downloadUrl: last.downloadUrl,
         force: true,
-      }),
+      }, START_INSTALL_UI_OPTIONS),
       last.key,
+      {
+        lifecycleRetry: () => pluginStoreApi.install(withLifecycleApproval({
+          sourceId: last.sourceId,
+          pluginName: last.pluginName,
+          downloadUrl: last.downloadUrl,
+          force: true,
+        }), START_INSTALL_UI_OPTIONS),
+      },
     )
   } else {
     await startInstall(
-      () => pluginStoreApi.install({ githubUrl: last.githubUrl, force: true }),
+      () => pluginStoreApi.install(
+        { githubUrl: last.githubUrl, force: true },
+        START_INSTALL_UI_OPTIONS,
+      ),
       last.key,
+      {
+        lifecycleRetry: () => pluginStoreApi.install(
+          withLifecycleApproval({
+            githubUrl: last.githubUrl,
+            force: true,
+          }),
+          START_INSTALL_UI_OPTIONS,
+        ),
+      },
     )
   }
 }
@@ -1195,17 +1235,29 @@ function onDrop(ev: DragEvent) {
 }
 
 async function uploadFiles(files: File[], relPaths: string[]) {
-  const fd = new FormData()
-  for (const f of files) fd.append('files', f)
-  fd.append('relPaths', JSON.stringify(relPaths))
   const key = `upload:${Date.now()}`
   lastInstall.value = { kind: 'upload', key }
-  await startInstall(() => pluginStoreApi.uploadPlugin(fd), key)
+  await startInstall(
+    () => pluginStoreApi.uploadPlugin(
+      createUploadFormData(files, relPaths),
+      START_INSTALL_UI_OPTIONS,
+    ),
+    key,
+    {
+      lifecycleRetry: () => pluginStoreApi.uploadPlugin(
+        createUploadFormData(files, relPaths, true),
+        START_INSTALL_UI_OPTIONS,
+      ),
+    },
+  )
 }
 
 async function startInstall(
   fn: () => Promise<{ taskId: string; message?: string }>,
   key: string,
+  options: {
+    lifecycleRetry?: () => Promise<{ taskId: string; message?: string }>
+  } = {},
 ) {
   if (installingKey.value || isUninstalling.value) {
     showMessage('当前有插件操作进行中，请稍候。', 'warning')
@@ -1219,10 +1271,54 @@ async function startInstall(
     const resp = await fn()
     subscribeLog(resp.taskId)
   } catch (err) {
+    if (isLifecycleConfirmationRequired(err) && options.lifecycleRetry) {
+      const confirmed = await confirmLifecycleScripts(err)
+      if (!confirmed) {
+        installStatus.value = 'error'
+        installingKey.value = null
+        showMessage('已取消执行 npm lifecycle scripts，安装未启动。', 'warning')
+        return
+      }
+
+      try {
+        const resp = await options.lifecycleRetry()
+        subscribeLog(resp.taskId)
+        return
+      } catch (retryErr) {
+        installStatus.value = 'error'
+        installingKey.value = null
+        showMessage(`启动安装失败：${errMsg(retryErr)}`, 'error')
+        return
+      }
+    }
+
     installStatus.value = 'error'
     installingKey.value = null
     showMessage(`启动安装失败：${errMsg(err)}`, 'error')
   }
+}
+
+function withLifecycleApproval(payload: InstallFromPayload): InstallFromPayload {
+  return {
+    ...payload,
+    allowLifecycleScripts: true,
+    lifecycleScriptsConfirmation: LIFECYCLE_SCRIPT_CONFIRMATION,
+  }
+}
+
+function createUploadFormData(
+  files: File[],
+  relPaths: string[],
+  allowLifecycleScripts = false,
+): FormData {
+  const fd = new FormData()
+  for (const f of files) fd.append('files', f)
+  fd.append('relPaths', JSON.stringify(relPaths))
+  if (allowLifecycleScripts) {
+    fd.append('allowLifecycleScripts', 'true')
+    fd.append('lifecycleScriptsConfirmation', LIFECYCLE_SCRIPT_CONFIRMATION)
+  }
+  return fd
 }
 
 function normalizeFinalStatus(raw: unknown): InstallStatus {
@@ -1285,6 +1381,29 @@ function errorDetails(err: unknown): Record<string, unknown> | null {
   return details && typeof details === 'object'
     ? (details as Record<string, unknown>)
     : null
+}
+
+function isLifecycleConfirmationRequired(err: unknown) {
+  return errorDetails(err)?.code === 'plugin_store_lifecycle_scripts_confirmation_required'
+}
+
+async function confirmLifecycleScripts(err: unknown) {
+  const details = errorDetails(err)
+  const requiredConfirmation = typeof details?.requiredConfirmation === 'string'
+    ? sanitizeUserText(details.requiredConfirmation)
+    : LIFECYCLE_SCRIPT_CONFIRMATION
+
+  return askConfirm({
+    title: '允许执行 npm lifecycle scripts',
+    message: [
+      '该插件安装请求要求执行 npm lifecycle scripts。',
+      '这些脚本会以当前服务权限运行，可能访问本机文件、网络或执行任意 npm 脚本。',
+      `仅在确认来源可信时继续。确认令牌：${requiredConfirmation}`,
+    ].join('\n\n'),
+    confirmText: '允许执行脚本',
+    cancelText: '保持禁用',
+    danger: true,
+  })
 }
 
 function uninstallErrorMessage(err: unknown) {
