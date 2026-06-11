@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+    hasPluginCallbackProxyHeaders,
     signPluginCallback,
     verifyPluginCallbackAuth,
     verifyPluginCallbackRequest
@@ -121,6 +122,25 @@ test('plugin callback auth reads query or header fields from requests', () => {
     }, { secret, now }).ok, true);
 });
 
+test('plugin callback auth detects reverse proxy headers for loopback requests', () => {
+    assert.equal(hasPluginCallbackProxyHeaders({ headers: {} }), false);
+    assert.equal(hasPluginCallbackProxyHeaders({
+        headers: {
+            'x-forwarded-for': '203.0.113.10'
+        }
+    }), true);
+    assert.equal(hasPluginCallbackProxyHeaders({
+        headers: {
+            Forwarded: 'for=203.0.113.10;proto=https'
+        }
+    }), true);
+    assert.equal(hasPluginCallbackProxyHeaders({
+        headers: {
+            'x-real-ip': '203.0.113.10'
+        }
+    }), true);
+});
+
 test('server gates plugin callbacks before authenticated body parsers', () => {
     const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
     const callbackAuthIndex = serverSource.indexOf(
@@ -133,11 +153,17 @@ test('server gates plugin callbacks before authenticated body parsers', () => {
         "app.post('/plugin-callback/:pluginName/:taskId'"
     );
     const nonceReplayGuardIndex = serverSource.indexOf('function consumePluginCallbackNonce');
+    const trustedLocalIndex = serverSource.indexOf('function isTrustedLocalPluginCallbackRequest');
 
     assert.notEqual(callbackAuthIndex, -1);
     assert.notEqual(defaultJsonParserIndex, -1);
     assert.notEqual(callbackRouteIndex, -1);
     assert.notEqual(nonceReplayGuardIndex, -1);
+    assert.notEqual(trustedLocalIndex, -1);
+    assert.match(
+        serverSource,
+        /return isLoopbackSocket\(req\) && !hasPluginCallbackProxyHeaders\(req\);/
+    );
     assert.ok(callbackAuthIndex < defaultJsonParserIndex);
     assert.ok(defaultJsonParserIndex < callbackRouteIndex);
 });

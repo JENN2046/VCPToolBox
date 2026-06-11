@@ -3,6 +3,18 @@
 const crypto = require('crypto');
 
 const DEFAULT_MAX_FUTURE_MS = 24 * 60 * 60 * 1000;
+const PLUGIN_CALLBACK_PROXY_HEADER_NAMES = [
+    'forwarded',
+    'x-forwarded-for',
+    'x-forwarded-host',
+    'x-forwarded-proto',
+    'x-forwarded-port',
+    'x-real-ip',
+    'x-client-ip',
+    'cf-connecting-ip',
+    'true-client-ip',
+    'x-original-forwarded-for'
+];
 
 function firstString(...values) {
     for (const value of values) {
@@ -20,7 +32,11 @@ function firstString(...values) {
 
 function getHeader(headers, name) {
     if (!headers || typeof headers !== 'object') return '';
-    return firstString(headers[name], headers[name.toLowerCase()]);
+    const direct = firstString(headers[name], headers[name.toLowerCase()]);
+    if (direct) return direct;
+    const targetName = String(name || '').toLowerCase();
+    const matchedKey = Object.keys(headers).find((key) => key.toLowerCase() === targetName);
+    return matchedKey ? firstString(headers[matchedKey]) : '';
 }
 
 function getCallbackAuthFields(req) {
@@ -44,6 +60,11 @@ function getCallbackAuthFields(req) {
             getHeader(headers, 'x-vcp-callback-signature')
         )
     };
+}
+
+function hasPluginCallbackProxyHeaders(req) {
+    const headers = req && req.headers ? req.headers : {};
+    return PLUGIN_CALLBACK_PROXY_HEADER_NAMES.some((name) => Boolean(getHeader(headers, name)));
 }
 
 function buildPluginCallbackSigningPayload(pluginName, taskId, expiresAt, nonce) {
@@ -164,6 +185,7 @@ module.exports = {
     DEFAULT_MAX_FUTURE_MS,
     buildPluginCallbackSigningPayload,
     getCallbackAuthFields,
+    hasPluginCallbackProxyHeaders,
     signPluginCallback,
     verifyPluginCallbackAuth,
     verifyPluginCallbackRequest
