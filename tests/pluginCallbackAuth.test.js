@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
     buildLocalPluginCallbackBaseUrl,
     createSignedPluginCallbackUrl,
+    derivePluginCallbackSecret,
     hasPluginCallbackProxyHeaders,
     signPluginCallback,
     verifyPluginCallbackAuth,
@@ -38,6 +39,41 @@ test('plugin callback auth accepts a valid signed request', () => {
     assert.equal(result.ok, true);
     assert.equal(result.expiresAt, now + 60_000);
     assert.equal(result.nonce, nonce);
+});
+
+test('plugin callback helper derives scoped secrets from the server key', () => {
+    const derivedSecret = derivePluginCallbackSecret('server-key', 'ExternalAsyncPlugin');
+    const otherDerivedSecret = derivePluginCallbackSecret('server-key', 'OtherPlugin');
+    const expiresAt = '61000';
+    const nonce = 'nonce-1';
+    const signature = signPluginCallback({
+        secret: derivedSecret,
+        pluginName: 'ExternalAsyncPlugin',
+        taskId: 'task-1',
+        expiresAt,
+        nonce
+    });
+
+    assert.notEqual(derivedSecret, 'server-key');
+    assert.notEqual(derivedSecret, otherDerivedSecret);
+    assert.equal(verifyPluginCallbackAuth({
+        secret: derivedSecret,
+        pluginName: 'ExternalAsyncPlugin',
+        taskId: 'task-1',
+        expiresAt,
+        nonce,
+        signature,
+        now: 1_000
+    }).ok, true);
+    assert.equal(verifyPluginCallbackAuth({
+        secret: otherDerivedSecret,
+        pluginName: 'ExternalAsyncPlugin',
+        taskId: 'task-1',
+        expiresAt,
+        nonce,
+        signature,
+        now: 1_000
+    }).code, 'plugin_callback_auth_invalid');
 });
 
 test('plugin callback helper builds loopback callback base only for numeric ports', () => {
@@ -189,16 +225,30 @@ test('server gates plugin callbacks before authenticated body parsers', () => {
         "app.post('/plugin-callback/:pluginName/:taskId'"
     );
     const nonceReplayGuardIndex = serverSource.indexOf('function consumePluginCallbackNonce');
+    const authSecretsFunctionIndex = serverSource.indexOf('function getPluginCallbackAuthSecrets');
+    const loopbackCompatibilityFunctionIndex = serverSource.indexOf('function isUnsignedLoopbackPluginCallbackAllowed');
     const authFunctionIndex = serverSource.indexOf('function authorizePluginCallbackRequest');
-    const verificationIndex = serverSource.indexOf('const verification = verifyPluginCallbackRequest');
+    const loopbackCompatibilityCheckIndex = serverSource.indexOf('if (isUnsignedLoopbackPluginCallbackAllowed(req))');
+    const verificationIndex = serverSource.indexOf('verification = verifyPluginCallbackRequest(req, { secret });');
+    const derivedSecretIndex = serverSource.indexOf('derivePluginCallbackSecret(serverKey, pluginName)');
+    const proxyHeaderGuardIndex = serverSource.indexOf('!hasPluginCallbackProxyHeaders(req)');
 
     assert.notEqual(callbackAuthIndex, -1);
     assert.notEqual(defaultJsonParserIndex, -1);
     assert.notEqual(callbackRouteIndex, -1);
     assert.notEqual(nonceReplayGuardIndex, -1);
+    assert.notEqual(authSecretsFunctionIndex, -1);
+    assert.notEqual(loopbackCompatibilityFunctionIndex, -1);
     assert.notEqual(authFunctionIndex, -1);
+    assert.notEqual(loopbackCompatibilityCheckIndex, -1);
     assert.notEqual(verificationIndex, -1);
+    assert.notEqual(derivedSecretIndex, -1);
+    assert.notEqual(proxyHeaderGuardIndex, -1);
     assert.equal(serverSource.includes('isTrustedLocalPluginCallbackRequest'), false);
+    assert.ok(authSecretsFunctionIndex < authFunctionIndex);
+    assert.ok(loopbackCompatibilityFunctionIndex < authFunctionIndex);
+    assert.ok(authFunctionIndex < loopbackCompatibilityCheckIndex);
+    assert.ok(loopbackCompatibilityCheckIndex < verificationIndex);
     assert.ok(authFunctionIndex < verificationIndex);
     assert.ok(callbackAuthIndex < defaultJsonParserIndex);
     assert.ok(defaultJsonParserIndex < callbackRouteIndex);

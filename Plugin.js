@@ -22,7 +22,8 @@ const {
 } = require('./modules/pluginRuntimeEnvSandbox');
 const {
     buildLocalPluginCallbackBaseUrl,
-    createSignedPluginCallbackUrl
+    createSignedPluginCallbackUrl,
+    derivePluginCallbackSecret
 } = require('./modules/pluginCallbackAuth');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
@@ -1697,7 +1698,7 @@ class PluginManager extends EventEmitter {
             const configuredCallbackBaseUrl = pluginConfig.CALLBACK_BASE_URL || process.env.CALLBACK_BASE_URL;
             const callbackAuthSecret =
                 process.env.PLUGIN_CALLBACK_SECRET ||
-                (plugin.pluginSource === 'external' ? '' : process.env.Key);
+                derivePluginCallbackSecret(process.env.Key, pluginName);
             const callbackBaseUrl =
                 configuredCallbackBaseUrl ||
                 buildLocalPluginCallbackBaseUrl(process.env.PORT || process.env.SERVER_PORT);

@@ -94,6 +94,14 @@ function buildPluginCallbackSigningPayload(pluginName, taskId, expiresAt, nonce)
     ].join('\n');
 }
 
+function derivePluginCallbackSecret(masterSecret, pluginName) {
+    if (!masterSecret) return '';
+    return crypto
+        .createHmac('sha256', String(masterSecret))
+        .update(['plugin-callback', String(pluginName || '')].join('\n'))
+        .digest('hex');
+}
+
 function signPluginCallback({ secret, pluginName, taskId, expiresAt, nonce }) {
     if (!secret) {
         throw new Error('plugin callback secret is required');
@@ -230,6 +238,7 @@ module.exports = {
     buildPluginCallbackUrl,
     buildPluginCallbackSigningPayload,
     createSignedPluginCallbackUrl,
+    derivePluginCallbackSecret,
     getCallbackAuthFields,
     hasPluginCallbackProxyHeaders,
     signPluginCallback,

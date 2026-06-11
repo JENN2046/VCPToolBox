@@ -18,6 +18,8 @@ const { Writable } = require('stream');
 const fsSync = require('fs'); // Renamed to fsSync for clarity with fs.promises
 const { getEmbeddingFallbackStats } = require('./EmbeddingUtils');
 const {
+    derivePluginCallbackSecret,
+    hasPluginCallbackProxyHeaders,
     verifyPluginCallbackRequest
 } = require('./modules/pluginCallbackAuth');
 
@@ -651,8 +653,38 @@ const serverKey = process.env.Key;
 const consumedPluginCallbackNonces = new Map();
 const PLUGIN_CALLBACK_NONCE_GRACE_MS = 60 * 1000;
 
-function getPluginCallbackAuthSecret() {
-    return process.env.PLUGIN_CALLBACK_SECRET || serverKey;
+function getPluginCallbackAuthSecrets(pluginName) {
+    const secrets = [];
+    if (process.env.PLUGIN_CALLBACK_SECRET) {
+        secrets.push(process.env.PLUGIN_CALLBACK_SECRET);
+    }
+    if (serverKey) {
+        secrets.push(serverKey);
+        const derivedSecret = derivePluginCallbackSecret(serverKey, pluginName);
+        if (derivedSecret && !secrets.includes(derivedSecret)) {
+            secrets.push(derivedSecret);
+        }
+    }
+    return secrets;
+}
+
+function getPluginCallbackHostName(req) {
+    const host = String(req?.headers?.host || '').trim().toLowerCase();
+    if (!host) return '';
+    if (host.startsWith('[')) {
+        const closeIndex = host.indexOf(']');
+        return closeIndex > 0 ? host.slice(1, closeIndex) : '';
+    }
+    return host.split(':')[0];
+}
+
+function isUnsignedLoopbackPluginCallbackAllowed(req) {
+    const hostName = getPluginCallbackHostName(req);
+    const isLocalHost =
+        hostName === 'localhost' ||
+        hostName === '127.0.0.1' ||
+        hostName === '::1';
+    return isLoopbackSocket(req) && isLocalHost && !hasPluginCallbackProxyHeaders(req);
 }
 
 function pruneConsumedPluginCallbackNonces(now = Date.now()) {
@@ -683,9 +715,20 @@ function consumePluginCallbackNonce(req, verification, now = Date.now()) {
 }
 
 function authorizePluginCallbackRequest(req, res, next) {
-    const verification = verifyPluginCallbackRequest(req, {
-        secret: getPluginCallbackAuthSecret()
-    });
+    if (isUnsignedLoopbackPluginCallbackAllowed(req)) {
+        return next();
+    }
+    const secrets = getPluginCallbackAuthSecrets(req.params.pluginName);
+    let verification = {
+        ok: false,
+        status: 503,
+        code: 'plugin_callback_secret_unconfigured',
+        message: 'Plugin callback authentication secret is not configured.'
+    };
+    for (const secret of secrets) {
+        verification = verifyPluginCallbackRequest(req, { secret });
+        if (verification.ok) break;
+    }
     const nonceConsumption = verification.ok
         ? consumePluginCallbackNonce(req, verification)
         : verification;
