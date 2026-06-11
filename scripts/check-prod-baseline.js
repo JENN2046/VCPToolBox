@@ -104,6 +104,145 @@ requiredChecks.push({
   ok: safetyGate.includes('AIGENT_PIPELINE_ALLOW_EXECUTION'),
 });
 
+const pluginRuntime = readText('Plugin.js');
+requiredChecks.push({
+  label: 'Plugin runtime debug logs use env key lists instead of env values',
+  ok: pluginRuntime.includes('function formatRuntimeEnvDebugKeyList')
+    && pluginRuntime.includes('formatRuntimeEnvDebugKeyList(finalEnv)')
+    && !pluginRuntime.includes('JSON.stringify(finalEnv'),
+});
+requiredChecks.push({
+  label: 'Plugin runtime debug logs redact sensitive env keys',
+  ok: pluginRuntime.includes('isPluginRuntimeEnvKeyDenied(key)')
+    && pluginRuntime.includes('redactedCount')
+    && pluginRuntime.includes('sensitive keys')
+    && pluginRuntime.includes('Core async plugin')
+    && pluginRuntime.includes('External async plugin'),
+});
+requiredChecks.push({
+  label: 'Plugin runtime duplicate manifests warn and skip without reordering',
+  ok: pluginRuntime.includes('_warnDuplicateLocalPluginSkipped')
+    && pluginRuntime.includes('_buildRuntimeDuplicateDescriptor')
+    && pluginRuntime.includes('duplicate_plugin_name')
+    && (pluginRuntime.match(/this\._warnDuplicateLocalPluginSkipped\(manifest, this\.plugins\.get\(manifest\.name\)\);\s+continue;/g) || []).length >= 2,
+});
+requiredChecks.push({
+  label: 'Plugin diagnostic output scrubs secrets and operator paths',
+  ok: pluginRuntime.includes('PLUGIN_DIAGNOSTIC_SECRET_PATTERNS')
+    && pluginRuntime.includes('function scrubPluginDiagnosticText')
+    && pluginRuntime.includes('function scrubPluginDiagnosticSnippet')
+    && pluginRuntime.includes('[redacted]')
+    && pluginRuntime.includes('[path]')
+    && pluginRuntime.includes('scrubPluginDiagnosticText(errorOutput.trim())')
+    && pluginRuntime.includes('scrubPluginDiagnosticSnippet(outputBuffer.trim(), 200)'),
+});
+
+const pluginRuntimeEnvTests = readText('tests/plugin-external-runtime-env-sandbox.test.js');
+requiredChecks.push({
+  label: 'Plugin runtime debug redaction has targeted test coverage',
+  ok: pluginRuntimeEnvTests.includes('core async plugin debug log never prints runtime env secret values')
+    && pluginRuntimeEnvTests.includes('Core async plugin CoreAsyncRuntimeEnvFixture runtime env keys:')
+    && pluginRuntimeEnvTests.includes('Final ENV')
+    && pluginRuntimeEnvTests.includes('redacted \\d+ sensitive keys'),
+});
+requiredChecks.push({
+  label: 'Plugin diagnostic output tests cover stdio and static secret/path scrubbing',
+  ok: pluginRuntimeEnvTests.includes('stdio plugin diagnostic errors and debug logs scrub secrets and paths')
+    && pluginRuntimeEnvTests.includes('stdio plugin startup errors scrub secrets and paths')
+    && pluginRuntimeEnvTests.includes('static plugin stderr diagnostics scrub secrets and paths')
+    && pluginRuntimeEnvTests.includes('static plugin startup errors scrub secrets and paths')
+    && pluginRuntimeEnvTests.includes('stdout-secret')
+    && pluginRuntimeEnvTests.includes('stderr-secret')
+    && pluginRuntimeEnvTests.includes('static-secret')
+    && pluginRuntimeEnvTests.includes('redacted'),
+});
+
+const pluginExternalDirsTests = readText('tests/plugin-external-dirs.test.js');
+requiredChecks.push({
+  label: 'Plugin runtime duplicate diagnostics tests cover path-safe root identity and order',
+  ok: pluginExternalDirsTests.includes('duplicate runtime warning is path-safe and includes root identity')
+    && pluginExternalDirsTests.includes('discovers duplicate legacy plugin manifests in resolver order')
+    && pluginExternalDirsTests.includes('duplicate_plugin_name')
+    && pluginExternalDirsTests.includes('assert.equal(logText.includes(path.resolve(root)), false)')
+    && pluginExternalDirsTests.includes('snapshot.legacyLoadRoots'),
+});
+
+const externalAllowPolicy = readText('modules/externalPluginAllowPolicy.js');
+const externalAllowPolicyTests = readText('tests/externalPluginAllowPolicy.test.js');
+requiredChecks.push({
+  label: 'external plugin allow policy matches on fresh realpaths',
+  ok: externalAllowPolicy.includes('function resolveFreshRealPath')
+    && externalAllowPolicy.includes('baseRealPath = resolveFreshRealPath(classification.basePath, options)')
+    && externalAllowPolicy.includes('realSourceDirectory: resolveFreshRealPath(getEntrySourceDirectory(entry), options)')
+    && externalAllowPolicy.includes('isPathInsideOrEqual(item.realSourceDirectory, baseRealPath, options)')
+    && externalAllowPolicy.includes('realSourceDirectory: realSourceDirectory || resolveFreshRealPath'),
+});
+requiredChecks.push({
+  label: 'external plugin allow policy tests cover realpath escape and match evidence',
+  ok: externalAllowPolicyTests.includes('uses fresh realpath and blocks symlink escape')
+    && externalAllowPolicyTests.includes('returns matched source and base realpaths')
+    && externalAllowPolicyTests.includes('fs.symlinkSync')
+    && externalAllowPolicyTests.includes('fs.realpathSync(escapedPluginPath)')
+    && externalAllowPolicyTests.includes('fs.realpathSync(reviewedSource)'),
+});
+
+const adminPluginsRoute = readText('routes/admin/plugins.js');
+const adminPluginTargetTests = readText('tests/admin-plugin-command-description-target.test.js');
+requiredChecks.push({
+  label: 'Admin plugin config.env status redacts external and symlink metadata',
+  ok: adminPluginsRoute.includes('function createDeferredConfigEnvStatus')
+    && adminPluginsRoute.includes('function shouldDeferConfigEnvStatus')
+    && adminPluginsRoute.includes("createDeferredConfigEnvStatus('external_config_deferred')")
+    && adminPluginsRoute.includes('fs.lstat(configPath)')
+    && adminPluginsRoute.includes("status: 'config_env_symlink_unsupported'")
+    && adminPluginsRoute.includes('delete clone.pluginSpecificEnvConfig')
+    && adminPluginsRoute.includes('delete clone.configEnvContent'),
+});
+requiredChecks.push({
+  label: 'Admin plugin config.env metadata tests prevent path and stat leaks',
+  ok: adminPluginTargetTests.includes('plugin list redacts external config.env status without stat metadata')
+    && adminPluginTargetTests.includes('external config.env should not be statted')
+    && adminPluginTargetTests.includes('external config.env should not be lstatted')
+    && adminPluginTargetTests.includes('config_env_symlink_unsupported')
+    && adminPluginTargetTests.includes('assertNoAbsolutePathLeak')
+    && adminPluginTargetTests.includes("Object.prototype.hasOwnProperty.call(externalRecord.configEnvStatus, 'size')")
+    && adminPluginTargetTests.includes("Object.prototype.hasOwnProperty.call(externalRecord.configEnvStatus, 'updatedAt')"),
+});
+
+const pluginApiTypes = readText('AdminPanel-Vue/src/types/api.plugin.ts');
+const pluginHubState = readText('AdminPanel-Vue/src/features/plugins-hub/derivePluginHubState.ts');
+const pluginsHubView = readText('AdminPanel-Vue/src/views/PluginsHub.vue');
+const pluginHubStateTests = readText('AdminPanel-Vue/tests/features/plugins-hub/derivePluginHubState.test.ts');
+requiredChecks.push({
+  label: 'Admin plugin hub models explicit external runtime trust metadata',
+  ok: pluginApiTypes.includes('export interface PluginRuntimeTrust')
+    && pluginApiTypes.includes('environmentSandbox?: boolean | null')
+    && pluginApiTypes.includes('processSandbox?: boolean | null')
+    && pluginApiTypes.includes('fileSystemSandbox?: boolean | null')
+    && pluginApiTypes.includes('untrustedSandbox?: boolean')
+    && pluginApiTypes.includes('warningCode?: string')
+    && pluginApiTypes.includes('runtimeTrust?: PluginRuntimeTrust'),
+});
+requiredChecks.push({
+  label: 'Admin plugin hub labels trusted external process runtime risk',
+  ok: pluginHubState.includes('runtimeTrustWarningLabel')
+    && pluginHubState.includes('runtimeTrustWarningTitle')
+    && pluginHubState.includes('external_process_not_untrusted_sandbox')
+    && pluginHubState.includes('可信外部进程')
+    && pluginHubState.includes('不是文件系统或进程沙箱')
+    && (pluginsHubView.match(/plugin\.runtimeTrustWarningLabel/g) || []).length >= 4
+    && pluginsHubView.includes(':title="plugin.runtimeTrustWarningTitle"')
+    && pluginsHubView.includes('security'),
+});
+requiredChecks.push({
+  label: 'Admin plugin hub runtime trust labels have targeted unit coverage',
+  ok: pluginHubStateTests.includes('derivePluginHubState runtime trust labels')
+    && pluginHubStateTests.includes('external_process_not_untrusted_sandbox')
+    && pluginHubStateTests.includes('可信外部进程')
+    && pluginHubStateTests.includes('不是文件系统或进程沙箱')
+    && pluginHubStateTests.includes("runtimeTrustWarningLabel).toBe('')"),
+});
+
 const externalRunnerRfc = readText('docs/governance/EXTERNAL_RUNNER_BOUNDARY_RFC_20260611.md');
 requiredChecks.push({
   label: 'external runner RFC keeps trusted adapter distinct from untrusted sandbox',
@@ -153,8 +292,6 @@ requiredChecks.push({
     && pluginStoreSourceTests.includes('aggregate source sanitizer used by /plugin-store output omits raw URLs'),
 });
 
-const adminPluginsRoute = readText('routes/admin/plugins.js');
-const adminPluginTargetTests = readText('tests/admin-plugin-command-description-target.test.js');
 requiredChecks.push({
   label: 'Admin managed write routes require unambiguous targets',
   ok: adminPluginsRoute.includes('function resolveAdminPluginRecordForManagedWrite')
