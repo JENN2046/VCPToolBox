@@ -1673,14 +1673,17 @@ class PluginManager extends EventEmitter {
 
         // Pass CALLBACK_BASE_URL and PLUGIN_NAME to asynchronous plugins
         if (plugin.pluginType === 'asynchronous') {
+            const configuredCallbackBaseUrl = pluginConfig.CALLBACK_BASE_URL || process.env.CALLBACK_BASE_URL;
+            const callbackAuthSecret =
+                process.env.PLUGIN_CALLBACK_SECRET ||
+                (plugin.pluginSource === 'external' ? '' : process.env.Key);
             const callbackBaseUrl =
-                buildLocalPluginCallbackBaseUrl(process.env.PORT || process.env.SERVER_PORT) ||
-                pluginConfig.CALLBACK_BASE_URL ||
-                process.env.CALLBACK_BASE_URL;
+                configuredCallbackBaseUrl ||
+                buildLocalPluginCallbackBaseUrl(process.env.PORT || process.env.SERVER_PORT);
             if (callbackBaseUrl) {
                 additionalEnv.CALLBACK_BASE_URL = callbackBaseUrl;
-                if (process.env.PLUGIN_CALLBACK_SECRET || process.env.Key) {
-                    additionalEnv.CALLBACK_AUTH_SECRET = process.env.PLUGIN_CALLBACK_SECRET || process.env.Key;
+                if (callbackAuthSecret) {
+                    additionalEnv.CALLBACK_AUTH_SECRET = callbackAuthSecret;
                 }
             } else {
                 if (this.debugMode) console.warn(`[PluginManager executePlugin] CALLBACK_BASE_URL not configured for asynchronous plugin ${pluginName}. Callback functionality might be impaired.`);

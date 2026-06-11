@@ -25,7 +25,12 @@ const EXTERNAL_RUNTIME_ADDITIONAL_ENV_KEYS = new Set([
     'SERVER_PORT',
     'PYTHONIOENCODING',
     'CALLBACK_BASE_URL',
+    'CALLBACK_AUTH_SECRET',
     'PLUGIN_NAME_FOR_CALLBACK'
+]);
+
+const EXTERNAL_RUNTIME_SENSITIVE_ADDITIONAL_ENV_KEYS = new Set([
+    'CALLBACK_AUTH_SECRET'
 ]);
 
 const PLUGIN_RUNTIME_ENV_DENY_PATTERNS = [
@@ -69,7 +74,7 @@ function buildExternalPluginRuntimeEnv(baseEnv = {}, pluginConfig = {}, addition
 
     for (const [key, value] of Object.entries(additionalEnv || {})) {
         if (!EXTERNAL_RUNTIME_ADDITIONAL_ENV_KEYS.has(key)) continue;
-        if (isPluginRuntimeEnvKeyDenied(key)) continue;
+        if (isPluginRuntimeEnvKeyDenied(key) && !EXTERNAL_RUNTIME_SENSITIVE_ADDITIONAL_ENV_KEYS.has(key)) continue;
         copyStringValue(env, key, value);
     }
 
