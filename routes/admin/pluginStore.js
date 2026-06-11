@@ -98,6 +98,14 @@ function newId(prefix = 'id') {
     return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
 }
 
+async function cleanupUploadedFiles(files = []) {
+    for (const file of files) {
+        if (file?.path) {
+            await fsp.rm(file.path, { force: true }).catch(() => {});
+        }
+    }
+}
+
 // Walk a directory to find the first folder containing plugin-manifest.json
 async function findManifestRoot(dir, depth = 0) {
     if (depth > 4) return null;
@@ -1801,6 +1809,7 @@ function createPluginStoreRouter(options) {
         const force = req.body.force === 'true' || req.body.force === true;
         const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
         if (!lifecycleApproval.ok) {
+            await cleanupUploadedFiles(files);
             return res.status(lifecycleApproval.status).json({
                 error: lifecycleApproval.error,
                 code: lifecycleApproval.code,
@@ -1855,9 +1864,7 @@ function createPluginStoreRouter(options) {
                 }
 
                 // Cleanup any leftover uploads
-                for (const f of files) {
-                    await fsp.rm(f.path, { force: true }).catch(() => {});
-                }
+                await cleanupUploadedFiles(files);
 
                 finishTask(task, 'success', '安装完成');
             } catch (err) {
@@ -1927,6 +1934,7 @@ module.exports._test = {
     NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     assertPublicHost,
     buildPluginInstallEnv,
+    cleanupUploadedFiles,
     downloadToFile,
     fetchWithGuard,
     isPrivateIp,

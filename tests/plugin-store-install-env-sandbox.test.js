@@ -36,6 +36,7 @@ const {
     ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
     NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     buildPluginInstallEnv,
+    cleanupUploadedFiles,
     resolveDirectDownloadUrlInstallPolicy,
     resolveLifecycleScriptApproval,
     runNpmInstall,
@@ -178,6 +179,25 @@ test('resolveLifecycleScriptApproval requires second confirmation for lifecycle 
         }),
         { ok: true, allowLifecycleScripts: true }
     );
+});
+
+test('cleanupUploadedFiles removes multipart uploads from rejected lifecycle approvals', async (t) => {
+    const root = makeTempDir(t);
+    const uploadedFile = path.join(root, 'uploaded-plugin.zip');
+    const secondFile = path.join(root, 'uploaded-folder-file.js');
+    fs.writeFileSync(uploadedFile, 'archive-bytes');
+    fs.writeFileSync(secondFile, 'file-bytes');
+
+    await cleanupUploadedFiles([
+        { path: uploadedFile },
+        { path: secondFile },
+        { path: path.join(root, 'already-gone.zip') },
+        {},
+        null,
+    ]);
+
+    assert.equal(fs.existsSync(uploadedFile), false);
+    assert.equal(fs.existsSync(secondFile), false);
 });
 
 test('resolveDirectDownloadUrlInstallPolicy disables direct downloadUrl installs by default', () => {
