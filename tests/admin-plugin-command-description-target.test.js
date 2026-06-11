@@ -72,6 +72,7 @@ function makeManifest(pluginName = 'ManagedEcho', description = 'old description
     return {
         name: pluginName,
         displayName: pluginName,
+        description: 'old plugin description',
         pluginType: 'synchronous',
         entryPoint: { command: 'node index.js' },
         communication: { protocol: 'stdio', timeout: 1000 },
@@ -98,6 +99,11 @@ function readCommandDescription(manifestPath) {
     return manifest.capabilities.invocationCommands[0].description;
 }
 
+function readManifestDescription(manifestPath) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    return manifest.description;
+}
+
 function makePluginManager(snapshot, loadedPlugins = []) {
     return {
         plugins: new Map(loadedPlugins.map(manifest => [manifest.name, manifest])),
@@ -111,19 +117,18 @@ function makePluginManager(snapshot, loadedPlugins = []) {
     };
 }
 
-function getCommandDescriptionHandler(pluginManager) {
+function getRouteHandler(pluginManager, method, routePath) {
     const router = createAdminPluginRouter({ pluginManager, DEBUG_MODE: false });
     const route = router.routes.find(item => (
-        item.method === 'POST'
-        && item.path === '/plugins/:pluginName/commands/:commandIdentifier/description'
+        item.method === method
+        && item.path === routePath
     ));
-    assert.ok(route, 'command description route should be registered');
+    assert.ok(route, `${method} ${routePath} route should be registered`);
     return route.handler;
 }
 
-async function callCommandDescription(pluginManager, body = {}, options = {}) {
-    const handler = getCommandDescriptionHandler(pluginManager);
-    const res = {
+function createResponse() {
+    return {
         statusCode: 200,
         body: null,
         status(code) {
@@ -135,20 +140,70 @@ async function callCommandDescription(pluginManager, body = {}, options = {}) {
             return this;
         }
     };
+}
+
+async function callAdminPluginRoute(pluginManager, routePath, body = {}, options = {}) {
+    const handler = getRouteHandler(pluginManager, 'POST', routePath);
+    const res = createResponse();
 
     await handler({
         params: {
             pluginName: options.pluginName || 'ManagedEcho',
             commandIdentifier: options.commandIdentifier || 'echo'
         },
-        body: {
-            description: 'new description',
-            ...body
-        },
+        body,
         query: options.query || {}
     }, res);
 
     return res;
+}
+
+async function callCommandDescription(pluginManager, body = {}, options = {}) {
+    return callAdminPluginRoute(
+        pluginManager,
+        '/plugins/:pluginName/commands/:commandIdentifier/description',
+        {
+            description: 'new description',
+            ...body
+        },
+        options
+    );
+}
+
+async function callPluginDescription(pluginManager, body = {}, options = {}) {
+    return callAdminPluginRoute(
+        pluginManager,
+        '/plugins/:pluginName/description',
+        {
+            description: 'new description',
+            ...body
+        },
+        options
+    );
+}
+
+async function callPluginConfig(pluginManager, body = {}, options = {}) {
+    return callAdminPluginRoute(
+        pluginManager,
+        '/plugins/:pluginName/config',
+        {
+            content: 'EXAMPLE=value\n',
+            ...body
+        },
+        options
+    );
+}
+
+async function callPluginToggle(pluginManager, body = {}, options = {}) {
+    return callAdminPluginRoute(
+        pluginManager,
+        '/plugins/:pluginName/toggle',
+        {
+            enable: false,
+            ...body
+        },
+        options
+    );
 }
 
 function assertNoAbsolutePathLeak(payload, pathsToProtect) {
@@ -191,6 +246,75 @@ test('duplicate core and external pluginName without target criteria returns 409
     assert.equal(res.body.code, 'ambiguous_admin_plugin_target');
     assert.equal(readCommandDescription(coreManifest), 'old description');
     assert.equal(readCommandDescription(externalManifest), 'old description');
+    assert.equal(pluginManager.loadCount, 0);
+    assert.deepEqual(
+        res.body.candidates.map(candidate => candidate.pluginSource).sort(),
+        ['core', 'external']
+    );
+    assertNoAbsolutePathLeak(res.body, [workspace, snapshot.coreLegacyRoot.rootPath, snapshot.externalLegacyRoots[0].rootPath]);
+});
+
+test('duplicate core and external pluginName blocks general description writes', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace, true);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const externalManifest = writeLegacyManifest(snapshot.externalLegacyRoots[0].rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+
+    const res = await callPluginDescription(pluginManager);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.code, 'ambiguous_admin_plugin_target');
+    assert.equal(readManifestDescription(coreManifest), 'old plugin description');
+    assert.equal(readManifestDescription(externalManifest), 'old plugin description');
+    assert.equal(pluginManager.loadCount, 0);
+    assert.deepEqual(
+        res.body.candidates.map(candidate => candidate.pluginSource).sort(),
+        ['core', 'external']
+    );
+    assertNoAbsolutePathLeak(res.body, [workspace, snapshot.coreLegacyRoot.rootPath, snapshot.externalLegacyRoots[0].rootPath]);
+});
+
+test('duplicate core and external pluginName blocks config writes', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace, true);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const externalManifest = writeLegacyManifest(snapshot.externalLegacyRoots[0].rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const coreConfigPath = path.join(path.dirname(coreManifest), 'config.env');
+    const externalConfigPath = path.join(path.dirname(externalManifest), 'config.env');
+
+    const res = await callPluginConfig(pluginManager);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.code, 'ambiguous_admin_plugin_target');
+    assert.equal(fs.existsSync(coreConfigPath), false);
+    assert.equal(fs.existsSync(externalConfigPath), false);
+    assert.equal(pluginManager.loadCount, 0);
+    assert.deepEqual(
+        res.body.candidates.map(candidate => candidate.pluginSource).sort(),
+        ['core', 'external']
+    );
+    assertNoAbsolutePathLeak(res.body, [workspace, snapshot.coreLegacyRoot.rootPath, snapshot.externalLegacyRoots[0].rootPath]);
+});
+
+test('duplicate core and external pluginName blocks toggle writes', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace, true);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const externalManifest = writeLegacyManifest(snapshot.externalLegacyRoots[0].rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const coreBlockedManifest = `${coreManifest}.block`;
+    const externalBlockedManifest = `${externalManifest}.block`;
+
+    const res = await callPluginToggle(pluginManager, { enable: false });
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.code, 'ambiguous_admin_plugin_target');
+    assert.equal(fs.existsSync(coreManifest), true);
+    assert.equal(fs.existsSync(externalManifest), true);
+    assert.equal(fs.existsSync(coreBlockedManifest), false);
+    assert.equal(fs.existsSync(externalBlockedManifest), false);
     assert.equal(pluginManager.loadCount, 0);
     assert.deepEqual(
         res.body.candidates.map(candidate => candidate.pluginSource).sort(),
