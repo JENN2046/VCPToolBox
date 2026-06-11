@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { Readable } = require('node:stream');
 
 const originalLoad = Module._load;
 Module._load = function loadWithRouteDependencyStubs(request, parent, isMain) {
@@ -30,20 +34,32 @@ try {
 
 const {
     assertPublicHost,
+    downloadToFile,
     fetchWithGuard,
     isPrivateIp,
 } = pluginStoreRouter._test;
 
-function makeResponse(status, location = null) {
+function makeHeaders(values = {}) {
+    return {
+        get(name) {
+            const target = String(name).toLowerCase();
+            for (const [key, value] of Object.entries(values)) {
+                if (String(key).toLowerCase() === target) return value;
+            }
+            return null;
+        }
+    };
+}
+
+function makeResponse(status, location = null, options = {}) {
     return {
         status,
         ok: status >= 200 && status < 300,
-        headers: {
-            get(name) {
-                if (String(name).toLowerCase() === 'location') return location;
-                return null;
-            }
-        },
+        headers: makeHeaders({
+            ...(location ? { location } : {}),
+            ...(options.headers || {}),
+        }),
+        body: options.body || Readable.from([]),
         async text() {
             return '';
         },
@@ -55,6 +71,14 @@ function makeResponse(status, location = null) {
 
 function publicLookup() {
     return [{ address: '93.184.216.34', family: 4 }];
+}
+
+function makeTempDir(t) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-plugin-store-download-'));
+    t.after(() => {
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+    return root;
 }
 
 test('isPrivateIp blocks non-public IPv4 and IPv6 ranges', () => {
@@ -166,4 +190,66 @@ test('fetchWithGuard enforces redirect limit without leaking target URL', async 
             && !String(error.message).includes('registry.example.test')
         )
     );
+});
+
+test('downloadToFile rejects oversized Content-Length before writing file', async (t) => {
+    const root = makeTempDir(t);
+    const destFile = path.join(root, 'plugin.zip');
+    const fetchImpl = async () => makeResponse(200, null, {
+        headers: { 'content-length': '11' },
+        body: Readable.from(['ignored']),
+    });
+
+    await assert.rejects(
+        () => downloadToFile('https://registry.example.test/plugin.zip', destFile, {
+            maxBytes: 10,
+            fetchOptions: {
+                fetchImpl,
+                lookup: publicLookup,
+            },
+        }),
+        error => error.code === 'plugin_store_remote_download_too_large'
+    );
+
+    assert.equal(fs.existsSync(destFile), false);
+});
+
+test('downloadToFile aborts streaming body that exceeds quota and removes partial file', async (t) => {
+    const root = makeTempDir(t);
+    const destFile = path.join(root, 'plugin.zip');
+    const fetchImpl = async () => makeResponse(200, null, {
+        body: Readable.from([Buffer.alloc(6), Buffer.alloc(6)]),
+    });
+
+    await assert.rejects(
+        () => downloadToFile('https://registry.example.test/plugin.zip', destFile, {
+            maxBytes: 10,
+            fetchOptions: {
+                fetchImpl,
+                lookup: publicLookup,
+            },
+        }),
+        error => error.code === 'plugin_store_remote_download_too_large'
+    );
+
+    assert.equal(fs.existsSync(destFile), false);
+});
+
+test('downloadToFile writes file when body stays within quota', async (t) => {
+    const root = makeTempDir(t);
+    const destFile = path.join(root, 'plugin.zip');
+    const fetchImpl = async () => makeResponse(200, null, {
+        headers: { 'content-length': '10' },
+        body: Readable.from(['0123456789']),
+    });
+
+    await downloadToFile('https://registry.example.test/plugin.zip', destFile, {
+        maxBytes: 10,
+        fetchOptions: {
+            fetchImpl,
+            lookup: publicLookup,
+        },
+    });
+
+    assert.equal(fs.readFileSync(destFile, 'utf8'), '0123456789');
 });

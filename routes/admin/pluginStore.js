@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const dns = require('dns').promises;
 const net = require('net');
+const { Transform } = require('stream');
 
 const multer = require('multer');
 const extract = require('extract-zip');
@@ -46,6 +47,7 @@ const MAX_PLUGIN_STORE_REDIRECTS = 5;
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_UPLOAD_FILES = 2000;
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+const MAX_REMOTE_DOWNLOAD_BYTES = 200 * 1024 * 1024;
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 const SAFE_PLUGIN_NAME_RE = /^[A-Za-z0-9._-]+$/;
 const NPM_LIFECYCLE_SCRIPT_NAMES = [
@@ -440,6 +442,36 @@ function getHeaderValue(headers, name) {
         if (String(key).toLowerCase() === target) return value;
     }
     return null;
+}
+
+function createRemoteDownloadLimitError(limitBytes) {
+    return createPluginStorePolicyError(
+        'plugin_store_remote_download_too_large',
+        `远程插件下载超过大小上限（${limitBytes} bytes）`
+    );
+}
+
+function parseContentLength(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        throw createPluginStorePolicyError('plugin_store_remote_content_length_invalid', '远程插件 Content-Length 无效');
+    }
+    return parsed;
+}
+
+function createDownloadByteLimitStream(limitBytes) {
+    let total = 0;
+    return new Transform({
+        transform(chunk, encoding, callback) {
+            total += Buffer.byteLength(chunk);
+            if (total > limitBytes) {
+                callback(createRemoteDownloadLimitError(limitBytes));
+                return;
+            }
+            callback(null, chunk);
+        }
+    });
 }
 
 // SSRF guard: reject private / loopback / link-local / multicast targets.
@@ -1352,10 +1384,28 @@ async function installFromDir(sourceDir, task, { force = false, pluginManager, a
     };
 }
 
-async function downloadToFile(url, destFile) {
-    const res = await fetchWithGuard(url);
+async function downloadToFile(url, destFile, options = {}) {
+    const limitBytes = Number.isSafeInteger(options.maxBytes) && options.maxBytes > 0
+        ? options.maxBytes
+        : MAX_REMOTE_DOWNLOAD_BYTES;
+    const res = await fetchWithGuard(url, options.fetchOptions || {});
     if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}: ${url}`);
-    await pipeline(res.body, fs.createWriteStream(destFile));
+    const contentLength = parseContentLength(getHeaderValue(res.headers, 'content-length'));
+    if (contentLength !== null && contentLength > limitBytes) {
+        await fsp.rm(destFile, { force: true }).catch(() => {});
+        throw createRemoteDownloadLimitError(limitBytes);
+    }
+
+    try {
+        await pipeline(
+            res.body,
+            createDownloadByteLimitStream(limitBytes),
+            fs.createWriteStream(destFile, { flags: 'wx' })
+        );
+    } catch (error) {
+        await fsp.rm(destFile, { force: true }).catch(() => {});
+        throw error;
+    }
 }
 
 async function installFromArchive(archivePath, task, options, archiveNameHint = '') {
@@ -1819,8 +1869,10 @@ module.exports._test = {
     NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     assertPublicHost,
     buildPluginInstallEnv,
+    downloadToFile,
     fetchWithGuard,
     isPrivateIp,
+    MAX_REMOTE_DOWNLOAD_BYTES,
     resolveDirectDownloadUrlInstallPolicy,
     resolveLifecycleScriptApproval,
     runNpmInstall,
