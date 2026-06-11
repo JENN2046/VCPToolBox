@@ -4,7 +4,8 @@ const dotenv = require('dotenv');
 const axios = require('axios');
 const {
     buildLocalPluginCallbackBaseUrl,
-    createSignedPluginCallbackUrl
+    createSignedPluginCallbackUrl,
+    redactPluginCallbackUrlForLog
 } = require('../../modules/pluginCallbackAuth');
 // 在 CJS 环境中，__dirname 是全局可用的。
 
@@ -260,6 +261,7 @@ async function sendCompletionCallback(meeting) {
         taskId: meeting.id,
         secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || serverConfig.PLUGIN_CALLBACK_SECRET || serverConfig.Key
     });
+    const logCallbackUrl = redactPluginCallbackUrlForLog(callbackUrl);
     try {
         const resultPayload = await formatMeetingResult(meeting);
         const callbackPayload = {
@@ -269,7 +271,7 @@ async function sendCompletionCallback(meeting) {
             message: resultPayload.result,
             ...(meeting.status === 'failed' && { reason: meeting.error })
         };
-        console.log(`[MagiAgent] Sending completion callback for meeting ${meeting.id} to ${callbackUrl}`);
+        console.log(`[MagiAgent] Sending completion callback for meeting ${meeting.id} to ${logCallbackUrl}`);
         await axios.post(callbackUrl, callbackPayload, {
             headers: { 'Content-Type': 'application/json' }
         });

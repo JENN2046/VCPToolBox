@@ -8,6 +8,7 @@ const {
     createSignedPluginCallbackUrl,
     derivePluginCallbackSecret,
     hasPluginCallbackProxyHeaders,
+    redactPluginCallbackUrlForLog,
     signPluginCallback,
     verifyPluginCallbackAuth,
     verifyPluginCallbackRequest
@@ -39,6 +40,20 @@ test('plugin callback auth accepts a valid signed request', () => {
     assert.equal(result.ok, true);
     assert.equal(result.expiresAt, now + 60_000);
     assert.equal(result.nonce, nonce);
+});
+
+test('plugin callback helper redacts signed URL query credentials for logs', () => {
+    const redactedUrl = redactPluginCallbackUrlForLog(
+        'https://callback.example.test/plugin-callback/A/task-1?vcp_cb_expires=61000&vcp_cb_nonce=nonce-1&vcp_cb_sig=abcdef&keep=value'
+    );
+
+    assert.equal(redactedUrl.includes('61000'), false);
+    assert.equal(redactedUrl.includes('nonce-1'), false);
+    assert.equal(redactedUrl.includes('abcdef'), false);
+    assert.match(redactedUrl, /vcp_cb_expires=%5Bredacted%5D/);
+    assert.match(redactedUrl, /vcp_cb_nonce=%5Bredacted%5D/);
+    assert.match(redactedUrl, /vcp_cb_sig=%5Bredacted%5D/);
+    assert.match(redactedUrl, /keep=value/);
 });
 
 test('plugin callback helper derives scoped secrets from the server key', () => {

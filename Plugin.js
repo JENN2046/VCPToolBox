@@ -21,6 +21,7 @@ const {
     isPluginRuntimeEnvKeyDenied
 } = require('./modules/pluginRuntimeEnvSandbox');
 const {
+    DEFAULT_MAX_FUTURE_MS,
     buildLocalPluginCallbackBaseUrl,
     createSignedPluginCallbackUrl,
     derivePluginCallbackSecret
@@ -1713,7 +1714,8 @@ class PluginManager extends EventEmitter {
                                 baseUrl: callbackBaseUrl,
                                 pluginName,
                                 taskId: callbackTaskId,
-                                secret: callbackAuthSecret
+                                secret: callbackAuthSecret,
+                                expiresAt: Date.now() + DEFAULT_MAX_FUTURE_MS
                             });
                         } catch (error) {
                             if (this.debugMode) {

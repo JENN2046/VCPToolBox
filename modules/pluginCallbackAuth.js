@@ -137,6 +137,23 @@ function createSignedPluginCallbackUrl({
     return callbackUrl.toString();
 }
 
+function redactPluginCallbackUrlForLog(callbackUrl) {
+    try {
+        const parsed = new URL(String(callbackUrl || ''));
+        for (const key of ['vcp_cb_sig', 'vcp_cb_nonce', 'vcp_cb_expires']) {
+            if (parsed.searchParams.has(key)) {
+                parsed.searchParams.set(key, '[redacted]');
+            }
+        }
+        return parsed.toString();
+    } catch (_error) {
+        return String(callbackUrl || '')
+            .replace(/([?&]vcp_cb_sig=)[^&\s]+/g, '$1[redacted]')
+            .replace(/([?&]vcp_cb_nonce=)[^&\s]+/g, '$1[redacted]')
+            .replace(/([?&]vcp_cb_expires=)[^&\s]+/g, '$1[redacted]');
+    }
+}
+
 function safeEqualHex(left, right) {
     if (!/^[0-9a-f]{64}$/i.test(String(left || ''))) return false;
     if (!/^[0-9a-f]{64}$/i.test(String(right || ''))) return false;
@@ -241,6 +258,7 @@ module.exports = {
     derivePluginCallbackSecret,
     getCallbackAuthFields,
     hasPluginCallbackProxyHeaders,
+    redactPluginCallbackUrlForLog,
     signPluginCallback,
     verifyPluginCallbackAuth,
     verifyPluginCallbackRequest

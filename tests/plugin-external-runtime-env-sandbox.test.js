@@ -4,6 +4,7 @@ const { EventEmitter } = require('node:events');
 
 const pluginManager = require('../Plugin.js');
 const {
+    DEFAULT_MAX_FUTURE_MS,
     derivePluginCallbackSecret,
     verifyPluginCallbackAuth
 } = require('../modules/pluginCallbackAuth');
@@ -259,6 +260,9 @@ test('external async plugin keeps configured callback base with scoped callback 
         assert.ok(spawnCall.options.env.PLUGIN_CALLBACK_URL);
         const callbackUrl = new URL(spawnCall.options.env.PLUGIN_CALLBACK_URL);
         assert.equal(callbackUrl.origin + callbackUrl.pathname, 'https://callback.example.test/plugin-callback/ExternalAsyncRuntimeEnvFixture/async-req-1');
+        const remainingMs = Number(callbackUrl.searchParams.get('vcp_cb_expires')) - Date.now();
+        assert.ok(remainingMs > 60 * 60 * 1000);
+        assert.ok(remainingMs <= DEFAULT_MAX_FUTURE_MS);
         assert.ok(callbackUrl.searchParams.get('vcp_cb_expires'));
         assert.ok(callbackUrl.searchParams.get('vcp_cb_nonce'));
         assert.ok(callbackUrl.searchParams.get('vcp_cb_sig'));
@@ -300,7 +304,7 @@ test('external async plugin receives derived callback secret when callback secre
             expiresAt: callbackUrl.searchParams.get('vcp_cb_expires'),
             nonce: callbackUrl.searchParams.get('vcp_cb_nonce'),
             signature: callbackUrl.searchParams.get('vcp_cb_sig'),
-            now: Date.now() - 1_000
+            now: Date.now()
         }).ok, true);
     });
 });

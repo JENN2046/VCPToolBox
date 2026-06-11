@@ -39,6 +39,18 @@ test('service callback emitters use scoped callback secret before legacy server 
     );
 });
 
+test('service callback emitters redact signed callback URLs before logging', () => {
+    const agentAssistantSource = read('Plugin/AgentAssistant/AgentAssistant.js');
+    const magiAgentSource = read('Plugin/MagiAgent/MagiAgent.js');
+
+    for (const source of [agentAssistantSource, magiAgentSource]) {
+        assert.match(source, /redactPluginCallbackUrlForLog/);
+        assert.match(source, /const logCallbackUrl = redactPluginCallbackUrlForLog\(callbackUrl\);/);
+    }
+    assert.doesNotMatch(agentAssistantSource, /Sending callback for \$\{delegationId\} to \$\{callbackUrl\}/);
+    assert.doesNotMatch(magiAgentSource, /Sending completion callback for meeting \$\{meeting\.id\} to \$\{callbackUrl\}/);
+});
+
 test('MagiAgent preserves configured public callback base before local fallback', () => {
     const magiAgentSource = read('Plugin/MagiAgent/MagiAgent.js');
     const configuredIndex = magiAgentSource.indexOf('serverConfig.CALLBACK_BASE_URL ||');
@@ -146,6 +158,7 @@ test('plugin manager provides callback scoped signing secret to async plugins', 
     assert.match(pluginManagerSource, /CALLBACK_AUTH_SECRET/);
     assert.match(pluginManagerSource, /PLUGIN_CALLBACK_URL/);
     assert.match(pluginManagerSource, /createSignedPluginCallbackUrl/);
+    assert.match(pluginManagerSource, /expiresAt:\s*Date\.now\(\)\s*\+\s*DEFAULT_MAX_FUTURE_MS/);
     assert.match(pluginManagerSource, /plugin\.pluginType === 'asynchronous'/);
     assert.match(runtimeSandboxSource, /CALLBACK_AUTH_SECRET/);
     assert.match(runtimeSandboxSource, /PLUGIN_CALLBACK_URL/);

@@ -4,7 +4,10 @@ const path = require('path');
 const dotenv = require('dotenv');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const { createSignedPluginCallbackUrl } = require('../../modules/pluginCallbackAuth');
+const {
+    createSignedPluginCallbackUrl,
+    redactPluginCallbackUrlForLog
+} = require('../../modules/pluginCallbackAuth');
 
 // --- State and Config Variables ---
 let VCP_SERVER_PORT;
@@ -1002,6 +1005,7 @@ async function sendDelegationCallback(delegationId, status, report, agentName) {
         taskId: delegationId,
         secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || VCP_SERVER_ACCESS_KEY
     });
+    const logCallbackUrl = redactPluginCallbackUrlForLog(callbackUrl);
     const payload = {
         requestId: delegationId,
         pluginName: 'AgentAssistant',
@@ -1010,7 +1014,7 @@ async function sendDelegationCallback(delegationId, status, report, agentName) {
     };
 
     try {
-        if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Sending callback for ${delegationId} to ${callbackUrl}`);
+        if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Sending callback for ${delegationId} to ${logCallbackUrl}`);
         await axios.post(callbackUrl, payload, {
             headers: { 'Content-Type': 'application/json' }
         });
