@@ -453,6 +453,9 @@ requiredChecks.push({
 });
 
 const aiImageRoute = readText('routes/admin/aiImageAgents.js');
+const serverSource = readText('server.js');
+const aiImageJennTrialFixtures = readText('modules/aiImageJennTrialFixtures.js');
+const jennAgentImageLabSourceLiteral = 'A:\\\\agent-image-lab';
 requiredChecks.push({
   label: 'AI image route keeps dry-run forcing path',
   ok: aiImageRoute.includes('forceDryRun: true') && aiImageRoute.includes('resolveDryRunMode'),
@@ -461,6 +464,15 @@ requiredChecks.push({
   label: 'AI image runtime-to-review trial route registration requires explicit route option',
   ok: aiImageRoute.includes('shouldEnableRuntimeToReviewTrialRoutes')
     && aiImageRoute.includes('enableRuntimeToReviewTrialInternalRoutes === true'),
+});
+requiredChecks.push({
+  label: 'AI image Jenn trial data is split out of route and server implementation sources',
+  ok: aiImageRoute.includes("require('../../modules/aiImageJennTrialFixtures')")
+    && serverSource.includes("require('./modules/aiImageJennTrialFixtures')")
+    && !aiImageRoute.includes(jennAgentImageLabSourceLiteral)
+    && !serverSource.includes(jennAgentImageLabSourceLiteral)
+    && aiImageJennTrialFixtures.includes('AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES')
+    && aiImageJennTrialFixtures.includes(jennAgentImageLabSourceLiteral),
 });
 
 const failedChecks = requiredChecks.filter((check) => !check.ok);

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const fixtures = require('../modules/aiImageJennTrialFixtures');
 
 const root = path.resolve(__dirname, '..');
 
@@ -9,28 +10,20 @@ function read(relativePath) {
     return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-function extractActivationId(source, constantName) {
-    const pattern = new RegExp(`${constantName}\\s*=\\s*\\n?\\s*['"]([^'"]+)['"]`);
-    const match = source.match(pattern);
-    assert.ok(match, `missing ${constantName}`);
-    return match[1];
-}
-
 test('secretless serum server authorizer binding matches route exact activation', () => {
     const routeSource = read('routes/admin/aiImageAgents.js');
     const serverSource = read('server.js');
 
-    const routeActivationId = extractActivationId(
-        routeSource,
-        'SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID'
+    assert.equal(
+        fixtures.SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID,
+        'AUTH-SECRETLESS-SERUM-LIVE-PROBE-20260603-018'
     );
-    const serverActivationId = extractActivationId(
-        serverSource,
-        'SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID'
-    );
-
-    assert.equal(serverActivationId, routeActivationId);
-    assert.equal(routeActivationId, 'AUTH-SECRETLESS-SERUM-LIVE-PROBE-20260603-018');
+    assert.match(routeSource, /require\('\.\.\/\.\.\/modules\/aiImageJennTrialFixtures'\)/);
+    assert.match(serverSource, /require\('\.\/modules\/aiImageJennTrialFixtures'\)/);
+    assert.match(routeSource, /SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID/);
+    assert.match(serverSource, /SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID/);
+    assert.doesNotMatch(routeSource, /const SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID\s*=/);
+    assert.doesNotMatch(serverSource, /const SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID\s*=/);
 });
 
 test('secretless serum internal POST remains behind bearer auth', () => {
@@ -79,20 +72,14 @@ test('runtime-to-review Trial 002 server authorizer binding matches route exact 
     const routeSource = read('routes/admin/aiImageAgents.js');
     const serverSource = read('server.js');
 
-    const routeActivationId = extractActivationId(
-        routeSource,
-        'R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID'
-    );
-    const serverActivationId = extractActivationId(
-        serverSource,
-        'R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID'
-    );
-
-    assert.equal(serverActivationId, routeActivationId);
     assert.equal(
-        routeActivationId,
+        fixtures.R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID,
         'AUTH-R2R-V2-TRIAL-002-LANTERN-ECOMMERCE-HERO-20260609-BINDING-READY'
     );
+    assert.match(routeSource, /R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID/);
+    assert.match(serverSource, /R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID/);
+    assert.doesNotMatch(routeSource, /const R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID\s*=/);
+    assert.doesNotMatch(serverSource, /const R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID\s*=/);
 });
 
 test('runtime-to-review Trial 002 internal POST reaches route-level secretless authorizer', () => {
