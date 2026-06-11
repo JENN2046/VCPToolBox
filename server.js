@@ -646,10 +646,15 @@ const R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH =
     '/internal/ai-image-agents/execute/r2r-v2-trial-001-serum-detail-control';
 const R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH =
     '/internal/ai-image-agents/execute/r2r-v2-trial-002-lantern-ecommerce-hero';
+const enableAiImageRuntimeToReviewTrialRoutes =
+    process.env.ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES === 'true';
 
 function isSerumBottleSecretlessInternalRoute(req) {
+    return req && req.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH;
+}
+
+function isRuntimeToReviewTrialSecretlessInternalRoute(req) {
     return req && (
-        req.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH ||
         req.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH ||
         req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH
     );
@@ -899,10 +904,17 @@ app.use((req, res, next) => {
         return next();
     }
 
-    if (isSerumBottleSecretlessInternalRoute(req)) {
+    if (
+        isSerumBottleSecretlessInternalRoute(req) ||
+        (
+            enableAiImageRuntimeToReviewTrialRoutes &&
+            isRuntimeToReviewTrialSecretlessInternalRoute(req)
+        )
+    ) {
         const isAllowedSecretlessInternalHead =
             req.method === 'HEAD' && isLoopbackSocket(req);
         const isAllowedTrial002SecretlessInternalPost =
+            enableAiImageRuntimeToReviewTrialRoutes &&
             req.method === 'POST' &&
             isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) &&
             isLoopbackSocket(req);
@@ -1884,6 +1896,7 @@ async function initialize() {
     const routeOptions = {
       auditFilePath: path.join(__dirname, 'state', 'ai-image-pipelines', 'audit.jsonl'),
       enableSerumBottleSecretlessInternalRoute: enableAiImageAgentsRoute,
+      enableRuntimeToReviewTrialInternalRoutes: enableAiImageRuntimeToReviewTrialRoutes,
       pluginManager,
       requireNativeDoubaoSecretlessRuntimeDelegate: true,
       enableAiImageRealExecution: process.env.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true',

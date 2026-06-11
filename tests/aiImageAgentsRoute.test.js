@@ -491,6 +491,39 @@ test('aiImageAgents serum-bottle secretless internal router exposes only exact r
             body: JSON.stringify({ dryRun: false, confirm: true })
         });
         assert.equal(ordinaryExecuteResponse.status, 404);
+
+        const trialRouteResponse = await fetch(
+            `${baseUrl}/internal/ai-image-agents/execute/r2r-v2-trial-001-serum-detail-control`,
+            { method: 'HEAD' }
+        );
+        assert.equal(trialRouteResponse.status, 404);
+    });
+});
+
+test('aiImageAgents runtime-to-review trial routes require explicit route option', async (t) => {
+    await withRouteModule({
+        async executeAiImagePipelineV2() {
+            return { ok: true, mode: 'real_execution' };
+        }
+    }, async ({ createSerumBottleSecretlessInternalRouter }) => {
+        const app = express();
+        app.use('/internal/ai-image-agents', createSerumBottleSecretlessInternalRouter({
+            ...createSerumBottleSecretlessOptions(),
+            enableRuntimeToReviewTrialInternalRoutes: true
+        }));
+
+        const server = await new Promise((resolve) => {
+            const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+        });
+        t.after(() => new Promise((resolve) => server.close(resolve)));
+
+        const baseUrl = `http://127.0.0.1:${server.address().port}`;
+        const response = await fetch(
+            `${baseUrl}/internal/ai-image-agents/execute/r2r-v2-trial-001-serum-detail-control`,
+            { method: 'HEAD' }
+        );
+
+        assert.equal(response.status, 204);
     });
 });
 

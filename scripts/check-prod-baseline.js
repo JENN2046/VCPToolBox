@@ -76,6 +76,10 @@ requiredChecks.push({
   ok: !hasLine(envExample, /^ENABLE_AI_IMAGE_REAL_EXECUTION\s*=\s*true$/mi),
 });
 requiredChecks.push({
+  label: 'config.env.example does not enable AI image runtime-to-review trial routes',
+  ok: !hasLine(envExample, /^ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES\s*=\s*true$/mi),
+});
+requiredChecks.push({
   label: 'config.env.example does not enable pipeline execution',
   ok: !hasLine(envExample, /^AIGENT_PIPELINE_ALLOW_EXECUTION\s*=\s*true$/mi),
 });
@@ -88,6 +92,10 @@ requiredChecks.push({
 requiredChecks.push({
   label: 'AI image real execution is gated by ENABLE_AI_IMAGE_REAL_EXECUTION',
   ok: server.includes("process.env.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true'"),
+});
+requiredChecks.push({
+  label: 'AI image runtime-to-review trial routes are gated by ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES',
+  ok: server.includes("process.env.ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES === 'true'"),
 });
 
 const safetyGate = readText('modules/pipelineSafetyGate.js');
@@ -130,6 +138,11 @@ const aiImageRoute = readText('routes/admin/aiImageAgents.js');
 requiredChecks.push({
   label: 'AI image route keeps dry-run forcing path',
   ok: aiImageRoute.includes('forceDryRun: true') && aiImageRoute.includes('resolveDryRunMode'),
+});
+requiredChecks.push({
+  label: 'AI image runtime-to-review trial route registration requires explicit route option',
+  ok: aiImageRoute.includes('shouldEnableRuntimeToReviewTrialRoutes')
+    && aiImageRoute.includes('enableRuntimeToReviewTrialInternalRoutes === true'),
 });
 
 const failedChecks = requiredChecks.filter((check) => !check.ok);
