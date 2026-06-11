@@ -814,6 +814,43 @@ class PluginManager extends EventEmitter {
         console.warn(`[PluginManager] Skipped external plugin runtime registration: ${pluginName} (${rootId}, ${rootLabel}) ${code}`);
     }
 
+    _sanitizeRuntimeDuplicateSource(source) {
+        if (source === 'external') return 'external';
+        if (source === 'distributed') return 'distributed';
+        return 'core';
+    }
+
+    _sanitizeRuntimeDuplicateRootId(source, rootId) {
+        const safeSource = this._sanitizeRuntimeDuplicateSource(source);
+        if (typeof rootId !== 'string' || !rootId.trim()) {
+            return safeSource === 'external' ? 'external:unknown' : `${safeSource}:unknown`;
+        }
+        if (rootId.startsWith('external:')) return rootId.split(':').slice(0, 2).join(':');
+        if (rootId.startsWith('core:')) return rootId;
+        if (rootId.startsWith('distributed:')) return rootId;
+        return `${safeSource}:unknown`;
+    }
+
+    _buildRuntimeDuplicateDescriptor(manifest) {
+        const source = this._sanitizeRuntimeDuplicateSource(
+            manifest?.pluginSource || (manifest?.isDistributed ? 'distributed' : 'core')
+        );
+        return {
+            source,
+            rootId: this._sanitizeRuntimeDuplicateRootId(source, manifest?.pluginRootId)
+        };
+    }
+
+    _warnDuplicateLocalPluginSkipped(skippedManifest, existingManifest = null) {
+        const pluginName = skippedManifest?.name || 'unknown';
+        const skipped = this._buildRuntimeDuplicateDescriptor(skippedManifest);
+        const existing = this._buildRuntimeDuplicateDescriptor(existingManifest);
+        console.warn(
+            `[PluginManager] Skipped duplicate local plugin manifest: ${pluginName} ` +
+            `(existing ${existing.source}/${existing.rootId}, skipped ${skipped.source}/${skipped.rootId}) duplicate_plugin_name`
+        );
+    }
+
     async _discoverLegacyPluginManifestsFromDir(pluginRoot, sourceLabel = 'legacy', rootInfo = null) {
         try {
             const pluginFolders = await fs.readdir(pluginRoot, { withFileTypes: true });
@@ -955,13 +992,19 @@ class PluginManager extends EventEmitter {
             // 2. 发现并加载所有插件模块，但不初始化
             const modernManifests = await this._discoverModernPluginManifests();
             for (const manifest of modernManifests) {
-                if (this.plugins.has(manifest.name)) continue;
+                if (this.plugins.has(manifest.name)) {
+                    this._warnDuplicateLocalPluginSkipped(manifest, this.plugins.get(manifest.name));
+                    continue;
+                }
                 await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);
             }
 
             const legacyManifests = await this._discoverLegacyPluginManifests();
             for (const manifest of legacyManifests) {
-                if (this.plugins.has(manifest.name)) continue;
+                if (this.plugins.has(manifest.name)) {
+                    this._warnDuplicateLocalPluginSkipped(manifest, this.plugins.get(manifest.name));
+                    continue;
+                }
                 await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);
             }
 
