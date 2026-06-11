@@ -316,6 +316,8 @@ requiredChecks.push({
 
 const externalRunnerRfc = readText('docs/governance/EXTERNAL_RUNNER_BOUNDARY_RFC_20260611.md');
 const jennSurfaceExtractionPlan = readText('docs/governance/JENN_SURFACE_EXTRACTION_PLAN_20260611.md');
+const gate9ExternalPackageLayoutContractPath = 'docs/governance/GATE_9_EXTERNAL_PACKAGE_LAYOUT_CONTRACT.md';
+const gate9ExternalPackageLayoutContract = readText(gate9ExternalPackageLayoutContractPath);
 requiredChecks.push({
   label: 'Jenn surface extraction plan stays plan-only and default-off focused',
   ok: jennSurfaceExtractionPlan.includes('**Status:** plan only')
@@ -326,6 +328,17 @@ requiredChecks.push({
     && jennSurfaceExtractionPlan.includes('No trial route, delegate, or Photo Studio path is described as an untrusted sandbox')
     && jennSurfaceExtractionPlan.includes('no `A:\\agent-image-lab` string remains in core source after the split')
     && jennSurfaceExtractionPlan.includes('Do not delete current AI image behavior in a single broad PR'),
+});
+requiredChecks.push({
+  label: 'Gate 9 external package layout contract remains present and non-hollow',
+  ok: trackedFiles.includes(gate9ExternalPackageLayoutContractPath)
+    && gate9ExternalPackageLayoutContract.includes('VCPToolBox-JENN-Extensions')
+    && gate9ExternalPackageLayoutContract.includes('VCPToolBox-JENN-LocalState')
+    && gate9ExternalPackageLayoutContract.includes('Plugin Store live install')
+    && gate9ExternalPackageLayoutContract.includes('external package')
+    && gate9ExternalPackageLayoutContract.includes('local private state')
+    && gate9ExternalPackageLayoutContract.includes('No external package creation')
+    && gate9ExternalPackageLayoutContract.includes('No plugin migration'),
 });
 requiredChecks.push({
   label: 'external runner RFC keeps trusted adapter distinct from untrusted sandbox',
