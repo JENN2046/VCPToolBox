@@ -38,10 +38,13 @@ local private state, generated artifacts, and governance docs. It is a planning 
 - `VCPToolBox-JENN-LocalState` is for private operator state only and must not be treated as plugin
   code by default.
 
-The existence of either package name must not grant runtime permission. Future runtime use must
-still require explicit `VCP_PLUGIN_DIRS` and `VCP_PLUGIN_ALLOWED_ROOTS` configuration, and future
-Plugin Store external install use must still require `VCP_PLUGIN_INSTALL_DIR` to match a current
-allowlisted external legacy root.
+The existence of either package name must not grant runtime permission. In the recommended nested
+layout, `VCPToolBox-JENN-Extensions/` is the external package/managed root, while
+`VCPToolBox-JENN-Extensions/Plugin/` is the legacy plugin discovery root. Future runtime use must
+still configure `VCP_PLUGIN_DIRS` to the `Plugin/` subdirectory and `VCP_PLUGIN_ALLOWED_ROOTS` to an
+allowlist root that contains it. Future Plugin Store external install use must configure
+`VCP_PLUGIN_INSTALL_DIR` to the same `Plugin/` subdirectory so it matches a current allowlisted
+external legacy root.
 
 ## VCPToolBox-JENN-Extensions Proposed Contract
 
@@ -69,6 +72,21 @@ VCPToolBox-JENN-Extensions/
 Rules:
 
 - Plugin folders must remain self-contained legacy plugin assets.
+- For the recommended nested layout, runtime/plugin discovery configuration must point at the
+  `Plugin/` subdirectory, not the package root:
+
+  ```text
+  VCP_PLUGIN_ALLOWED_ROOTS=<path>/VCPToolBox-JENN-Extensions
+  VCP_PLUGIN_DIRS=<path>/VCPToolBox-JENN-Extensions/Plugin
+  VCP_PLUGIN_INSTALL_DIR=<path>/VCPToolBox-JENN-Extensions/Plugin
+  ```
+
+- `VCP_PLUGIN_DIRS=<path>/VCPToolBox-JENN-Extensions` is not compatible with this nested `Plugin/`
+  layout because legacy discovery scans only immediate children of each configured root for
+  `plugin-manifest.json`. That configuration would check
+  `<path>/VCPToolBox-JENN-Extensions/<child>/plugin-manifest.json`, not
+  `<path>/VCPToolBox-JENN-Extensions/Plugin/<JennPluginName>/plugin-manifest.json`. Changing that
+  behavior requires a future separately reviewed runtime patch.
 - Real `config.env`, `.env`, tokens, cookies, API keys, auth codes, local databases, logs, caches,
   and operator data must not be committed.
 - External plugin-specific `config.env` loading remains suppressed by the current external root
@@ -190,7 +208,12 @@ Before any real external package implementation, tests should prove:
 - `legacyLoadRoots` remains core-first.
 - A duplicate external plugin name cannot override a core plugin.
 - A no-op external fixture manifest is discoverable without executing plugin code.
+- In the recommended nested layout, fixture configuration points `VCP_PLUGIN_DIRS` and
+  `VCP_PLUGIN_INSTALL_DIR` to `VCPToolBox-JENN-Extensions/Plugin`, not the package root.
 - `VCP_PLUGIN_INSTALL_DIR` must match a current allowlisted external legacy root.
+- `VCP_PLUGIN_DIRS` pointed directly at `VCPToolBox-JENN-Extensions` remains incompatible with the
+  recommended nested `Plugin/` layout unless discovery behavior changes in a future reviewed runtime
+  patch.
 - `VCPToolBox-JENN-LocalState` is not scanned as plugin code unless explicitly configured and
   allowlisted.
 - Real `config.env`, `.env`, logs, caches, generated images, SQLite/vector stores, and operator data
@@ -204,7 +227,8 @@ Future Plugin Store work must keep these boundaries:
 
 - No live install or uninstall in a layout/documentation slice.
 - No external install target unless `VCP_PLUGIN_INSTALL_DIR` matches a current allowlisted external
-  legacy root.
+  legacy root. For the recommended nested layout, that install target is
+  `VCPToolBox-JENN-Extensions/Plugin`, not `VCPToolBox-JENN-Extensions`.
 - No external install overwrite of a same-name core plugin.
 - `npm install` lifecycle scripts remain disabled by default unless separately confirmed by the
   existing Plugin Store policy.
@@ -227,6 +251,9 @@ Future Plugin Store work must keep these boundaries:
 This Gate 9 Slice 001 contract confirms:
 
 - `VCPToolBox-JENN-Extensions` is for future executable Jenn plugin/runtime assets only.
+- `VCPToolBox-JENN-Extensions/` is the external package/managed root, while
+  `VCPToolBox-JENN-Extensions/Plugin/` is the configured legacy discovery/install root for the
+  recommended layout.
 - `VCPToolBox-JENN-LocalState` is for private operator state only.
 - LocalState must not be treated as plugin code by default.
 - Plugin Store live install remains out of scope until separately reviewed.
