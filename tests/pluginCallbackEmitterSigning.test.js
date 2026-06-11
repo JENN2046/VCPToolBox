@@ -93,6 +93,24 @@ test('video generator signs async callback URLs with callback auth secret', () =
     assert.match(videoGeneratorSource, /vcp_cb_sig/);
 });
 
+test('video generator redacts signed callback query fields before logging', () => {
+    const videoGeneratorSource = read('Plugin/VideoGenerator/video_handler.py');
+    const redactionFunctionIndex = videoGeneratorSource.indexOf('def redact_callback_url_for_log');
+    const firstRedactedAssignmentIndex = videoGeneratorSource.indexOf('log_callback_url = redact_callback_url_for_log(callback_url)');
+    const firstPostIndex = videoGeneratorSource.indexOf('requests.post(callback_url');
+
+    assert.notEqual(redactionFunctionIndex, -1);
+    assert.notEqual(firstRedactedAssignmentIndex, -1);
+    assert.notEqual(firstPostIndex, -1);
+    assert.match(videoGeneratorSource, /vcp_cb_sig/);
+    assert.match(videoGeneratorSource, /vcp_cb_nonce/);
+    assert.match(videoGeneratorSource, /vcp_cb_expires/);
+    assert.doesNotMatch(videoGeneratorSource, /Callback to \{callback_url\}/);
+    assert.doesNotMatch(videoGeneratorSource, /callback to \{callback_url\}/);
+    assert.doesNotMatch(videoGeneratorSource, /PollingTimeout callback to \{callback_url\}/);
+    assert.ok(firstRedactedAssignmentIndex < firstPostIndex);
+});
+
 test('plugin manager provides callback scoped signing secret to async plugins', () => {
     const pluginManagerSource = read('Plugin.js');
     const runtimeSandboxSource = read('modules/pluginRuntimeEnvSandbox.js');

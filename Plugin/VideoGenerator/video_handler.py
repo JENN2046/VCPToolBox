@@ -14,7 +14,7 @@ from PIL import Image
 from dotenv import load_dotenv
 from datetime import datetime
 import traceback
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
 from urllib.request import url2pathname
 
 # --- 自定义异常 ---
@@ -55,6 +55,17 @@ def build_plugin_callback_url(callback_base_url, plugin_name, request_id, auth_s
     ).hexdigest()
     separator = "&" if "?" in callback_url else "?"
     return f"{callback_url}{separator}{urlencode({'vcp_cb_expires': expires_at, 'vcp_cb_nonce': nonce, 'vcp_cb_sig': signature})}"
+
+def redact_callback_url_for_log(callback_url):
+    try:
+        parsed = urlparse(str(callback_url or ""))
+        redacted_query = urlencode([
+            (key, "[redacted]" if key in {"vcp_cb_expires", "vcp_cb_nonce", "vcp_cb_sig"} else value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        ])
+        return urlunparse(parsed._replace(query=redacted_query))
+    except Exception:
+        return str(callback_url or "")
 
 # --- 日志记录 ---
 def log_event(level, message, data=None):
@@ -265,6 +276,7 @@ def poll_and_callback(api_key, request_id, callback_base_url, plugin_name, debug
             if current_status in ["Succeed", "Failed"]:
                 log_event("info", f"[{request_id}] Final status '{current_status}' received. Attempting callback.")
                 callback_url = build_plugin_callback_url(callback_base_url, plugin_name, request_id, auth_secret)
+                log_callback_url = redact_callback_url_for_log(callback_url)
                 
                 ws_notification_data = {
                     "requestId": request_id,
@@ -291,11 +303,11 @@ def poll_and_callback(api_key, request_id, callback_base_url, plugin_name, debug
 
                     callback_response = requests.post(callback_url, json=callback_payload, timeout=30)
                     callback_response.raise_for_status()
-                    log_event("success", f"[{request_id}] Callback to {callback_url} successful with simplified data.", {"status_code": callback_response.status_code})
+                    log_event("success", f"[{request_id}] Callback to {log_callback_url} successful with simplified data.", {"status_code": callback_response.status_code})
                 except requests.exceptions.RequestException as cb_e:
-                    log_event("error", f"[{request_id}] Callback to {callback_url} failed.", {"error": str(cb_e), "response_text": getattr(cb_e.response, 'text', None)})
+                    log_event("error", f"[{request_id}] Callback to {log_callback_url} failed.", {"error": str(cb_e), "response_text": getattr(cb_e.response, 'text', None)})
                 except Exception as cb_gen_e:
-                    log_event("error", f"[{request_id}] Unexpected error during callback to {callback_url}.", {"error": str(cb_gen_e)})
+                    log_event("error", f"[{request_id}] Unexpected error during callback to {log_callback_url}.", {"error": str(cb_gen_e)})
                 return 
             
             elif current_status == "InProgress":
@@ -324,8 +336,9 @@ def poll_and_callback(api_key, request_id, callback_base_url, plugin_name, debug
                     "message": f"视频 (ID: {request_id}) 轮询超时。"
                 }
                 callback_url = build_plugin_callback_url(callback_base_url, plugin_name, request_id, auth_secret)
+                log_callback_url = redact_callback_url_for_log(callback_url)
                 requests.post(callback_url, json=timeout_notification_data, timeout=10)
-                log_event("info", f"[{request_id}] Sent PollingTimeout callback to {callback_url} with simplified data.")
+                log_event("info", f"[{request_id}] Sent PollingTimeout callback to {log_callback_url} with simplified data.")
             except Exception as cb_timeout_e:
                 log_event("error", f"[{request_id}] Failed to send PollingTimeout callback.", {"error": str(cb_timeout_e)})
 
