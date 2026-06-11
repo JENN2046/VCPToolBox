@@ -16,7 +16,10 @@ const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
 const { createPluginRootResolver } = require('./modules/pluginRootResolver');
 const { classifyExternalPluginManifest } = require('./modules/externalPluginSafetyGate');
 const { evaluateExternalPluginAllowPolicy } = require('./modules/externalPluginAllowPolicy');
-const { buildExternalPluginRuntimeEnv } = require('./modules/pluginRuntimeEnvSandbox');
+const {
+    buildExternalPluginRuntimeEnv,
+    isPluginRuntimeEnvKeyDenied
+} = require('./modules/pluginRuntimeEnvSandbox');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
@@ -33,6 +36,16 @@ const SSH_MANAGER_ENV_PLUGIN_ALLOWLIST = new Set([
 const LOG_MONITOR_ENV_PLUGIN_ALLOWLIST = new Set([
     'LinuxLogMonitor'
 ]);
+
+function formatRuntimeEnvDebugKeyList(env = {}) {
+    const keys = Object.keys(env || {});
+    const visibleKeys = keys
+        .filter(key => !isPluginRuntimeEnvKeyDenied(key))
+        .sort();
+    const redactedCount = keys.length - visibleKeys.length;
+    const suffix = redactedCount > 0 ? ` (redacted ${redactedCount} sensitive keys)` : '';
+    return `${visibleKeys.join(',')}${suffix}`;
+}
 
 class PluginManager extends EventEmitter {
     constructor() {
@@ -1580,9 +1593,9 @@ class PluginManager extends EventEmitter {
 
         if (this.debugMode && plugin.pluginType === 'asynchronous') {
             if (this._isExternalPluginManifest(plugin)) {
-                console.log(`[PluginManager executePlugin] External async plugin ${pluginName} runtime env sandbox keys:`, Object.keys(finalEnv).sort().join(','));
+                console.log(`[PluginManager executePlugin] External async plugin ${pluginName} runtime env sandbox keys:`, formatRuntimeEnvDebugKeyList(finalEnv));
             } else {
-                console.log(`[PluginManager executePlugin] Final ENV for async plugin ${pluginName}:`, JSON.stringify(finalEnv, null, 2).substring(0, 500) + "...");
+                console.log(`[PluginManager executePlugin] Core async plugin ${pluginName} runtime env keys:`, formatRuntimeEnvDebugKeyList(finalEnv));
             }
         }
 

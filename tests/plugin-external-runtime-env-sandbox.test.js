@@ -98,6 +98,7 @@ async function withPluginManagerState(run) {
     const originalSpawn = pluginManager._spawnPluginProcess;
     const originalGetDecryptedAuthCode = pluginManager._getDecryptedAuthCode;
     const originalProjectBasePath = pluginManager.projectBasePath;
+    const originalDebugMode = pluginManager.debugMode;
     const originalEnv = {
         PATH: process.env.PATH,
         CUSTOM_BASE_FLAG: process.env.CUSTOM_BASE_FLAG,
@@ -122,6 +123,7 @@ async function withPluginManagerState(run) {
         pluginManager._spawnPluginProcess = originalSpawn;
         pluginManager._getDecryptedAuthCode = originalGetDecryptedAuthCode;
         pluginManager.projectBasePath = originalProjectBasePath;
+        pluginManager.debugMode = originalDebugMode;
         for (const [key, value] of Object.entries(originalEnv)) {
             if (value === undefined) delete process.env[key];
             else process.env[key] = value;
@@ -267,6 +269,43 @@ test('core stdio plugin keeps legacy full process env behavior', async () => {
         assert.equal(spawnCall.options.env.GITHUB_TOKEN, 'github-secret');
         assert.equal(spawnCall.options.env.Key, 'global-key');
         assert.equal(spawnCall.options.env.SECRET_TOKEN, 'plugin-secret');
+    });
+});
+
+test('core async plugin debug log never prints runtime env secret values', async () => {
+    await withPluginManagerState(async () => {
+        const pluginName = 'CoreAsyncRuntimeEnvFixture';
+        const plugin = makeCorePlugin(pluginName, { pluginType: 'asynchronous' });
+        const logs = [];
+        const originalLog = console.log;
+
+        pluginManager.debugMode = true;
+        pluginManager.plugins.set(pluginName, plugin);
+        pluginManager._spawnPluginProcess = () => makeFakeChild('{"status":"success","result":"ok"}\n');
+        console.log = (...args) => logs.push(args.map(arg => String(arg)).join(' '));
+
+        try {
+            const result = await pluginManager.executePlugin(pluginName, '{}');
+            assert.equal(result.status, 'success');
+        } finally {
+            console.log = originalLog;
+        }
+
+        const logText = logs.join('\n');
+        assert.match(logText, /Core async plugin CoreAsyncRuntimeEnvFixture runtime env keys:/);
+        assert.doesNotMatch(logText, /Final ENV/);
+        for (const forbidden of [
+            'openai-secret',
+            'github-secret',
+            'global-key',
+            'plugin-secret',
+            'OPENAI_API_KEY',
+            'GITHUB_TOKEN',
+            'SECRET_TOKEN'
+        ]) {
+            assert.equal(logText.includes(forbidden), false, `${forbidden} should not be logged`);
+        }
+        assert.match(logText, /redacted \d+ sensitive keys/);
     });
 });
 
