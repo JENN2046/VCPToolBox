@@ -21,7 +21,8 @@ const {
     isPluginRuntimeEnvKeyDenied
 } = require('./modules/pluginRuntimeEnvSandbox');
 const {
-    buildLocalPluginCallbackBaseUrl
+    buildLocalPluginCallbackBaseUrl,
+    createSignedPluginCallbackUrl
 } = require('./modules/pluginCallbackAuth');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
@@ -36,6 +37,26 @@ const SSH_MANAGER_ENV_PLUGIN_ALLOWLIST = new Set([
     'LinuxShellExecutor',
     'LinuxLogMonitor'
 ]);
+
+function getPluginCallbackTaskIdFromInput(inputData) {
+    let payload = inputData;
+    if (typeof inputData === 'string') {
+        try {
+            payload = JSON.parse(inputData);
+        } catch (_error) {
+            return '';
+        }
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return '';
+    }
+    for (const key of ['requestId', 'request_id', 'messageId', 'taskId', 'task_id', 'id']) {
+        const value = payload[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    }
+    return '';
+}
 const LOG_MONITOR_ENV_PLUGIN_ALLOWLIST = new Set([
     'LinuxLogMonitor'
 ]);
@@ -1684,6 +1705,21 @@ class PluginManager extends EventEmitter {
                 additionalEnv.CALLBACK_BASE_URL = callbackBaseUrl;
                 if (callbackAuthSecret) {
                     additionalEnv.CALLBACK_AUTH_SECRET = callbackAuthSecret;
+                    const callbackTaskId = getPluginCallbackTaskIdFromInput(inputData);
+                    if (callbackTaskId) {
+                        try {
+                            additionalEnv.PLUGIN_CALLBACK_URL = createSignedPluginCallbackUrl({
+                                baseUrl: callbackBaseUrl,
+                                pluginName,
+                                taskId: callbackTaskId,
+                                secret: callbackAuthSecret
+                            });
+                        } catch (error) {
+                            if (this.debugMode) {
+                                console.warn(`[PluginManager executePlugin] Could not generate signed callback URL for asynchronous plugin ${pluginName}: ${error.message}`);
+                            }
+                        }
+                    }
                 }
             } else {
                 if (this.debugMode) console.warn(`[PluginManager executePlugin] CALLBACK_BASE_URL not configured for asynchronous plugin ${pluginName}. Callback functionality might be impaired.`);

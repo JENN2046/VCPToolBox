@@ -241,8 +241,8 @@ async function conductMagiDiscussion(meetingId) {
 }
 async function sendCompletionCallback(meeting) {
     const callbackBaseUrl =
-        buildLocalPluginCallbackBaseUrl(serverConfig.PORT || process.env.PORT || process.env.SERVER_PORT) ||
-        serverConfig.CALLBACK_BASE_URL;
+        serverConfig.CALLBACK_BASE_URL ||
+        buildLocalPluginCallbackBaseUrl(serverConfig.PORT || process.env.PORT || process.env.SERVER_PORT);
     if (!callbackBaseUrl) {
         console.error(`[MagiAgent] CALLBACK_BASE_URL not configured. Cannot send completion notification for meeting ${meeting.id}.`);
         if (sendVcpLog) {
@@ -258,7 +258,7 @@ async function sendCompletionCallback(meeting) {
         baseUrl: callbackBaseUrl,
         pluginName: 'MagiAgent',
         taskId: meeting.id,
-        secret: process.env.PLUGIN_CALLBACK_SECRET || serverConfig.PLUGIN_CALLBACK_SECRET || serverConfig.Key
+        secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || serverConfig.PLUGIN_CALLBACK_SECRET || serverConfig.Key
     });
     try {
         const resultPayload = await formatMeetingResult(meeting);

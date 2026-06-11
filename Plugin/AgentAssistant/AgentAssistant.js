@@ -1000,7 +1000,7 @@ async function sendDelegationCallback(delegationId, status, report, agentName) {
         baseUrl: `${VCP_API_TARGET_URL.replace('/v1', '')}/plugin-callback`,
         pluginName: 'AgentAssistant',
         taskId: delegationId,
-        secret: process.env.PLUGIN_CALLBACK_SECRET || VCP_SERVER_ACCESS_KEY
+        secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || VCP_SERVER_ACCESS_KEY
     });
     const payload = {
         requestId: delegationId,

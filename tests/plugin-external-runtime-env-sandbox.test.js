@@ -246,12 +246,18 @@ test('external async plugin keeps configured callback base with scoped callback 
             return makeFakeChild('{"status":"success","result":"ok"}\n');
         };
 
-        const result = await pluginManager.executePlugin(pluginName, '{}');
+        const result = await pluginManager.executePlugin(pluginName, '{"requestId":"async-req-1"}');
 
         assert.equal(result.status, 'success');
         assert.ok(spawnCall);
         assert.equal(spawnCall.options.env.CALLBACK_BASE_URL, 'https://callback.example.test');
         assert.equal(spawnCall.options.env.CALLBACK_AUTH_SECRET, 'callback-secret');
+        assert.ok(spawnCall.options.env.PLUGIN_CALLBACK_URL);
+        const callbackUrl = new URL(spawnCall.options.env.PLUGIN_CALLBACK_URL);
+        assert.equal(callbackUrl.origin + callbackUrl.pathname, 'https://callback.example.test/plugin-callback/ExternalAsyncRuntimeEnvFixture/async-req-1');
+        assert.ok(callbackUrl.searchParams.get('vcp_cb_expires'));
+        assert.ok(callbackUrl.searchParams.get('vcp_cb_nonce'));
+        assert.ok(callbackUrl.searchParams.get('vcp_cb_sig'));
         assert.equal(spawnCall.options.env.PLUGIN_NAME_FOR_CALLBACK, pluginName);
         assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'Key'), false);
     });
