@@ -6,6 +6,10 @@ const path = require('path');
 
 const pluginManager = require('../Plugin.js');
 const { classifyExternalPluginManifest } = require('../modules/externalPluginSafetyGate');
+const {
+    createPluginRootResolver,
+    splitPathList
+} = require('../modules/pluginRootResolver');
 
 after(() => {
     if (pluginManager.toolApprovalManager && typeof pluginManager.toolApprovalManager.shutdown === 'function') {
@@ -131,6 +135,209 @@ test('PluginManager discovers resolver legacy roots in core-first order', () => 
 
         fs.rmSync(firstExternalRoot, { recursive: true, force: true });
         fs.rmSync(secondExternalRoot, { recursive: true, force: true });
+    }
+});
+
+test('Jenn adapter root contract keeps external legacy roots default-off', () => {
+    const projectRoot = makeTempDir();
+
+    try {
+        const resolver = createPluginRootResolver({
+            projectRoot,
+            env: {}
+        });
+
+        const snapshot = resolver.getPluginRootSnapshotSync();
+
+        assert.equal(snapshot.coreLegacyRoot.source, 'core');
+        assert.equal(snapshot.coreLegacyRoot.rootId, 'core:legacy');
+        assert.equal(snapshot.coreLegacyRoot.rootPath, path.join(projectRoot, 'Plugin'));
+        assert.equal(snapshot.coreModernRoot.source, 'core-modern');
+        assert.equal(snapshot.coreModernRoot.rootId, 'core:modern');
+        assert.equal(snapshot.coreModernRoot.rootPath, path.join(projectRoot, 'plugins'));
+        assert.deepEqual(snapshot.externalLegacyRoots, []);
+        assert.deepEqual(
+            snapshot.legacyLoadRoots.map(rootInfo => rootInfo.rootId),
+            ['core:legacy']
+        );
+        assert.deepEqual(
+            snapshot.watchRoots,
+            [path.join(projectRoot, 'Plugin'), path.join(projectRoot, 'plugins')]
+        );
+        assert.deepEqual(snapshot.diagnostics, []);
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+});
+
+test('Jenn adapter root contract requires VCP_PLUGIN_ALLOWED_ROOTS for VCP_PLUGIN_DIRS', () => {
+    const projectRoot = makeTempDir();
+    const externalRoot = path.join(projectRoot, 'VCPToolBox-JENN-Extensions');
+    fs.mkdirSync(externalRoot, { recursive: true });
+
+    try {
+        const resolver = createPluginRootResolver({
+            projectRoot,
+            env: {
+                VCP_PLUGIN_DIRS: externalRoot
+            }
+        });
+
+        const snapshot = resolver.getPluginRootSnapshotSync();
+
+        assert.deepEqual(snapshot.externalLegacyRoots, []);
+        assert.equal(snapshot.legacyLoadRoots.length, 1);
+        assert.equal(snapshot.legacyLoadRoots[0].rootId, 'core:legacy');
+        assert.equal(snapshot.diagnostics.length, 1);
+        assert.equal(snapshot.diagnostics[0].code, 'external_roots_require_allowlist');
+        assert.equal(snapshot.diagnostics[0].rootId, 'external:1');
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+});
+
+test('Jenn adapter root contract rejects unsafe external roots', () => {
+    const projectRoot = makeTempDir();
+    const gitRoot = path.join(projectRoot, '.git');
+    const nodeModulesRoot = path.join(projectRoot, 'node_modules');
+    fs.mkdirSync(gitRoot, { recursive: true });
+    fs.mkdirSync(nodeModulesRoot, { recursive: true });
+
+    try {
+        const resolver = createPluginRootResolver({
+            projectRoot,
+            env: {
+                VCP_PLUGIN_ALLOWED_ROOTS: projectRoot,
+                VCP_PLUGIN_DIRS: [
+                    projectRoot,
+                    gitRoot,
+                    nodeModulesRoot
+                ].join(path.delimiter)
+            }
+        });
+
+        const snapshot = resolver.getPluginRootSnapshotSync();
+
+        assert.deepEqual(snapshot.externalLegacyRoots, []);
+        assert.deepEqual(
+            snapshot.diagnostics.map(item => item.code),
+            ['unsafe_external_root', 'unsafe_external_root', 'unsafe_external_root']
+        );
+        assert.match(snapshot.diagnostics[0].message, /project root/);
+        assert.match(snapshot.diagnostics[1].message, /\.git/);
+        assert.match(snapshot.diagnostics[2].message, /node_modules/);
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+});
+
+test('Jenn adapter root contract keeps core roots before external legacy roots', () => {
+    const projectRoot = makeTempDir();
+    const extensionsRoot = path.join(projectRoot, '..', 'VCPToolBox-JENN-Extensions');
+    const localStateRoot = path.join(projectRoot, '..', 'VCPToolBox-JENN-LocalState');
+    fs.mkdirSync(extensionsRoot, { recursive: true });
+    fs.mkdirSync(localStateRoot, { recursive: true });
+
+    try {
+        const resolver = createPluginRootResolver({
+            projectRoot,
+            env: {
+                VCP_PLUGIN_ALLOWED_ROOTS: [extensionsRoot, localStateRoot].join(path.delimiter),
+                VCP_PLUGIN_DIRS: [localStateRoot, extensionsRoot].join(path.delimiter)
+            }
+        });
+
+        const snapshot = resolver.getPluginRootSnapshotSync();
+
+        assert.equal(snapshot.coreLegacyRoot.rootId, 'core:legacy');
+        assert.equal(snapshot.coreModernRoot.rootId, 'core:modern');
+        assert.deepEqual(
+            snapshot.legacyLoadRoots.map(rootInfo => rootInfo.rootId),
+            ['core:legacy', 'external:1', 'external:2']
+        );
+        assert.deepEqual(
+            snapshot.legacyLoadRoots.map(rootInfo => rootInfo.source),
+            ['core', 'external', 'external']
+        );
+        assert.equal(snapshot.externalLegacyRoots[0].rootPath, path.resolve(localStateRoot));
+        assert.equal(snapshot.externalLegacyRoots[1].rootPath, path.resolve(extensionsRoot));
+        assert.deepEqual(
+            snapshot.watchRoots,
+            [
+                path.join(projectRoot, 'Plugin'),
+                path.join(projectRoot, 'plugins'),
+                path.resolve(localStateRoot),
+                path.resolve(extensionsRoot)
+            ]
+        );
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+});
+
+test('Jenn adapter root contract keeps Windows-style path parsing stable', () => {
+    assert.deepEqual(splitPathList('C:\\Jenn\\VCPToolBox-JENN-Extensions'), [
+        'C:\\Jenn\\VCPToolBox-JENN-Extensions'
+    ]);
+    assert.deepEqual(
+        splitPathList('C:\\Jenn\\VCPToolBox-JENN-Extensions;D:\\Jenn\\VCPToolBox-JENN-LocalState'),
+        ['C:\\Jenn\\VCPToolBox-JENN-Extensions', 'D:\\Jenn\\VCPToolBox-JENN-LocalState']
+    );
+});
+
+test('Jenn adapter install root must match an allowlisted external legacy root', async () => {
+    const projectRoot = makeTempDir();
+    const externalRoot = path.join(projectRoot, '..', 'VCPToolBox-JENN-Extensions');
+    const unmanagedRoot = path.join(projectRoot, '..', 'VCPToolBox-JENN-LocalState');
+    fs.mkdirSync(externalRoot, { recursive: true });
+    fs.mkdirSync(unmanagedRoot, { recursive: true });
+
+    try {
+        const defaultRoot = await createPluginRootResolver({
+            projectRoot,
+            env: {}
+        }).getPluginStoreInstallRoot();
+        assert.equal(defaultRoot.source, 'core');
+        assert.equal(defaultRoot.rootId, 'core:legacy');
+
+        await assert.rejects(
+            () => createPluginRootResolver({
+                projectRoot,
+                env: {
+                    VCP_PLUGIN_INSTALL_DIR: externalRoot
+                }
+            }).getPluginStoreInstallRoot(),
+            { code: 'plugin_install_root_allowlist_required' }
+        );
+
+        await assert.rejects(
+            () => createPluginRootResolver({
+                projectRoot,
+                env: {
+                    VCP_PLUGIN_ALLOWED_ROOTS: [externalRoot, unmanagedRoot].join(path.delimiter),
+                    VCP_PLUGIN_DIRS: externalRoot,
+                    VCP_PLUGIN_INSTALL_DIR: unmanagedRoot
+                }
+            }).getPluginStoreInstallRoot(),
+            { code: 'plugin_install_root_not_managed' }
+        );
+
+        const externalInstallRoot = await createPluginRootResolver({
+            projectRoot,
+            env: {
+                VCP_PLUGIN_ALLOWED_ROOTS: externalRoot,
+                VCP_PLUGIN_DIRS: externalRoot,
+                VCP_PLUGIN_INSTALL_DIR: externalRoot
+            }
+        }).getPluginStoreInstallRoot();
+
+        assert.equal(externalInstallRoot.mode, 'external');
+        assert.equal(externalInstallRoot.source, 'external');
+        assert.equal(externalInstallRoot.rootId, 'external:1');
+        assert.equal(externalInstallRoot.rootPath, fs.realpathSync(externalRoot));
+        assert.equal(externalInstallRoot.allowConfigEnv, false);
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
     }
 });
 

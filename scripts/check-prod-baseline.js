@@ -138,6 +138,7 @@ requiredChecks.push({
 });
 
 const pluginRuntimeEnvTests = readText('tests/plugin-external-runtime-env-sandbox.test.js');
+const pluginRootResolver = readText('modules/pluginRootResolver.js');
 requiredChecks.push({
   label: 'Plugin runtime debug redaction has targeted test coverage',
   ok: pluginRuntimeEnvTests.includes('core async plugin debug log never prints runtime env secret values')
@@ -157,6 +158,23 @@ requiredChecks.push({
     && pluginRuntimeEnvTests.includes('redacted'),
 });
 
+requiredChecks.push({
+  label: 'Jenn adapter plugin root policy remains resolver-owned and default-off',
+  ok: pluginRootResolver.includes("const VCP_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS'")
+    && pluginRootResolver.includes("const VCP_PLUGIN_ALLOWED_ROOTS_ENV = 'VCP_PLUGIN_ALLOWED_ROOTS'")
+    && pluginRootResolver.includes("const VCP_PLUGIN_INSTALL_DIR_ENV = 'VCP_PLUGIN_INSTALL_DIR'")
+    && pluginRootResolver.includes('external_roots_require_allowlist')
+    && pluginRootResolver.includes('unsafe_external_root')
+    && pluginRootResolver.includes('external_root_not_allowed')
+    && pluginRootResolver.includes('plugin_install_root_allowlist_required')
+    && pluginRootResolver.includes('plugin_install_root_not_managed')
+    && pluginRootResolver.includes('legacyLoadRoots: [coreLegacyRoot, ...externalLegacyRoots]')
+    && pluginRootResolver.includes('watchRoots: uniqueByResolvedPath')
+    && pluginRootResolver.includes('this.coreModernRoot')
+    && pluginRootResolver.includes('isUnsafeRoot(this.projectRoot, rootPath)')
+    && pluginRootResolver.includes('VCP_PLUGIN_INSTALL_DIR must match a current allowlisted external legacy root.'),
+});
+
 const pluginExternalDirsTests = readText('tests/plugin-external-dirs.test.js');
 requiredChecks.push({
   label: 'Plugin runtime duplicate diagnostics tests cover path-safe root identity and order',
@@ -165,6 +183,20 @@ requiredChecks.push({
     && pluginExternalDirsTests.includes('duplicate_plugin_name')
     && pluginExternalDirsTests.includes('assert.equal(logText.includes(path.resolve(root)), false)')
     && pluginExternalDirsTests.includes('snapshot.legacyLoadRoots'),
+});
+requiredChecks.push({
+  label: 'Jenn adapter root contract tests cover default-off allowlist unsafe roots and install target',
+  ok: pluginExternalDirsTests.includes('Jenn adapter root contract keeps external legacy roots default-off')
+    && pluginExternalDirsTests.includes('Jenn adapter root contract requires VCP_PLUGIN_ALLOWED_ROOTS for VCP_PLUGIN_DIRS')
+    && pluginExternalDirsTests.includes('Jenn adapter root contract rejects unsafe external roots')
+    && pluginExternalDirsTests.includes('Jenn adapter root contract keeps core roots before external legacy roots')
+    && pluginExternalDirsTests.includes('Jenn adapter root contract keeps Windows-style path parsing stable')
+    && pluginExternalDirsTests.includes('Jenn adapter install root must match an allowlisted external legacy root')
+    && pluginExternalDirsTests.includes('VCPToolBox-JENN-Extensions')
+    && pluginExternalDirsTests.includes('VCPToolBox-JENN-LocalState')
+    && pluginExternalDirsTests.includes('plugin_install_root_allowlist_required')
+    && pluginExternalDirsTests.includes('plugin_install_root_not_managed')
+    && pluginExternalDirsTests.includes('unsafe_external_root'),
 });
 
 const externalAllowPolicy = readText('modules/externalPluginAllowPolicy.js');
