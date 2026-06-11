@@ -346,30 +346,6 @@ function getLookupCriteria(req, overrides = {}) {
     };
 }
 
-function selectPreferredPluginRecord(records) {
-    return records.find(record => record.pluginSource === 'core')
-        || records.find(record => record.loaded)
-        || records.find(record => record.enabled)
-        || records[0]
-        || null;
-}
-
-function resolveAdminPluginRecord(catalog, pluginName, criteria = {}) {
-    let matches = catalog.records.filter(record => record.name === pluginName);
-
-    if (criteria.pluginRootId) {
-        matches = matches.filter(record => record.pluginRootId === criteria.pluginRootId);
-    }
-    if (criteria.pluginSource) {
-        matches = matches.filter(record => record.pluginSource === criteria.pluginSource);
-    }
-    if (typeof criteria.enabled === 'boolean') {
-        matches = matches.filter(record => record.enabled === criteria.enabled);
-    }
-
-    return selectPreferredPluginRecord(matches);
-}
-
 function createAdminPluginTargetCandidate(record) {
     return {
         pluginRootId: record.pluginRootId,
@@ -417,6 +393,23 @@ function resolveAdminPluginRecordForManagedWrite(catalog, pluginName, criteria =
     }
 
     return { status: 'resolved', target: distinctTargets[0], candidates: [] };
+}
+
+function sendManagedWriteResolutionError(res, resolution, pluginName, notFoundError) {
+    if (resolution.status === 'not_found') {
+        res.status(404).json({ error: notFoundError });
+        return true;
+    }
+    if (resolution.status === 'ambiguous') {
+        res.status(409).json({
+            error: `Multiple managed plugin targets match '${pluginName}'. Please specify pluginRootId or pluginSource.`,
+            code: 'ambiguous_admin_plugin_target',
+            requiresPluginRoot: true,
+            candidates: resolution.candidates
+        });
+        return true;
+    }
+    return false;
 }
 
 function isWritableLegacyRecord(record) {
@@ -515,15 +508,11 @@ module.exports = function(options) {
 
         try {
             const catalog = await buildAdminPluginCatalog(pluginManager);
-            const baseCriteria = getLookupCriteria(req);
-            const target = resolveAdminPluginRecord(catalog, pluginName, {
-                ...baseCriteria,
-                enabled: !enable
-            }) || resolveAdminPluginRecord(catalog, pluginName, baseCriteria);
-
-            if (!target) {
-                return res.status(404).json({ error: `Plugin '${pluginName}' not found.` });
+            const resolution = resolveAdminPluginRecordForManagedWrite(catalog, pluginName, getLookupCriteria(req));
+            if (sendManagedWriteResolutionError(res, resolution, pluginName, `Plugin '${pluginName}' not found.`)) {
+                return;
             }
+            const target = resolution.target;
 
             if (!isWritableLegacyRecord(target)) {
                 return res.status(403).json({
@@ -624,11 +613,11 @@ module.exports = function(options) {
 
         try {
             const catalog = await buildAdminPluginCatalog(pluginManager);
-            const target = resolveAdminPluginRecord(catalog, pluginName, getLookupCriteria(req));
-
-            if (!target) {
-                return res.status(404).json({ error: `Plugin '${pluginName}' or its manifest file not found.` });
+            const resolution = resolveAdminPluginRecordForManagedWrite(catalog, pluginName, getLookupCriteria(req));
+            if (sendManagedWriteResolutionError(res, resolution, pluginName, `Plugin '${pluginName}' or its manifest file not found.`)) {
+                return;
             }
+            const target = resolution.target;
 
             if (!isWritableLegacyRecord(target)) {
                 return res.status(403).json({
@@ -665,11 +654,11 @@ module.exports = function(options) {
 
         try {
             const catalog = await buildAdminPluginCatalog(pluginManager);
-            const target = resolveAdminPluginRecord(catalog, pluginName, getLookupCriteria(req));
-
-            if (!target) {
-                return res.status(404).json({ error: `Plugin folder for '${pluginName}' not found.` });
+            const resolution = resolveAdminPluginRecordForManagedWrite(catalog, pluginName, getLookupCriteria(req));
+            if (sendManagedWriteResolutionError(res, resolution, pluginName, `Plugin folder for '${pluginName}' not found.`)) {
+                return;
             }
+            const target = resolution.target;
 
             if (target.pluginSource === 'external' || isExternalPluginManifest(target.manifest)) {
                 return res.status(403).json({
@@ -734,19 +723,9 @@ module.exports = function(options) {
         try {
             const catalog = await buildAdminPluginCatalog(pluginManager);
             const resolution = resolveAdminPluginRecordForManagedWrite(catalog, pluginName, getLookupCriteria(req));
-
-            if (resolution.status === 'not_found') {
-                return res.status(404).json({ error: `Plugin '${pluginName}' or its manifest file not found.` });
+            if (sendManagedWriteResolutionError(res, resolution, pluginName, `Plugin '${pluginName}' or its manifest file not found.`)) {
+                return;
             }
-            if (resolution.status === 'ambiguous') {
-                return res.status(409).json({
-                    error: `Multiple managed plugin targets match '${pluginName}'. Please specify pluginRootId or pluginSource.`,
-                    code: 'ambiguous_admin_plugin_target',
-                    requiresPluginRoot: true,
-                    candidates: resolution.candidates
-                });
-            }
-
             const target = resolution.target;
 
             if (!isWritableLegacyRecord(target)) {
