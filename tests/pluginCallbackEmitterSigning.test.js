@@ -83,6 +83,34 @@ test('LinuxLogMonitor redacts signed callback query fields before logging', () =
     assert.ok(logIndex < sendIndex);
 });
 
+test('LinuxLogMonitor regenerates signed callback URL for each retry attempt', () => {
+    const callbackTriggerSource = read('Plugin/LinuxLogMonitor/core/CallbackTrigger.js');
+    const triggerSource = callbackTriggerSource.slice(
+        callbackTriggerSource.indexOf('async trigger(taskId, data)'),
+        callbackTriggerSource.indexOf('async retryFailedCallbacks()')
+    );
+    const loopIndex = triggerSource.indexOf('for (let attempt = 0; attempt <= this.maxRetries; attempt++)');
+    const signedUrlIndex = triggerSource.indexOf('const callbackUrl = createSignedPluginCallbackUrl');
+    const sendIndex = triggerSource.indexOf('this._sendRequest(callbackUrl, data)');
+
+    assert.notEqual(loopIndex, -1);
+    assert.notEqual(signedUrlIndex, -1);
+    assert.notEqual(sendIndex, -1);
+    assert.ok(loopIndex < signedUrlIndex);
+    assert.ok(signedUrlIndex < sendIndex);
+});
+
+test('LinuxShellExecutor preserves configured callback base before local fallback', () => {
+    const linuxShellExecutorSource = read('Plugin/LinuxShellExecutor/LinuxShellExecutor.js');
+    const managerSource = linuxShellExecutorSource.slice(linuxShellExecutorSource.indexOf('this.monitorManager = new MonitorManager'));
+    const configuredIndex = managerSource.indexOf('process.env.CALLBACK_BASE_URL ||');
+    const localFallbackIndex = managerSource.indexOf('buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT)');
+
+    assert.notEqual(configuredIndex, -1);
+    assert.notEqual(localFallbackIndex, -1);
+    assert.ok(configuredIndex < localFallbackIndex);
+});
+
 test('video generator signs async callback URLs with callback auth secret', () => {
     const videoGeneratorSource = read('Plugin/VideoGenerator/video_handler.py');
 

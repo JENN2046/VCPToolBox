@@ -1974,8 +1974,8 @@ class LinuxShellExecutor {
             const { buildLocalPluginCallbackBaseUrl } = require('../../modules/pluginCallbackAuth');
             this.monitorManager = new MonitorManager({
                 callbackBaseUrl:
-                    buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
                     process.env.CALLBACK_BASE_URL ||
+                    buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
                     `http://localhost:${process.env.SERVER_PORT || 5000}`,
                 callbackAuthSecret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key,
                 pluginName: 'LinuxShellExecutor',
