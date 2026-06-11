@@ -188,6 +188,8 @@ requiredChecks.push({
 
 const adminPluginsRoute = readText('routes/admin/plugins.js');
 const adminPluginTargetTests = readText('tests/admin-plugin-command-description-target.test.js');
+const adminConfigRoute = readText('routes/admin/config.js');
+const adminConfigRouteTests = readText('tests/toolApprovalConfigRoute.test.js');
 requiredChecks.push({
   label: 'Admin plugin config.env status redacts external and symlink metadata',
   ok: adminPluginsRoute.includes('function createDeferredConfigEnvStatus')
@@ -370,6 +372,17 @@ requiredChecks.push({
     && adminPluginsRoute.includes('isManagedPathInsideRoot(configPath, pluginRoot)')
     && adminPluginTargetTests.includes('config write rejects existing config.env symlink without writing target')
     && adminPluginTargetTests.includes('config write rejects existing config.env directory'),
+});
+requiredChecks.push({
+  label: 'Admin main config.env writes reject symlink and non-regular targets',
+  ok: adminConfigRoute.includes('function writeMainConfigNoFollow')
+    && adminConfigRoute.includes('main_config_env_symlink_unsupported')
+    && adminConfigRoute.includes('main_config_env_non_regular_unsupported')
+    && adminConfigRoute.includes("await fs.writeFile(tempPath, content, { encoding: 'utf-8', flag: 'wx' })")
+    && adminConfigRoute.includes('await fs.rename(tempPath, configPath)')
+    && adminConfigRouteTests.includes('main config route rejects existing config.env symlink without writing target')
+    && adminConfigRouteTests.includes('main config route rejects existing config.env directory')
+    && adminConfigRouteTests.includes('main config route writes config.env through regular temp file and reloads plugins'),
 });
 
 const codexMemoryMcpRoute = readText('routes/codexMemoryMcp.js');
