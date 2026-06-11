@@ -137,12 +137,18 @@ async function getConfigEnvStatus(record, pluginName = null) {
                 status: 'config_env_symlink_unsupported'
             };
         }
+        if (!stat.isFile()) {
+            return {
+                exists: true,
+                readable: false,
+                redacted: true,
+                status: 'config_env_non_regular_unsupported'
+            };
+        }
         return {
             exists: true,
             readable: true,
-            redacted: true,
-            size: stat.size,
-            updatedAt: stat.mtime ? stat.mtime.toISOString() : null
+            redacted: true
         };
     } catch (envError) {
         if (envError.code !== 'ENOENT') {
