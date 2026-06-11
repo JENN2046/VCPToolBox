@@ -418,6 +418,16 @@ function resolveDirectDownloadUrlInstallPolicy(body = {}, env = process.env) {
     };
 }
 
+function resolveSourcePluginInstallTarget(target) {
+    if (target?.downloadUrl) {
+        return { kind: 'download', downloadUrl: target.downloadUrl };
+    }
+    if (target?.github) {
+        return { kind: 'github', github: target.github };
+    }
+    return { kind: 'missing' };
+}
+
 // Walk an extracted tree and refuse symlinks or entries whose realpath escapes base.
 // Defends against zip-slip / tar-slip regardless of the extractor's own safeguards.
 async function assertSafeExtractedTree(baseDir) {
@@ -1715,19 +1725,20 @@ function createPluginStoreRouter(options) {
                     const plugins = await listPluginsFromSource(source);
                     const target = plugins.find(p => p.name === pluginName);
                     if (!target) throw new Error(`源中未找到插件 ${pluginName}`);
-                    if (target.github) {
-                        await installFromGithub(target.github, task, { force, pluginManager, allowLifecycleScripts });
-                    } else if (target.downloadUrl) {
-                        const archiveNameHint = archiveNameHintFromUrl(target.downloadUrl);
+                    const installTarget = resolveSourcePluginInstallTarget(target);
+                    if (installTarget.kind === 'download') {
+                        const archiveNameHint = archiveNameHintFromUrl(installTarget.downloadUrl);
                         const archivePath = path.join(TMP_DIR, `dl-${Date.now()}`);
                         await ensureDir(TMP_DIR);
-                        pushDownloadLog(task, target.downloadUrl);
-                        await downloadToFile(target.downloadUrl, archivePath);
+                        pushDownloadLog(task, installTarget.downloadUrl);
+                        await downloadToFile(installTarget.downloadUrl, archivePath);
                         try {
                             await installFromArchive(archivePath, task, { force, pluginManager, allowLifecycleScripts }, archiveNameHint);
                         } finally {
                             await fsp.rm(archivePath, { force: true }).catch(() => {});
                         }
+                    } else if (installTarget.kind === 'github') {
+                        await installFromGithub(installTarget.github, task, { force, pluginManager, allowLifecycleScripts });
                     } else {
                         throw new Error('插件条目缺少 downloadUrl 或 GitHub 信息');
                     }
@@ -1942,6 +1953,7 @@ module.exports._test = {
     redactSourceUrl,
     resolveDirectDownloadUrlInstallPolicy,
     resolveLifecycleScriptApproval,
+    resolveSourcePluginInstallTarget,
     runNpmInstall,
     scrubPluginStoreLog,
     sanitizeSourceForApi,

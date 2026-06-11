@@ -39,6 +39,7 @@ const {
     cleanupUploadedFiles,
     resolveDirectDownloadUrlInstallPolicy,
     resolveLifecycleScriptApproval,
+    resolveSourcePluginInstallTarget,
     runNpmInstall,
     scrubPluginStoreLog,
 } = pluginStoreRouter._test;
@@ -230,6 +231,40 @@ test('resolveDirectDownloadUrlInstallPolicy disables direct downloadUrl installs
             { [ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV]: '1' }
         ).ok,
         false
+    );
+});
+
+test('resolveSourcePluginInstallTarget prefers registry download archives over GitHub subpaths', () => {
+    const github = {
+        owner: 'owner',
+        repo: 'repo',
+        branch: 'main',
+        subpath: 'plugins/demo',
+    };
+
+    assert.deepEqual(
+        resolveSourcePluginInstallTarget({
+            name: 'DemoPlugin',
+            downloadUrl: 'https://registry.example.test/demo.zip',
+            github,
+        }),
+        {
+            kind: 'download',
+            downloadUrl: 'https://registry.example.test/demo.zip',
+        }
+    );
+
+    assert.deepEqual(
+        resolveSourcePluginInstallTarget({
+            name: 'DemoPlugin',
+            github,
+        }),
+        { kind: 'github', github }
+    );
+
+    assert.deepEqual(
+        resolveSourcePluginInstallTarget({ name: 'BrokenPlugin' }),
+        { kind: 'missing' }
     );
 });
 
