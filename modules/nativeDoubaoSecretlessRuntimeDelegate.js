@@ -8,9 +8,12 @@
  * delegate before any DoubaoGen tool call can be forwarded.
  */
 
+const {
+  SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS,
+} = require('./aiImageNativeDelegateBindings');
+
 const DOUBAO_TOOL_NAME = 'DoubaoGen';
 const DEFAULT_REQUEST_IP = '127.0.0.1';
-const DEFAULT_REQUEST_SOURCE = 'agent-image-lab-secretless-runtime';
 const SECRETLESS_SERUM_ALLOWED_SIZE = '1920x1920';
 const SECRETLESS_SERUM_SIZE_OVERRIDE_KEYS = [
   'resolution',
@@ -53,7 +56,7 @@ function createNativeDoubaoSecretlessRuntimeDelegate(options = {}) {
   const defaultRequestIp = normalizeNonEmptyString(options.requestIp, DEFAULT_REQUEST_IP);
   const bridgeId = normalizeNonEmptyString(
     options.bridgeId,
-    'native_doubao_secretless_runtime_delegate'
+    SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS.bridgeId
   );
 
   return async function nativeDoubaoSecretlessRuntimeDelegate(request = {}) {
@@ -94,9 +97,10 @@ function createNativeDoubaoSecretlessRuntimeDelegate(options = {}) {
       : {};
     const executionContext = {
       ...inputExecutionContext,
-      requestSource: DEFAULT_REQUEST_SOURCE,
+      requestSource: SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS.requestSource,
       bridgeId,
-      providerBindingRefRedacted: true,
+      providerBindingRefRedacted:
+        SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS.providerBindingRefRedacted,
     };
 
     const result = await pluginManager.processToolCall(
