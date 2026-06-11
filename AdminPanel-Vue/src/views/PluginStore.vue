@@ -665,7 +665,7 @@ const isDragging = ref(false)
 // Install state: installingKey tracks which action is in flight so we can
 // show per-plugin progress instead of locking the whole UI.
 type InstallPayload =
-  | { kind: 'card'; sourceId?: string; pluginName?: string; downloadUrl?: string; force?: boolean; key: string }
+  | { kind: 'card'; sourceId?: string; pluginName?: string; force?: boolean; key: string }
   | { kind: 'github'; githubUrl: string; key: string }
   | { kind: 'upload'; key: string }
 
@@ -1074,7 +1074,6 @@ async function installFromCard(plugin: PluginStoreItem, force = false) {
     kind: 'card',
     sourceId: plugin.sourceId,
     pluginName: plugin.name,
-    downloadUrl: plugin.downloadUrl,
     force,
     key: pluginKey(plugin),
   }
@@ -1083,7 +1082,6 @@ async function installFromCard(plugin: PluginStoreItem, force = false) {
     () => pluginStoreApi.install({
       sourceId: payload.sourceId,
       pluginName: payload.pluginName,
-      downloadUrl: payload.downloadUrl,
       force: payload.force,
     }, START_INSTALL_UI_OPTIONS),
     payload.key,
@@ -1091,7 +1089,6 @@ async function installFromCard(plugin: PluginStoreItem, force = false) {
       lifecycleRetry: () => pluginStoreApi.install(withLifecycleApproval({
         sourceId: payload.sourceId,
         pluginName: payload.pluginName,
-        downloadUrl: payload.downloadUrl,
         force: payload.force,
       }), START_INSTALL_UI_OPTIONS),
     },
@@ -1174,7 +1171,6 @@ async function retryWithForce() {
       () => pluginStoreApi.install({
         sourceId: last.sourceId,
         pluginName: last.pluginName,
-        downloadUrl: last.downloadUrl,
         force: true,
       }, START_INSTALL_UI_OPTIONS),
       last.key,
@@ -1182,7 +1178,6 @@ async function retryWithForce() {
         lifecycleRetry: () => pluginStoreApi.install(withLifecycleApproval({
           sourceId: last.sourceId,
           pluginName: last.pluginName,
-          downloadUrl: last.downloadUrl,
           force: true,
         }), START_INSTALL_UI_OPTIONS),
       },

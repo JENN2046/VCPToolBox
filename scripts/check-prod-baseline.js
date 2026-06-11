@@ -346,13 +346,20 @@ requiredChecks.push({
   label: 'Plugin Store source APIs return redacted source URLs only',
   ok: pluginStoreRoute.includes('function redactSourceUrl')
     && pluginStoreRoute.includes('function sanitizeSourceForApi')
+    && pluginStoreRoute.includes('function sanitizePluginItemForApi')
     && pluginStoreRoute.includes('const { url, ...safeSource } = source')
+    && pluginStoreRoute.includes('const { downloadUrl, ...safePlugin } = plugin')
     && pluginStoreRoute.includes('sources: sanitizeSourcesForApi(sources)')
+    && pluginStoreRoute.includes('plugins: sanitizePluginItemsForApi(all)')
     && pluginStoreRoute.includes("res.json({ sources: sanitizeSourcesForApi(await loadSources()) })")
     && !pluginStoreApiClient.includes('url?: string')
+    && !/export interface PluginStoreItem[\s\S]*?downloadUrl\?: string[\s\S]*?export interface PluginSource/.test(pluginStoreApiClient)
     && !pluginStoreView.includes('source.url')
+    && !pluginStoreView.includes('plugin.downloadUrl')
+    && !pluginStoreView.includes('last.downloadUrl')
     && pluginStoreSourceTests.includes('redactSourceUrl removes credentials and token query values')
     && pluginStoreSourceTests.includes('sanitizeSourceForApi omits raw url and exposes redacted display fields')
+    && pluginStoreSourceTests.includes('sanitizePluginItemForApi omits raw downloadUrl from plugin list items')
     && pluginStoreSourceTests.includes('GET /plugin-store/sources does not return raw source URLs')
     && pluginStoreSourceTests.includes('aggregate source sanitizer used by /plugin-store output omits raw URLs'),
 });

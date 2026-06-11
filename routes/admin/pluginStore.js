@@ -754,6 +754,16 @@ function sanitizeSourcesForApi(sources) {
     return (Array.isArray(sources) ? sources : []).map(sanitizeSourceForApi);
 }
 
+function sanitizePluginItemForApi(plugin) {
+    if (!plugin || typeof plugin !== 'object') return plugin;
+    const { downloadUrl, ...safePlugin } = plugin;
+    return safePlugin;
+}
+
+function sanitizePluginItemsForApi(plugins) {
+    return (Array.isArray(plugins) ? plugins : []).map(sanitizePluginItemForApi);
+}
+
 function sourceFingerprint(source) {
     const type = source?.type === 'github' ? 'github' : 'registry';
     return `${type}:${normalizeSourceUrl(type, source?.url)}`;
@@ -1618,7 +1628,7 @@ function createPluginStoreRouter(options) {
                 }
             });
             res.json({
-                plugins: all,
+                plugins: sanitizePluginItemsForApi(all),
                 total: all.length,
                 sources: sanitizeSourcesForApi(sources),
                 errors,
@@ -1919,4 +1929,6 @@ module.exports._test = {
     scrubPluginStoreLog,
     sanitizeSourceForApi,
     sanitizeSourcesForApi,
+    sanitizePluginItemForApi,
+    sanitizePluginItemsForApi,
 };

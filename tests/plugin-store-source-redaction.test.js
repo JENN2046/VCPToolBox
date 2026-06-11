@@ -46,6 +46,8 @@ try {
 
 const {
     redactSourceUrl,
+    sanitizePluginItemForApi,
+    sanitizePluginItemsForApi,
     sanitizeSourceForApi,
     sanitizeSourcesForApi,
 } = createPluginStoreRouter._test;
@@ -94,6 +96,18 @@ test('sanitizeSourceForApi omits raw url and exposes redacted display fields', (
     assert.equal(Object.prototype.hasOwnProperty.call(source, 'url'), false);
     assert.equal(source.displayUrl, source.redactedUrl);
     assertNoRawSourceUrl(source);
+});
+
+test('sanitizePluginItemForApi omits raw downloadUrl from plugin list items', () => {
+    const plugin = sanitizePluginItemForApi({
+        name: 'PrivatePlugin',
+        sourceId: 'src_private',
+        downloadUrl: 'https://user:pass@registry.example.test/private.zip?access_token=abc&secret=super-secret',
+        github: null,
+    });
+
+    assert.equal(Object.prototype.hasOwnProperty.call(plugin, 'downloadUrl'), false);
+    assertNoRawSourceUrl(plugin);
 });
 
 test('GET /plugin-store/sources does not return raw source URLs', async () => {
@@ -181,7 +195,13 @@ test('aggregate source sanitizer used by /plugin-store output omits raw URLs', (
         url: 'https://registry.example.test/feed?token=super-secret',
         type: 'registry',
     }]);
+    const plugins = sanitizePluginItemsForApi([{
+        name: 'PrivatePlugin',
+        sourceId: 'src_private',
+        downloadUrl: 'https://registry.example.test/private.zip?token=super-secret',
+    }]);
 
     assert.equal(Object.prototype.hasOwnProperty.call(sources[0], 'url'), false);
-    assertNoRawSourceUrl({ sources });
+    assert.equal(Object.prototype.hasOwnProperty.call(plugins[0], 'downloadUrl'), false);
+    assertNoRawSourceUrl({ sources, plugins });
 });

@@ -20,7 +20,6 @@ export interface PluginStoreItem {
   installed?: boolean
   installedVersion?: string
   updateAvailable?: boolean
-  downloadUrl?: string
   sourceId?: string
   sourceName?: string
   installedSource?: 'core' | 'external' | string
