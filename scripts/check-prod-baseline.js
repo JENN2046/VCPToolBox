@@ -340,6 +340,8 @@ requiredChecks.push({
     && pluginStoreRoute.includes('createDownloadByteLimitStream')
     && pluginStoreRoute.includes('plugin_store_remote_download_too_large')
     && pluginStoreRoute.includes("fs.createWriteStream(destFile, { flags: 'wx' })")
+    && pluginStoreRoute.includes('https://codeload.github.com/${parsed.owner}/${parsed.repo}/zip/refs/heads/${branch}')
+    && pluginStoreRoute.includes('await downloadToFile(zipUrl, zipPath)')
     && pluginStoreSsrfTests.includes('downloadToFile rejects oversized Content-Length before writing file')
     && pluginStoreSsrfTests.includes('downloadToFile aborts streaming body that exceeds quota and removes partial file'),
 });
