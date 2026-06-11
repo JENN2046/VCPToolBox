@@ -343,9 +343,9 @@ test('Jenn adapter install root must match an allowlisted external legacy root',
 
 test('Gate 10 no-op Jenn external fixture package is discovered from the Plugin subdirectory only', async () => {
     const projectRoot = makeTempDir();
-    const externalPackageRoot = path.join(projectRoot, '..', 'VCPToolBox-JENN-Extensions');
+    const externalPackageRoot = path.join(projectRoot, 'VCPToolBox-JENN-Extensions');
     const externalPluginRoot = path.join(externalPackageRoot, 'Plugin');
-    const localStateRoot = path.join(projectRoot, '..', 'VCPToolBox-JENN-LocalState');
+    const localStateRoot = path.join(projectRoot, 'VCPToolBox-JENN-LocalState');
     const fixtureManifest = {
         name: 'NoopJennExternalFixture',
         displayName: 'No-op Jenn External Fixture',
@@ -448,8 +448,7 @@ test('Gate 10 no-op Jenn external fixture package is discovered from the Plugin 
         }
 
         const fixtureFiles = [];
-        const tempFixtureBase = path.dirname(projectRoot);
-        const pendingDirs = [projectRoot, externalPackageRoot, localStateRoot];
+        const pendingDirs = [projectRoot];
         while (pendingDirs.length > 0) {
             const currentDir = pendingDirs.pop();
             for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
@@ -457,7 +456,7 @@ test('Gate 10 no-op Jenn external fixture package is discovered from the Plugin 
                 if (entry.isDirectory()) {
                     pendingDirs.push(entryPath);
                 } else {
-                    fixtureFiles.push(path.relative(tempFixtureBase, entryPath));
+                    fixtureFiles.push(path.relative(projectRoot, entryPath));
                 }
             }
         }
@@ -467,8 +466,6 @@ test('Gate 10 no-op Jenn external fixture package is discovered from the Plugin 
         assert.ok(fixtureFiles.every(filePath => !/config\.env|\.env|log|cache|image|ToolConfigs|operator/i.test(filePath)));
     } finally {
         fs.rmSync(projectRoot, { recursive: true, force: true });
-        fs.rmSync(externalPackageRoot, { recursive: true, force: true });
-        fs.rmSync(localStateRoot, { recursive: true, force: true });
     }
 });
 
