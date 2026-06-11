@@ -113,10 +113,44 @@ function negotiateProtocolVersion(requestedVersion) {
     return DEFAULT_PROTOCOL_VERSION;
 }
 
-module.exports = function createCodexMemoryMcpRouter(options) {
+function normalizeAuthorizationResult(result) {
+    if (result === true) {
+        return { ok: true };
+    }
+    if (result && typeof result === 'object') {
+        return {
+            ok: result.ok === true || result.authorized === true || result.allowed === true,
+            statusCode: Number.isInteger(result.statusCode) ? result.statusCode : 403,
+            error: typeof result.error === 'string' && result.error.trim()
+                ? result.error.trim()
+                : 'codex_memory_mcp_forbidden'
+        };
+    }
+    return {
+        ok: false,
+        statusCode: 403,
+        error: 'codex_memory_mcp_forbidden'
+    };
+}
+
+function createAuthorizationError(result, fallbackMessage) {
+    const normalized = normalizeAuthorizationResult(result);
+    const error = new Error(normalized.error || fallbackMessage);
+    error.statusCode = normalized.statusCode;
+    error.code = normalized.error || fallbackMessage;
+    return error;
+}
+
+module.exports = function createCodexMemoryMcpRouter(options = {}) {
+    if (typeof options.authorizeRequest !== 'function') {
+        throw new TypeError('codex-memory MCP router requires authorizeRequest option');
+    }
+
     const router = express.Router();
     const sessions = new Map();
     const {
+        authorizeRequest,
+        authorizeIncludeContent,
         pluginManager,
         knowledgeBaseManager,
         ragDiaryPlugin,
@@ -124,6 +158,60 @@ module.exports = function createCodexMemoryMcpRouter(options) {
         projectBasePath,
         dailyNoteRootPath
     } = options;
+
+    async function requireAuthorizedRequest(req, res, next) {
+        let authorization;
+        try {
+            authorization = normalizeAuthorizationResult(await authorizeRequest(req, {
+                scope: 'codex_memory_mcp',
+                method: req.method,
+                path: req.originalUrl || req.path || '/'
+            }));
+        } catch {
+            authorization = {
+                ok: false,
+                statusCode: 403,
+                error: 'codex_memory_mcp_authorization_failed'
+            };
+        }
+
+        if (!authorization.ok) {
+            return res.status(authorization.statusCode).json({ error: authorization.error });
+        }
+
+        return next();
+    }
+
+    async function requireIncludeContentAuthorization(req, args = {}) {
+        if (typeof authorizeIncludeContent !== 'function') {
+            throw createAuthorizationError({
+                ok: false,
+                statusCode: 403,
+                error: 'codex_memory_include_content_forbidden'
+            }, 'codex_memory_include_content_forbidden');
+        }
+
+        let authorization;
+        try {
+            authorization = await authorizeIncludeContent(req, {
+                scope: 'codex_memory_mcp.include_content',
+                toolName: 'search_memory',
+                target: args.target || 'both',
+                limit: args.limit
+            });
+        } catch {
+            authorization = {
+                ok: false,
+                statusCode: 403,
+                error: 'codex_memory_include_content_authorization_failed'
+            };
+        }
+
+        const normalized = normalizeAuthorizationResult(authorization);
+        if (!normalized.ok) {
+            throw createAuthorizationError(normalized, 'codex_memory_include_content_forbidden');
+        }
+    }
 
     function createSession(existingId = null) {
         const sessionId = existingId || crypto.randomUUID();
@@ -174,6 +262,9 @@ module.exports = function createCodexMemoryMcpRouter(options) {
         }
 
         if (toolName === 'search_memory') {
+            if (args.include_content === true) {
+                await requireIncludeContentAuthorization(req, args);
+            }
             const activeRagDiaryPlugin = typeof getRagDiaryPlugin === 'function'
                 ? getRagDiaryPlugin()
                 : ragDiaryPlugin;
@@ -285,6 +376,8 @@ module.exports = function createCodexMemoryMcpRouter(options) {
             response: jsonRpcError(id, -32601, `Method not found: ${method}`)
         };
     }
+
+    router.use(requireAuthorizedRequest);
 
     router.get('/', (req, res) => {
         const sessionId = createSession(req.get(SESSION_HEADER) || null);

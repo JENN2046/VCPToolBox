@@ -659,6 +659,44 @@ function isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) {
     return req && req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH;
 }
 
+function isCodexMemoryMcpLoopbackAllowed(req) {
+    return req &&
+        req.path.startsWith('/mcp/codex-memory') &&
+        process.env.ENABLE_CODEX_MEMORY_MCP_LOOPBACK === 'true' &&
+        isLoopbackSocket(req);
+}
+
+function isAuthorizedCodexMemoryMcpRequest(req) {
+    const authHeader = req && req.headers ? req.headers.authorization : null;
+    const hasConfiguredServerKey = typeof serverKey === 'string' && serverKey.length > 0;
+    return (
+        (hasConfiguredServerKey && authHeader === `Bearer ${serverKey}`) ||
+        isCodexMemoryMcpLoopbackAllowed(req)
+    );
+}
+
+function authorizeCodexMemoryMcpRequest(req) {
+    if (isAuthorizedCodexMemoryMcpRequest(req)) {
+        return { ok: true };
+    }
+    return {
+        ok: false,
+        statusCode: 401,
+        error: 'Unauthorized (Bearer token required)'
+    };
+}
+
+function authorizeCodexMemoryMcpIncludeContent(req) {
+    if (isAuthorizedCodexMemoryMcpRequest(req)) {
+        return { ok: true };
+    }
+    return {
+        ok: false,
+        statusCode: 403,
+        error: 'codex_memory_include_content_forbidden'
+    };
+}
+
 // Authentication middleware for Admin Panel and Admin API
 const adminAuth = (req, res, next) => {
     // This middleware protects both the Admin Panel static files and its API endpoints.
@@ -889,11 +927,7 @@ app.use((req, res, next) => {
         return next();
     }
 
-    const allowCodexMemoryLoopback =
-        req.path.startsWith('/mcp/codex-memory') &&
-        process.env.ENABLE_CODEX_MEMORY_MCP_LOOPBACK === 'true' &&
-        isLoopbackSocket(req);
-    if (allowCodexMemoryLoopback) {
+    if (isCodexMemoryMcpLoopbackAllowed(req)) {
         return next();
     }
 
@@ -906,6 +940,8 @@ app.use((req, res, next) => {
 
 app.use(toolExecutionRoutes({ pluginManager }));
 app.use('/mcp/codex-memory', codexMemoryMcpRoutes({
+    authorizeRequest: authorizeCodexMemoryMcpRequest,
+    authorizeIncludeContent: authorizeCodexMemoryMcpIncludeContent,
     pluginManager,
     knowledgeBaseManager,
     getRagDiaryPlugin: () => pluginManager.messagePreprocessors.get('RAGDiaryPlugin'),
