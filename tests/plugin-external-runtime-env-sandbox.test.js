@@ -75,7 +75,7 @@ function makeCorePlugin(name, overrides = {}) {
     };
 }
 
-function makeFakeChild(stdoutPayload = '') {
+function makeFakeChild(stdoutPayload = '', options = {}) {
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
@@ -87,8 +87,13 @@ function makeFakeChild(stdoutPayload = '') {
     child.stdout.setEncoding = () => {};
     child.stderr.setEncoding = () => {};
     process.nextTick(() => {
+        if (options.errorMessage) {
+            child.emit('error', new Error(options.errorMessage));
+            return;
+        }
         if (stdoutPayload) child.stdout.emit('data', stdoutPayload);
-        child.emit('exit', 0, null);
+        if (options.stderrPayload) child.stderr.emit('data', options.stderrPayload);
+        child.emit('exit', options.exitCode ?? 0, options.signal ?? null);
     });
     return child;
 }
@@ -306,6 +311,150 @@ test('core async plugin debug log never prints runtime env secret values', async
             assert.equal(logText.includes(forbidden), false, `${forbidden} should not be logged`);
         }
         assert.match(logText, /redacted \d+ sensitive keys/);
+    });
+});
+
+test('stdio plugin diagnostic errors and debug logs scrub secrets and paths', async () => {
+    await withPluginManagerState(async () => {
+        const pluginName = 'CoreRuntimeDiagnosticFixture';
+        const plugin = makeCorePlugin(pluginName);
+        const logs = [];
+        const warnings = [];
+        const originalLog = console.log;
+        const originalWarn = console.warn;
+
+        pluginManager.debugMode = true;
+        pluginManager.plugins.set(pluginName, plugin);
+        pluginManager._spawnPluginProcess = () => makeFakeChild(
+            'not json token=stdout-secret A:\\private\\stdout.txt',
+            {
+                stderrPayload: 'api_key=stderr-secret /home/operator/stderr.txt',
+                exitCode: 1
+            }
+        );
+        console.log = (...args) => logs.push(args.map(arg => String(arg)).join(' '));
+        console.warn = (...args) => warnings.push(args.map(arg => String(arg)).join(' '));
+
+        try {
+            await assert.rejects(
+                () => pluginManager.executePlugin(pluginName, '{}'),
+                (error) => {
+                    assert.match(error.message, /exited with code 1/);
+                    assert.match(error.message, /token=\[redacted\]/);
+                    assert.match(error.message, /api_key=\[redacted\]/);
+                    assert.equal(error.message.includes('stdout-secret'), false);
+                    assert.equal(error.message.includes('stderr-secret'), false);
+                    assert.equal(error.message.includes('A:\\private'), false);
+                    assert.equal(error.message.includes('/home/operator'), false);
+                    return true;
+                }
+            );
+        } finally {
+            console.log = originalLog;
+            console.warn = originalWarn;
+        }
+
+        const diagnosticText = `${logs.join('\n')}\n${warnings.join('\n')}`;
+        assert.equal(diagnosticText.includes('stdout-secret'), false);
+        assert.equal(diagnosticText.includes('stderr-secret'), false);
+        assert.equal(diagnosticText.includes('A:\\private'), false);
+        assert.equal(diagnosticText.includes('/home/operator'), false);
+        assert.match(diagnosticText, /token=\[redacted\]/);
+        assert.match(diagnosticText, /api_key=\[redacted\]/);
+    });
+});
+
+test('stdio plugin startup errors scrub secrets and paths', async () => {
+    await withPluginManagerState(async () => {
+        const pluginName = 'CoreRuntimeStartupErrorFixture';
+        const plugin = makeCorePlugin(pluginName);
+
+        pluginManager.plugins.set(pluginName, plugin);
+        pluginManager._spawnPluginProcess = () => makeFakeChild('', {
+            errorMessage: 'spawn failed token=start-secret A:\\private\\spawn.exe'
+        });
+
+        await assert.rejects(
+            () => pluginManager.executePlugin(pluginName, '{}'),
+            (error) => {
+                assert.match(error.message, /Failed to start plugin/);
+                assert.match(error.message, /token=\[redacted\]/);
+                assert.equal(error.message.includes('start-secret'), false);
+                assert.equal(error.message.includes('A:\\private'), false);
+                return true;
+            }
+        );
+    });
+});
+
+test('static plugin stderr diagnostics scrub secrets and paths', async () => {
+    await withPluginManagerState(async () => {
+        const plugin = makeExternalPlugin('ExternalStaticDiagnosticFixture', {
+            pluginType: 'static',
+            entryPoint: { command: 'node static-fixture.js' }
+        });
+        const errors = [];
+        const originalError = console.error;
+
+        pluginManager._spawnPluginProcess = () => makeFakeChild('', {
+            stderrPayload: 'password=static-secret C:\\private\\static.txt',
+            exitCode: 1
+        });
+        console.error = (...args) => errors.push(args.map(arg => String(arg)).join(' '));
+
+        try {
+            await assert.rejects(
+                () => pluginManager._executeStaticPluginCommand(plugin),
+                (error) => {
+                    assert.match(error.message, /password=\[redacted\]/);
+                    assert.equal(error.message.includes('static-secret'), false);
+                    assert.equal(error.message.includes('C:\\private'), false);
+                    return true;
+                }
+            );
+        } finally {
+            console.error = originalError;
+        }
+
+        const errorText = errors.join('\n');
+        assert.match(errorText, /password=\[redacted\]/);
+        assert.equal(errorText.includes('static-secret'), false);
+        assert.equal(errorText.includes('C:\\private'), false);
+    });
+});
+
+test('static plugin startup errors scrub secrets and paths', async () => {
+    await withPluginManagerState(async () => {
+        const plugin = makeExternalPlugin('ExternalStaticStartupErrorFixture', {
+            pluginType: 'static',
+            entryPoint: { command: 'node static-fixture.js' }
+        });
+        const errors = [];
+        const originalError = console.error;
+
+        pluginManager._spawnPluginProcess = () => makeFakeChild('', {
+            errorMessage: 'spawn failed secret=static-start-secret C:\\private\\static.exe'
+        });
+        console.error = (...args) => errors.push(args.map(arg => String(arg)).join(' '));
+
+        try {
+            await assert.rejects(
+                () => pluginManager._executeStaticPluginCommand(plugin),
+                (error) => {
+                    assert.match(error.message, /secret=\[redacted\]/);
+                    assert.equal(error.message.includes('static-start-secret'), false);
+                    assert.equal(error.message.includes('C:\\private'), false);
+                    return true;
+                }
+            );
+        } finally {
+            console.error = originalError;
+        }
+
+        const errorText = errors.join('\n');
+        assert.match(errorText, /secret=\[redacted\]/);
+        assert.equal(errorText.includes('static-start-secret'), false);
+        assert.equal(errorText.includes('C:\\private'), false);
     });
 });
 
