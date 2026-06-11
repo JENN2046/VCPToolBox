@@ -342,6 +342,15 @@ requiredChecks.push({
     && pluginStoreSourceTests.includes('GET /plugin-store/sources does not return raw source URLs')
     && pluginStoreSourceTests.includes('aggregate source sanitizer used by /plugin-store output omits raw URLs'),
 });
+requiredChecks.push({
+  label: 'Plugin Store install download logs redact source URLs',
+  ok: pluginStoreRoute.includes('function pushDownloadLog')
+    && (pluginStoreRoute.match(/pushDownloadLog\(task, /g) || []).length >= 3
+    && !pluginStoreRoute.includes('pushLog(task, `[download] ${downloadUrl}`)')
+    && !pluginStoreRoute.includes('pushLog(task, `[download] ${target.downloadUrl}`)')
+    && pluginStoreInstallTests.includes('scrubPluginStoreLog redacts token-like output, credential URLs, and absolute paths')
+    && pluginStoreInstallTests.includes('access_token=abc123'),
+});
 
 requiredChecks.push({
   label: 'Admin managed write routes require unambiguous targets',

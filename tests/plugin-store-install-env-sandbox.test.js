@@ -292,6 +292,7 @@ test('scrubPluginStoreLog redacts token-like output, credential URLs, and absolu
         'Authorization: Bearer abc.def.ghi',
         'api_key=plain-secret',
         'download https://user:pass@example.test/plugin.zip',
+        'download https://user:pass@example.test/private/plugin.zip?access_token=abc123&ok=1',
         'C:\\Users\\operator\\secret\\file.txt',
         '/home/operator/secret/file.txt',
     ].join('\n');
@@ -301,6 +302,7 @@ test('scrubPluginStoreLog redacts token-like output, credential URLs, and absolu
     assert.equal(output.includes('abc.def.ghi'), false);
     assert.equal(output.includes('plain-secret'), false);
     assert.equal(output.includes('user:pass'), false);
+    assert.equal(output.includes('abc123'), false);
     assert.equal(output.includes('C:\\Users\\operator'), false);
     assert.equal(output.includes('/home/operator'), false);
     assert.match(output, /\[redacted\]|\[credentials\]|\[path\]/);

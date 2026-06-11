@@ -658,6 +658,10 @@ function pushLog(task, line) {
     task.bus.emit('log', safeLine);
 }
 
+function pushDownloadLog(task, rawUrl) {
+    pushLog(task, `[download] ${redactSourceUrl(rawUrl)}`);
+}
+
 function finishTask(task, status, message) {
     task.status = status;
     task.message = scrubPluginStoreLog(message);
@@ -1476,7 +1480,7 @@ async function installFromGithub(parsed, task, options) {
     const zipUrl = `https://codeload.github.com/${parsed.owner}/${parsed.repo}/zip/refs/heads/${branch}`;
     const zipPath = path.join(TMP_DIR, `gh-${parsed.owner}-${parsed.repo}-${Date.now()}.zip`);
     await ensureDir(TMP_DIR);
-    pushLog(task, `[download] ${zipUrl}`);
+    pushDownloadLog(task, zipUrl);
     await downloadToFile(zipUrl, zipPath);
     try {
         // If a subpath was given, extract then narrow down
@@ -1670,7 +1674,7 @@ function createPluginStoreRouter(options) {
                     const archiveNameHint = archiveNameHintFromUrl(downloadUrl);
                     const archivePath = path.join(TMP_DIR, `dl-${Date.now()}`);
                     await ensureDir(TMP_DIR);
-                    pushLog(task, `[download] ${downloadUrl}`);
+                    pushDownloadLog(task, downloadUrl);
                     await downloadToFile(downloadUrl, archivePath);
                     try {
                         await installFromArchive(archivePath, task, { force, pluginManager, allowLifecycleScripts }, archiveNameHint);
@@ -1690,7 +1694,7 @@ function createPluginStoreRouter(options) {
                         const archiveNameHint = archiveNameHintFromUrl(target.downloadUrl);
                         const archivePath = path.join(TMP_DIR, `dl-${Date.now()}`);
                         await ensureDir(TMP_DIR);
-                        pushLog(task, `[download] ${target.downloadUrl}`);
+                        pushDownloadLog(task, target.downloadUrl);
                         await downloadToFile(target.downloadUrl, archivePath);
                         try {
                             await installFromArchive(archivePath, task, { force, pluginManager, allowLifecycleScripts }, archiveNameHint);
