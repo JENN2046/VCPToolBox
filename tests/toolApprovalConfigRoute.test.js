@@ -124,17 +124,13 @@ test('tool approval config route rejects semantic schema errors', async () => {
     });
 });
 
-test('tool approval config route writes normalized canonical config', async () => {
-    const writes = [];
+test('tool approval config route writes normalized canonical config through a regular temp file', async (t) => {
+    const projectRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcpt-tool-approval-config-'));
+    t.after(async () => {
+        await fsp.rm(projectRoot, { recursive: true, force: true });
+    });
 
-    await withConfigApp({
-        async readFile() {
-            throw Object.assign(new Error('not needed'), { code: 'ENOENT' });
-        },
-        async writeFile(filePath, content) {
-            writes.push({ filePath, content });
-        }
-    }, async (baseUrl) => {
+    await withMainConfigApp(projectRoot, async (baseUrl) => {
         const response = await fetch(`${baseUrl}/tool-approval-config`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -150,8 +146,9 @@ test('tool approval config route writes normalized canonical config', async () =
         });
 
         assert.equal(response.status, 200);
-        assert.equal(writes.length, 1);
-        assert.deepEqual(JSON.parse(writes[0].content), {
+        const configPath = path.join(projectRoot, 'toolApprovalConfig.json');
+        assert.equal(fs.lstatSync(configPath).isFile(), true);
+        assert.deepEqual(JSON.parse(await fsp.readFile(configPath, 'utf8')), {
             enabled: true,
             timeoutMinutes: 9,
             approveAll: false,
@@ -159,6 +156,84 @@ test('tool approval config route writes normalized canonical config', async () =
             debugMode: true,
             fuzzyToolMatching: false
         });
+        const tempFiles = (await fsp.readdir(projectRoot))
+            .filter((entry) => entry.startsWith('.toolApprovalConfig.json.'));
+        assert.deepEqual(tempFiles, []);
+    });
+});
+
+test('tool approval config route rejects existing toolApprovalConfig.json symlink without writing target', async (t) => {
+    const projectRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcpt-tool-approval-config-symlink-'));
+    t.after(async () => {
+        await fsp.rm(projectRoot, { recursive: true, force: true });
+    });
+
+    const configPath = path.join(projectRoot, 'toolApprovalConfig.json');
+    const outsideConfigPath = path.join(projectRoot, 'outside-tool-approval.json');
+    await fsp.writeFile(outsideConfigPath, '{"enabled":false}\n', 'utf8');
+    try {
+        fs.symlinkSync(outsideConfigPath, configPath);
+    } catch (error) {
+        try {
+            const outsideConfigDir = path.join(projectRoot, 'outside-tool-approval-dir');
+            await fsp.mkdir(outsideConfigDir);
+            await fsp.writeFile(path.join(outsideConfigDir, 'marker.json'), '{"enabled":false}\n', 'utf8');
+            fs.symlinkSync(outsideConfigDir, configPath, process.platform === 'win32' ? 'junction' : 'dir');
+        } catch (fallbackError) {
+            t.skip(`symlink unavailable in this environment: ${error.message}; fallback failed: ${fallbackError.message}`);
+            return;
+        }
+    }
+
+    await withMainConfigApp(projectRoot, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/tool-approval-config`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                config: {
+                    enabled: true,
+                    approvalList: ['SciCalculator']
+                }
+            })
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 409);
+        assert.equal(body.code, 'tool_approval_config_symlink_unsupported');
+        assert.equal(await fsp.readFile(outsideConfigPath, 'utf8'), '{"enabled":false}\n');
+        const outsideMarkerPath = path.join(projectRoot, 'outside-tool-approval-dir', 'marker.json');
+        if (fs.existsSync(outsideMarkerPath)) {
+            assert.equal(await fsp.readFile(outsideMarkerPath, 'utf8'), '{"enabled":false}\n');
+        }
+        assert.equal(fs.lstatSync(configPath).isSymbolicLink(), true);
+    });
+});
+
+test('tool approval config route rejects existing toolApprovalConfig.json directory', async (t) => {
+    const projectRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcpt-tool-approval-config-dir-'));
+    t.after(async () => {
+        await fsp.rm(projectRoot, { recursive: true, force: true });
+    });
+
+    const configPath = path.join(projectRoot, 'toolApprovalConfig.json');
+    await fsp.mkdir(configPath);
+
+    await withMainConfigApp(projectRoot, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/tool-approval-config`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                config: {
+                    enabled: true,
+                    approvalList: ['SciCalculator']
+                }
+            })
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 409);
+        assert.equal(body.code, 'tool_approval_config_non_regular_unsupported');
+        assert.equal(fs.lstatSync(configPath).isDirectory(), true);
     });
 });
 
