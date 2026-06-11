@@ -6,6 +6,7 @@ const test = require('node:test');
 const fixtures = require('../modules/aiImageJennTrialFixtures');
 
 const root = path.resolve(__dirname, '..');
+const jennAgentImageLabSourceLiteral = /A:\\\\agent-image-lab/;
 
 function read(relativePath) {
     return fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -33,10 +34,10 @@ test('Jenn trial local path bindings are out of route and server implementation 
     const serverSource = read('server.js');
     const fixtureSource = read('modules/aiImageJennTrialFixtures.js');
 
-    assert.doesNotMatch(routeSource, /A:\\agent-image-lab/);
-    assert.doesNotMatch(serverSource, /A:\\agent-image-lab/);
+    assert.doesNotMatch(routeSource, jennAgentImageLabSourceLiteral);
+    assert.doesNotMatch(serverSource, jennAgentImageLabSourceLiteral);
     assert.match(fixtureSource, /AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES/);
-    assert.match(fixtureSource, /A:\\\\agent-image-lab/);
+    assert.match(fixtureSource, jennAgentImageLabSourceLiteral);
 });
 
 test('Jenn trial activation constants are not duplicated in route or server sources', () => {
