@@ -33,7 +33,9 @@ try {
 }
 
 const {
+    NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     buildPluginInstallEnv,
+    resolveLifecycleScriptApproval,
     runNpmInstall,
     scrubPluginStoreLog,
 } = pluginStoreRouter._test;
@@ -142,6 +144,38 @@ test('buildPluginInstallEnv optional allowlist is additive and deny patterns sti
     assert.equal(env.CUSTOM_BUILD_FLAG, 'enabled');
     assert.equal(Object.prototype.hasOwnProperty.call(env, 'OPENAI_API_KEY'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(env, 'CUSTOM_*'), false);
+});
+
+test('resolveLifecycleScriptApproval requires second confirmation for lifecycle scripts', () => {
+    assert.deepEqual(
+        resolveLifecycleScriptApproval({}),
+        { ok: true, allowLifecycleScripts: false }
+    );
+    assert.deepEqual(
+        resolveLifecycleScriptApproval({ allowLifecycleScripts: 'false' }),
+        { ok: true, allowLifecycleScripts: false }
+    );
+
+    const denied = resolveLifecycleScriptApproval({ allowLifecycleScripts: true });
+    assert.equal(denied.ok, false);
+    assert.equal(denied.status, 400);
+    assert.equal(denied.code, 'plugin_store_lifecycle_scripts_confirmation_required');
+    assert.match(denied.error, /ALLOW_NPM_LIFECYCLE_SCRIPTS/);
+
+    assert.deepEqual(
+        resolveLifecycleScriptApproval({
+            allowLifecycleScripts: true,
+            lifecycleScriptsConfirmation: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
+        }),
+        { ok: true, allowLifecycleScripts: true }
+    );
+    assert.deepEqual(
+        resolveLifecycleScriptApproval({
+            allowLifecycleScripts: 'true',
+            confirmLifecycleScripts: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
+        }),
+        { ok: true, allowLifecycleScripts: true }
+    );
 });
 
 test('runNpmInstall disables lifecycle scripts by default and passes sanitized env', async (t) => {

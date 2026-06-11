@@ -59,6 +59,7 @@ const NPM_LIFECYCLE_SCRIPT_NAMES = [
     'prepack',
     'postpack',
 ];
+const NPM_LIFECYCLE_SCRIPT_CONFIRMATION = 'ALLOW_NPM_LIFECYCLE_SCRIPTS';
 
 // =============================================================================
 // Utilities
@@ -342,6 +343,34 @@ function logPackageLifecycleDecision(task, metadata, { allowLifecycleScripts, cw
     } else {
         pushLog(task, '[safety] npm lifecycle scripts 默认禁用（--ignore-scripts）');
     }
+}
+
+function readBooleanLike(value) {
+    return value === true || value === 'true';
+}
+
+function resolveLifecycleScriptApproval(body = {}) {
+    const allowLifecycleScripts = readBooleanLike(body.allowLifecycleScripts);
+    if (!allowLifecycleScripts) {
+        return { ok: true, allowLifecycleScripts: false };
+    }
+
+    const confirmation = String(
+        body.lifecycleScriptsConfirmation ||
+        body.confirmLifecycleScripts ||
+        ''
+    ).trim();
+
+    if (confirmation !== NPM_LIFECYCLE_SCRIPT_CONFIRMATION) {
+        return {
+            ok: false,
+            status: 400,
+            code: 'plugin_store_lifecycle_scripts_confirmation_required',
+            error: `allowLifecycleScripts requires lifecycleScriptsConfirmation=${NPM_LIFECYCLE_SCRIPT_CONFIRMATION}`,
+        };
+    }
+
+    return { ok: true, allowLifecycleScripts: true };
 }
 
 // Walk an extracted tree and refuse symlinks or entries whose realpath escapes base.
@@ -1496,7 +1525,15 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.post('/plugin-store/install', async (req, res) => {
         const { sourceId, pluginName, githubUrl, downloadUrl, force } = req.body || {};
-        const allowLifecycleScripts = req.body?.allowLifecycleScripts === true;
+        const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
+        if (!lifecycleApproval.ok) {
+            return res.status(lifecycleApproval.status).json({
+                error: lifecycleApproval.error,
+                code: lifecycleApproval.code,
+                requiredConfirmation: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
+            });
+        }
+        const { allowLifecycleScripts } = lifecycleApproval;
         const task = createTask();
 
         // Respond early so client can subscribe to logs
@@ -1620,7 +1657,15 @@ function createPluginStoreRouter(options) {
     router.post('/plugin-store/upload', upload.array('files'), async (req, res) => {
         const files = req.files || [];
         const force = req.body.force === 'true' || req.body.force === true;
-        const allowLifecycleScripts = req.body.allowLifecycleScripts === 'true' || req.body.allowLifecycleScripts === true;
+        const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
+        if (!lifecycleApproval.ok) {
+            return res.status(lifecycleApproval.status).json({
+                error: lifecycleApproval.error,
+                code: lifecycleApproval.code,
+                requiredConfirmation: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
+            });
+        }
+        const { allowLifecycleScripts } = lifecycleApproval;
         const relPaths = (() => {
             const v = req.body.relPaths;
             if (!v) return [];
@@ -1736,10 +1781,12 @@ function createPluginStoreRouter(options) {
 
 module.exports = createPluginStoreRouter;
 module.exports._test = {
+    NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     assertPublicHost,
     buildPluginInstallEnv,
     fetchWithGuard,
     isPrivateIp,
+    resolveLifecycleScriptApproval,
     runNpmInstall,
     scrubPluginStoreLog,
 };

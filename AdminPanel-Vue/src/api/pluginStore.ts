@@ -71,6 +71,7 @@ export interface InstallFromPayload {
   downloadUrl?: string
   force?: boolean
   allowLifecycleScripts?: boolean
+  lifecycleScriptsConfirmation?: string
 }
 
 export interface UninstallPluginPayload {
