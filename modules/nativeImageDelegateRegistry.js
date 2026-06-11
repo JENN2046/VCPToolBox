@@ -1,16 +1,8 @@
 'use strict';
 
-const SERUM_BOTTLE_SECRETLESS_DELEGATE_ID = 'serum_bottle_secretless_doubao_v1';
-const SERUM_BOTTLE_SECRETLESS_PROVIDER_ID = 'doubao';
-const SERUM_BOTTLE_SECRETLESS_PLUGIN_ID = 'DoubaoGen';
-const SERUM_BOTTLE_SECRETLESS_API_ID = 'generate_image';
-const SERUM_BOTTLE_SECRETLESS_INTERNAL_COMMAND = 'generate';
-const SERUM_BOTTLE_SECRETLESS_ALLOWED_COMMANDS = Object.freeze([
-  'generate',
-  'edit',
-  'compose',
-  'group',
-]);
+const {
+  SERUM_BOTTLE_SECRETLESS_DOUBAO_BINDING: serumBottleSecretlessBinding,
+} = require('./aiImageNativeDelegateBindings');
 
 function normalizeString(value) {
   return typeof value === 'string' && value.trim()
@@ -150,12 +142,12 @@ function registerSerumBottleSecretlessDoubaoDelegate(registry, handler, options 
   }
 
   return registry.register({
-    delegateId: SERUM_BOTTLE_SECRETLESS_DELEGATE_ID,
-    providerId: SERUM_BOTTLE_SECRETLESS_PROVIDER_ID,
-    pluginId: SERUM_BOTTLE_SECRETLESS_PLUGIN_ID,
-    apiId: SERUM_BOTTLE_SECRETLESS_API_ID,
-    internalCommand: SERUM_BOTTLE_SECRETLESS_INTERNAL_COMMAND,
-    allowedCommands: options.allowedCommands || SERUM_BOTTLE_SECRETLESS_ALLOWED_COMMANDS,
+    delegateId: serumBottleSecretlessBinding.delegateId,
+    providerId: serumBottleSecretlessBinding.providerId,
+    pluginId: serumBottleSecretlessBinding.pluginId,
+    apiId: serumBottleSecretlessBinding.apiId,
+    internalCommand: serumBottleSecretlessBinding.internalCommand,
+    allowedCommands: options.allowedCommands || serumBottleSecretlessBinding.allowedCommands,
     enabled: options.enabled === true,
     handler,
   });
@@ -165,10 +157,10 @@ module.exports = {
   NativeImageDelegateRegistry,
   createNativeImageDelegateRegistry,
   registerSerumBottleSecretlessDoubaoDelegate,
-  SERUM_BOTTLE_SECRETLESS_DELEGATE_ID,
-  SERUM_BOTTLE_SECRETLESS_PROVIDER_ID,
-  SERUM_BOTTLE_SECRETLESS_PLUGIN_ID,
-  SERUM_BOTTLE_SECRETLESS_API_ID,
-  SERUM_BOTTLE_SECRETLESS_INTERNAL_COMMAND,
-  SERUM_BOTTLE_SECRETLESS_ALLOWED_COMMANDS,
+  SERUM_BOTTLE_SECRETLESS_DELEGATE_ID: serumBottleSecretlessBinding.delegateId,
+  SERUM_BOTTLE_SECRETLESS_PROVIDER_ID: serumBottleSecretlessBinding.providerId,
+  SERUM_BOTTLE_SECRETLESS_PLUGIN_ID: serumBottleSecretlessBinding.pluginId,
+  SERUM_BOTTLE_SECRETLESS_API_ID: serumBottleSecretlessBinding.apiId,
+  SERUM_BOTTLE_SECRETLESS_INTERNAL_COMMAND: serumBottleSecretlessBinding.internalCommand,
+  SERUM_BOTTLE_SECRETLESS_ALLOWED_COMMANDS: serumBottleSecretlessBinding.allowedCommands,
 };

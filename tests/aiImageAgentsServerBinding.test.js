@@ -125,6 +125,32 @@ test('admin ai image real execution receives native Doubao delegate option', () 
     );
 });
 
+test('admin ai image real execution remains default-off and native delegate injection remains explicit', () => {
+    const envExample = read('config.env.example');
+    const serverSource = read('server.js');
+    const routeSource = read('routes/admin/aiImageAgents.js');
+
+    assert.doesNotMatch(envExample, /^ENABLE_AI_IMAGE_REAL_EXECUTION\s*=\s*true$/mi);
+    assert.doesNotMatch(envExample, /^ENABLE_NATIVE_DOUBAO_SECRETLESS_RUNTIME_DELEGATE\s*=\s*true$/mi);
+    assert.match(
+        serverSource,
+        /enableAiImageRealExecution:\s+process\.env\.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true',/
+    );
+    assert.match(
+        serverSource,
+        /if \(process\.env\.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true'\) \{/
+    );
+    assert.match(
+        serverSource,
+        /if \(process\.env\.ENABLE_NATIVE_DOUBAO_SECRETLESS_RUNTIME_DELEGATE === 'true'\) \{/
+    );
+    assert.match(
+        routeSource,
+        /typeof options\.nativeDoubaoSecretlessRuntimeDelegate === 'function'/
+    );
+    assert.match(routeSource, /serum_bottle_secretless_native_delegate_flag_disabled/);
+});
+
 test('secretless internal route follows ai image agents route flag', () => {
     const serverSource = read('server.js');
 

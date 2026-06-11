@@ -455,7 +455,15 @@ requiredChecks.push({
 const aiImageRoute = readText('routes/admin/aiImageAgents.js');
 const serverSource = readText('server.js');
 const aiImageJennTrialFixtures = readText('modules/aiImageJennTrialFixtures.js');
+const nativeImageDelegateRegistrySource = readText('modules/nativeImageDelegateRegistry.js');
+const aiImageNativeDelegateBindings = readText('modules/aiImageNativeDelegateBindings.js');
 const jennAgentImageLabSourceLiteral = 'A:\\\\agent-image-lab';
+const jennNativeDelegateBindingLiterals = [
+  "'serum_bottle_secretless_doubao_v1'",
+  "'doubao'",
+  "'DoubaoGen'",
+  "'generate_image'",
+];
 requiredChecks.push({
   label: 'AI image route keeps dry-run forcing path',
   ok: aiImageRoute.includes('forceDryRun: true') && aiImageRoute.includes('resolveDryRunMode'),
@@ -473,6 +481,17 @@ requiredChecks.push({
     && !serverSource.includes(jennAgentImageLabSourceLiteral)
     && aiImageJennTrialFixtures.includes('AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES')
     && aiImageJennTrialFixtures.includes(jennAgentImageLabSourceLiteral),
+});
+requiredChecks.push({
+  label: 'AI image native delegate binding data is split out of registry source',
+  ok: nativeImageDelegateRegistrySource.includes("require('./aiImageNativeDelegateBindings')")
+    && jennNativeDelegateBindingLiterals.every((literal) => !nativeImageDelegateRegistrySource.includes(literal))
+    && !/const\s+SERUM_BOTTLE_SECRETLESS/.test(nativeImageDelegateRegistrySource)
+    && aiImageNativeDelegateBindings.includes('SERUM_BOTTLE_SECRETLESS_DOUBAO_BINDING')
+    && aiImageNativeDelegateBindings.includes('SERUM_BOTTLE_SECRETLESS_DOUBAO_ALLOWED_COMMANDS')
+    && jennNativeDelegateBindingLiterals.every((literal) => aiImageNativeDelegateBindings.includes(literal))
+    && aiImageNativeDelegateBindings.includes('Object.freeze')
+    && !/(process\.env|require\(['"]fs['"]\)|PluginManager|processToolCall|express|listen|writeFile|readFile)/.test(aiImageNativeDelegateBindings),
 });
 
 const failedChecks = requiredChecks.filter((check) => !check.ok);
