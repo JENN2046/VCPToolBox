@@ -213,9 +213,11 @@ const pluginApiTypes = readText('AdminPanel-Vue/src/types/api.plugin.ts');
 const pluginApiClient = readText('AdminPanel-Vue/src/api/plugin.ts');
 const pluginHubState = readText('AdminPanel-Vue/src/features/plugins-hub/derivePluginHubState.ts');
 const pluginsHubView = readText('AdminPanel-Vue/src/views/PluginsHub.vue');
+const pluginConfigView = readText('AdminPanel-Vue/src/views/PluginConfig.vue');
 const pluginConfigStore = readText('AdminPanel-Vue/src/stores/pluginConfig.ts');
 const pluginHubStateTests = readText('AdminPanel-Vue/tests/features/plugins-hub/derivePluginHubState.test.ts');
 const pluginApiTests = readText('AdminPanel-Vue/tests/api/plugin.test.ts');
+const pluginConfigStoreTests = readText('AdminPanel-Vue/tests/stores/pluginConfig.test.ts');
 requiredChecks.push({
   label: 'Admin plugin hub models explicit external runtime trust metadata',
   ok: pluginApiTypes.includes('export interface PluginRuntimeTrust')
@@ -236,10 +238,14 @@ requiredChecks.push({
     && pluginApiClient.includes('body: withTargetCriteria({ description }, targetCriteria)')
     && pluginsHubView.includes('pluginRootId: plugin.pluginRootId')
     && pluginsHubView.includes('pluginSource: plugin.pluginSource')
+    && pluginConfigView.includes('route.query.pluginRootId')
+    && pluginConfigView.includes('targetCriteria: pluginTargetCriteria.value')
     && pluginConfigStore.includes('function getLoadedPluginTargetCriteria')
+    && pluginConfigStore.includes('function matchesPluginTargetCriteria')
     && pluginConfigStore.includes('getLoadedPluginTargetCriteria()')
     && pluginApiTests.includes('pluginApi managed write target criteria')
-    && pluginApiTests.includes('preserves legacy payloads when target criteria are unavailable'),
+    && pluginApiTests.includes('preserves legacy payloads when target criteria are unavailable')
+    && pluginConfigStoreTests.includes('loads the plugin record matching explicit target criteria'),
 });
 requiredChecks.push({
   label: 'Admin plugin hub labels trusted external process runtime risk',

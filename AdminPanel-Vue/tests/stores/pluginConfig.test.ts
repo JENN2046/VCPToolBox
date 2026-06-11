@@ -110,6 +110,55 @@ describe("plugin config store", () => {
     expect(store.commandDescriptions["calendar.refresh"]).toBe("refresh cmd");
   });
 
+  it("loads the plugin record matching explicit target criteria", async () => {
+    const store = usePluginConfigStore();
+
+    mockGetPlugins.mockResolvedValueOnce([
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "Core Calendar",
+        },
+        enabled: true,
+        pluginRootId: "core:legacy",
+        pluginSource: "core",
+        configEnvContent: "ENABLED=false",
+      },
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "External Calendar",
+        },
+        enabled: true,
+        pluginRootId: "external:0",
+        pluginSource: "external",
+        configEnvContent: "ENABLED=true",
+      },
+    ]);
+
+    mockParseEnvToList.mockReturnValue([
+      {
+        key: "ENABLED",
+        value: "true",
+        isCommentOrEmpty: false,
+        isMultilineQuoted: false,
+      },
+    ]);
+
+    await store.loadPluginConfig("calendar", {
+      targetCriteria: {
+        pluginRootId: "external:0",
+        pluginSource: "external",
+      },
+    });
+
+    expect(store.pluginData?.manifest.displayName).toBe("External Calendar");
+    expect(store.pluginData?.pluginRootId).toBe("external:0");
+    expect(store.pluginData?.pluginSource).toBe("external");
+  });
+
   it("saves merged schema and custom config entries", async () => {
     const store = usePluginConfigStore();
 

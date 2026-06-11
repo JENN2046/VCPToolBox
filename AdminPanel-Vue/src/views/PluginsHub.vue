@@ -136,7 +136,7 @@
             :key="plugin.pluginName"
             type="button"
             class="quick-link"
-            @click="openPluginConfig(plugin.pluginName)"
+            @click="openPluginConfig(plugin.plugin)"
           >
             <span class="material-symbols-outlined">{{ plugin.icon }}</span>
             <span>{{ plugin.displayName }}</span>
@@ -327,7 +327,7 @@
                     <button
                       type="button"
                       class="btn-primary"
-                      @click="openPluginConfig(plugin.pluginName)"
+                      @click="openPluginConfig(plugin.plugin)"
                     >
                       <span class="material-symbols-outlined">open_in_new</span>
                       <span>打开配置</span>
@@ -459,7 +459,7 @@
               <button
                 type="button"
                 class="btn-primary"
-                @click="openPluginConfig(plugin.pluginName)"
+                @click="openPluginConfig(plugin.plugin)"
               >
                 <span class="material-symbols-outlined">open_in_new</span>
                 <span>打开配置</span>
@@ -735,9 +735,21 @@ function recordPluginVisit(pluginName: string) {
   navigationUsage.value = nextNavigationState.navigationUsage;
 }
 
-function openPluginConfig(pluginName: string) {
+function openPluginConfig(plugin: PluginInfo | string) {
+  const pluginName = typeof plugin === "string"
+    ? plugin
+    : plugin.manifest.name || plugin.name;
   recordPluginVisit(pluginName);
-  router.push({ name: "PluginConfig", params: { pluginName } });
+  router.push({
+    name: "PluginConfig",
+    params: { pluginName },
+    query: typeof plugin === "string"
+      ? undefined
+      : {
+          pluginRootId: plugin.pluginRootId,
+          pluginSource: plugin.pluginSource,
+        },
+  });
 }
 
 function togglePinned(pluginName: string) {
