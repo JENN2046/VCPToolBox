@@ -4,6 +4,7 @@ import { pluginApi } from '@/api'
 import { askConfirm, askInput } from '@/platform/feedback/feedbackBus'
 import { useAppStore } from '@/stores/app'
 import type { PluginInfo, PluginInvocationCommand } from '@/types/api.plugin'
+import type { PluginTargetCriteria } from '@/api/plugin'
 import { 
   parseEnvToList, 
   serializeEnvAssignment, 
@@ -99,6 +100,22 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
 
   function getCommandIdentifier(cmd: InvocationCommand): string {
     return cmd.commandIdentifier || cmd.command || ''
+  }
+
+  function getLoadedPluginTargetCriteria(): PluginTargetCriteria | undefined {
+    if (!pluginData.value) {
+      return undefined
+    }
+
+    const { pluginRootId, pluginSource } = pluginData.value
+    if (!pluginRootId && !pluginSource) {
+      return undefined
+    }
+
+    return {
+      pluginRootId,
+      pluginSource
+    }
   }
 
   function normalizeSchemaType(type: string): ConfigEntry['type'] {
@@ -255,8 +272,9 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
         identifier,
         commandDescriptions[identifier] || '',
         {
-        loadingKey: 'plugin-config.command-description.save'
-        }
+          loadingKey: 'plugin-config.command-description.save'
+        },
+        getLoadedPluginTargetCriteria()
       )
 
       commandStatuses[identifier] = {
@@ -299,7 +317,7 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
     try {
       const result = await pluginApi.togglePlugin(pluginName, enable, {
         loadingKey: 'plugin-config.toggle'
-      })
+      }, getLoadedPluginTargetCriteria())
       showMessage(result.message || `${action}插件成功`, 'success')
       await loadPluginConfig(pluginName, { forceRefresh: true })
     } catch (error) {
@@ -355,7 +373,7 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
     try {
       await pluginApi.savePluginConfig(pluginName, configString, {
         loadingKey: 'plugin-config.save'
-      })
+      }, getLoadedPluginTargetCriteria())
       statusMessage.value = '插件配置已保存！'
       statusType.value = 'success'
       showMessage('插件配置已保存！', 'success')

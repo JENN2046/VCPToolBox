@@ -127,6 +127,8 @@ describe("plugin config store", () => {
           },
         },
         enabled: true,
+        pluginRootId: "external:0",
+        pluginSource: "external",
         configEnvContent: '# comment\nENABLED=true\nRETRIES=2\nCUSTOM_KEY=abc',
       },
     ];
@@ -179,15 +181,20 @@ describe("plugin config store", () => {
     const saveCall = mockSavePluginConfig.mock.calls[0] as [
       string,
       string,
-      { loadingKey: string }
+      { loadingKey: string },
+      { pluginRootId?: string; pluginSource?: string }
     ];
     expect(saveCall[0]).toBe("calendar");
     expect(saveCall[2]).toEqual({ loadingKey: "plugin-config.save" });
+    expect(saveCall[3]).toEqual({
+      pluginRootId: "external:0",
+      pluginSource: "external",
+    });
     expect(saveCall[1]).toContain("# comment");
     expect(saveCall[1]).toContain("ENABLED=true");
     expect(saveCall[1]).toContain("RETRIES=5");
     expect(saveCall[1]).toContain("TITLE=DefaultTitle");
-    expect(saveCall[1]).toContain('CUSTOM_KEY="overridden \\"quoted\\"\\nnext"');
+    expect(saveCall[1]).toContain('CUSTOM_KEY=\'overridden "quoted"\nnext\'');
     expect(mockShowMessage).toHaveBeenCalledWith("插件配置已保存！", "success");
   });
 });

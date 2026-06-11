@@ -790,6 +790,9 @@ async function togglePlugin(plugin: PluginInfo) {
   try {
     const result = await pluginApi.togglePlugin(pluginName, enable, {
       showLoader: false,
+    }, {
+      pluginRootId: plugin.pluginRootId,
+      pluginSource: plugin.pluginSource,
     });
     showMessage(result.message || `${action}插件成功。`, "success");
     await refreshPlugins(false);

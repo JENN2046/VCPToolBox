@@ -72,6 +72,7 @@ export interface PluginManifest {
 export interface PluginInfo {
   name: string;
   manifest: PluginManifest;
+  pluginRootId?: string;
   pluginSource?: string;
   runtimeTrust?: PluginRuntimeTrust;
   isDistributed?: boolean;
