@@ -94,14 +94,49 @@ function sanitizeManifestForAdmin(manifest, context = {}) {
     return clone;
 }
 
-async function getConfigEnvStatus(pluginPath, pluginName) {
+function createDeferredConfigEnvStatus(status = 'external_config_deferred') {
+    return {
+        exists: null,
+        readable: false,
+        redacted: true,
+        status
+    };
+}
+
+function shouldDeferConfigEnvStatus(record) {
+    return Boolean(
+        record
+        && typeof record === 'object'
+        && (
+            record.pluginSource === 'external'
+            || record.allowConfigEnv === false
+            || isExternalPluginManifest(record.manifest)
+        )
+    );
+}
+
+async function getConfigEnvStatus(record, pluginName = null) {
+    if (shouldDeferConfigEnvStatus(record)) {
+        return createDeferredConfigEnvStatus('external_config_deferred');
+    }
+
+    const pluginPath = typeof record === 'string' ? record : record?.pluginPath;
+    const statusPluginName = typeof record === 'string' ? pluginName : (record?.name || pluginName);
     if (!pluginPath) {
         return { exists: false, readable: false, redacted: true };
     }
 
     const configPath = path.join(pluginPath, 'config.env');
     try {
-        const stat = await fs.stat(configPath);
+        const stat = await fs.lstat(configPath);
+        if (stat.isSymbolicLink()) {
+            return {
+                exists: true,
+                readable: false,
+                redacted: true,
+                status: 'config_env_symlink_unsupported'
+            };
+        }
         return {
             exists: true,
             readable: true,
@@ -111,7 +146,7 @@ async function getConfigEnvStatus(pluginPath, pluginName) {
         };
     } catch (envError) {
         if (envError.code !== 'ENOENT') {
-            console.warn(`[AdminPanelRoutes] Cannot inspect config.env status for ${pluginName}: ${safeErrorDetails(envError)}`);
+            console.warn(`[AdminPanelRoutes] Cannot inspect config.env status for ${statusPluginName}: ${safeErrorDetails(envError)}`);
         }
         return {
             exists: false,
@@ -559,7 +594,7 @@ module.exports = function(options) {
             for (const record of catalog.records) {
                 const responseRecord = createAdminPluginResponseRecord(record);
                 if (!record.isDistributed && record.pluginPath) {
-                    responseRecord.configEnvStatus = await getConfigEnvStatus(record.pluginPath, record.name);
+                    responseRecord.configEnvStatus = await getConfigEnvStatus(record);
                 }
                 pluginDataList.push(responseRecord);
             }
