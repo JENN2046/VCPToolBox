@@ -119,6 +119,28 @@ When a package contains lifecycle scripts, install logs include the
 `package.json` sha256, a truncated lifecycle script summary, and the path-safe
 target display. This is operator evidence, not a sandbox guarantee.
 
+## 5.2 Direct Download URL Install Gate
+
+The broadest remote install path, direct `/plugin-store/install` requests with a
+top-level `downloadUrl`, is disabled by default.
+
+Operators must explicitly set:
+
+```text
+ENABLE_PLUGIN_STORE_DIRECT_DOWNLOAD_URL_INSTALL=true
+```
+
+before that direct URL mode can create an install task.
+
+This does not change the narrower existing paths:
+
+- source registry entries selected by `sourceId` and `pluginName`
+- GitHub URL installs
+- manual upload installs
+
+The goal is to reduce the default DNS rebinding / arbitrary remote URL surface
+while keeping reviewed registry and GitHub flows available.
+
 ## 6. Log Redaction
 
 This patch keeps the existing Plugin Store log redaction path:
@@ -151,6 +173,7 @@ Added tests verify:
 - `runNpmInstall()` passes sanitized env to a mocked spawn call;
 - lifecycle scripts remain disabled by default;
 - `allowLifecycleScripts=true` requires a second confirmation phrase;
+- direct top-level `downloadUrl` installs are disabled by default;
 - npm log output redacts token-like values, credential URLs, and absolute paths.
 
 Tests do not run real npm install.
@@ -174,6 +197,7 @@ Hardening-1B does not:
 - [x] Strict env sandbox added.
 - [x] npm lifecycle scripts disabled by default.
 - [x] lifecycle script execution requires explicit confirmation phrase.
+- [x] direct top-level `downloadUrl` install path disabled by default.
 - [x] Deny patterns override allowlist.
 - [x] Mocked spawn test confirms sanitized env.
 - [x] Log redaction coverage added.

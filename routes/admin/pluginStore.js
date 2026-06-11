@@ -60,6 +60,7 @@ const NPM_LIFECYCLE_SCRIPT_NAMES = [
     'postpack',
 ];
 const NPM_LIFECYCLE_SCRIPT_CONFIRMATION = 'ALLOW_NPM_LIFECYCLE_SCRIPTS';
+const ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV = 'ENABLE_PLUGIN_STORE_DIRECT_DOWNLOAD_URL_INSTALL';
 
 // =============================================================================
 // Utilities
@@ -371,6 +372,31 @@ function resolveLifecycleScriptApproval(body = {}) {
     }
 
     return { ok: true, allowLifecycleScripts: true };
+}
+
+function isDirectDownloadUrlInstallRequest(body = {}) {
+    return Boolean(
+        body.downloadUrl &&
+        !body.githubUrl &&
+        !(body.sourceId && body.pluginName)
+    );
+}
+
+function resolveDirectDownloadUrlInstallPolicy(body = {}, env = process.env) {
+    if (!isDirectDownloadUrlInstallRequest(body)) {
+        return { ok: true };
+    }
+
+    if (env && env[ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV] === 'true') {
+        return { ok: true };
+    }
+
+    return {
+        ok: false,
+        status: 403,
+        code: 'plugin_store_direct_download_url_disabled',
+        error: `Direct Plugin Store downloadUrl installs require ${ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV}=true`,
+    };
 }
 
 // Walk an extracted tree and refuse symlinks or entries whose realpath escapes base.
@@ -1525,6 +1551,14 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.post('/plugin-store/install', async (req, res) => {
         const { sourceId, pluginName, githubUrl, downloadUrl, force } = req.body || {};
+        const directDownloadPolicy = resolveDirectDownloadUrlInstallPolicy(req.body || {});
+        if (!directDownloadPolicy.ok) {
+            return res.status(directDownloadPolicy.status).json({
+                error: directDownloadPolicy.error,
+                code: directDownloadPolicy.code,
+                requiredEnv: ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
+            });
+        }
         const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
         if (!lifecycleApproval.ok) {
             return res.status(lifecycleApproval.status).json({
@@ -1781,11 +1815,13 @@ function createPluginStoreRouter(options) {
 
 module.exports = createPluginStoreRouter;
 module.exports._test = {
+    ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
     NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     assertPublicHost,
     buildPluginInstallEnv,
     fetchWithGuard,
     isPrivateIp,
+    resolveDirectDownloadUrlInstallPolicy,
     resolveLifecycleScriptApproval,
     runNpmInstall,
     scrubPluginStoreLog,

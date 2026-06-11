@@ -33,8 +33,10 @@ try {
 }
 
 const {
+    ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
     NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     buildPluginInstallEnv,
+    resolveDirectDownloadUrlInstallPolicy,
     resolveLifecycleScriptApproval,
     runNpmInstall,
     scrubPluginStoreLog,
@@ -175,6 +177,38 @@ test('resolveLifecycleScriptApproval requires second confirmation for lifecycle 
             confirmLifecycleScripts: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
         }),
         { ok: true, allowLifecycleScripts: true }
+    );
+});
+
+test('resolveDirectDownloadUrlInstallPolicy disables direct downloadUrl installs by default', () => {
+    assert.deepEqual(
+        resolveDirectDownloadUrlInstallPolicy({ sourceId: 'official', pluginName: 'Demo', downloadUrl: 'https://example.test/demo.zip' }, {}),
+        { ok: true }
+    );
+    assert.deepEqual(
+        resolveDirectDownloadUrlInstallPolicy({ githubUrl: 'https://github.com/acme/demo', downloadUrl: 'https://example.test/demo.zip' }, {}),
+        { ok: true }
+    );
+
+    const denied = resolveDirectDownloadUrlInstallPolicy({ downloadUrl: 'https://example.test/demo.zip' }, {});
+    assert.equal(denied.ok, false);
+    assert.equal(denied.status, 403);
+    assert.equal(denied.code, 'plugin_store_direct_download_url_disabled');
+    assert.match(denied.error, new RegExp(ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV));
+
+    assert.deepEqual(
+        resolveDirectDownloadUrlInstallPolicy(
+            { downloadUrl: 'https://example.test/demo.zip' },
+            { [ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV]: 'true' }
+        ),
+        { ok: true }
+    );
+    assert.equal(
+        resolveDirectDownloadUrlInstallPolicy(
+            { downloadUrl: 'https://example.test/demo.zip' },
+            { [ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV]: '1' }
+        ).ok,
+        false
     );
 });
 
