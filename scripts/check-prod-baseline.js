@@ -282,6 +282,18 @@ requiredChecks.push({
 });
 
 const externalRunnerRfc = readText('docs/governance/EXTERNAL_RUNNER_BOUNDARY_RFC_20260611.md');
+const jennSurfaceExtractionPlan = readText('docs/governance/JENN_SURFACE_EXTRACTION_PLAN_20260611.md');
+requiredChecks.push({
+  label: 'Jenn surface extraction plan stays plan-only and default-off focused',
+  ok: jennSurfaceExtractionPlan.includes('**Status:** plan only')
+    && jennSurfaceExtractionPlan.includes('It does not authorize a broad migration by itself')
+    && jennSurfaceExtractionPlan.includes('AI Image management route remains behind `ENABLE_AI_IMAGE_AGENTS_ROUTE ===')
+    && jennSurfaceExtractionPlan.includes('Trial runtime-to-review internal routes have a separate explicit gate')
+    && jennSurfaceExtractionPlan.includes('Codex memory MCP route requires mount-site or route-local auth hooks')
+    && jennSurfaceExtractionPlan.includes('No trial route, delegate, or Photo Studio path is described as an untrusted sandbox')
+    && jennSurfaceExtractionPlan.includes('no `A:\\agent-image-lab` string remains in core source after the split')
+    && jennSurfaceExtractionPlan.includes('Do not delete current AI image behavior in a single broad PR'),
+});
 requiredChecks.push({
   label: 'external runner RFC keeps trusted adapter distinct from untrusted sandbox',
   ok: externalRunnerRfc.includes('trusted-adapter boundary')
