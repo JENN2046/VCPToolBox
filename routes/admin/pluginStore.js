@@ -715,6 +715,41 @@ function normalizeSourceUrl(type, rawUrl) {
     }
 }
 
+function redactSourceUrl(rawUrl) {
+    const input = String(rawUrl || '').trim();
+    if (!input) return '';
+    try {
+        const u = new URL(input);
+        if (u.username || u.password) {
+            u.username = u.username ? '[credentials]' : '';
+            u.password = '';
+        }
+        for (const key of Array.from(u.searchParams.keys())) {
+            if (/(access_token|api[_-]?key|apikey|auth|authorization|bearer|cookie|key|password|passwd|secret|session|token)/i.test(key)) {
+                u.searchParams.set(key, '[redacted]');
+            }
+        }
+        return u.toString();
+    } catch {
+        return scrubPluginStoreLog(input);
+    }
+}
+
+function sanitizeSourceForApi(source) {
+    if (!source || typeof source !== 'object') return source;
+    const redactedUrl = redactSourceUrl(source.url);
+    const { url, ...safeSource } = source;
+    return {
+        ...safeSource,
+        displayUrl: redactedUrl,
+        redactedUrl
+    };
+}
+
+function sanitizeSourcesForApi(sources) {
+    return (Array.isArray(sources) ? sources : []).map(sanitizeSourceForApi);
+}
+
 function sourceFingerprint(source) {
     const type = source?.type === 'github' ? 'github' : 'registry';
     return `${type}:${normalizeSourceUrl(type, source?.url)}`;
@@ -1136,7 +1171,7 @@ async function listPluginsFromGithubSource(source) {
     return [{
         name: `${parsed.owner}/${parsed.repo}`,
         displayName: `${parsed.repo} (GitHub)`,
-        description: `GitHub 仓库 ${source.url}`,
+        description: `GitHub 仓库 ${redactSourceUrl(source.url)}`,
         version: branch,
         author: parsed.owner,
         icon: 'hub',
@@ -1495,7 +1530,7 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.get('/plugin-store/sources', async (req, res) => {
         try {
-            res.json({ sources: await loadSources() });
+            res.json({ sources: sanitizeSourcesForApi(await loadSources()) });
         } catch (err) {
             res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
@@ -1516,12 +1551,12 @@ function createPluginStoreRouter(options) {
             if (duplicate) {
                 return res.status(409).json({
                     error: `源已存在：${duplicate.name}`,
-                    source: duplicate,
+                    source: sanitizeSourceForApi(duplicate),
                 });
             }
             const entry = next;
             await saveUserSources([...existing.filter(s => !s.builtin), entry]);
-            res.json({ source: entry });
+            res.json({ source: sanitizeSourceForApi(entry) });
         } catch (err) {
             res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
@@ -1581,7 +1616,7 @@ function createPluginStoreRouter(options) {
             res.json({
                 plugins: all,
                 total: all.length,
-                sources,
+                sources: sanitizeSourcesForApi(sources),
                 errors,
                 installMode: installRoot.mode,
                 diagnostics: installed.diagnostics.map(item => ({
@@ -1873,8 +1908,11 @@ module.exports._test = {
     fetchWithGuard,
     isPrivateIp,
     MAX_REMOTE_DOWNLOAD_BYTES,
+    redactSourceUrl,
     resolveDirectDownloadUrlInstallPolicy,
     resolveLifecycleScriptApproval,
     runNpmInstall,
     scrubPluginStoreLog,
+    sanitizeSourceForApi,
+    sanitizeSourcesForApi,
 };

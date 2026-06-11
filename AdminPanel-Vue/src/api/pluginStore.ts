@@ -38,7 +38,9 @@ export interface PluginStoreItem {
 export interface PluginSource {
   id: string
   name: string
-  url: string
+  displayUrl?: string
+  redactedUrl?: string
+  url?: string
   type: 'registry' | 'github'
   builtin?: boolean
 }

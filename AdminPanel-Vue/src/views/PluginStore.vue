@@ -418,7 +418,7 @@
                 <td>
                   <span class="mini-pill mini-pill--changed">{{ s.type }}</span>
                 </td>
-                <td class="url-cell"><code>{{ safeSourceUrlDisplay(s.url) }}</code></td>
+                <td class="url-cell"><code>{{ sourceUrlDisplay(s) }}</code></td>
                 <td class="col-actions">
                   <button
                     type="button"
@@ -1312,6 +1312,10 @@ function sanitizeUserText(input: unknown) {
 
 function safeSourceUrlDisplay(raw: unknown) {
   return sanitizeUserText(raw).trim()
+}
+
+function sourceUrlDisplay(source: PluginSource) {
+  return safeSourceUrlDisplay(source.displayUrl || source.redactedUrl || source.url || '')
 }
 
 function looksLikeAbsolutePath(value: string) {
