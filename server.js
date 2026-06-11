@@ -519,6 +519,9 @@ const app = express();
 app.set('trust proxy', true); // 新增：信任代理，以便正确解析 X-Forwarded-For 头，解决本地IP识别为127.0.0.1的问题
 app.use(cors({ origin: '*' })); // 启用 CORS，允许所有来源的跨域请求，方便本地文件调试
 
+const DEFAULT_AUTHENTICATED_BODY_LIMIT = '5mb';
+const LARGE_AUTHENTICATED_BODY_LIMIT = '300mb';
+
 function captureRawBody(req, _res, buf, encoding) {
     if (!buf || buf.length === 0) {
         return;
@@ -542,10 +545,17 @@ function isLoopbackSocket(req) {
     return remoteAddress === '127.0.0.1' || remoteAddress === '::1';
 }
 
-// 在路由决策之前解析请求体，以便 req.body 可用
-app.use(express.json({ limit: '300mb', verify: captureRawBody }));
-app.use(express.urlencoded({ limit: '300mb', extended: true, verify: captureRawBody }));
-app.use(express.text({ limit: '300mb', type: 'text/plain', verify: captureRawBody })); // 新增：用于处理纯文本请求体
+function createAuthenticatedJsonParser(limit = DEFAULT_AUTHENTICATED_BODY_LIMIT) {
+    return express.json({ limit, verify: captureRawBody });
+}
+
+function createAuthenticatedUrlencodedParser(limit = DEFAULT_AUTHENTICATED_BODY_LIMIT) {
+    return express.urlencoded({ limit, extended: true, verify: captureRawBody });
+}
+
+function createAuthenticatedTextParser(limit = DEFAULT_AUTHENTICATED_BODY_LIMIT) {
+    return express.text({ limit, type: 'text/plain', verify: captureRawBody });
+}
 
 // 新增：IP追踪中间件
 app.use((req, res, next) => {
@@ -630,10 +640,6 @@ app.use((req, res, next) => {
     }
     next();
 });
-
-// 引入并使用特殊模型路由
-const specialModelRouter = require('./routes/specialModelRouter');
-app.use(specialModelRouter); // 这个将处理所有白名单模型的请求
 
 const port = process.env.PORT;
 const apiKey = process.env.API_Key;
@@ -949,6 +955,28 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+// Authenticated body parsing happens only after admin/basic and bearer authentication.
+// Keep broad defaults small; preserve historic large-body surfaces only after auth.
+const largeAuthenticatedJsonBodyPaths = [
+    '/v1/chat/completions',
+    '/v1/chatvcp/completions',
+    '/v1/embeddings',
+    '/v1/responses',
+    '/admin_api/multimodal-cache/reidentify'
+];
+
+for (const routePath of largeAuthenticatedJsonBodyPaths) {
+    app.use(routePath, createAuthenticatedJsonParser(LARGE_AUTHENTICATED_BODY_LIMIT));
+}
+app.use('/v1/human/tool', createAuthenticatedTextParser(LARGE_AUTHENTICATED_BODY_LIMIT));
+app.use(createAuthenticatedJsonParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
+app.use(createAuthenticatedUrlencodedParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
+app.use(createAuthenticatedTextParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
+
+// 引入并使用特殊模型路由；该路由依赖 req.body，必须位于认证后的 body parser 之后。
+const specialModelRouter = require('./routes/specialModelRouter');
+app.use(specialModelRouter); // 这个将处理所有白名单模型的请求
 
 app.use(toolExecutionRoutes({ pluginManager }));
 app.use('/mcp/codex-memory', codexMemoryMcpRoutes({
