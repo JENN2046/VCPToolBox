@@ -17,6 +17,17 @@ module.exports = function(options) {
         return path.join(projectBasePath, ...segments);
     }
 
+    function assertPathInsideProjectRoot(targetPath, code) {
+        const resolvedTargetPath = path.resolve(targetPath);
+        const relativePath = path.relative(projectBasePath, resolvedTargetPath);
+        if (relativePath && (relativePath.startsWith('..') || path.isAbsolute(relativePath))) {
+            const error = new Error('Admin-managed config target must remain inside the project root.');
+            error.code = code;
+            error.status = 403;
+            throw error;
+        }
+    }
+
     async function readFileIfExists(filePath) {
         try {
             const content = await fs.readFile(filePath, 'utf-8');
@@ -31,6 +42,58 @@ module.exports = function(options) {
 
     function normalizeEnvContent(content) {
         return String(content || '').replace(/\r\n/g, '\n').trimEnd();
+    }
+
+    async function assertRegularToolApprovalConfigTarget(configPath) {
+        assertPathInsideProjectRoot(configPath, 'tool_approval_config_target_outside_root');
+        try {
+            const stat = await fs.lstat(configPath);
+            if (stat.isSymbolicLink()) {
+                const error = new Error('toolApprovalConfig.json symlink targets are not supported.');
+                error.code = 'tool_approval_config_symlink_unsupported';
+                error.status = 409;
+                throw error;
+            }
+            if (!stat.isFile()) {
+                const error = new Error('toolApprovalConfig.json target must be a regular file.');
+                error.code = 'tool_approval_config_non_regular_unsupported';
+                error.status = 409;
+                throw error;
+            }
+        } catch (error) {
+            if (error.code === 'ENOENT') return;
+            throw error;
+        }
+    }
+
+    function createToolApprovalConfigTempPath(configPath) {
+        const suffix = `${Date.now()}-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+        return path.join(path.dirname(configPath), `.toolApprovalConfig.json.${suffix}.tmp`);
+    }
+
+    async function writeToolApprovalConfigNoFollow(configPath, content) {
+        await assertRegularToolApprovalConfigTarget(configPath);
+        const tempPath = createToolApprovalConfigTempPath(configPath);
+        assertPathInsideProjectRoot(tempPath, 'tool_approval_config_temp_target_outside_root');
+        let tempCreated = false;
+        try {
+            await fs.writeFile(tempPath, content, { encoding: 'utf-8', flag: 'wx' });
+            tempCreated = true;
+            const tempStat = await fs.lstat(tempPath);
+            if (!tempStat.isFile() || tempStat.isSymbolicLink()) {
+                const error = new Error('Temporary toolApprovalConfig.json target must be a regular file.');
+                error.code = 'tool_approval_config_temp_unsafe';
+                error.status = 500;
+                throw error;
+            }
+            await fs.rename(tempPath, configPath);
+            tempCreated = false;
+            await assertRegularToolApprovalConfigTarget(configPath);
+        } finally {
+            if (tempCreated) {
+                await fs.rm(tempPath, { force: true }).catch(() => {});
+            }
+        }
     }
 
     async function assertRegularConfigTarget(configPath) {
@@ -110,11 +173,20 @@ module.exports = function(options) {
         const configPath = projectPath('toolApprovalConfig.json');
         try {
             const normalizedConfig = normalizeToolApprovalConfig(config);
-            await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf-8');
+            await writeToolApprovalConfigNoFollow(configPath, JSON.stringify(normalizedConfig, null, 2));
             res.json({ success: true, message: '工具调用审核配置已成功保存。' });
         } catch (error) {
-            console.error('[AdminPanelRoutes API] Error writing tool approval config:', error);
-            res.status(500).json({ error: 'Failed to write tool approval config', details: error.message });
+            const status = error.status || 500;
+            if (status >= 500) {
+                console.error('[AdminPanelRoutes API] Error writing tool approval config:', error);
+            } else {
+                console.warn(`[AdminPanelRoutes] Refused tool approval config write: ${error.code || error.message}`);
+            }
+            res.status(status).json({
+                error: 'Failed to write tool approval config',
+                details: error.message,
+                code: error.code || undefined,
+            });
         }
     });
 
