@@ -366,6 +366,55 @@ test('plugin list reports core config.env symlink as unsupported without metadat
     }
 });
 
+test('plugin list reports core config.env presence without stat metadata', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const coreConfigPath = path.join(path.dirname(coreManifest), 'config.env');
+    fs.writeFileSync(coreConfigPath, 'EXAMPLE=value\n', 'utf8');
+    const pluginManager = makePluginManager(snapshot);
+
+    const res = await callAdminPluginList(pluginManager);
+
+    assert.equal(res.statusCode, 200);
+    const coreRecord = res.body.find(record => record.name === 'ManagedEcho');
+    assert.ok(coreRecord);
+    assert.equal(coreRecord.pluginSource, 'core');
+    assert.deepEqual(coreRecord.configEnvStatus, {
+        exists: true,
+        readable: true,
+        redacted: true
+    });
+    assert.equal(Object.prototype.hasOwnProperty.call(coreRecord.configEnvStatus, 'size'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(coreRecord.configEnvStatus, 'updatedAt'), false);
+    assertNoAbsolutePathLeak(coreRecord, [workspace, snapshot.coreLegacyRoot.rootPath]);
+});
+
+test('plugin list reports core config.env directory as unsupported without metadata', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const coreConfigPath = path.join(path.dirname(coreManifest), 'config.env');
+    fs.mkdirSync(coreConfigPath);
+    const pluginManager = makePluginManager(snapshot);
+
+    const res = await callAdminPluginList(pluginManager);
+
+    assert.equal(res.statusCode, 200);
+    const coreRecord = res.body.find(record => record.name === 'ManagedEcho');
+    assert.ok(coreRecord);
+    assert.equal(coreRecord.pluginSource, 'core');
+    assert.deepEqual(coreRecord.configEnvStatus, {
+        exists: true,
+        readable: false,
+        redacted: true,
+        status: 'config_env_non_regular_unsupported'
+    });
+    assert.equal(Object.prototype.hasOwnProperty.call(coreRecord.configEnvStatus, 'size'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(coreRecord.configEnvStatus, 'updatedAt'), false);
+    assertNoAbsolutePathLeak(coreRecord, [workspace, snapshot.coreLegacyRoot.rootPath]);
+});
+
 test('duplicate core and external pluginName without target criteria returns 409 and writes nothing', async (t) => {
     const workspace = makeTempWorkspace(t);
     const snapshot = makeSnapshot(workspace, true);
