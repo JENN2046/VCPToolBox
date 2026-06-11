@@ -173,4 +173,3 @@ Until this RFC is implemented and verified:
 - do not enable broad third-party Plugin Store installs as untrusted execution;
 - keep external plugins described as reviewed or trusted external adapters;
 - keep external direct/hybrid same-process runtime denied by default.
-

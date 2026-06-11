@@ -116,6 +116,79 @@ requiredChecks.push({
     && externalRunnerRfc.includes('direct/hybrid same-process manifests remain denied'),
 });
 
+const pluginStoreRoute = readText('routes/admin/pluginStore.js');
+const pluginStoreInstallTests = readText('tests/plugin-store-install-env-sandbox.test.js');
+const pluginStoreSsrfTests = readText('tests/plugin-store-ssrf-policy.test.js');
+const pluginStoreSourceTests = readText('tests/plugin-store-source-redaction.test.js');
+requiredChecks.push({
+  label: 'Plugin Store install gates disable lifecycle scripts by default',
+  ok: pluginStoreRoute.includes("'--ignore-scripts'")
+    && pluginStoreRoute.includes('allowLifecycleScripts')
+    && pluginStoreRoute.includes('lifecycleScriptsConfirmation')
+    && pluginStoreRoute.includes('NPM_LIFECYCLE_SCRIPT_CONFIRMATION')
+    && pluginStoreInstallTests.includes("['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund']")
+    && pluginStoreInstallTests.includes('resolveLifecycleScriptApproval')
+    && pluginStoreInstallTests.includes('plugin_store_direct_download_url_disabled'),
+});
+requiredChecks.push({
+  label: 'Plugin Store remote downloads enforce byte quota and cleanup',
+  ok: pluginStoreRoute.includes('MAX_REMOTE_DOWNLOAD_BYTES')
+    && pluginStoreRoute.includes('parseContentLength')
+    && pluginStoreRoute.includes('createDownloadByteLimitStream')
+    && pluginStoreRoute.includes('plugin_store_remote_download_too_large')
+    && pluginStoreRoute.includes("fs.createWriteStream(destFile, { flags: 'wx' })")
+    && pluginStoreSsrfTests.includes('downloadToFile rejects oversized Content-Length before writing file')
+    && pluginStoreSsrfTests.includes('downloadToFile aborts streaming body that exceeds quota and removes partial file'),
+});
+requiredChecks.push({
+  label: 'Plugin Store source APIs return redacted source URLs only',
+  ok: pluginStoreRoute.includes('function redactSourceUrl')
+    && pluginStoreRoute.includes('function sanitizeSourceForApi')
+    && pluginStoreRoute.includes('const { url, ...safeSource } = source')
+    && pluginStoreRoute.includes('sources: sanitizeSourcesForApi(sources)')
+    && pluginStoreRoute.includes("res.json({ sources: sanitizeSourcesForApi(await loadSources()) })")
+    && pluginStoreSourceTests.includes('redactSourceUrl removes credentials and token query values')
+    && pluginStoreSourceTests.includes('sanitizeSourceForApi omits raw url and exposes redacted display fields')
+    && pluginStoreSourceTests.includes('GET /plugin-store/sources does not return raw source URLs')
+    && pluginStoreSourceTests.includes('aggregate source sanitizer used by /plugin-store output omits raw URLs'),
+});
+
+const adminPluginsRoute = readText('routes/admin/plugins.js');
+const adminPluginTargetTests = readText('tests/admin-plugin-command-description-target.test.js');
+requiredChecks.push({
+  label: 'Admin managed write routes require unambiguous targets',
+  ok: adminPluginsRoute.includes('function resolveAdminPluginRecordForManagedWrite')
+    && (adminPluginsRoute.match(/resolveAdminPluginRecordForManagedWrite\(catalog, pluginName, getLookupCriteria\(req\)\)/g) || []).length >= 4
+    && adminPluginsRoute.includes('ambiguous_admin_plugin_target')
+    && adminPluginTargetTests.includes('duplicate core and external pluginName blocks general description writes')
+    && adminPluginTargetTests.includes('duplicate core and external pluginName blocks config writes')
+    && adminPluginTargetTests.includes('duplicate core and external pluginName blocks toggle writes')
+    && adminPluginTargetTests.includes('assertNoAbsolutePathLeak'),
+});
+requiredChecks.push({
+  label: 'Admin config.env writes reject symlink and non-regular targets',
+  ok: adminPluginsRoute.includes('config_env_symlink_unsupported')
+    && adminPluginsRoute.includes("await fs.writeFile(tempPath, content, { encoding: 'utf-8', flag: 'wx' })")
+    && adminPluginsRoute.includes('await fs.rename(tempPath, configPath)')
+    && adminPluginsRoute.includes('isManagedPathInsideRoot(configPath, pluginRoot)')
+    && adminPluginTargetTests.includes('config write rejects existing config.env symlink without writing target')
+    && adminPluginTargetTests.includes('config write rejects existing config.env directory'),
+});
+
+const codexMemoryMcpRoute = readText('routes/codexMemoryMcp.js');
+const codexMemoryMcpTests = readText('tests/codex-memory-mcp.test.js');
+requiredChecks.push({
+  label: 'Codex memory MCP route requires auth hooks and include_content permission',
+  ok: codexMemoryMcpRoute.includes('requires authorizeRequest option')
+    && codexMemoryMcpRoute.includes('router.use(requireAuthorizedRequest)')
+    && codexMemoryMcpRoute.includes('authorizeIncludeContent')
+    && codexMemoryMcpRoute.includes('codex_memory_include_content_forbidden')
+    && server.includes('authorizeRequest: authorizeCodexMemoryMcpRequest')
+    && server.includes('authorizeIncludeContent: authorizeCodexMemoryMcpIncludeContent')
+    && codexMemoryMcpTests.includes('codex-memory MCP router should refuse creation without route-local auth')
+    && codexMemoryMcpTests.includes('codex-memory MCP should deny include_content without separate permission'),
+});
+
 requiredChecks.push({
   label: 'baseline deny rules catch nested env files',
   ok: [
