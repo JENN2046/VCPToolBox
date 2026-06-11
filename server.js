@@ -17,6 +17,9 @@ const path = require('path');
 const { Writable } = require('stream');
 const fsSync = require('fs'); // Renamed to fsSync for clarity with fs.promises
 const { getEmbeddingFallbackStats } = require('./EmbeddingUtils');
+const {
+    verifyPluginCallbackRequest
+} = require('./modules/pluginCallbackAuth');
 
 // 🌟 核心修复：彻底解放 Node.js 默认的全局连接池限制，防止底层网络排队导致 AdminPanel 死锁
 const http = require('http');
@@ -645,6 +648,62 @@ const port = process.env.PORT;
 const apiKey = process.env.API_Key;
 const apiUrl = process.env.API_URL;
 const serverKey = process.env.Key;
+const consumedPluginCallbackNonces = new Map();
+const PLUGIN_CALLBACK_NONCE_GRACE_MS = 60 * 1000;
+
+function getPluginCallbackAuthSecret() {
+    return process.env.PLUGIN_CALLBACK_SECRET || serverKey;
+}
+
+function pruneConsumedPluginCallbackNonces(now = Date.now()) {
+    for (const [key, expiresAt] of consumedPluginCallbackNonces.entries()) {
+        if (expiresAt <= now) {
+            consumedPluginCallbackNonces.delete(key);
+        }
+    }
+}
+
+function consumePluginCallbackNonce(req, verification, now = Date.now()) {
+    pruneConsumedPluginCallbackNonces(now);
+    const nonceKey = [
+        req.params.pluginName,
+        req.params.taskId,
+        verification.nonce
+    ].join('\0');
+    if (consumedPluginCallbackNonces.has(nonceKey)) {
+        return {
+            ok: false,
+            status: 401,
+            code: 'plugin_callback_auth_replay',
+            message: 'Plugin callback authentication nonce has already been used.'
+        };
+    }
+    consumedPluginCallbackNonces.set(nonceKey, verification.expiresAt + PLUGIN_CALLBACK_NONCE_GRACE_MS);
+    return { ok: true };
+}
+
+function authorizePluginCallbackRequest(req, res, next) {
+    if (isLoopbackSocket(req)) {
+        return next();
+    }
+
+    const verification = verifyPluginCallbackRequest(req, {
+        secret: getPluginCallbackAuthSecret()
+    });
+    const nonceConsumption = verification.ok
+        ? consumePluginCallbackNonce(req, verification)
+        : verification;
+    if (!nonceConsumption.ok) {
+        console.warn(`[Security] Rejected plugin callback: ${nonceConsumption.code}`);
+        return res.status(nonceConsumption.status).json({
+            error: 'Unauthorized plugin callback',
+            code: nonceConsumption.code,
+            message: nonceConsumption.message
+        });
+    }
+
+    return next();
+}
 
 const cachedEmojiLists = new Map();
 const SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH = '/internal/ai-image-agents/execute/serum-bottle-secretless';
@@ -955,6 +1014,8 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+app.use('/plugin-callback/:pluginName/:taskId', authorizePluginCallbackRequest);
 
 // Authenticated body parsing happens only after admin/basic and bearer authentication.
 // Keep broad defaults small; preserve historic large-body surfaces only after auth.
