@@ -104,6 +104,18 @@ requiredChecks.push({
   ok: safetyGate.includes('AIGENT_PIPELINE_ALLOW_EXECUTION'),
 });
 
+const externalRunnerRfc = readText('docs/governance/EXTERNAL_RUNNER_BOUNDARY_RFC_20260611.md');
+requiredChecks.push({
+  label: 'external runner RFC keeps trusted adapter distinct from untrusted sandbox',
+  ok: externalRunnerRfc.includes('trusted-adapter boundary')
+    && externalRunnerRfc.includes('it is not an untrusted sandbox')
+    && externalRunnerRfc.includes('Only `untrusted_runner_enabled` may be described as sandboxed')
+    && externalRunnerRfc.includes('Network is deny-by-default')
+    && externalRunnerRfc.includes('The repository and core runtime are mounted read-only')
+    && externalRunnerRfc.includes('the runner cannot read root `.env` or `config.env`')
+    && externalRunnerRfc.includes('direct/hybrid same-process manifests remain denied'),
+});
+
 requiredChecks.push({
   label: 'baseline deny rules catch nested env files',
   ok: [
