@@ -70,6 +70,7 @@ export interface InstallFromPayload {
   githubUrl?: string
   downloadUrl?: string
   force?: boolean
+  allowLifecycleScripts?: boolean
 }
 
 export interface UninstallPluginPayload {
