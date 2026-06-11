@@ -181,23 +181,36 @@ export function summarizePluginHubRecords(
 
 export function buildRecentPluginVisitItems(
   recentVisits: readonly RecentVisit[],
-  recordMap: ReadonlyMap<string, PluginHubRecord>,
+  records: readonly PluginHubRecord[],
   limit = 6
 ): RecentPluginVisitItem[] {
-  const seenPluginNames = new Set<string>();
+  const seenPluginTargets = new Set<string>();
   const result: RecentPluginVisitItem[] = [];
 
   for (const visit of recentVisits) {
-    if (!visit.pluginName || seenPluginNames.has(visit.pluginName)) {
+    if (!visit.pluginName) {
       continue;
     }
 
-    const record = recordMap.get(visit.pluginName);
+    const targetKey = [
+      visit.pluginName,
+      visit.pluginRootId || "",
+      visit.pluginSource || "",
+    ].join(":");
+    if (seenPluginTargets.has(targetKey)) {
+      continue;
+    }
+
+    const record = records.find((item) =>
+      item.pluginName === visit.pluginName &&
+      (!visit.pluginRootId || item.plugin.pluginRootId === visit.pluginRootId) &&
+      (!visit.pluginSource || item.plugin.pluginSource === visit.pluginSource)
+    );
     if (!record) {
       continue;
     }
 
-    seenPluginNames.add(visit.pluginName);
+    seenPluginTargets.add(targetKey);
     result.push({
       pluginName: record.pluginName,
       pluginRootId: record.plugin.pluginRootId,

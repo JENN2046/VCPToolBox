@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildPluginHubRecords } from '@/features/plugins-hub/derivePluginHubState'
+import {
+  buildPluginHubRecords,
+  buildRecentPluginVisitItems,
+} from '@/features/plugins-hub/derivePluginHubState'
 import type { PluginInfo } from '@/types/api.plugin'
 
 function makePlugin(overrides: Partial<PluginInfo> = {}): PluginInfo {
@@ -42,5 +45,51 @@ describe('derivePluginHubState runtime trust labels', () => {
 
     expect(records[0]?.runtimeTrustWarningLabel).toBe('')
     expect(records[0]?.runtimeTrustWarningTitle).toBe('')
+  })
+})
+
+describe('derivePluginHubState recent plugin visits', () => {
+  it('preserves the visited duplicate plugin root and source', () => {
+    const records = buildPluginHubRecords([
+      makePlugin({
+        manifest: {
+          name: 'Echo',
+          displayName: 'Core Echo',
+          description: 'Core plugin',
+        },
+        pluginSource: 'core',
+        pluginRootId: 'core:legacy',
+        runtimeTrust: undefined,
+      }),
+      makePlugin({
+        manifest: {
+          name: 'Echo',
+          displayName: 'External Echo',
+          description: 'External plugin',
+        },
+        pluginSource: 'external',
+        pluginRootId: 'external:0',
+      }),
+    ], [], 80)
+
+    const items = buildRecentPluginVisitItems([
+      {
+        target: 'plugin-Echo-config',
+        label: 'External Echo',
+        pluginName: 'Echo',
+        pluginRootId: 'external:0',
+        pluginSource: 'external',
+      },
+    ], records)
+
+    expect(items).toEqual([
+      {
+        pluginName: 'Echo',
+        pluginRootId: 'external:0',
+        pluginSource: 'external',
+        label: 'External Echo',
+        icon: 'extension',
+      },
+    ])
   })
 })

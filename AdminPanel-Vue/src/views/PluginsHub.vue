@@ -651,7 +651,7 @@ const pluginSummary = computed(() =>
   summarizePluginHubRecords(pluginRecords.value)
 );
 const recentPluginVisits = computed(() =>
-  buildRecentPluginVisitItems(recentVisits.value, pluginRecordMap.value)
+  buildRecentPluginVisitItems(recentVisits.value, pluginRecords.value)
 );
 const visiblePluginRecords = computed(() =>
   filterPluginHubRecords(pluginRecords.value, {
