@@ -24,21 +24,29 @@ function read(relativePath) {
 test('AI image native delegate bindings are frozen side-effect-free static data', () => {
     const source = read('modules/aiImageNativeDelegateBindings.js');
     const binding = bindings.SERUM_BOTTLE_SECRETLESS_DOUBAO_BINDING;
+    const runtimeMetadataDefaults =
+        bindings.SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS;
 
     assert.equal(Object.isFrozen(bindings), true);
     assert.equal(Object.isFrozen(binding), true);
     assert.equal(Object.isFrozen(binding.allowedCommands), true);
+    assert.equal(Object.isFrozen(runtimeMetadataDefaults), true);
     assert.equal(binding.delegateId, 'serum_bottle_secretless_doubao_v1');
     assert.equal(binding.providerId, 'doubao');
     assert.equal(binding.pluginId, 'DoubaoGen');
     assert.equal(binding.apiId, 'generate_image');
     assert.equal(binding.internalCommand, 'generate');
     assert.deepEqual(binding.allowedCommands, ['generate', 'edit', 'compose', 'group']);
+    assert.deepEqual(runtimeMetadataDefaults, {
+        requestSource: 'agent-image-lab-secretless-runtime',
+        bridgeId: 'native_doubao_secretless_runtime_delegate',
+        providerBindingRefRedacted: true,
+    });
     assert.match(source, /Temporary core binding data/);
     assert.match(source, /Jenn External Ecosystem \/ Adapter Layer/);
     assert.doesNotMatch(
         source,
-        /process\.env|require\('fs'\)|require\("fs"\)|PluginManager|processToolCall|express|listen|writeFile|readFile/
+        /process\.env|require\('fs'\)|require\("fs"\)|PluginManager|processToolCall|express|listen|writeFile|readFile|1920x1920|SECRETLESS_SERUM_ALLOWED_SIZE/
     );
 });
 

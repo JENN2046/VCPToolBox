@@ -457,7 +457,9 @@ const serverSource = readText('server.js');
 const aiImageJennTrialFixtures = readText('modules/aiImageJennTrialFixtures.js');
 const nativeImageDelegateRegistrySource = readText('modules/nativeImageDelegateRegistry.js');
 const aiImageNativeDelegateBindings = readText('modules/aiImageNativeDelegateBindings.js');
+const nativeDoubaoSecretlessRuntimeDelegateSource = readText('modules/nativeDoubaoSecretlessRuntimeDelegate.js');
 const jennAgentImageLabSourceLiteral = 'A:\\\\agent-image-lab';
+const nativeDoubaoRuntimeRequestSourceLiteral = 'agent-image-lab-secretless-runtime';
 const jennNativeDelegateBindingLiterals = [
   "'serum_bottle_secretless_doubao_v1'",
   "'doubao'",
@@ -492,6 +494,28 @@ requiredChecks.push({
     && jennNativeDelegateBindingLiterals.every((literal) => aiImageNativeDelegateBindings.includes(literal))
     && aiImageNativeDelegateBindings.includes('Object.freeze')
     && !/(process\.env|require\(['"]fs['"]\)|PluginManager|processToolCall|express|listen|writeFile|readFile)/.test(aiImageNativeDelegateBindings),
+});
+requiredChecks.push({
+  label: 'AI image native Doubao metadata defaults are frozen binding data',
+  ok: aiImageNativeDelegateBindings.includes('SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS')
+    && aiImageNativeDelegateBindings.includes(`requestSource: '${nativeDoubaoRuntimeRequestSourceLiteral}'`)
+    && aiImageNativeDelegateBindings.includes("bridgeId: 'native_doubao_secretless_runtime_delegate'")
+    && aiImageNativeDelegateBindings.includes('providerBindingRefRedacted: true')
+    && /const\s+SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS\s*=\s*Object\.freeze\(\{/.test(aiImageNativeDelegateBindings)
+    && !/(SECRETLESS_SERUM_ALLOWED_SIZE|1920x1920|processToolCall|PluginManager|process\.env|require\(['"]fs['"]\))/.test(aiImageNativeDelegateBindings),
+});
+requiredChecks.push({
+  label: 'native Doubao delegate imports metadata defaults and still owns size behavior',
+  ok: nativeDoubaoSecretlessRuntimeDelegateSource.includes("require('./aiImageNativeDelegateBindings')")
+    && nativeDoubaoSecretlessRuntimeDelegateSource.includes('SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS.requestSource')
+    && nativeDoubaoSecretlessRuntimeDelegateSource.includes('SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS.bridgeId')
+    && nativeDoubaoSecretlessRuntimeDelegateSource.includes('SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS.providerBindingRefRedacted')
+    && !nativeDoubaoSecretlessRuntimeDelegateSource.includes(`'${nativeDoubaoRuntimeRequestSourceLiteral}'`)
+    && !/const\s+DEFAULT_REQUEST_SOURCE/.test(nativeDoubaoSecretlessRuntimeDelegateSource)
+    && nativeDoubaoSecretlessRuntimeDelegateSource.includes("const SECRETLESS_SERUM_ALLOWED_SIZE = '1920x1920'")
+    && nativeDoubaoSecretlessRuntimeDelegateSource.includes('const SECRETLESS_SERUM_SIZE_OVERRIDE_KEYS = [')
+    && nativeDoubaoSecretlessRuntimeDelegateSource.includes('toolArgs.size = SECRETLESS_SERUM_ALLOWED_SIZE')
+    && nativeDoubaoSecretlessRuntimeDelegateSource.includes('pluginManager.processToolCall'),
 });
 
 const failedChecks = requiredChecks.filter((check) => !check.ok);

@@ -20,7 +20,14 @@ const SERUM_BOTTLE_SECRETLESS_DOUBAO_BINDING = Object.freeze({
   allowedCommands: SERUM_BOTTLE_SECRETLESS_DOUBAO_ALLOWED_COMMANDS,
 });
 
+const SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS = Object.freeze({
+  requestSource: 'agent-image-lab-secretless-runtime',
+  bridgeId: 'native_doubao_secretless_runtime_delegate',
+  providerBindingRefRedacted: true,
+});
+
 module.exports = Object.freeze({
   SERUM_BOTTLE_SECRETLESS_DOUBAO_BINDING,
   SERUM_BOTTLE_SECRETLESS_DOUBAO_ALLOWED_COMMANDS,
+  SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS,
 });
