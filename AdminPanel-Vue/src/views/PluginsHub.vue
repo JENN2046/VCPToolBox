@@ -155,10 +155,10 @@
         <div class="quick-list">
           <button
             v-for="item in recentPluginVisits"
-            :key="item.pluginName"
+            :key="`${item.pluginName}-${item.pluginRootId || ''}-${item.pluginSource || ''}`"
             type="button"
             class="quick-link"
-            @click="openPluginConfig(item.pluginName)"
+            @click="openPluginConfig(item)"
           >
             <span class="material-symbols-outlined">{{ item.icon }}</span>
             <span>{{ item.label }}</span>
@@ -510,6 +510,7 @@ import {
   summarizePluginHubRecords,
   type PluginFilter,
   type PluginHubRecord,
+  type RecentPluginVisitItem,
 } from "@/features/plugins-hub/derivePluginHubState";
 import { askConfirm } from "@/platform/feedback/feedbackBus";
 import { useAppStore } from "@/stores/app";
@@ -722,7 +723,12 @@ function isPluginPending(pluginName: string): boolean {
   return pendingPluginNames.value.includes(pluginName);
 }
 
-function recordPluginVisit(pluginName: string) {
+function recordPluginVisit(plugin: PluginInfo | RecentPluginVisitItem | string) {
+  const pluginName = typeof plugin === "string"
+    ? plugin
+    : "pluginName" in plugin
+      ? plugin.pluginName
+      : plugin.manifest.name || plugin.name;
   const nextNavigationState = recordNavigationVisit({
     target: `plugin-${pluginName}-config`,
     navItems: appStore.navItems,
@@ -730,16 +736,20 @@ function recordPluginVisit(pluginName: string) {
     recentVisits: recentVisits.value,
     navigationUsage: navigationUsage.value,
     pluginName,
+    pluginRootId: typeof plugin === "string" ? undefined : plugin.pluginRootId,
+    pluginSource: typeof plugin === "string" ? undefined : plugin.pluginSource,
   });
   recentVisits.value = nextNavigationState.recentVisits;
   navigationUsage.value = nextNavigationState.navigationUsage;
 }
 
-function openPluginConfig(plugin: PluginInfo | string) {
+function openPluginConfig(plugin: PluginInfo | RecentPluginVisitItem | string) {
   const pluginName = typeof plugin === "string"
     ? plugin
-    : plugin.manifest.name || plugin.name;
-  recordPluginVisit(pluginName);
+    : "pluginName" in plugin
+      ? plugin.pluginName
+      : plugin.manifest.name || plugin.name;
+  recordPluginVisit(plugin);
   router.push({
     name: "PluginConfig",
     params: { pluginName },

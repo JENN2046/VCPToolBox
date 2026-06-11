@@ -16,6 +16,8 @@ export interface CommandPaletteEntry {
   icon: string;
   target: string;
   pluginName?: string;
+  pluginRootId?: string;
+  pluginSource?: string;
   badges: string[];
   priority: number;
   searchText: string;
@@ -74,7 +76,9 @@ function getSearchText(parts: Array<string | undefined>): string {
 }
 
 function getDestinationKey(entry: CommandPaletteEntry): string {
-  return entry.pluginName ? `plugin:${entry.pluginName}` : `page:${entry.target}`;
+  return entry.pluginName
+    ? `plugin:${entry.pluginName}:${entry.pluginRootId || ""}:${entry.pluginSource || ""}`
+    : `page:${entry.target}`;
 }
 
 function hasBadge(entry: CommandPaletteEntry, badge: string): boolean {
@@ -151,13 +155,15 @@ function buildPluginEntries(
     const subtitle = plugin.manifest.description?.trim() || pluginName;
 
     return {
-      id: `plugin:${pluginName}`,
+      id: `plugin:${pluginName}:${plugin.pluginRootId || ""}:${plugin.pluginSource || ""}`,
       kind: "plugin" as const,
       label: getPluginDisplayName(plugin),
       subtitle,
       icon: plugin.manifest.icon || "extension",
       target: `plugin-${pluginName}-config`,
       pluginName,
+      pluginRootId: plugin.pluginRootId,
+      pluginSource: plugin.pluginSource,
       badges,
       priority: index,
       searchText: getSearchText([
@@ -174,7 +180,10 @@ function getEntryUsageRecord(
   entry: CommandPaletteEntry,
   navigationUsage: Readonly<NavigationUsageMap>
 ) {
-  return navigationUsage[getNavigationUsageKey(entry.target, entry.pluginName)];
+  return navigationUsage[getNavigationUsageKey(entry.target, entry.pluginName, {
+    pluginRootId: entry.pluginRootId,
+    pluginSource: entry.pluginSource,
+  })];
 }
 
 function buildRecentRankMap(
@@ -290,14 +299,15 @@ function buildRecentEntries(
       )
       .map((item) => [item.target, item])
   );
-  const pluginMap = new Map(
-    plugins.map((plugin) => [getPluginName(plugin), plugin] as const)
-  );
   const pinnedSet = new Set(pinnedPluginNames);
 
   return recentVisits.flatMap((visit, index) => {
     if (visit.pluginName) {
-      const plugin = pluginMap.get(visit.pluginName);
+      const plugin = plugins.find((item) =>
+        getPluginName(item) === visit.pluginName &&
+        (!visit.pluginRootId || item.pluginRootId === visit.pluginRootId) &&
+        (!visit.pluginSource || item.pluginSource === visit.pluginSource)
+      );
       if (!plugin) {
         return [];
       }
@@ -312,13 +322,15 @@ function buildRecentEntries(
 
       return [
         {
-          id: `recent:plugin:${pluginName}`,
+          id: `recent:plugin:${pluginName}:${plugin.pluginRootId || ""}:${plugin.pluginSource || ""}`,
           kind: "recent" as const,
           label: getPluginDisplayName(plugin),
           subtitle,
           icon: plugin.manifest.icon || "extension",
           target: `plugin-${pluginName}-config`,
           pluginName,
+          pluginRootId: plugin.pluginRootId,
+          pluginSource: plugin.pluginSource,
           badges,
           priority: index,
           searchText: getSearchText([

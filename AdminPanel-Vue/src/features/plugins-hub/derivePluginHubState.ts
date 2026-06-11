@@ -12,6 +12,8 @@ export interface PluginHubSummary {
 
 export interface RecentPluginVisitItem {
   pluginName: string;
+  pluginRootId?: string;
+  pluginSource?: string;
   label: string;
   icon: string;
 }
@@ -198,6 +200,8 @@ export function buildRecentPluginVisitItems(
     seenPluginNames.add(visit.pluginName);
     result.push({
       pluginName: record.pluginName,
+      pluginRootId: record.plugin.pluginRootId,
+      pluginSource: record.plugin.pluginSource,
       label: record.displayName,
       icon: record.icon,
     });

@@ -62,6 +62,8 @@ export interface AppNavItem {
   icon?: string;
   category?: string;
   pluginName?: string;
+  pluginRootId?: string;
+  pluginSource?: string;
   enabled?: boolean;
 }
 
@@ -516,13 +518,19 @@ export function resolveAppRouteTitle(
 ): string | undefined {
   const namedRoute = getAppRouteMetaByRouteName(route.name);
   if (namedRoute) {
-    if (namedRoute.id === "plugin-config" && context?.plugins) {
+    const routeQuery = route.query || {};
+    if (namedRoute.id === "plugin-config") {
       const pluginNameParam = route.params.pluginName;
       const pluginName =
         typeof pluginNameParam === "string" ? pluginNameParam : undefined;
       if (pluginName) {
-        const plugin = context.plugins.find(
-          (item) => (item.manifest.name || item.name) === pluginName
+        const plugin = context?.plugins?.find(
+          (item) =>
+            (item.manifest.name || item.name) === pluginName &&
+            (typeof routeQuery.pluginRootId !== "string" ||
+              item.pluginRootId === routeQuery.pluginRootId) &&
+            (typeof routeQuery.pluginSource !== "string" ||
+              item.pluginSource === routeQuery.pluginSource)
         );
         if (plugin) {
           const displayName =
@@ -530,6 +538,17 @@ export function resolveAppRouteTitle(
             plugin.manifest.name ||
             plugin.name;
           return `${namedRoute.title} · ${displayName}`;
+        }
+
+        const navItem = context?.navItems?.find((item) =>
+          item.pluginName === pluginName &&
+          (typeof routeQuery.pluginRootId !== "string" ||
+            item.pluginRootId === routeQuery.pluginRootId) &&
+          (typeof routeQuery.pluginSource !== "string" ||
+            item.pluginSource === routeQuery.pluginSource)
+        );
+        if (navItem?.label) {
+          return navItem.label;
         }
       }
     }
@@ -546,12 +565,20 @@ export function resolveAppRouteTitle(
 
 export function resolveAppNavigationLocation(
   target: string,
-  pluginName?: string
+  pluginName?: string,
+  targetCriteria?: { pluginRootId?: string; pluginSource?: string }
 ): RouteLocationRaw {
+  const query = {
+    ...(targetCriteria?.pluginRootId ? { pluginRootId: targetCriteria.pluginRootId } : {}),
+    ...(targetCriteria?.pluginSource ? { pluginSource: targetCriteria.pluginSource } : {}),
+  };
+  const pluginQuery = Object.keys(query).length > 0 ? query : undefined;
+
   if (pluginName) {
     return {
       name: getAppRouteMetaById("plugin-config").routeName,
       params: { pluginName },
+      query: pluginQuery,
     };
   }
 
@@ -560,6 +587,7 @@ export function resolveAppNavigationLocation(
     return {
       name: getAppRouteMetaById("plugin-config").routeName,
       params: { pluginName: pluginTargetMatch[1] },
+      query: pluginQuery,
     };
   }
 
