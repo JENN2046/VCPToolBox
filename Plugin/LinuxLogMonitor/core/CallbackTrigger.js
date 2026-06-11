@@ -11,6 +11,7 @@
 
 const path = require('path');
 const fs = require('fs').promises;
+const { createSignedPluginCallbackUrl } = require('../../../modules/pluginCallbackAuth');
 
 // 失败回调日志路径
 const FAILED_CALLBACKS_PATH = path.join(__dirname, '..', 'state', 'failed_callbacks.jsonl');
@@ -25,6 +26,7 @@ class CallbackTrigger {
     constructor(options = {}) {
         this.baseUrl = options.baseUrl || 'http://localhost:5000';
         this.pluginName = options.pluginName || 'LinuxLogMonitor';
+        this.callbackAuthSecret = options.callbackAuthSecret || process.env.CALLBACK_AUTH_SECRET || '';
         this.debug = options.debug || false;
         
         // 重试配置
@@ -52,17 +54,12 @@ class CallbackTrigger {
     async trigger(taskId, data) {
         this.stats.totalCallbacks++;
         
-        // 智能构建回调 URL：检测 baseUrl 是否已包含 /plugin-callback
-        let callbackUrl;
-        if (this.baseUrl.endsWith('/plugin-callback') || this.baseUrl.includes('/plugin-callback/')) {
-            // baseUrl 已包含 /plugin-callback，直接追加 pluginName 和 taskId
-            const base = this.baseUrl.replace(/\/$/, ''); // 移除末尾斜杠
-            callbackUrl = `${base}/${this.pluginName}/${taskId}`;
-        } else {
-            // baseUrl 不包含 /plugin-callback，需要追加完整路径
-            const base = this.baseUrl.replace(/\/$/, ''); // 移除末尾斜杠
-            callbackUrl = `${base}/plugin-callback/${this.pluginName}/${taskId}`;
-        }
+        const callbackUrl = createSignedPluginCallbackUrl({
+            baseUrl: this.baseUrl,
+            pluginName: this.pluginName,
+            taskId,
+            secret: this.callbackAuthSecret
+        });
         
         this._log(`触发回调: ${callbackUrl}`);
         

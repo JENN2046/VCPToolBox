@@ -91,6 +91,7 @@ function createMonitorManager() {
             buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
             pluginConfig.CALLBACK_BASE_URL ||
             CALLBACK_BASE_URL,
+        callbackAuthSecret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key,
         pluginName: PLUGIN_NAME,
         debug: resolveDebugMode(pluginConfig)
     });

@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const http = require('http'); // 用于向主服务器发送回调
 const fs = require('fs').promises; // 添加 fs 模块
+const { createSignedPluginCallbackUrl } = require('../../modules/pluginCallbackAuth');
 require('dotenv').config({ path: path.join(__dirname, 'config.env') });
 
 // 用于向主服务器发送回调的函数
@@ -15,7 +16,12 @@ function sendCallback(requestId, status, result) {
         return;
     }
 
-    const callbackUrl = `${callbackBaseUrl}/${pluginNameForCallback}/${requestId}`;
+    const callbackUrl = createSignedPluginCallbackUrl({
+        baseUrl: callbackBaseUrl,
+        pluginName: pluginNameForCallback,
+        taskId: requestId,
+        secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key
+    });
 
     const payload = JSON.stringify({
         requestId: requestId,
@@ -23,7 +29,7 @@ function sendCallback(requestId, status, result) {
         result: result
     });
 
-    const protocol = callbackBaseUrl.startsWith('https') ? require('https') : require('http');
+    const protocol = callbackUrl.startsWith('https') ? require('https') : require('http');
 
     const options = {
         method: 'POST',

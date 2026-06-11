@@ -189,17 +189,17 @@ test('server gates plugin callbacks before authenticated body parsers', () => {
         "app.post('/plugin-callback/:pluginName/:taskId'"
     );
     const nonceReplayGuardIndex = serverSource.indexOf('function consumePluginCallbackNonce');
-    const trustedLocalIndex = serverSource.indexOf('function isTrustedLocalPluginCallbackRequest');
+    const authFunctionIndex = serverSource.indexOf('function authorizePluginCallbackRequest');
+    const verificationIndex = serverSource.indexOf('const verification = verifyPluginCallbackRequest');
 
     assert.notEqual(callbackAuthIndex, -1);
     assert.notEqual(defaultJsonParserIndex, -1);
     assert.notEqual(callbackRouteIndex, -1);
     assert.notEqual(nonceReplayGuardIndex, -1);
-    assert.notEqual(trustedLocalIndex, -1);
-    assert.match(
-        serverSource,
-        /return isLoopbackSocket\(req\) && !hasPluginCallbackProxyHeaders\(req\);/
-    );
+    assert.notEqual(authFunctionIndex, -1);
+    assert.notEqual(verificationIndex, -1);
+    assert.equal(serverSource.includes('isTrustedLocalPluginCallbackRequest'), false);
+    assert.ok(authFunctionIndex < verificationIndex);
     assert.ok(callbackAuthIndex < defaultJsonParserIndex);
     assert.ok(defaultJsonParserIndex < callbackRouteIndex);
 });

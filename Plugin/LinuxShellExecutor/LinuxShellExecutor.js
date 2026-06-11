@@ -1977,6 +1977,7 @@ class LinuxShellExecutor {
                     buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
                     process.env.CALLBACK_BASE_URL ||
                     `http://localhost:${process.env.SERVER_PORT || 5000}`,
+                callbackAuthSecret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key,
                 pluginName: 'LinuxShellExecutor',
                 debug: isDebugMode()
             });

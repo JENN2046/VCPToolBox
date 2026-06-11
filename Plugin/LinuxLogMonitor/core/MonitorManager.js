@@ -50,6 +50,7 @@ class MonitorManager {
     constructor(options = {}) {
         this.callbackBaseUrl = options.callbackBaseUrl || 'http://localhost:5000';
         this.pluginName = options.pluginName || 'LinuxLogMonitor';
+        this.callbackAuthSecret = options.callbackAuthSecret || process.env.CALLBACK_AUTH_SECRET || '';
         this.debug = options.debug || false;
         
         // 活跃任务 Map<taskId, MonitorTask>
@@ -62,6 +63,7 @@ class MonitorManager {
         this.callbackTrigger = new CallbackTrigger({
             baseUrl: this.callbackBaseUrl,
             pluginName: this.pluginName,
+            callbackAuthSecret: this.callbackAuthSecret,
             debug: this.debug
         });
         

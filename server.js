@@ -18,7 +18,6 @@ const { Writable } = require('stream');
 const fsSync = require('fs'); // Renamed to fsSync for clarity with fs.promises
 const { getEmbeddingFallbackStats } = require('./EmbeddingUtils');
 const {
-    hasPluginCallbackProxyHeaders,
     verifyPluginCallbackRequest
 } = require('./modules/pluginCallbackAuth');
 
@@ -656,10 +655,6 @@ function getPluginCallbackAuthSecret() {
     return process.env.PLUGIN_CALLBACK_SECRET || serverKey;
 }
 
-function isTrustedLocalPluginCallbackRequest(req) {
-    return isLoopbackSocket(req) && !hasPluginCallbackProxyHeaders(req);
-}
-
 function pruneConsumedPluginCallbackNonces(now = Date.now()) {
     for (const [key, expiresAt] of consumedPluginCallbackNonces.entries()) {
         if (expiresAt <= now) {
@@ -688,10 +683,6 @@ function consumePluginCallbackNonce(req, verification, now = Date.now()) {
 }
 
 function authorizePluginCallbackRequest(req, res, next) {
-    if (isTrustedLocalPluginCallbackRequest(req)) {
-        return next();
-    }
-
     const verification = verifyPluginCallbackRequest(req, {
         secret: getPluginCallbackAuthSecret()
     });
