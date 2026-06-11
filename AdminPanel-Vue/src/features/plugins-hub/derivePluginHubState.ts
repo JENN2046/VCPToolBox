@@ -26,6 +26,8 @@ export interface PluginHubRecord {
   enabled: boolean;
   isDistributed: boolean;
   isPinned: boolean;
+  runtimeTrustWarningLabel: string;
+  runtimeTrustWarningTitle: string;
   searchText: string;
 }
 
@@ -61,6 +63,18 @@ function summarizePluginDescription(
   }
 
   return `${graphemes.slice(0, maxLength).join("").trimEnd()}…`;
+}
+
+function getRuntimeTrustWarningLabel(plugin: PluginInfo): string {
+  return plugin.runtimeTrust?.warningCode === "external_process_not_untrusted_sandbox"
+    ? "可信外部进程"
+    : "";
+}
+
+function getRuntimeTrustWarningTitle(plugin: PluginInfo): string {
+  return plugin.runtimeTrust?.warningCode === "external_process_not_untrusted_sandbox"
+    ? "外部插件环境变量已收窄，但仍是本机子进程，不是文件系统或进程沙箱。"
+    : "";
 }
 
 function comparePluginHubRecords(
@@ -120,6 +134,8 @@ export function buildPluginHubRecords(
       enabled: plugin.enabled,
       isDistributed: Boolean(plugin.isDistributed),
       isPinned: pinnedPluginNameSet.has(pluginName),
+      runtimeTrustWarningLabel: getRuntimeTrustWarningLabel(plugin),
+      runtimeTrustWarningTitle: getRuntimeTrustWarningTitle(plugin),
       searchText: normalizeText([pluginName, displayName, description].join(" ")),
     };
   });

@@ -288,7 +288,11 @@
                   </p>
 
                   <div
-                    v-if="plugin.isDistributed || plugin.isPinned"
+                    v-if="
+                      plugin.isDistributed ||
+                      plugin.isPinned ||
+                      plugin.runtimeTrustWarningLabel
+                    "
                     class="plugin-status-pills"
                   >
                     <span
@@ -306,6 +310,16 @@
                         >push_pin</span
                       >
                       已固定
+                    </span>
+                    <span
+                      v-if="plugin.runtimeTrustWarningLabel"
+                      class="mini-pill mini-pill--sensitive"
+                      :title="plugin.runtimeTrustWarningTitle"
+                    >
+                      <span class="material-symbols-outlined mini-pill-icon"
+                        >security</span
+                      >
+                      {{ plugin.runtimeTrustWarningLabel }}
                     </span>
                   </div>
 
@@ -415,7 +429,14 @@
               {{ plugin.summary }}
             </p>
 
-            <div v-if="plugin.isDistributed || plugin.isPinned" class="plugin-status-pills">
+            <div
+              v-if="
+                plugin.isDistributed ||
+                plugin.isPinned ||
+                plugin.runtimeTrustWarningLabel
+              "
+              class="plugin-status-pills"
+            >
               <span v-if="plugin.isDistributed" class="mini-pill mini-pill--sensitive">
                 <span class="material-symbols-outlined mini-pill-icon">hub</span>
                 分布式
@@ -423,6 +444,14 @@
               <span v-if="plugin.isPinned" class="mini-pill mini-pill--changed">
                 <span class="material-symbols-outlined mini-pill-icon">push_pin</span>
                 已固定
+              </span>
+              <span
+                v-if="plugin.runtimeTrustWarningLabel"
+                class="mini-pill mini-pill--sensitive"
+                :title="plugin.runtimeTrustWarningTitle"
+              >
+                <span class="material-symbols-outlined mini-pill-icon">security</span>
+                {{ plugin.runtimeTrustWarningLabel }}
               </span>
             </div>
 
