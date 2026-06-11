@@ -258,6 +258,7 @@ requiredChecks.push({
     && pluginApiTests.includes('pluginApi managed write target criteria')
     && pluginApiTests.includes('preserves legacy payloads when target criteria are unavailable')
     && pluginConfigStoreTests.includes('loads the plugin record matching explicit target criteria')
+    && pluginConfigStoreTests.includes('does not fall back to another duplicate plugin when explicit target criteria miss')
     && recentVisitsTests.includes('recent plugin visits target criteria')
     && commandPaletteTests.includes('command palette plugin target criteria'),
 });

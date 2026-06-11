@@ -159,6 +159,50 @@ describe("plugin config store", () => {
     expect(store.pluginData?.pluginSource).toBe("external");
   });
 
+  it("does not fall back to another duplicate plugin when explicit target criteria miss", async () => {
+    const store = usePluginConfigStore();
+
+    mockGetPlugins.mockResolvedValueOnce([
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "Core Calendar",
+        },
+        enabled: true,
+        pluginRootId: "core:legacy",
+        pluginSource: "core",
+        configEnvContent: "ENABLED=false",
+      },
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "External Calendar",
+        },
+        enabled: true,
+        pluginRootId: "external:0",
+        pluginSource: "external",
+        configEnvContent: "ENABLED=true",
+      },
+    ]);
+
+    await store.loadPluginConfig("calendar", {
+      targetCriteria: {
+        pluginRootId: "external:missing",
+        pluginSource: "external",
+      },
+    });
+
+    expect(store.pluginData).toBeNull();
+    expect(store.configEntries).toEqual([]);
+    expect(mockParseEnvToList).not.toHaveBeenCalled();
+    expect(mockShowMessage).toHaveBeenCalledWith(
+      "未找到匹配目标的插件配置。请从插件列表重新选择明确目标。",
+      "error"
+    );
+  });
+
   it("saves merged schema and custom config entries", async () => {
     const store = usePluginConfigStore();
 

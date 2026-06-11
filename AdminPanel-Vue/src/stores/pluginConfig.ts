@@ -237,6 +237,10 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
     return true
   }
 
+  function hasPluginTargetCriteria(targetCriteria?: PluginTargetCriteria): boolean {
+    return Boolean(targetCriteria?.pluginRootId || targetCriteria?.pluginSource)
+  }
+
   async function loadPluginConfig(pluginName: string, options: LoadPluginConfigOptions = {}) {
     clearTransientUiState()
     pluginData.value = null
@@ -247,12 +251,16 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
         ? await appStore.refreshPlugins()
         : await appStore.ensurePluginsLoaded()
       const matchingPlugins = plugins.filter((item) => item.manifest.name === pluginName || item.name === pluginName)
-      const plugin = matchingPlugins.find((item) => matchesPluginTargetCriteria(item, options.targetCriteria))
-        || matchingPlugins[0]
+      const plugin = hasPluginTargetCriteria(options.targetCriteria)
+        ? matchingPlugins.find((item) => matchesPluginTargetCriteria(item, options.targetCriteria))
+        : matchingPlugins[0]
 
       if (!plugin) {
         pluginData.value = null
         configEntries.value = []
+        if (hasPluginTargetCriteria(options.targetCriteria)) {
+          showMessage('未找到匹配目标的插件配置。请从插件列表重新选择明确目标。', 'error')
+        }
         return
       }
 
