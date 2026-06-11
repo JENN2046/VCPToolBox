@@ -16,6 +16,23 @@ const { createSignedPluginCallbackUrl } = require('../../../modules/pluginCallba
 // 失败回调日志路径
 const FAILED_CALLBACKS_PATH = path.join(__dirname, '..', 'state', 'failed_callbacks.jsonl');
 
+function redactCallbackUrlForLog(callbackUrl) {
+    try {
+        const parsed = new URL(callbackUrl);
+        for (const key of ['vcp_cb_sig', 'vcp_cb_nonce', 'vcp_cb_expires']) {
+            if (parsed.searchParams.has(key)) {
+                parsed.searchParams.set(key, '[redacted]');
+            }
+        }
+        return parsed.toString();
+    } catch (_error) {
+        return String(callbackUrl || '')
+            .replace(/([?&]vcp_cb_sig=)[^&\s]+/g, '$1[redacted]')
+            .replace(/([?&]vcp_cb_nonce=)[^&\s]+/g, '$1[redacted]')
+            .replace(/([?&]vcp_cb_expires=)[^&\s]+/g, '$1[redacted]');
+    }
+}
+
 class CallbackTrigger {
     /**
      * @param {Object} options
@@ -61,7 +78,7 @@ class CallbackTrigger {
             secret: this.callbackAuthSecret
         });
         
-        this._log(`触发回调: ${callbackUrl}`);
+        this._log(`触发回调: ${redactCallbackUrlForLog(callbackUrl)}`);
         
         let lastError = null;
         

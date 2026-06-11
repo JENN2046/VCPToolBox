@@ -49,6 +49,40 @@ test('MagiAgent preserves configured public callback base before local fallback'
     assert.ok(configuredIndex < localFallbackIndex);
 });
 
+test('LinuxLogMonitor preserves configured callback base before local fallback', () => {
+    const linuxLogMonitorSource = read('Plugin/LinuxLogMonitor/LinuxLogMonitor.js');
+    const globalEnvConfiguredIndex = linuxLogMonitorSource.indexOf('process.env.CALLBACK_BASE_URL ||');
+    const globalLocalFallbackIndex = linuxLogMonitorSource.indexOf('buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT)');
+    const managerSource = linuxLogMonitorSource.slice(linuxLogMonitorSource.indexOf('function createMonitorManager()'));
+    const configuredIndex = managerSource.indexOf('pluginConfig.CALLBACK_BASE_URL ||');
+    const envConfiguredIndex = managerSource.indexOf('CALLBACK_BASE_URL ||');
+    const localFallbackIndex = managerSource.indexOf('buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT)');
+
+    assert.notEqual(globalEnvConfiguredIndex, -1);
+    assert.notEqual(globalLocalFallbackIndex, -1);
+    assert.notEqual(configuredIndex, -1);
+    assert.notEqual(envConfiguredIndex, -1);
+    assert.notEqual(localFallbackIndex, -1);
+    assert.ok(globalEnvConfiguredIndex < globalLocalFallbackIndex);
+    assert.ok(configuredIndex < localFallbackIndex);
+    assert.ok(envConfiguredIndex < localFallbackIndex);
+});
+
+test('LinuxLogMonitor redacts signed callback query fields before logging', () => {
+    const callbackTriggerSource = read('Plugin/LinuxLogMonitor/core/CallbackTrigger.js');
+    const redactionFunctionIndex = callbackTriggerSource.indexOf('function redactCallbackUrlForLog');
+    const logIndex = callbackTriggerSource.indexOf('this._log(`触发回调: ${redactCallbackUrlForLog(callbackUrl)}`);');
+    const sendIndex = callbackTriggerSource.indexOf('this._sendRequest(callbackUrl, data)');
+
+    assert.notEqual(redactionFunctionIndex, -1);
+    assert.notEqual(logIndex, -1);
+    assert.notEqual(sendIndex, -1);
+    assert.match(callbackTriggerSource, /vcp_cb_sig/);
+    assert.match(callbackTriggerSource, /vcp_cb_nonce/);
+    assert.match(callbackTriggerSource, /vcp_cb_expires/);
+    assert.ok(logIndex < sendIndex);
+});
+
 test('video generator signs async callback URLs with callback auth secret', () => {
     const videoGeneratorSource = read('Plugin/VideoGenerator/video_handler.py');
 
