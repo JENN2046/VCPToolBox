@@ -341,6 +341,134 @@ test('Jenn adapter install root must match an allowlisted external legacy root',
     }
 });
 
+test('Gate 10 no-op Jenn external fixture package is discovered from the Plugin subdirectory only', async () => {
+    const projectRoot = makeTempDir();
+    const externalPackageRoot = path.join(projectRoot, 'VCPToolBox-JENN-Extensions');
+    const externalPluginRoot = path.join(externalPackageRoot, 'Plugin');
+    const localStateRoot = path.join(projectRoot, 'VCPToolBox-JENN-LocalState');
+    const fixtureManifest = {
+        name: 'NoopJennExternalFixture',
+        displayName: 'No-op Jenn External Fixture',
+        pluginType: 'synchronous',
+        entryPoint: { command: 'node noop-jenn-external-fixture.js' },
+        communication: { protocol: 'stdio', timeout: 1000 }
+    };
+
+    fs.mkdirSync(externalPluginRoot, { recursive: true });
+    fs.mkdirSync(localStateRoot, { recursive: true });
+    writeLegacyManifest(externalPluginRoot, 'NoopJennExternalFixture', fixtureManifest);
+    writeLegacyManifest(localStateRoot, 'NoopJennExternalFixture', fixtureManifest);
+
+    try {
+        const resolver = createPluginRootResolver({
+            projectRoot,
+            env: {
+                VCP_PLUGIN_ALLOWED_ROOTS: externalPackageRoot,
+                VCP_PLUGIN_DIRS: externalPluginRoot,
+                VCP_PLUGIN_INSTALL_DIR: externalPluginRoot
+            }
+        });
+        const snapshot = resolver.getPluginRootSnapshotSync();
+
+        assert.deepEqual(
+            snapshot.legacyLoadRoots.map(rootInfo => rootInfo.rootId),
+            ['core:legacy', 'external:1']
+        );
+        assert.equal(snapshot.externalLegacyRoots[0].rootPath, fs.realpathSync(externalPluginRoot));
+        assert.ok(snapshot.externalLegacyRoots[0].rootPath.endsWith(`${path.sep}VCPToolBox-JENN-Extensions${path.sep}Plugin`));
+        assert.ok(!snapshot.legacyLoadRoots.some(rootInfo => rootInfo.rootPath === fs.realpathSync(localStateRoot)));
+
+        const manifests = await pluginManager._discoverLegacyPluginManifestsFromDir(
+            snapshot.externalLegacyRoots[0].rootPath,
+            'external',
+            snapshot.externalLegacyRoots[0]
+        );
+
+        assert.equal(manifests.length, 1);
+        assert.equal(manifests[0].name, 'NoopJennExternalFixture');
+        assert.equal(manifests[0].pluginSource, 'external');
+        assert.equal(manifests[0].pluginRootId, 'external:1');
+        assert.equal(
+            manifests[0].basePath,
+            path.join(fs.realpathSync(externalPluginRoot), 'NoopJennExternalFixture')
+        );
+
+        const externalInstallRoot = await resolver.getPluginStoreInstallRoot();
+        assert.equal(externalInstallRoot.mode, 'external');
+        assert.equal(externalInstallRoot.rootPath, fs.realpathSync(externalPluginRoot));
+
+        const packageRootResolver = createPluginRootResolver({
+            projectRoot,
+            env: {
+                VCP_PLUGIN_ALLOWED_ROOTS: externalPackageRoot,
+                VCP_PLUGIN_DIRS: externalPackageRoot
+            }
+        });
+        const packageRootSnapshot = packageRootResolver.getPluginRootSnapshotSync();
+        const packageRootManifests = await pluginManager._discoverLegacyPluginManifestsFromDir(
+            packageRootSnapshot.externalLegacyRoots[0].rootPath,
+            'external',
+            packageRootSnapshot.externalLegacyRoots[0]
+        );
+
+        assert.deepEqual(packageRootManifests, []);
+
+        writeLegacyManifest(path.join(projectRoot, 'Plugin'), 'NoopJennExternalFixture', fixtureManifest);
+        const originalResolver = pluginManager.pluginRootResolver;
+        const originalSnapshot = pluginManager.lastPluginRootSnapshot;
+        try {
+            pluginManager.pluginRootResolver = {
+                getPluginRootSnapshot: async () => ({
+                    diagnostics: [],
+                    legacyLoadRoots: [
+                        {
+                            rootId: 'core:legacy',
+                            source: 'core',
+                            rootPath: path.join(projectRoot, 'Plugin'),
+                            displayPath: 'Plugin',
+                            allowConfigEnv: true
+                        },
+                        snapshot.externalLegacyRoots[0]
+                    ]
+                })
+            };
+
+            const duplicateManifests = await pluginManager._discoverLegacyPluginManifests();
+            assert.equal(duplicateManifests.length, 2);
+            assert.equal(duplicateManifests[0].pluginSource, 'core');
+            assert.equal(duplicateManifests[0].pluginRootId, 'core:legacy');
+            assert.equal(duplicateManifests[1].pluginSource, 'external');
+            assert.equal(duplicateManifests[1].pluginRootId, 'external:1');
+
+            const pluginManagerSource = fs.readFileSync(path.join(__dirname, '..', 'Plugin.js'), 'utf8');
+            assert.match(pluginManagerSource, /if \(this\.plugins\.has\(manifest\.name\)\) \{\s+this\._warnDuplicateLocalPluginSkipped\(manifest, this\.plugins\.get\(manifest\.name\)\);\s+continue;\s+\}/s);
+        } finally {
+            pluginManager.pluginRootResolver = originalResolver;
+            pluginManager.lastPluginRootSnapshot = originalSnapshot;
+        }
+
+        const fixtureFiles = [];
+        const pendingDirs = [projectRoot];
+        while (pendingDirs.length > 0) {
+            const currentDir = pendingDirs.pop();
+            for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+                const entryPath = path.join(currentDir, entry.name);
+                if (entry.isDirectory()) {
+                    pendingDirs.push(entryPath);
+                } else {
+                    fixtureFiles.push(path.relative(projectRoot, entryPath));
+                }
+            }
+        }
+
+        assert.ok(fixtureFiles.length > 0);
+        assert.ok(fixtureFiles.every(filePath => filePath.endsWith('plugin-manifest.json')));
+        assert.ok(fixtureFiles.every(filePath => !/config\.env|\.env|log|cache|image|ToolConfigs|operator/i.test(filePath)));
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+});
+
 test('PluginManager duplicate runtime warning is path-safe and includes root identity', () => {
     const root = makeTempDir();
     const externalRoot = path.join(root, 'external');
