@@ -12,7 +12,10 @@
             :data-target="item.target"
             :class="{ active: isActiveRoute(item.target, item.pluginName), 'sidebar-collapsed': isSidebarCollapsed && !isHoveringSidebar }"
             :title="isSidebarCollapsed && !isHoveringSidebar ? item.label : ''"
-            @click.prevent="$emit('navigateTo', item.target, item.pluginName)"
+            @click.prevent="$emit('navigateTo', item.target, item.pluginName, {
+              pluginRootId: item.pluginRootId,
+              pluginSource: item.pluginSource,
+            })"
           >
             <span class="material-symbols-outlined">{{ item.icon || 'extension' }}</span>
             <span class="nav-label">
@@ -40,7 +43,10 @@
             :data-target="item.target"
             :class="{ active: isActiveRoute(item.target, item.pluginName), 'sidebar-collapsed': isSidebarCollapsed && !isHoveringSidebar }"
             :title="isSidebarCollapsed && !isHoveringSidebar ? item.label : ''"
-            @click.prevent="$emit('navigateTo', item.target, item.pluginName)"
+            @click.prevent="$emit('navigateTo', item.target, item.pluginName, {
+              pluginRootId: item.pluginRootId,
+              pluginSource: item.pluginSource,
+            })"
           >
             <span class="material-symbols-outlined">{{ item.icon || 'extension' }}</span>
             <span class="nav-label">
@@ -69,6 +75,8 @@ interface NavItem {
   label?: string
   icon?: string
   pluginName?: string
+  pluginRootId?: string
+  pluginSource?: string
   enabled?: boolean
 }
 
@@ -81,7 +89,12 @@ const props = defineProps<{
 }>()
 
 defineEmits<{
-  (e: 'navigateTo', target: string | undefined, pluginName?: string): void
+  (
+    e: 'navigateTo',
+    target: string | undefined,
+    pluginName?: string,
+    targetCriteria?: { pluginRootId?: string; pluginSource?: string }
+  ): void
 }>()
 
 const shouldVirtualize = computed(() => (

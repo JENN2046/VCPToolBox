@@ -136,7 +136,7 @@
             :key="plugin.pluginName"
             type="button"
             class="quick-link"
-            @click="openPluginConfig(plugin.pluginName)"
+            @click="openPluginConfig(plugin.plugin)"
           >
             <span class="material-symbols-outlined">{{ plugin.icon }}</span>
             <span>{{ plugin.displayName }}</span>
@@ -155,10 +155,10 @@
         <div class="quick-list">
           <button
             v-for="item in recentPluginVisits"
-            :key="item.pluginName"
+            :key="`${item.pluginName}-${item.pluginRootId || ''}-${item.pluginSource || ''}`"
             type="button"
             class="quick-link"
-            @click="openPluginConfig(item.pluginName)"
+            @click="openPluginConfig(item)"
           >
             <span class="material-symbols-outlined">{{ item.icon }}</span>
             <span>{{ item.label }}</span>
@@ -288,7 +288,11 @@
                   </p>
 
                   <div
-                    v-if="plugin.isDistributed || plugin.isPinned"
+                    v-if="
+                      plugin.isDistributed ||
+                      plugin.isPinned ||
+                      plugin.runtimeTrustWarningLabel
+                    "
                     class="plugin-status-pills"
                   >
                     <span
@@ -307,13 +311,23 @@
                       >
                       已固定
                     </span>
+                    <span
+                      v-if="plugin.runtimeTrustWarningLabel"
+                      class="mini-pill mini-pill--sensitive"
+                      :title="plugin.runtimeTrustWarningTitle"
+                    >
+                      <span class="material-symbols-outlined mini-pill-icon"
+                        >security</span
+                      >
+                      {{ plugin.runtimeTrustWarningLabel }}
+                    </span>
                   </div>
 
                   <div class="plugin-actions">
                     <button
                       type="button"
                       class="btn-primary"
-                      @click="openPluginConfig(plugin.pluginName)"
+                      @click="openPluginConfig(plugin.plugin)"
                     >
                       <span class="material-symbols-outlined">open_in_new</span>
                       <span>打开配置</span>
@@ -415,7 +429,14 @@
               {{ plugin.summary }}
             </p>
 
-            <div v-if="plugin.isDistributed || plugin.isPinned" class="plugin-status-pills">
+            <div
+              v-if="
+                plugin.isDistributed ||
+                plugin.isPinned ||
+                plugin.runtimeTrustWarningLabel
+              "
+              class="plugin-status-pills"
+            >
               <span v-if="plugin.isDistributed" class="mini-pill mini-pill--sensitive">
                 <span class="material-symbols-outlined mini-pill-icon">hub</span>
                 分布式
@@ -424,13 +445,21 @@
                 <span class="material-symbols-outlined mini-pill-icon">push_pin</span>
                 已固定
               </span>
+              <span
+                v-if="plugin.runtimeTrustWarningLabel"
+                class="mini-pill mini-pill--sensitive"
+                :title="plugin.runtimeTrustWarningTitle"
+              >
+                <span class="material-symbols-outlined mini-pill-icon">security</span>
+                {{ plugin.runtimeTrustWarningLabel }}
+              </span>
             </div>
 
             <div class="plugin-actions">
               <button
                 type="button"
                 class="btn-primary"
-                @click="openPluginConfig(plugin.pluginName)"
+                @click="openPluginConfig(plugin.plugin)"
               >
                 <span class="material-symbols-outlined">open_in_new</span>
                 <span>打开配置</span>
@@ -481,6 +510,7 @@ import {
   summarizePluginHubRecords,
   type PluginFilter,
   type PluginHubRecord,
+  type RecentPluginVisitItem,
 } from "@/features/plugins-hub/derivePluginHubState";
 import { askConfirm } from "@/platform/feedback/feedbackBus";
 import { useAppStore } from "@/stores/app";
@@ -621,7 +651,7 @@ const pluginSummary = computed(() =>
   summarizePluginHubRecords(pluginRecords.value)
 );
 const recentPluginVisits = computed(() =>
-  buildRecentPluginVisitItems(recentVisits.value, pluginRecordMap.value)
+  buildRecentPluginVisitItems(recentVisits.value, pluginRecords.value)
 );
 const visiblePluginRecords = computed(() =>
   filterPluginHubRecords(pluginRecords.value, {
@@ -693,7 +723,12 @@ function isPluginPending(pluginName: string): boolean {
   return pendingPluginNames.value.includes(pluginName);
 }
 
-function recordPluginVisit(pluginName: string) {
+function recordPluginVisit(plugin: PluginInfo | RecentPluginVisitItem | string) {
+  const pluginName = typeof plugin === "string"
+    ? plugin
+    : "pluginName" in plugin
+      ? plugin.pluginName
+      : plugin.manifest.name || plugin.name;
   const nextNavigationState = recordNavigationVisit({
     target: `plugin-${pluginName}-config`,
     navItems: appStore.navItems,
@@ -701,14 +736,30 @@ function recordPluginVisit(pluginName: string) {
     recentVisits: recentVisits.value,
     navigationUsage: navigationUsage.value,
     pluginName,
+    pluginRootId: typeof plugin === "string" ? undefined : plugin.pluginRootId,
+    pluginSource: typeof plugin === "string" ? undefined : plugin.pluginSource,
   });
   recentVisits.value = nextNavigationState.recentVisits;
   navigationUsage.value = nextNavigationState.navigationUsage;
 }
 
-function openPluginConfig(pluginName: string) {
-  recordPluginVisit(pluginName);
-  router.push({ name: "PluginConfig", params: { pluginName } });
+function openPluginConfig(plugin: PluginInfo | RecentPluginVisitItem | string) {
+  const pluginName = typeof plugin === "string"
+    ? plugin
+    : "pluginName" in plugin
+      ? plugin.pluginName
+      : plugin.manifest.name || plugin.name;
+  recordPluginVisit(plugin);
+  router.push({
+    name: "PluginConfig",
+    params: { pluginName },
+    query: typeof plugin === "string"
+      ? undefined
+      : {
+          pluginRootId: plugin.pluginRootId,
+          pluginSource: plugin.pluginSource,
+        },
+  });
 }
 
 function togglePinned(pluginName: string) {
@@ -761,6 +812,9 @@ async function togglePlugin(plugin: PluginInfo) {
   try {
     const result = await pluginApi.togglePlugin(pluginName, enable, {
       showLoader: false,
+    }, {
+      pluginRootId: plugin.pluginRootId,
+      pluginSource: plugin.pluginSource,
     });
     showMessage(result.message || `${action}插件成功。`, "success");
     await refreshPlugins(false);

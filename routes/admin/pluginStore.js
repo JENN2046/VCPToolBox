@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const dns = require('dns').promises;
 const net = require('net');
+const { Transform } = require('stream');
 
 const multer = require('multer');
 const extract = require('extract-zip');
@@ -46,8 +47,22 @@ const MAX_PLUGIN_STORE_REDIRECTS = 5;
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_UPLOAD_FILES = 2000;
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+const MAX_REMOTE_DOWNLOAD_BYTES = 200 * 1024 * 1024;
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 const SAFE_PLUGIN_NAME_RE = /^[A-Za-z0-9._-]+$/;
+const NPM_LIFECYCLE_SCRIPT_NAMES = [
+    'preinstall',
+    'install',
+    'postinstall',
+    'prepublish',
+    'preprepare',
+    'prepare',
+    'postprepare',
+    'prepack',
+    'postpack',
+];
+const NPM_LIFECYCLE_SCRIPT_CONFIRMATION = 'ALLOW_NPM_LIFECYCLE_SCRIPTS';
+const ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV = 'ENABLE_PLUGIN_STORE_DIRECT_DOWNLOAD_URL_INSTALL';
 
 // =============================================================================
 // Utilities
@@ -81,6 +96,14 @@ async function writeJson(file, data) {
 
 function newId(prefix = 'id') {
     return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
+}
+
+async function cleanupUploadedFiles(files = []) {
+    for (const file of files) {
+        if (file?.path) {
+            await fsp.rm(file.path, { force: true }).catch(() => {});
+        }
+    }
 }
 
 // Walk a directory to find the first folder containing plugin-manifest.json
@@ -283,6 +306,128 @@ function buildPluginInstallEnv(baseEnv = process.env, options = {}) {
     return env;
 }
 
+function truncateScriptPreview(command) {
+    const normalized = String(command || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length <= 120) return normalized;
+    return `${normalized.slice(0, 117)}...`;
+}
+
+async function inspectPackageLifecycleScripts(cwd) {
+    const packagePath = path.join(cwd, 'package.json');
+    try {
+        const raw = await fsp.readFile(packagePath, 'utf-8');
+        const hash = crypto.createHash('sha256').update(raw).digest('hex');
+        const parsed = JSON.parse(raw);
+        const scripts = parsed && typeof parsed.scripts === 'object' && !Array.isArray(parsed.scripts)
+            ? parsed.scripts
+            : {};
+        const lifecycleScripts = NPM_LIFECYCLE_SCRIPT_NAMES
+            .filter(name => typeof scripts[name] === 'string' && scripts[name].trim())
+            .map(name => ({
+                name,
+                commandPreview: truncateScriptPreview(scripts[name])
+            }));
+        return { hash, lifecycleScripts };
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return { hash: null, lifecycleScripts: [] };
+        }
+        throw error;
+    }
+}
+
+function logPackageLifecycleDecision(task, metadata, { allowLifecycleScripts, cwdDisplay }) {
+    if (metadata.hash) {
+        pushLog(task, `[package] package.json sha256=${metadata.hash}`);
+    }
+    if (!metadata.lifecycleScripts.length) {
+        pushLog(task, '[package] 未检测到 npm lifecycle scripts');
+        return;
+    }
+
+    const summary = metadata.lifecycleScripts
+        .map(script => `${script.name}="${script.commandPreview}"`)
+        .join('; ');
+    pushLog(task, `[package] npm lifecycle scripts: ${summary}`);
+    if (allowLifecycleScripts) {
+        pushLog(task, `[warn] npm lifecycle scripts 已被显式允许执行  (target: ${cwdDisplay})`);
+    } else {
+        pushLog(task, '[safety] npm lifecycle scripts 默认禁用（--ignore-scripts）');
+    }
+}
+
+function readBooleanLike(value) {
+    return value === true || value === 'true';
+}
+
+function resolveLifecycleScriptApproval(body = {}) {
+    const allowLifecycleScripts = readBooleanLike(body.allowLifecycleScripts);
+    if (!allowLifecycleScripts) {
+        return { ok: true, allowLifecycleScripts: false };
+    }
+
+    const confirmation = String(
+        body.lifecycleScriptsConfirmation ||
+        body.confirmLifecycleScripts ||
+        ''
+    ).trim();
+
+    if (confirmation !== NPM_LIFECYCLE_SCRIPT_CONFIRMATION) {
+        return {
+            ok: false,
+            status: 400,
+            code: 'plugin_store_lifecycle_scripts_confirmation_required',
+            error: `allowLifecycleScripts requires lifecycleScriptsConfirmation=${NPM_LIFECYCLE_SCRIPT_CONFIRMATION}`,
+        };
+    }
+
+    return { ok: true, allowLifecycleScripts: true };
+}
+
+function isDirectDownloadUrlInstallRequest(body = {}) {
+    return Boolean(body.downloadUrl);
+}
+
+function isMixedDownloadUrlInstallRequest(body = {}) {
+    return Boolean(body.downloadUrl && (body.githubUrl || body.sourceId || body.pluginName));
+}
+
+function resolveDirectDownloadUrlInstallPolicy(body = {}, env = process.env) {
+    if (isMixedDownloadUrlInstallRequest(body)) {
+        return {
+            ok: false,
+            status: 400,
+            code: 'plugin_store_download_url_mixed_target_unsupported',
+            error: 'downloadUrl installs must not be mixed with sourceId/pluginName or githubUrl targets',
+        };
+    }
+
+    if (!isDirectDownloadUrlInstallRequest(body)) {
+        return { ok: true };
+    }
+
+    if (env && env[ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV] === 'true') {
+        return { ok: true };
+    }
+
+    return {
+        ok: false,
+        status: 403,
+        code: 'plugin_store_direct_download_url_disabled',
+        error: `Direct Plugin Store downloadUrl installs require ${ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV}=true`,
+    };
+}
+
+function resolveSourcePluginInstallTarget(target) {
+    if (target?.downloadUrl) {
+        return { kind: 'download', downloadUrl: target.downloadUrl };
+    }
+    if (target?.github) {
+        return { kind: 'github', github: target.github };
+    }
+    return { kind: 'missing' };
+}
+
 // Walk an extracted tree and refuse symlinks or entries whose realpath escapes base.
 // Defends against zip-slip / tar-slip regardless of the extractor's own safeguards.
 async function assertSafeExtractedTree(baseDir) {
@@ -324,6 +469,36 @@ function getHeaderValue(headers, name) {
         if (String(key).toLowerCase() === target) return value;
     }
     return null;
+}
+
+function createRemoteDownloadLimitError(limitBytes) {
+    return createPluginStorePolicyError(
+        'plugin_store_remote_download_too_large',
+        `远程插件下载超过大小上限（${limitBytes} bytes）`
+    );
+}
+
+function parseContentLength(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        throw createPluginStorePolicyError('plugin_store_remote_content_length_invalid', '远程插件 Content-Length 无效');
+    }
+    return parsed;
+}
+
+function createDownloadByteLimitStream(limitBytes) {
+    let total = 0;
+    return new Transform({
+        transform(chunk, encoding, callback) {
+            total += Buffer.byteLength(chunk);
+            if (total > limitBytes) {
+                callback(createRemoteDownloadLimitError(limitBytes));
+                return;
+            }
+            callback(null, chunk);
+        }
+    });
 }
 
 // SSRF guard: reject private / loopback / link-local / multicast targets.
@@ -510,6 +685,10 @@ function pushLog(task, line) {
     task.bus.emit('log', safeLine);
 }
 
+function pushDownloadLog(task, rawUrl) {
+    pushLog(task, `[download] ${redactSourceUrl(rawUrl)}`);
+}
+
 function finishTask(task, status, message) {
     task.status = status;
     task.message = scrubPluginStoreLog(message);
@@ -565,6 +744,51 @@ function normalizeSourceUrl(type, rawUrl) {
     } catch {
         return input;
     }
+}
+
+function redactSourceUrl(rawUrl) {
+    const input = String(rawUrl || '').trim();
+    if (!input) return '';
+    try {
+        const u = new URL(input);
+        if (u.username || u.password) {
+            u.username = u.username ? '[credentials]' : '';
+            u.password = '';
+        }
+        for (const key of Array.from(u.searchParams.keys())) {
+            if (/(access_token|api[_-]?key|apikey|auth|authorization|bearer|cookie|key|password|passwd|secret|session|token)/i.test(key)) {
+                u.searchParams.set(key, '[redacted]');
+            }
+        }
+        return u.toString();
+    } catch {
+        return scrubPluginStoreLog(input);
+    }
+}
+
+function sanitizeSourceForApi(source) {
+    if (!source || typeof source !== 'object') return source;
+    const redactedUrl = redactSourceUrl(source.url);
+    const { url, ...safeSource } = source;
+    return {
+        ...safeSource,
+        displayUrl: redactedUrl,
+        redactedUrl
+    };
+}
+
+function sanitizeSourcesForApi(sources) {
+    return (Array.isArray(sources) ? sources : []).map(sanitizeSourceForApi);
+}
+
+function sanitizePluginItemForApi(plugin) {
+    if (!plugin || typeof plugin !== 'object') return plugin;
+    const { downloadUrl, ...safePlugin } = plugin;
+    return safePlugin;
+}
+
+function sanitizePluginItemsForApi(plugins) {
+    return (Array.isArray(plugins) ? plugins : []).map(sanitizePluginItemForApi);
 }
 
 function sourceFingerprint(source) {
@@ -988,7 +1212,7 @@ async function listPluginsFromGithubSource(source) {
     return [{
         name: `${parsed.owner}/${parsed.repo}`,
         displayName: `${parsed.repo} (GitHub)`,
-        description: `GitHub 仓库 ${source.url}`,
+        description: `GitHub 仓库 ${redactSourceUrl(source.url)}`,
         version: branch,
         author: parsed.owner,
         icon: 'hub',
@@ -1119,13 +1343,28 @@ function resolveUninstallTarget(installedIndex, safeName, criteria = {}) {
 // Install pipeline
 // =============================================================================
 
-function runNpmInstall(cwd, task, rootInfo, options = {}) {
+async function runNpmInstall(cwd, task, rootInfo, options = {}) {
+    const cwdDisplay = rootInfo ? displayPathFor(rootInfo, cwd) : cwd;
+    const rootLabel = rootInfo
+        ? `${rootInfo.source || 'unknown'}:${rootInfo.rootId || 'unknown'}`
+        : 'unknown';
+    const allowLifecycleScripts = options.allowLifecycleScripts === true;
+    const npmArgs = [
+        'install',
+        ...(allowLifecycleScripts ? [] : ['--ignore-scripts']),
+        '--omit=dev',
+        '--no-audit',
+        '--no-fund',
+    ];
+    const metadata = await inspectPackageLifecycleScripts(cwd);
+    pushLog(task, `[package] install target=${cwdDisplay}; root=${rootLabel}`);
+    logPackageLifecycleDecision(task, metadata, { allowLifecycleScripts, cwdDisplay });
+    pushLog(task, `$ npm ${npmArgs.join(' ')}  (cwd: ${cwdDisplay})`);
+
     return new Promise((resolve) => {
-        const cwdDisplay = rootInfo ? displayPathFor(rootInfo, cwd) : cwd;
-        pushLog(task, `$ npm install --omit=dev  (cwd: ${cwdDisplay})`);
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
         const spawnImpl = options.spawn || spawn;
-        const child = spawnImpl(npmCmd, ['install', '--omit=dev', '--no-audit', '--no-fund'], {
+        const child = spawnImpl(npmCmd, npmArgs, {
             cwd,
             env: buildPluginInstallEnv(options.baseEnv || process.env, options.envOptions || {}),
             windowsHide: true,
@@ -1143,7 +1382,7 @@ function runNpmInstall(cwd, task, rootInfo, options = {}) {
     });
 }
 
-async function installFromDir(sourceDir, task, { force = false, pluginManager } = {}) {
+async function installFromDir(sourceDir, task, { force = false, pluginManager, allowLifecycleScripts = false } = {}) {
     const root = await findManifestRoot(sourceDir);
     if (!root) throw new Error('未找到 plugin-manifest.json，无法识别插件');
     const manifest = JSON.parse(await fsp.readFile(path.join(root, MANIFEST_NAME), 'utf-8'));
@@ -1194,7 +1433,7 @@ async function installFromDir(sourceDir, task, { force = false, pluginManager } 
 
     // npm install if package.json exists
     if (await pathExists(path.join(target, 'package.json'))) {
-        const result = await runNpmInstall(target, task, installRoot);
+        const result = await runNpmInstall(target, task, installRoot, { allowLifecycleScripts });
         if (!result.ok) {
             pushLog(task, `[warn] npm install 失败，插件已安装但依赖可能不完整。请手动处理。`);
         }
@@ -1221,10 +1460,28 @@ async function installFromDir(sourceDir, task, { force = false, pluginManager } 
     };
 }
 
-async function downloadToFile(url, destFile) {
-    const res = await fetchWithGuard(url);
+async function downloadToFile(url, destFile, options = {}) {
+    const limitBytes = Number.isSafeInteger(options.maxBytes) && options.maxBytes > 0
+        ? options.maxBytes
+        : MAX_REMOTE_DOWNLOAD_BYTES;
+    const res = await fetchWithGuard(url, options.fetchOptions || {});
     if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}: ${url}`);
-    await pipeline(res.body, fs.createWriteStream(destFile));
+    const contentLength = parseContentLength(getHeaderValue(res.headers, 'content-length'));
+    if (contentLength !== null && contentLength > limitBytes) {
+        await fsp.rm(destFile, { force: true }).catch(() => {});
+        throw createRemoteDownloadLimitError(limitBytes);
+    }
+
+    try {
+        await pipeline(
+            res.body,
+            createDownloadByteLimitStream(limitBytes),
+            fs.createWriteStream(destFile, { flags: 'wx' })
+        );
+    } catch (error) {
+        await fsp.rm(destFile, { force: true }).catch(() => {});
+        throw error;
+    }
 }
 
 async function installFromArchive(archivePath, task, options, archiveNameHint = '') {
@@ -1260,7 +1517,7 @@ async function installFromGithub(parsed, task, options) {
     const zipUrl = `https://codeload.github.com/${parsed.owner}/${parsed.repo}/zip/refs/heads/${branch}`;
     const zipPath = path.join(TMP_DIR, `gh-${parsed.owner}-${parsed.repo}-${Date.now()}.zip`);
     await ensureDir(TMP_DIR);
-    pushLog(task, `[download] ${zipUrl}`);
+    pushDownloadLog(task, zipUrl);
     await downloadToFile(zipUrl, zipPath);
     try {
         // If a subpath was given, extract then narrow down
@@ -1314,7 +1571,7 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.get('/plugin-store/sources', async (req, res) => {
         try {
-            res.json({ sources: await loadSources() });
+            res.json({ sources: sanitizeSourcesForApi(await loadSources()) });
         } catch (err) {
             res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
@@ -1335,12 +1592,12 @@ function createPluginStoreRouter(options) {
             if (duplicate) {
                 return res.status(409).json({
                     error: `源已存在：${duplicate.name}`,
-                    source: duplicate,
+                    source: sanitizeSourceForApi(duplicate),
                 });
             }
             const entry = next;
             await saveUserSources([...existing.filter(s => !s.builtin), entry]);
-            res.json({ source: entry });
+            res.json({ source: sanitizeSourceForApi(entry) });
         } catch (err) {
             res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
         }
@@ -1398,9 +1655,9 @@ function createPluginStoreRouter(options) {
                 }
             });
             res.json({
-                plugins: all,
+                plugins: sanitizePluginItemsForApi(all),
                 total: all.length,
-                sources,
+                sources: sanitizeSourcesForApi(sources),
                 errors,
                 installMode: installRoot.mode,
                 diagnostics: installed.diagnostics.map(item => ({
@@ -1420,6 +1677,23 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.post('/plugin-store/install', async (req, res) => {
         const { sourceId, pluginName, githubUrl, downloadUrl, force } = req.body || {};
+        const directDownloadPolicy = resolveDirectDownloadUrlInstallPolicy(req.body || {});
+        if (!directDownloadPolicy.ok) {
+            return res.status(directDownloadPolicy.status).json({
+                error: directDownloadPolicy.error,
+                code: directDownloadPolicy.code,
+                requiredEnv: ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
+            });
+        }
+        const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
+        if (!lifecycleApproval.ok) {
+            return res.status(lifecycleApproval.status).json({
+                error: lifecycleApproval.error,
+                code: lifecycleApproval.code,
+                requiredConfirmation: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
+            });
+        }
+        const { allowLifecycleScripts } = lifecycleApproval;
         const task = createTask();
 
         // Respond early so client can subscribe to logs
@@ -1432,15 +1706,15 @@ function createPluginStoreRouter(options) {
                 if (githubUrl) {
                     const parsed = parseGithubUrl(githubUrl);
                     if (!parsed) throw new Error('无效的 GitHub URL');
-                    await installFromGithub(parsed, task, { force, pluginManager });
+                    await installFromGithub(parsed, task, { force, pluginManager, allowLifecycleScripts });
                 } else if (downloadUrl) {
                     const archiveNameHint = archiveNameHintFromUrl(downloadUrl);
                     const archivePath = path.join(TMP_DIR, `dl-${Date.now()}`);
                     await ensureDir(TMP_DIR);
-                    pushLog(task, `[download] ${downloadUrl}`);
+                    pushDownloadLog(task, downloadUrl);
                     await downloadToFile(downloadUrl, archivePath);
                     try {
-                        await installFromArchive(archivePath, task, { force, pluginManager }, archiveNameHint);
+                        await installFromArchive(archivePath, task, { force, pluginManager, allowLifecycleScripts }, archiveNameHint);
                     } finally {
                         await fsp.rm(archivePath, { force: true }).catch(() => {});
                     }
@@ -1451,19 +1725,20 @@ function createPluginStoreRouter(options) {
                     const plugins = await listPluginsFromSource(source);
                     const target = plugins.find(p => p.name === pluginName);
                     if (!target) throw new Error(`源中未找到插件 ${pluginName}`);
-                    if (target.github) {
-                        await installFromGithub(target.github, task, { force, pluginManager });
-                    } else if (target.downloadUrl) {
-                        const archiveNameHint = archiveNameHintFromUrl(target.downloadUrl);
+                    const installTarget = resolveSourcePluginInstallTarget(target);
+                    if (installTarget.kind === 'download') {
+                        const archiveNameHint = archiveNameHintFromUrl(installTarget.downloadUrl);
                         const archivePath = path.join(TMP_DIR, `dl-${Date.now()}`);
                         await ensureDir(TMP_DIR);
-                        pushLog(task, `[download] ${target.downloadUrl}`);
-                        await downloadToFile(target.downloadUrl, archivePath);
+                        pushDownloadLog(task, installTarget.downloadUrl);
+                        await downloadToFile(installTarget.downloadUrl, archivePath);
                         try {
-                            await installFromArchive(archivePath, task, { force, pluginManager }, archiveNameHint);
+                            await installFromArchive(archivePath, task, { force, pluginManager, allowLifecycleScripts }, archiveNameHint);
                         } finally {
                             await fsp.rm(archivePath, { force: true }).catch(() => {});
                         }
+                    } else if (installTarget.kind === 'github') {
+                        await installFromGithub(installTarget.github, task, { force, pluginManager, allowLifecycleScripts });
                     } else {
                         throw new Error('插件条目缺少 downloadUrl 或 GitHub 信息');
                     }
@@ -1543,6 +1818,16 @@ function createPluginStoreRouter(options) {
     router.post('/plugin-store/upload', upload.array('files'), async (req, res) => {
         const files = req.files || [];
         const force = req.body.force === 'true' || req.body.force === true;
+        const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
+        if (!lifecycleApproval.ok) {
+            await cleanupUploadedFiles(files);
+            return res.status(lifecycleApproval.status).json({
+                error: lifecycleApproval.error,
+                code: lifecycleApproval.code,
+                requiredConfirmation: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
+            });
+        }
+        const { allowLifecycleScripts } = lifecycleApproval;
         const relPaths = (() => {
             const v = req.body.relPaths;
             if (!v) return [];
@@ -1560,7 +1845,7 @@ function createPluginStoreRouter(options) {
 
                 // Case 1: single archive
                 if (files.length === 1 && isSupportedArchiveName(files[0].originalname)) {
-                    await installFromArchive(files[0].path, task, { force, pluginManager }, files[0].originalname);
+                    await installFromArchive(files[0].path, task, { force, pluginManager, allowLifecycleScripts }, files[0].originalname);
                 } else {
                     if (files.length === 1) {
                         const rel = String(relPaths[0] || files[0].originalname || '');
@@ -1583,16 +1868,14 @@ function createPluginStoreRouter(options) {
                                 await fsp.rm(f.path, { force: true });
                             });
                         }
-                        await installFromDir(workDir, task, { force, pluginManager });
+                        await installFromDir(workDir, task, { force, pluginManager, allowLifecycleScripts });
                     } finally {
                         await fsp.rm(workDir, { recursive: true, force: true }).catch(() => {});
                     }
                 }
 
                 // Cleanup any leftover uploads
-                for (const f of files) {
-                    await fsp.rm(f.path, { force: true }).catch(() => {});
-                }
+                await cleanupUploadedFiles(files);
 
                 finishTask(task, 'success', '安装完成');
             } catch (err) {
@@ -1658,10 +1941,23 @@ function createPluginStoreRouter(options) {
 
 module.exports = createPluginStoreRouter;
 module.exports._test = {
+    ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
+    NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
     assertPublicHost,
     buildPluginInstallEnv,
+    cleanupUploadedFiles,
+    downloadToFile,
     fetchWithGuard,
     isPrivateIp,
+    MAX_REMOTE_DOWNLOAD_BYTES,
+    redactSourceUrl,
+    resolveDirectDownloadUrlInstallPolicy,
+    resolveLifecycleScriptApproval,
+    resolveSourcePluginInstallTarget,
     runNpmInstall,
     scrubPluginStoreLog,
+    sanitizeSourceForApi,
+    sanitizeSourcesForApi,
+    sanitizePluginItemForApi,
+    sanitizePluginItemsForApi,
 };

@@ -646,10 +646,15 @@ const R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH =
     '/internal/ai-image-agents/execute/r2r-v2-trial-001-serum-detail-control';
 const R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH =
     '/internal/ai-image-agents/execute/r2r-v2-trial-002-lantern-ecommerce-hero';
+const enableAiImageRuntimeToReviewTrialRoutes =
+    process.env.ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES === 'true';
 
 function isSerumBottleSecretlessInternalRoute(req) {
+    return req && req.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH;
+}
+
+function isRuntimeToReviewTrialSecretlessInternalRoute(req) {
     return req && (
-        req.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH ||
         req.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH ||
         req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH
     );
@@ -657,6 +662,44 @@ function isSerumBottleSecretlessInternalRoute(req) {
 
 function isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) {
     return req && req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH;
+}
+
+function isCodexMemoryMcpLoopbackAllowed(req) {
+    return req &&
+        req.path.startsWith('/mcp/codex-memory') &&
+        process.env.ENABLE_CODEX_MEMORY_MCP_LOOPBACK === 'true' &&
+        isLoopbackSocket(req);
+}
+
+function isAuthorizedCodexMemoryMcpRequest(req) {
+    const authHeader = req && req.headers ? req.headers.authorization : null;
+    const hasConfiguredServerKey = typeof serverKey === 'string' && serverKey.length > 0;
+    return (
+        (hasConfiguredServerKey && authHeader === `Bearer ${serverKey}`) ||
+        isCodexMemoryMcpLoopbackAllowed(req)
+    );
+}
+
+function authorizeCodexMemoryMcpRequest(req) {
+    if (isAuthorizedCodexMemoryMcpRequest(req)) {
+        return { ok: true };
+    }
+    return {
+        ok: false,
+        statusCode: 401,
+        error: 'Unauthorized (Bearer token required)'
+    };
+}
+
+function authorizeCodexMemoryMcpIncludeContent(req) {
+    if (isAuthorizedCodexMemoryMcpRequest(req)) {
+        return { ok: true };
+    }
+    return {
+        ok: false,
+        statusCode: 403,
+        error: 'codex_memory_include_content_forbidden'
+    };
 }
 
 // Authentication middleware for Admin Panel and Admin API
@@ -861,10 +904,17 @@ app.use((req, res, next) => {
         return next();
     }
 
-    if (isSerumBottleSecretlessInternalRoute(req)) {
+    if (
+        isSerumBottleSecretlessInternalRoute(req) ||
+        (
+            enableAiImageRuntimeToReviewTrialRoutes &&
+            isRuntimeToReviewTrialSecretlessInternalRoute(req)
+        )
+    ) {
         const isAllowedSecretlessInternalHead =
             req.method === 'HEAD' && isLoopbackSocket(req);
         const isAllowedTrial002SecretlessInternalPost =
+            enableAiImageRuntimeToReviewTrialRoutes &&
             req.method === 'POST' &&
             isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) &&
             isLoopbackSocket(req);
@@ -889,11 +939,7 @@ app.use((req, res, next) => {
         return next();
     }
 
-    const allowCodexMemoryLoopback =
-        req.path.startsWith('/mcp/codex-memory') &&
-        process.env.ENABLE_CODEX_MEMORY_MCP_LOOPBACK === 'true' &&
-        isLoopbackSocket(req);
-    if (allowCodexMemoryLoopback) {
+    if (isCodexMemoryMcpLoopbackAllowed(req)) {
         return next();
     }
 
@@ -906,6 +952,8 @@ app.use((req, res, next) => {
 
 app.use(toolExecutionRoutes({ pluginManager }));
 app.use('/mcp/codex-memory', codexMemoryMcpRoutes({
+    authorizeRequest: authorizeCodexMemoryMcpRequest,
+    authorizeIncludeContent: authorizeCodexMemoryMcpIncludeContent,
     pluginManager,
     knowledgeBaseManager,
     getRagDiaryPlugin: () => pluginManager.messagePreprocessors.get('RAGDiaryPlugin'),
@@ -1848,6 +1896,7 @@ async function initialize() {
     const routeOptions = {
       auditFilePath: path.join(__dirname, 'state', 'ai-image-pipelines', 'audit.jsonl'),
       enableSerumBottleSecretlessInternalRoute: enableAiImageAgentsRoute,
+      enableRuntimeToReviewTrialInternalRoutes: enableAiImageRuntimeToReviewTrialRoutes,
       pluginManager,
       requireNativeDoubaoSecretlessRuntimeDelegate: true,
       enableAiImageRealExecution: process.env.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true',

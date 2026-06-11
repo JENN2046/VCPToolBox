@@ -183,11 +183,17 @@ const AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES = Object.freeze({
 
 // ── Router 工厂 ──────────────────────────────────────────────────────────
 
+function shouldEnableRuntimeToReviewTrialRoutes(options = {}) {
+  return options.enableRuntimeToReviewTrialInternalRoutes === true;
+}
+
 /**
  * 创建 AI Image Agents 管理路由。
  *
  * @param {object} options
  * @param {string} [options.auditFilePath] - 审计日志路径（传入 executor）
+ * @param {boolean} [options.enableSerumBottleSecretlessInternalRoute] - 挂载 serum secretless route
+ * @param {boolean} [options.enableRuntimeToReviewTrialInternalRoutes] - 挂载 Jenn runtime-to-review trial routes
  * @returns {express.Router}
  */
 function createAiImageAgentsRouter(options = {}) {
@@ -211,14 +217,16 @@ function createAiImageAgentsRouter(options = {}) {
 
   if (options.enableSerumBottleSecretlessInternalRoute === true) {
     router.head('/execute/serum-bottle-secretless', (_req, res) => {
-    res.status(204).end();
-  });
+      res.status(204).end();
+    });
 
-  router.post('/execute/serum-bottle-secretless', async (req, res) => {
+    router.post('/execute/serum-bottle-secretless', async (req, res) => {
       const response = await handleSerumBottleSecretlessExecutionRequest(req, options);
       sendJson(res, response);
     });
+  }
 
+  if (shouldEnableRuntimeToReviewTrialRoutes(options)) {
     router.head('/execute/r2r-v2-trial-001-serum-detail-control', (_req, res) => {
       res.status(204).end();
     });
@@ -252,6 +260,10 @@ function createSerumBottleSecretlessInternalRouter(options = {}) {
     const response = await handleSerumBottleSecretlessExecutionRequest(req, options);
     sendJson(res, response);
   });
+
+  if (!shouldEnableRuntimeToReviewTrialRoutes(options)) {
+    return router;
+  }
 
   router.head('/execute/r2r-v2-trial-001-serum-detail-control', (_req, res) => {
     res.status(204).end();

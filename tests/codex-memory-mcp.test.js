@@ -8,7 +8,7 @@ const express = require('express');
 const createCodexMemoryMcpRouter = require('../routes/codexMemoryMcp');
 const { KNOWLEDGE_DIARY_NAME, PROCESS_DIARY_NAME } = require('../modules/codexMemoryConstants');
 
-async function withServer(handler) {
+async function withServer(handler, overrides = {}) {
     const tempBasePath = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-codex-mcp-test-'));
     const dailyNoteRootPath = path.join(tempBasePath, 'dailynote');
     const logsDir = path.join(tempBasePath, 'logs');
@@ -82,13 +82,27 @@ async function withServer(handler) {
 
     const app = express();
     app.use(express.json());
-    app.use((req, res, next) => {
-        if (req.headers.authorization !== 'Bearer test-key') {
-            return res.status(401).json({ error: 'Unauthorized (Bearer token required)' });
-        }
-        return next();
-    });
     app.use('/mcp/codex-memory', createCodexMemoryMcpRouter({
+        authorizeRequest: overrides.authorizeRequest || ((req) => {
+            if (req.headers.authorization === 'Bearer test-key') {
+                return { ok: true };
+            }
+            return {
+                ok: false,
+                statusCode: 401,
+                error: 'Unauthorized (Bearer token required)'
+            };
+        }),
+        authorizeIncludeContent: overrides.authorizeIncludeContent || ((req) => {
+            if (req.headers.authorization === 'Bearer test-key') {
+                return { ok: true };
+            }
+            return {
+                ok: false,
+                statusCode: 403,
+                error: 'codex_memory_include_content_forbidden'
+            };
+        }),
         pluginManager,
         knowledgeBaseManager,
         ragDiaryPlugin,
@@ -113,6 +127,13 @@ async function withServer(handler) {
         await fs.rm(tempBasePath, { recursive: true, force: true });
     }
 }
+
+test('codex-memory MCP router should refuse creation without route-local auth', () => {
+    assert.throws(
+        () => createCodexMemoryMcpRouter({}),
+        /requires authorizeRequest option/
+    );
+});
 
 test('codex-memory MCP should require bearer auth and initialize a session', async () => {
     await withServer(async ({ baseUrl }) => {
@@ -140,6 +161,52 @@ test('codex-memory MCP should require bearer auth and initialize a session', asy
         assert.equal(payload.result.serverInfo.name, 'vcp_codex_memory');
         assert.match(payload.result.instructions, /record_memory/);
     });
+});
+
+test('codex-memory MCP should deny include_content without separate permission', async () => {
+    await withServer(async ({ baseUrl }) => {
+        const response = await fetch(baseUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: 'Bearer test-key'
+            },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 20,
+                method: 'tools/call',
+                params: {
+                    name: 'search_memory',
+                    arguments: {
+                        query: 'find checkpoint',
+                        target: 'both',
+                        include_content: true
+                    }
+                }
+            })
+        });
+
+        assert.equal(response.status, 200);
+        const payload = await response.json();
+        assert.equal(payload.error.code, -32000);
+        assert.match(payload.error.message, /include_content/);
+    }, {
+        authorizeIncludeContent: () => ({
+            ok: false,
+            statusCode: 403,
+            error: 'codex_memory_include_content_forbidden'
+        })
+    });
+});
+
+test('server mount should pass explicit codex-memory MCP auth hooks', async () => {
+    const serverSource = await fs.readFile(path.join(__dirname, '..', 'server.js'), 'utf8');
+
+    assert.match(serverSource, /function authorizeCodexMemoryMcpRequest\(req\)/);
+    assert.match(serverSource, /function authorizeCodexMemoryMcpIncludeContent\(req\)/);
+    assert.match(serverSource, /app\.use\('\/mcp\/codex-memory', codexMemoryMcpRoutes\(\{/);
+    assert.match(serverSource, /authorizeRequest:\s*authorizeCodexMemoryMcpRequest/);
+    assert.match(serverSource, /authorizeIncludeContent:\s*authorizeCodexMemoryMcpIncludeContent/);
 });
 
 test('codex-memory MCP should negotiate protocol version and expose empty resource templates', async () => {

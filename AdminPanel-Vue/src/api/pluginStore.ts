@@ -20,7 +20,6 @@ export interface PluginStoreItem {
   installed?: boolean
   installedVersion?: string
   updateAvailable?: boolean
-  downloadUrl?: string
   sourceId?: string
   sourceName?: string
   installedSource?: 'core' | 'external' | string
@@ -38,7 +37,8 @@ export interface PluginStoreItem {
 export interface PluginSource {
   id: string
   name: string
-  url: string
+  displayUrl?: string
+  redactedUrl?: string
   type: 'registry' | 'github'
   builtin?: boolean
 }
@@ -70,6 +70,8 @@ export interface InstallFromPayload {
   githubUrl?: string
   downloadUrl?: string
   force?: boolean
+  allowLifecycleScripts?: boolean
+  lifecycleScriptsConfirmation?: string
 }
 
 export interface UninstallPluginPayload {

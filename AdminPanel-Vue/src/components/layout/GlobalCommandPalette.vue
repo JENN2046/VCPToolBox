@@ -141,6 +141,8 @@ interface IndexedCommandItem {
   icon: string;
   target: string;
   pluginName?: string;
+  pluginRootId?: string;
+  pluginSource?: string;
   badges: string[];
   index: number;
 }
@@ -149,7 +151,12 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "navigateTo", target: string, pluginName?: string): void;
+  (
+    e: "navigateTo",
+    target: string,
+    pluginName?: string,
+    targetCriteria?: { pluginRootId?: string; pluginSource?: string }
+  ): void;
 }>();
 
 const kindLabelMap: Record<CommandPaletteEntryKind, string> = {
@@ -242,8 +249,16 @@ function moveSelection(delta: number) {
   scrollActiveItemIntoView();
 }
 
-function runEntry(item: { target: string; pluginName?: string }) {
-  emit("navigateTo", item.target, item.pluginName);
+function runEntry(item: {
+  target: string;
+  pluginName?: string;
+  pluginRootId?: string;
+  pluginSource?: string;
+}) {
+  emit("navigateTo", item.target, item.pluginName, {
+    pluginRootId: item.pluginRootId,
+    pluginSource: item.pluginSource,
+  });
   emit("close");
 }
 

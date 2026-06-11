@@ -158,6 +158,19 @@ async function callAdminPluginRoute(pluginManager, routePath, body = {}, options
     return res;
 }
 
+async function callAdminPluginList(pluginManager) {
+    const handler = getRouteHandler(pluginManager, 'GET', '/plugins');
+    const res = createResponse();
+
+    await handler({
+        params: {},
+        body: {},
+        query: {}
+    }, res);
+
+    return res;
+}
+
 async function callCommandDescription(pluginManager, body = {}, options = {}) {
     return callAdminPluginRoute(
         pluginManager,
@@ -218,6 +231,30 @@ function assertNoAbsolutePathLeak(payload, pathsToProtect) {
     assert.doesNotMatch(serialized, /[A-Za-z]:\\/);
 }
 
+test('plugin list marks external stdio runtime as trusted process not untrusted sandbox', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace, true);
+    writeLegacyManifest(snapshot.externalLegacyRoots[0].rootPath, 'ExternalEcho');
+    const pluginManager = makePluginManager(snapshot);
+
+    const res = await callAdminPluginList(pluginManager);
+
+    assert.equal(res.statusCode, 200);
+    const externalRecord = res.body.find(record => record.name === 'ManagedEcho');
+    assert.ok(externalRecord);
+    assert.equal(externalRecord.pluginSource, 'external');
+    assert.deepEqual(externalRecord.runtimeTrust, {
+        boundary: 'trusted_external_process',
+        execution: 'local_child_process',
+        environmentSandbox: true,
+        processSandbox: false,
+        fileSystemSandbox: false,
+        untrustedSandbox: false,
+        warningCode: 'external_process_not_untrusted_sandbox'
+    });
+    assertNoAbsolutePathLeak(externalRecord, [workspace, snapshot.externalLegacyRoots[0].rootPath]);
+});
+
 test('core-only command description writes selected core manifest', async (t) => {
     const workspace = makeTempWorkspace(t);
     const snapshot = makeSnapshot(workspace);
@@ -231,6 +268,102 @@ test('core-only command description writes selected core manifest', async (t) =>
     assert.equal(pluginManager.loadCount, 1);
     assert.equal(res.body.pluginRootId, 'core:legacy');
     assert.equal(res.body.pluginSource, 'core');
+});
+
+test('plugin list redacts external config.env status without stat metadata', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace, true);
+    const externalManifest = writeLegacyManifest(snapshot.externalLegacyRoots[0].rootPath, 'ExternalEcho', makeManifest('ExternalEcho'));
+    const externalConfigPath = path.join(path.dirname(externalManifest), 'config.env');
+    fs.writeFileSync(externalConfigPath, 'SECRET_TOKEN=external-secret\n', 'utf8');
+    const pluginManager = makePluginManager(snapshot);
+    const originalStat = fs.promises.stat;
+    const originalLstat = fs.promises.lstat;
+    const statCalls = [];
+    const lstatCalls = [];
+
+    fs.promises.stat = async (targetPath, ...args) => {
+        statCalls.push(targetPath);
+        if (path.resolve(targetPath) === path.resolve(externalConfigPath)) {
+            throw new Error('external config.env should not be statted');
+        }
+        return originalStat.call(fs.promises, targetPath, ...args);
+    };
+    fs.promises.lstat = async (targetPath, ...args) => {
+        lstatCalls.push(targetPath);
+        if (path.resolve(targetPath) === path.resolve(externalConfigPath)) {
+            throw new Error('external config.env should not be lstatted');
+        }
+        return originalLstat.call(fs.promises, targetPath, ...args);
+    };
+
+    try {
+        const res = await callAdminPluginList(pluginManager);
+
+        assert.equal(res.statusCode, 200);
+        const externalRecord = res.body.find(record => record.name === 'ExternalEcho');
+        assert.ok(externalRecord);
+        assert.equal(externalRecord.pluginSource, 'external');
+        assert.deepEqual(externalRecord.configEnvStatus, {
+            exists: null,
+            readable: false,
+            redacted: true,
+            status: 'external_config_deferred'
+        });
+        assert.equal(Object.prototype.hasOwnProperty.call(externalRecord.configEnvStatus, 'size'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(externalRecord.configEnvStatus, 'updatedAt'), false);
+        assert.equal(
+            statCalls.some(targetPath => path.resolve(targetPath) === path.resolve(externalConfigPath)),
+            false
+        );
+        assert.equal(
+            lstatCalls.some(targetPath => path.resolve(targetPath) === path.resolve(externalConfigPath)),
+            false
+        );
+        assertNoAbsolutePathLeak(res.body, [workspace, snapshot.externalLegacyRoots[0].rootPath]);
+    } finally {
+        fs.promises.stat = originalStat;
+        fs.promises.lstat = originalLstat;
+    }
+});
+
+test('plugin list reports core config.env symlink as unsupported without metadata', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const coreConfigPath = path.join(path.dirname(coreManifest), 'config.env');
+    const pluginManager = makePluginManager(snapshot);
+    const originalLstat = fs.promises.lstat;
+
+    fs.promises.lstat = async (targetPath, ...args) => {
+        if (path.resolve(targetPath) === path.resolve(coreConfigPath)) {
+            return {
+                isSymbolicLink: () => true,
+                size: 12345,
+                mtime: new Date('2026-06-11T00:00:00.000Z')
+            };
+        }
+        return originalLstat.call(fs.promises, targetPath, ...args);
+    };
+
+    try {
+        const res = await callAdminPluginList(pluginManager);
+
+        assert.equal(res.statusCode, 200);
+        const coreRecord = res.body.find(record => record.name === 'ManagedEcho');
+        assert.ok(coreRecord);
+        assert.equal(coreRecord.pluginSource, 'core');
+        assert.deepEqual(coreRecord.configEnvStatus, {
+            exists: true,
+            readable: false,
+            redacted: true,
+            status: 'config_env_symlink_unsupported'
+        });
+        assert.equal(Object.prototype.hasOwnProperty.call(coreRecord.configEnvStatus, 'size'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(coreRecord.configEnvStatus, 'updatedAt'), false);
+    } finally {
+        fs.promises.lstat = originalLstat;
+    }
 });
 
 test('duplicate core and external pluginName without target criteria returns 409 and writes nothing', async (t) => {
@@ -296,6 +429,88 @@ test('duplicate core and external pluginName blocks config writes', async (t) =>
         ['core', 'external']
     );
     assertNoAbsolutePathLeak(res.body, [workspace, snapshot.coreLegacyRoot.rootPath, snapshot.externalLegacyRoots[0].rootPath]);
+});
+
+test('core config write creates regular config.env and reloads plugins', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const configPath = path.join(path.dirname(coreManifest), 'config.env');
+
+    const res = await callPluginConfig(pluginManager, {
+        content: 'EXAMPLE=value\n',
+        pluginRootId: 'core:legacy',
+        pluginSource: 'core'
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(fs.readFileSync(configPath, 'utf8'), 'EXAMPLE=value\n');
+    assert.equal(fs.lstatSync(configPath).isFile(), true);
+    assert.equal(pluginManager.loadCount, 1);
+    assert.equal(res.body.pluginRootId, 'core:legacy');
+    assert.equal(res.body.pluginSource, 'core');
+});
+
+test('core config write rejects existing config.env symlink without writing target', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const configPath = path.join(path.dirname(coreManifest), 'config.env');
+    const outsideConfigPath = path.join(workspace, 'outside-config.env');
+    const outsideConfigDir = path.join(workspace, 'outside-config-dir');
+    const outsideMarkerPath = path.join(outsideConfigDir, 'marker.txt');
+    fs.writeFileSync(outsideConfigPath, 'OUTSIDE=old\n', 'utf8');
+
+    try {
+        fs.symlinkSync(outsideConfigPath, configPath);
+    } catch (error) {
+        try {
+            fs.mkdirSync(outsideConfigDir);
+            fs.writeFileSync(outsideMarkerPath, 'OUTSIDE=old\n', 'utf8');
+            fs.symlinkSync(outsideConfigDir, configPath, process.platform === 'win32' ? 'junction' : 'dir');
+        } catch (fallbackError) {
+            t.skip(`symlink unavailable in this environment: ${error.message}; fallback failed: ${fallbackError.message}`);
+            return;
+        }
+    }
+
+    const res = await callPluginConfig(pluginManager, {
+        content: 'EXAMPLE=new\n',
+        pluginRootId: 'core:legacy',
+        pluginSource: 'core'
+    });
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.code, 'config_env_symlink_unsupported');
+    assert.equal(fs.readFileSync(outsideConfigPath, 'utf8'), 'OUTSIDE=old\n');
+    if (fs.existsSync(outsideMarkerPath)) {
+        assert.equal(fs.readFileSync(outsideMarkerPath, 'utf8'), 'OUTSIDE=old\n');
+    }
+    assert.equal(pluginManager.loadCount, 0);
+    assertNoAbsolutePathLeak(res.body, [workspace, outsideConfigPath, outsideConfigDir, snapshot.coreLegacyRoot.rootPath]);
+});
+
+test('core config write rejects existing config.env directory', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const configPath = path.join(path.dirname(coreManifest), 'config.env');
+    fs.mkdirSync(configPath);
+
+    const res = await callPluginConfig(pluginManager, {
+        content: 'EXAMPLE=value\n',
+        pluginRootId: 'core:legacy',
+        pluginSource: 'core'
+    });
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.code, 'config_env_non_regular_unsupported');
+    assert.equal(fs.lstatSync(configPath).isDirectory(), true);
+    assert.equal(pluginManager.loadCount, 0);
+    assertNoAbsolutePathLeak(res.body, [workspace, snapshot.coreLegacyRoot.rootPath]);
 });
 
 test('duplicate core and external pluginName blocks toggle writes', async (t) => {

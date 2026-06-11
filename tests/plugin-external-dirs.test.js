@@ -100,7 +100,7 @@ test('PluginManager discovers resolver legacy roots in core-first order', () => 
 
     assert.match(source, /for \(const rootInfo of rootSnapshot\.legacyLoadRoots\)/);
     assert.match(source, /_discoverLegacyPluginManifestsFromDir\(\s+rootInfo\.rootPath,\s+rootInfo\.source,\s+rootInfo\s+\)/s);
-    assert.match(source, /if \(this\.plugins\.has\(manifest\.name\)\) continue;\s+await this\._registerLocalPlugin\(manifest/s);
+    assert.match(source, /if \(this\.plugins\.has\(manifest\.name\)\) \{\s+this\._warnDuplicateLocalPluginSkipped\(manifest, this\.plugins\.get\(manifest\.name\)\);\s+continue;\s+\}\s+await this\._registerLocalPlugin\(manifest/s);
 
     const firstExternalRoot = makeTempDir();
     const secondExternalRoot = makeTempDir();
@@ -131,6 +131,78 @@ test('PluginManager discovers resolver legacy roots in core-first order', () => 
 
         fs.rmSync(firstExternalRoot, { recursive: true, force: true });
         fs.rmSync(secondExternalRoot, { recursive: true, force: true });
+    }
+});
+
+test('PluginManager duplicate runtime warning is path-safe and includes root identity', () => {
+    const root = makeTempDir();
+    const externalRoot = path.join(root, 'external');
+    const originalWarn = console.warn;
+    const warnings = [];
+
+    console.warn = (...args) => warnings.push(args.map(String).join(' '));
+
+    try {
+        pluginManager._warnDuplicateLocalPluginSkipped(
+            {
+                name: 'SharedLegacyPlugin',
+                pluginSource: 'external',
+                pluginRootId: `external:${externalRoot}`,
+                pluginRootDisplayPath: externalRoot,
+                basePath: path.join(externalRoot, 'SharedLegacyPlugin')
+            },
+            {
+                name: 'SharedLegacyPlugin',
+                pluginSource: 'core',
+                pluginRootId: 'core:legacy',
+                pluginRootDisplayPath: 'Plugin',
+                basePath: path.join(root, 'core', 'SharedLegacyPlugin')
+            }
+        );
+
+        const logText = warnings.join('\n');
+        assert.match(logText, /duplicate_plugin_name/);
+        assert.match(logText, /SharedLegacyPlugin/);
+        assert.match(logText, /existing core\/core:legacy/);
+        assert.match(logText, /skipped external\/external:/);
+        assert.equal(logText.includes(path.resolve(root)), false);
+        assert.equal(logText.includes(path.resolve(externalRoot)), false);
+        assert.doesNotMatch(logText, /[A-Za-z]:\\/);
+    } finally {
+        console.warn = originalWarn;
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('PluginManager duplicate runtime warning redacts POSIX path-style external root ids', () => {
+    const originalWarn = console.warn;
+    const warnings = [];
+
+    console.warn = (...args) => warnings.push(args.map(String).join(' '));
+
+    try {
+        pluginManager._warnDuplicateLocalPluginSkipped(
+            {
+                name: 'SharedLegacyPlugin',
+                pluginSource: 'external',
+                pluginRootId: 'external:/tmp/vcp-plugin-dirs-ci/external',
+                pluginRootDisplayPath: '/tmp/vcp-plugin-dirs-ci/external',
+                basePath: '/tmp/vcp-plugin-dirs-ci/external/SharedLegacyPlugin'
+            },
+            {
+                name: 'SharedLegacyPlugin',
+                pluginSource: 'core',
+                pluginRootId: 'core:legacy',
+                pluginRootDisplayPath: 'Plugin',
+                basePath: '/tmp/vcp-plugin-dirs-ci/core/SharedLegacyPlugin'
+            }
+        );
+
+        const logText = warnings.join('\n');
+        assert.match(logText, /skipped external\/external:path/);
+        assert.equal(logText.includes('/tmp/vcp-plugin-dirs-ci'), false);
+    } finally {
+        console.warn = originalWarn;
     }
 });
 

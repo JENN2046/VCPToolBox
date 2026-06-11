@@ -1,6 +1,10 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
 const http = require('node:http');
 const Module = require('node:module');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const express = require('express');
 
@@ -45,6 +49,42 @@ async function withConfigApp(fsStub, callback) {
         }
     } finally {
         Module._load = originalLoad;
+        delete require.cache[routePath];
+    }
+}
+
+async function withMainConfigApp(projectBasePath, callback) {
+    delete require.cache[routePath];
+    const createConfigRouter = require('../routes/admin/config');
+    const app = express();
+    app.use(express.json());
+
+    const pluginManager = {
+        loadCount: 0,
+        async loadPlugins() {
+            this.loadCount += 1;
+        }
+    };
+
+    app.use(createConfigRouter({ pluginManager, projectBasePath }));
+
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+        await callback(baseUrl, pluginManager);
+    } finally {
+        await new Promise((resolve, reject) => {
+            server.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve();
+            });
+        });
         delete require.cache[routePath];
     }
 }
@@ -116,7 +156,8 @@ test('tool approval config route writes normalized canonical config', async () =
             timeoutMinutes: 9,
             approveAll: false,
             approvalList: ['SciCalculator'],
-            debugMode: true
+            debugMode: true,
+            fuzzyToolMatching: false
         });
     });
 });
@@ -150,5 +191,92 @@ test('tool approval config route rejects typo-only payloads instead of saving de
             'config must include at least one supported field'
         ]);
         assert.equal(writes.length, 0);
+    });
+});
+
+test('main config route writes config.env through regular temp file and reloads plugins', async (t) => {
+    const projectRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcpt-main-config-'));
+    t.after(async () => {
+        await fsp.rm(projectRoot, { recursive: true, force: true });
+    });
+
+    await withMainConfigApp(projectRoot, async (baseUrl, pluginManager) => {
+        const response = await fetch(`${baseUrl}/config/main`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ content: 'SAFE_VALUE=1\n' })
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(await fsp.readFile(path.join(projectRoot, 'config.env'), 'utf8'), 'SAFE_VALUE=1\n');
+        assert.equal(fs.lstatSync(path.join(projectRoot, 'config.env')).isFile(), true);
+        assert.equal(pluginManager.loadCount, 1);
+    });
+});
+
+test('main config route rejects existing config.env symlink without writing target', async (t) => {
+    const projectRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcpt-main-config-symlink-'));
+    t.after(async () => {
+        await fsp.rm(projectRoot, { recursive: true, force: true });
+    });
+
+    const configPath = path.join(projectRoot, 'config.env');
+    const outsideConfigPath = path.join(projectRoot, 'outside-config.env');
+    await fsp.writeFile(outsideConfigPath, 'OUTSIDE=old\n', 'utf8');
+    try {
+        fs.symlinkSync(outsideConfigPath, configPath);
+    } catch (error) {
+        try {
+            const outsideConfigDir = path.join(projectRoot, 'outside-config-dir');
+            await fsp.mkdir(outsideConfigDir);
+            await fsp.writeFile(path.join(outsideConfigDir, 'marker.env'), 'OUTSIDE=old\n', 'utf8');
+            fs.symlinkSync(outsideConfigDir, configPath, process.platform === 'win32' ? 'junction' : 'dir');
+        } catch (fallbackError) {
+            t.skip(`symlink unavailable in this environment: ${error.message}; fallback failed: ${fallbackError.message}`);
+            return;
+        }
+    }
+
+    await withMainConfigApp(projectRoot, async (baseUrl, pluginManager) => {
+        const response = await fetch(`${baseUrl}/config/main`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ content: 'OUTSIDE=new\n' })
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 409);
+        assert.equal(body.code, 'main_config_env_symlink_unsupported');
+        assert.equal(await fsp.readFile(outsideConfigPath, 'utf8'), 'OUTSIDE=old\n');
+        const outsideMarkerPath = path.join(projectRoot, 'outside-config-dir', 'marker.env');
+        if (fs.existsSync(outsideMarkerPath)) {
+            assert.equal(await fsp.readFile(outsideMarkerPath, 'utf8'), 'OUTSIDE=old\n');
+        }
+        assert.equal(fs.lstatSync(configPath).isSymbolicLink(), true);
+        assert.equal(pluginManager.loadCount, 0);
+    });
+});
+
+test('main config route rejects existing config.env directory', async (t) => {
+    const projectRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcpt-main-config-dir-'));
+    t.after(async () => {
+        await fsp.rm(projectRoot, { recursive: true, force: true });
+    });
+
+    const configPath = path.join(projectRoot, 'config.env');
+    await fsp.mkdir(configPath);
+
+    await withMainConfigApp(projectRoot, async (baseUrl, pluginManager) => {
+        const response = await fetch(`${baseUrl}/config/main`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ content: 'SAFE_VALUE=1\n' })
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 409);
+        assert.equal(body.code, 'main_config_env_non_regular_unsupported');
+        assert.equal(fs.lstatSync(configPath).isDirectory(), true);
+        assert.equal(pluginManager.loadCount, 0);
     });
 });

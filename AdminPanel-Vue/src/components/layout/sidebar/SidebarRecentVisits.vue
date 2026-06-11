@@ -23,12 +23,15 @@
     <nav v-show="!isRecentVisitsCollapsed && !isSidebarCollapsed || isHoveringSidebar" class="recent-nav">
       <a
         v-for="item in recentVisits"
-        :key="`${item.target}-${item.pluginName || ''}`"
+        :key="`${item.target}-${item.pluginName || ''}-${item.pluginRootId || ''}-${item.pluginSource || ''}`"
         href="#"
         class="recent-item"
         :class="{ 'sidebar-collapsed': isSidebarCollapsed && !isHoveringSidebar }"
         :title="item.label"
-        @click.prevent="$emit('navigateTo', item.target, item.pluginName)"
+        @click.prevent="$emit('navigateTo', item.target, item.pluginName, {
+          pluginRootId: item.pluginRootId,
+          pluginSource: item.pluginSource,
+        })"
       >
         <span class="material-symbols-outlined">{{ item.icon || 'extension' }}</span>
         <span class="recent-label">{{ item.label }}</span>
@@ -43,6 +46,8 @@ interface RecentVisitItem {
   label: string
   icon?: string
   pluginName?: string
+  pluginRootId?: string
+  pluginSource?: string
 }
 
 defineProps<{
@@ -54,7 +59,12 @@ defineProps<{
 
 defineEmits<{
   (e: 'toggleRecent'): void
-  (e: 'navigateTo', target: string, pluginName?: string): void
+  (
+    e: 'navigateTo',
+    target: string,
+    pluginName?: string,
+    targetCriteria?: { pluginRootId?: string; pluginSource?: string }
+  ): void
 }>()
 </script>
 

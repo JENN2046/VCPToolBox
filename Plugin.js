@@ -16,7 +16,10 @@ const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
 const { createPluginRootResolver } = require('./modules/pluginRootResolver');
 const { classifyExternalPluginManifest } = require('./modules/externalPluginSafetyGate');
 const { evaluateExternalPluginAllowPolicy } = require('./modules/externalPluginAllowPolicy');
-const { buildExternalPluginRuntimeEnv } = require('./modules/pluginRuntimeEnvSandbox');
+const {
+    buildExternalPluginRuntimeEnv,
+    isPluginRuntimeEnvKeyDenied
+} = require('./modules/pluginRuntimeEnvSandbox');
 
 const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
@@ -33,6 +36,43 @@ const SSH_MANAGER_ENV_PLUGIN_ALLOWLIST = new Set([
 const LOG_MONITOR_ENV_PLUGIN_ALLOWLIST = new Set([
     'LinuxLogMonitor'
 ]);
+
+const PLUGIN_DIAGNOSTIC_SECRET_PATTERNS = [
+    /((?:api[_-]?key|apikey|token|secret|password|passwd|pwd|authorization|bearer|cookie|session|credential|private[_-]?key)\s*[:=]\s*)[^\s"',;}\]]+/gi,
+    /\b(?:sk|ghp|github_pat|xox[baprs]|ya29)\b[-_A-Za-z0-9]{12,}/gi,
+    /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi
+];
+
+function scrubPluginDiagnosticText(value) {
+    if (value === undefined || value === null) {
+        return '';
+    }
+
+    let text = String(value);
+    for (const pattern of PLUGIN_DIAGNOSTIC_SECRET_PATTERNS) {
+        text = text.replace(pattern, (match, prefix) => (
+            prefix ? `${prefix}[redacted]` : '[redacted]'
+        ));
+    }
+    text = text.replace(/\b[A-Za-z]:\\[^\s"',;}\]]+/g, '[path]');
+    text = text.replace(/(^|[\s"'(])\/(?:Users|home|var|tmp|etc|opt|srv|mnt)\/[^\s"',;}\]]+/g, '$1[path]');
+    text = text.replace(/\\\\[^\\\s"',;}\]]+(?:\\[^\s"',;}\]]+)+/g, '[path]');
+    return text;
+}
+
+function scrubPluginDiagnosticSnippet(value, maxLength) {
+    return scrubPluginDiagnosticText(value).substring(0, maxLength);
+}
+
+function formatRuntimeEnvDebugKeyList(env = {}) {
+    const keys = Object.keys(env || {});
+    const visibleKeys = keys
+        .filter(key => !isPluginRuntimeEnvKeyDenied(key))
+        .sort();
+    const redactedCount = keys.length - visibleKeys.length;
+    const suffix = redactedCount > 0 ? ` (redacted ${redactedCount} sensitive keys)` : '';
+    return `${visibleKeys.join(',')}${suffix}`;
+}
 
 class PluginManager extends EventEmitter {
     constructor() {
@@ -253,8 +293,8 @@ class PluginManager extends EventEmitter {
             pluginProcess.on('error', (err) => {
                 processExited = true;
                 clearTimeout(timeoutId);
-                console.error(`[PluginManager] Failed to start static plugin ${plugin.name}: ${err.message}`);
-                reject(err);
+                console.error(`[PluginManager] Failed to start static plugin ${plugin.name}: ${scrubPluginDiagnosticText(err.message)}`);
+                reject(new Error(scrubPluginDiagnosticText(err.message)));
             });
 
             pluginProcess.on('exit', (code, signal) => {
@@ -265,12 +305,12 @@ class PluginManager extends EventEmitter {
                     return;
                 }
                 if (code !== 0) {
-                    const errMsg = `Static plugin ${plugin.name} exited with code ${code}. Stderr: ${errorOutput.trim()}`;
+                    const errMsg = `Static plugin ${plugin.name} exited with code ${code}. Stderr: ${scrubPluginDiagnosticText(errorOutput.trim())}`;
                     console.error(`[PluginManager] ${errMsg}`);
                     reject(new Error(errMsg));
                 } else {
                     if (errorOutput.trim() && this.debugMode) {
-                        console.warn(`[PluginManager] Static plugin ${plugin.name} produced stderr output: ${errorOutput.trim()}`);
+                        console.warn(`[PluginManager] Static plugin ${plugin.name} produced stderr output: ${scrubPluginDiagnosticText(errorOutput.trim())}`);
                     }
                     resolve(output.trim());
                 }
@@ -285,7 +325,7 @@ class PluginManager extends EventEmitter {
             if (this.debugMode) console.log(`[PluginManager] Updating static plugin: ${plugin.name}`);
             newValue = await this._executeStaticPluginCommand(plugin);
         } catch (error) {
-            console.error(`[PluginManager] Error executing static plugin ${plugin.name} script:`, error.message);
+            console.error(`[PluginManager] Error executing static plugin ${plugin.name} script:`, scrubPluginDiagnosticText(error.message));
             executionError = error;
         }
 
@@ -335,7 +375,7 @@ class PluginManager extends EventEmitter {
                         console.log(`[PluginManager] Placeholder ${placeholderKey} for ${plugin.name} updated with value: "${logVal.substring(0, 70)}..."`);
                     }
                 } else if (executionError) {
-                    const errorMessage = `[Error updating ${plugin.name}: ${executionError.message.substring(0, 100)}...]`;
+                    const errorMessage = `[Error updating ${plugin.name}: ${scrubPluginDiagnosticSnippet(executionError.message, 100)}...]`;
                     if (!currentValue || (typeof currentValue === 'string' && currentValue.startsWith("[Error"))) {
                         this.staticPlaceholderValues.set(placeholderKey, { value: errorMessage, serverId: 'local' });
                         if (this.debugMode) console.warn(`[PluginManager] Placeholder ${placeholderKey} for ${plugin.name} set to error state: ${errorMessage}`);
@@ -366,7 +406,7 @@ class PluginManager extends EventEmitter {
 
                 // Trigger the first update in the background (fire and forget).
                 this._updateStaticPluginValue(plugin).catch(err => {
-                    console.error(`[PluginManager] Initial background update for ${plugin.name} failed: ${err.message}`);
+                    console.error(`[PluginManager] Initial background update for ${plugin.name} failed: ${scrubPluginDiagnosticText(err.message)}`);
                 });
 
                 // Set up the scheduled recurring updates.
@@ -378,7 +418,7 @@ class PluginManager extends EventEmitter {
                         const job = schedule.scheduleJob(plugin.refreshIntervalCron, () => {
                             if (this.debugMode) console.log(`[PluginManager] Scheduled update for static plugin: ${plugin.name}`);
                             this._updateStaticPluginValue(plugin).catch(err => {
-                                console.error(`[PluginManager] Scheduled background update for ${plugin.name} failed: ${err.message}`);
+                                console.error(`[PluginManager] Scheduled background update for ${plugin.name} failed: ${scrubPluginDiagnosticText(err.message)}`);
                             });
                         });
                         this.scheduledJobs.set(plugin.name, job);
@@ -702,10 +742,7 @@ class PluginManager extends EventEmitter {
     }
 
     _sanitizeExternalRuntimeRootId(rootId) {
-        if (typeof rootId === 'string' && rootId.startsWith('external:')) {
-            return rootId.split(':').slice(0, 2).join(':');
-        }
-        return 'external:unknown';
+        return this._sanitizeExternalRootIdForLog(rootId);
     }
 
     _sanitizeExternalRuntimeDisplayPath(displayPath) {
@@ -799,6 +836,68 @@ class PluginManager extends EventEmitter {
         const rootLabel = decision?.pluginRootDisplayPath || '[external]';
         const code = decision?.code || 'external_runtime_registration_blocked';
         console.warn(`[PluginManager] Skipped external plugin runtime registration: ${pluginName} (${rootId}, ${rootLabel}) ${code}`);
+    }
+
+    _sanitizeRuntimeDuplicateSource(source) {
+        if (source === 'external') return 'external';
+        if (source === 'distributed') return 'distributed';
+        return 'core';
+    }
+
+    _sanitizeRuntimeDuplicateRootId(source, rootId) {
+        const safeSource = this._sanitizeRuntimeDuplicateSource(source);
+        if (typeof rootId !== 'string' || !rootId.trim()) {
+            return safeSource === 'external' ? 'external:unknown' : `${safeSource}:unknown`;
+        }
+        if (rootId.startsWith('external:')) return this._sanitizeExternalRootIdForLog(rootId);
+        if (rootId.startsWith('core:')) return rootId;
+        if (rootId.startsWith('distributed:')) return rootId;
+        return `${safeSource}:unknown`;
+    }
+
+    _sanitizeExternalRootIdForLog(rootId) {
+        if (typeof rootId !== 'string') return 'external:unknown';
+
+        const trimmed = rootId.trim();
+        if (!trimmed.startsWith('external:')) return 'external:unknown';
+
+        const value = trimmed.slice('external:'.length).trim();
+        if (!value) return 'external:unknown';
+
+        if (
+            value.includes('/') ||
+            value.includes('\\') ||
+            path.isAbsolute(value) ||
+            path.win32.isAbsolute(value)
+        ) {
+            return 'external:path';
+        }
+
+        if (!/^[A-Za-z0-9_.-]+$/.test(value)) {
+            return 'external:opaque';
+        }
+
+        return `external:${value}`;
+    }
+
+    _buildRuntimeDuplicateDescriptor(manifest) {
+        const source = this._sanitizeRuntimeDuplicateSource(
+            manifest?.pluginSource || (manifest?.isDistributed ? 'distributed' : 'core')
+        );
+        return {
+            source,
+            rootId: this._sanitizeRuntimeDuplicateRootId(source, manifest?.pluginRootId)
+        };
+    }
+
+    _warnDuplicateLocalPluginSkipped(skippedManifest, existingManifest = null) {
+        const pluginName = skippedManifest?.name || 'unknown';
+        const skipped = this._buildRuntimeDuplicateDescriptor(skippedManifest);
+        const existing = this._buildRuntimeDuplicateDescriptor(existingManifest);
+        console.warn(
+            `[PluginManager] Skipped duplicate local plugin manifest: ${pluginName} ` +
+            `(existing ${existing.source}/${existing.rootId}, skipped ${skipped.source}/${skipped.rootId}) duplicate_plugin_name`
+        );
     }
 
     async _discoverLegacyPluginManifestsFromDir(pluginRoot, sourceLabel = 'legacy', rootInfo = null) {
@@ -942,13 +1041,19 @@ class PluginManager extends EventEmitter {
             // 2. 发现并加载所有插件模块，但不初始化
             const modernManifests = await this._discoverModernPluginManifests();
             for (const manifest of modernManifests) {
-                if (this.plugins.has(manifest.name)) continue;
+                if (this.plugins.has(manifest.name)) {
+                    this._warnDuplicateLocalPluginSkipped(manifest, this.plugins.get(manifest.name));
+                    continue;
+                }
                 await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);
             }
 
             const legacyManifests = await this._discoverLegacyPluginManifests();
             for (const manifest of legacyManifests) {
-                if (this.plugins.has(manifest.name)) continue;
+                if (this.plugins.has(manifest.name)) {
+                    this._warnDuplicateLocalPluginSkipped(manifest, this.plugins.get(manifest.name));
+                    continue;
+                }
                 await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);
             }
 
@@ -1580,9 +1685,9 @@ class PluginManager extends EventEmitter {
 
         if (this.debugMode && plugin.pluginType === 'asynchronous') {
             if (this._isExternalPluginManifest(plugin)) {
-                console.log(`[PluginManager executePlugin] External async plugin ${pluginName} runtime env sandbox keys:`, Object.keys(finalEnv).sort().join(','));
+                console.log(`[PluginManager executePlugin] External async plugin ${pluginName} runtime env sandbox keys:`, formatRuntimeEnvDebugKeyList(finalEnv));
             } else {
-                console.log(`[PluginManager executePlugin] Final ENV for async plugin ${pluginName}:`, JSON.stringify(finalEnv, null, 2).substring(0, 500) + "...");
+                console.log(`[PluginManager executePlugin] Core async plugin ${pluginName} runtime env keys:`, formatRuntimeEnvDebugKeyList(finalEnv));
             }
         }
 
@@ -1626,7 +1731,7 @@ class PluginManager extends EventEmitter {
                 if (processExited || (isAsyncPlugin && initialResponseSent)) {
                     // If async and initial response sent, or process exited, ignore further stdout for this Promise.
                     // The plugin's background task might still log to its own stdout, but we don't collect it here.
-                    if (this.debugMode && isAsyncPlugin && initialResponseSent) console.log(`[PluginManager executePlugin Internal] Async plugin ${pluginName} (initial response sent) produced more stdout: ${data.substring(0, 100)}...`);
+                    if (this.debugMode && isAsyncPlugin && initialResponseSent) console.log(`[PluginManager executePlugin Internal] Async plugin ${pluginName} (initial response sent) produced more stdout: ${scrubPluginDiagnosticSnippet(data, 100)}...`);
                     return;
                 }
                 outputBuffer += data;
@@ -1660,22 +1765,22 @@ class PluginManager extends EventEmitter {
                     }
                 } catch (e) {
                     // Incomplete JSON or invalid JSON, wait for more data or 'exit' event.
-                    if (this.debugMode && outputBuffer.length > 2) console.log(`[PluginManager executePlugin Internal] Plugin "${pluginName}" stdout buffer not yet a complete JSON or invalid. Buffer: ${outputBuffer.substring(0, 100)}...`);
+                    if (this.debugMode && outputBuffer.length > 2) console.log(`[PluginManager executePlugin Internal] Plugin "${pluginName}" stdout buffer not yet a complete JSON or invalid. Buffer: ${scrubPluginDiagnosticSnippet(outputBuffer, 100)}...`);
                 }
             });
 
             pluginProcess.stderr.setEncoding('utf8');
             pluginProcess.stderr.on('data', (data) => {
                 errorOutput += data;
-                if (this.debugMode) console.warn(`[PluginManager executePlugin Internal stderr] Plugin "${pluginName}": ${data.trim()}`);
+                if (this.debugMode) console.warn(`[PluginManager executePlugin Internal stderr] Plugin "${pluginName}": ${scrubPluginDiagnosticText(data.trim())}`);
             });
 
             pluginProcess.on('error', (err) => {
                 processExited = true; clearTimeout(timeoutId);
                 if (!initialResponseSent) { // Only reject if initial response (for async) or any response (for sync) hasn't been sent
-                    reject(new Error(`Failed to start plugin "${pluginName}": ${err.message}`));
+                    reject(new Error(`Failed to start plugin "${pluginName}": ${scrubPluginDiagnosticText(err.message)}`));
                 } else if (this.debugMode) {
-                    console.error(`[PluginManager executePlugin Internal] Error after initial response for async plugin "${pluginName}": ${err.message}. Process might have been expected to continue.`);
+                    console.error(`[PluginManager executePlugin Internal] Error after initial response for async plugin "${pluginName}": ${scrubPluginDiagnosticText(err.message)}. Process might have been expected to continue.`);
                 }
             });
 
@@ -1705,26 +1810,26 @@ class PluginManager extends EventEmitter {
                         if (code === 0 && parsedOutput.status === "error" && this.debugMode) {
                             console.warn(`[PluginManager executePlugin Internal] Plugin "${pluginName}" exited with code 0 but reported error in JSON. Trusting JSON.`);
                         }
-                        if (errorOutput.trim()) parsedOutput.pluginStderr = errorOutput.trim();
+                        if (errorOutput.trim()) parsedOutput.pluginStderr = scrubPluginDiagnosticText(errorOutput.trim());
 
                         if (!initialResponseSent) resolve(parsedOutput); // Ensure resolve only once
                         else if (this.debugMode) console.log(`[PluginManager executePlugin Internal] Plugin ${pluginName} exited, initial async response already sent.`);
                         return;
                     }
-                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Plugin "${pluginName}" final stdout was not in the expected JSON format: ${outputBuffer.trim().substring(0, 100)}`);
+                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Plugin "${pluginName}" final stdout was not in the expected JSON format: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 100)}`);
                 } catch (e) {
-                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Failed to parse final stdout JSON from plugin "${pluginName}". Error: ${e.message}. Stdout: ${outputBuffer.trim().substring(0, 100)}`);
+                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Failed to parse final stdout JSON from plugin "${pluginName}". Error: ${e.message}. Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 100)}`);
                 }
 
                 if (!initialResponseSent) { // Only reject if no response has been sent yet
                     if (code !== 0) {
                         let detailedError = `Plugin "${pluginName}" exited with code ${code}.`;
-                        if (outputBuffer.trim()) detailedError += ` Stdout: ${outputBuffer.trim().substring(0, 200)}`;
-                        if (errorOutput.trim()) detailedError += ` Stderr: ${errorOutput.trim().substring(0, 200)}`;
+                        if (outputBuffer.trim()) detailedError += ` Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 200)}`;
+                        if (errorOutput.trim()) detailedError += ` Stderr: ${scrubPluginDiagnosticSnippet(errorOutput.trim(), 200)}`;
                         reject(new Error(detailedError));
                     } else {
                         // Exit code 0, but no valid initial JSON response was sent/parsed.
-                        reject(new Error(`Plugin "${pluginName}" exited successfully but did not provide a valid initial JSON response. Stdout: ${outputBuffer.trim().substring(0, 200)}`));
+                        reject(new Error(`Plugin "${pluginName}" exited successfully but did not provide a valid initial JSON response. Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 200)}`));
                     }
                 }
             });

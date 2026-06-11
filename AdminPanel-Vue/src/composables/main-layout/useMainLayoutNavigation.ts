@@ -39,7 +39,11 @@ export function useMainLayoutNavigation({
       }) || "Dashboard"
   );
 
-  function navigateTo(target: string, pluginName?: string) {
+  function navigateTo(
+    target: string,
+    pluginName?: string,
+    targetCriteria?: { pluginRootId?: string; pluginSource?: string }
+  ) {
     const nextNavigationState = recordNavigationVisit({
       target,
       navItems: appStore.navItems,
@@ -47,12 +51,14 @@ export function useMainLayoutNavigation({
       recentVisits: recentVisits.value,
       navigationUsage: navigationUsage.value,
       pluginName,
+      pluginRootId: targetCriteria?.pluginRootId,
+      pluginSource: targetCriteria?.pluginSource,
     });
 
     recentVisits.value = nextNavigationState.recentVisits;
     navigationUsage.value = nextNavigationState.navigationUsage;
 
-    void router.push(resolveAppNavigationLocation(target, pluginName));
+    void router.push(resolveAppNavigationLocation(target, pluginName, targetCriteria));
     closeTransientUi();
   }
 

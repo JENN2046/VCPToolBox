@@ -93,6 +93,54 @@ instead of passing the full process environment.
 The npm command, arguments, cwd behavior, install-root policy, backup policy,
 reload behavior, and Plugin Store API behavior are otherwise unchanged.
 
+## 5.1 Lifecycle Script Execution Gate
+
+Plugin Store npm installs run with lifecycle scripts disabled by default:
+
+```text
+npm install --ignore-scripts --omit=dev --no-audit --no-fund
+```
+
+The install and upload APIs only pass `allowLifecycleScripts=true` through when
+the request also includes the exact confirmation phrase:
+
+```json
+{
+  "allowLifecycleScripts": true,
+  "lifecycleScriptsConfirmation": "ALLOW_NPM_LIFECYCLE_SCRIPTS"
+}
+```
+
+Requests that set `allowLifecycleScripts=true` without that confirmation fail
+with `plugin_store_lifecycle_scripts_confirmation_required` before an install
+task is created.
+
+When a package contains lifecycle scripts, install logs include the
+`package.json` sha256, a truncated lifecycle script summary, and the path-safe
+target display. This is operator evidence, not a sandbox guarantee.
+
+## 5.2 Direct Download URL Install Gate
+
+The broadest remote install path, direct `/plugin-store/install` requests with a
+top-level `downloadUrl`, is disabled by default.
+
+Operators must explicitly set:
+
+```text
+ENABLE_PLUGIN_STORE_DIRECT_DOWNLOAD_URL_INSTALL=true
+```
+
+before that direct URL mode can create an install task.
+
+This does not change the narrower existing paths:
+
+- source registry entries selected by `sourceId` and `pluginName`
+- GitHub URL installs
+- manual upload installs
+
+The goal is to reduce the default DNS rebinding / arbitrary remote URL surface
+while keeping reviewed registry and GitHub flows available.
+
 ## 6. Log Redaction
 
 This patch keeps the existing Plugin Store log redaction path:
@@ -123,6 +171,9 @@ Added tests verify:
 - deny patterns override allowlist;
 - `npm_config_*` is excluded by default;
 - `runNpmInstall()` passes sanitized env to a mocked spawn call;
+- lifecycle scripts remain disabled by default;
+- `allowLifecycleScripts=true` requires a second confirmation phrase;
+- direct top-level `downloadUrl` installs are disabled by default;
 - npm log output redacts token-like values, credential URLs, and absolute paths.
 
 Tests do not run real npm install.
@@ -144,6 +195,9 @@ Hardening-1B does not:
 
 - [x] Full `process.env` inheritance removed from Plugin Store npm install.
 - [x] Strict env sandbox added.
+- [x] npm lifecycle scripts disabled by default.
+- [x] lifecycle script execution requires explicit confirmation phrase.
+- [x] direct top-level `downloadUrl` install path disabled by default.
 - [x] Deny patterns override allowlist.
 - [x] Mocked spawn test confirms sanitized env.
 - [x] Log redaction coverage added.

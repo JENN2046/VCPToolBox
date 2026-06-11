@@ -63,7 +63,12 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
-  (e: "navigateTo", target: string, pluginName?: string): void;
+  (
+    e: "navigateTo",
+    target: string,
+    pluginName?: string,
+    targetCriteria?: { pluginRootId?: string; pluginSource?: string }
+  ): void;
   (e: "update:isHoveringSidebar", value: boolean): void;
   (e: "openCommandPalette"): void;
 }>();
@@ -163,6 +168,8 @@ function buildPluginSearchItems(searchTerm: string): NavItem[] {
       label: appStore.getPluginDisplayName(plugin.manifest.name),
       icon: plugin.manifest.icon || "extension",
       pluginName: plugin.manifest.name,
+      pluginRootId: plugin.pluginRootId,
+      pluginSource: plugin.pluginSource,
       enabled: plugin.enabled,
     }));
 
@@ -185,6 +192,8 @@ function buildPinnedPluginItems(): NavItem[] {
       label: appStore.getPluginDisplayName(plugin.manifest.name),
       icon: plugin.manifest.icon || "extension",
       pluginName: plugin.manifest.name,
+      pluginRootId: plugin.pluginRootId,
+      pluginSource: plugin.pluginSource,
       enabled: plugin.enabled,
     })),
   ];
@@ -194,12 +203,16 @@ function appendPinnedPluginItems(items: readonly NavItem[]): NavItem[] {
   return [...items, ...buildPinnedPluginItems()];
 }
 
-function navigateTo(target: string | undefined, pluginName?: string) {
+function navigateTo(
+  target: string | undefined,
+  pluginName?: string,
+  targetCriteria?: { pluginRootId?: string; pluginSource?: string }
+) {
   if (!target) {
     return;
   }
 
-  emit("navigateTo", target, pluginName);
+  emit("navigateTo", target, pluginName, targetCriteria);
 }
 
 function isActiveRoute(target: string | undefined, pluginName?: string): boolean {

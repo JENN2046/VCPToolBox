@@ -4,6 +4,7 @@ import { pluginApi } from '@/api'
 import { askConfirm, askInput } from '@/platform/feedback/feedbackBus'
 import { useAppStore } from '@/stores/app'
 import type { PluginInfo, PluginInvocationCommand } from '@/types/api.plugin'
+import type { PluginTargetCriteria } from '@/api/plugin'
 import { 
   parseEnvToList, 
   serializeEnvAssignment, 
@@ -23,6 +24,11 @@ export interface ConfigEntry {
 }
 
 export type InvocationCommand = PluginInvocationCommand
+
+interface LoadPluginConfigOptions {
+  forceRefresh?: boolean
+  targetCriteria?: PluginTargetCriteria
+}
 
 export const usePluginConfigStore = defineStore('plugin-config', () => {
   const appStore = useAppStore()
@@ -99,6 +105,22 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
 
   function getCommandIdentifier(cmd: InvocationCommand): string {
     return cmd.commandIdentifier || cmd.command || ''
+  }
+
+  function getLoadedPluginTargetCriteria(): PluginTargetCriteria | undefined {
+    if (!pluginData.value) {
+      return undefined
+    }
+
+    const { pluginRootId, pluginSource } = pluginData.value
+    if (!pluginRootId && !pluginSource) {
+      return undefined
+    }
+
+    return {
+      pluginRootId,
+      pluginSource
+    }
   }
 
   function normalizeSchemaType(type: string): ConfigEntry['type'] {
@@ -196,7 +218,30 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
     showMessage(`已添加自定义配置项 "${normalizedKey}"`, 'success')
   }
 
-  async function loadPluginConfig(pluginName: string, options: { forceRefresh?: boolean } = {}) {
+  function matchesPluginTargetCriteria(
+    plugin: PluginInfo,
+    targetCriteria?: PluginTargetCriteria
+  ): boolean {
+    if (!targetCriteria?.pluginRootId && !targetCriteria?.pluginSource) {
+      return true
+    }
+
+    if (targetCriteria.pluginRootId && plugin.pluginRootId !== targetCriteria.pluginRootId) {
+      return false
+    }
+
+    if (targetCriteria.pluginSource && plugin.pluginSource !== targetCriteria.pluginSource) {
+      return false
+    }
+
+    return true
+  }
+
+  function hasPluginTargetCriteria(targetCriteria?: PluginTargetCriteria): boolean {
+    return Boolean(targetCriteria?.pluginRootId || targetCriteria?.pluginSource)
+  }
+
+  async function loadPluginConfig(pluginName: string, options: LoadPluginConfigOptions = {}) {
     clearTransientUiState()
     pluginData.value = null
     configEntries.value = []
@@ -205,11 +250,17 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
       const plugins = options.forceRefresh
         ? await appStore.refreshPlugins()
         : await appStore.ensurePluginsLoaded()
-      const plugin = plugins.find((item) => item.manifest.name === pluginName || item.name === pluginName)
+      const matchingPlugins = plugins.filter((item) => item.manifest.name === pluginName || item.name === pluginName)
+      const plugin = hasPluginTargetCriteria(options.targetCriteria)
+        ? matchingPlugins.find((item) => matchesPluginTargetCriteria(item, options.targetCriteria))
+        : matchingPlugins[0]
 
       if (!plugin) {
         pluginData.value = null
         configEntries.value = []
+        if (hasPluginTargetCriteria(options.targetCriteria)) {
+          showMessage('未找到匹配目标的插件配置。请从插件列表重新选择明确目标。', 'error')
+        }
         return
       }
 
@@ -255,8 +306,9 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
         identifier,
         commandDescriptions[identifier] || '',
         {
-        loadingKey: 'plugin-config.command-description.save'
-        }
+          loadingKey: 'plugin-config.command-description.save'
+        },
+        getLoadedPluginTargetCriteria()
       )
 
       commandStatuses[identifier] = {
@@ -299,9 +351,12 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
     try {
       const result = await pluginApi.togglePlugin(pluginName, enable, {
         loadingKey: 'plugin-config.toggle'
-      })
+      }, getLoadedPluginTargetCriteria())
       showMessage(result.message || `${action}插件成功`, 'success')
-      await loadPluginConfig(pluginName, { forceRefresh: true })
+      await loadPluginConfig(pluginName, {
+        forceRefresh: true,
+        targetCriteria: getLoadedPluginTargetCriteria()
+      })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       showMessage(`${action}插件失败：${errorMessage}`, 'error')
@@ -355,11 +410,14 @@ export const usePluginConfigStore = defineStore('plugin-config', () => {
     try {
       await pluginApi.savePluginConfig(pluginName, configString, {
         loadingKey: 'plugin-config.save'
-      })
+      }, getLoadedPluginTargetCriteria())
       statusMessage.value = '插件配置已保存！'
       statusType.value = 'success'
       showMessage('插件配置已保存！', 'success')
-      await loadPluginConfig(pluginName, { forceRefresh: true })
+      await loadPluginConfig(pluginName, {
+        forceRefresh: true,
+        targetCriteria: getLoadedPluginTargetCriteria()
+      })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       statusMessage.value = `保存失败：${errorMessage}`

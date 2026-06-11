@@ -257,6 +257,10 @@ type TextareaValue = string | number | readonly string[] | null
 
 const route = useRoute()
 const pluginName = computed(() => route.params.pluginName as string)
+const pluginTargetCriteria = computed(() => ({
+  pluginRootId: typeof route.query.pluginRootId === 'string' ? route.query.pluginRootId : undefined,
+  pluginSource: typeof route.query.pluginSource === 'string' ? route.query.pluginSource : undefined
+}))
 const pluginConfigStore = usePluginConfigStore()
 const {
   pluginData,
@@ -301,9 +305,15 @@ async function savePluginConfig() {
 }
 
 watch(
-  () => pluginName.value,
+  () => [
+    pluginName.value,
+    pluginTargetCriteria.value.pluginRootId,
+    pluginTargetCriteria.value.pluginSource
+  ],
   () => {
-    pluginConfigStore.loadPluginConfig(pluginName.value)
+    pluginConfigStore.loadPluginConfig(pluginName.value, {
+      targetCriteria: pluginTargetCriteria.value
+    })
   },
   { immediate: true }
 )

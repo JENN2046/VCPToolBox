@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
@@ -10,6 +11,13 @@ const {
 
 function makeProjectRoot() {
     return path.join(os.tmpdir(), 'vcp-external-plugin-allow-policy');
+}
+
+function makeEvaluationOptions(projectRoot) {
+    return {
+        projectRoot,
+        realpathSync: value => path.resolve(value)
+    };
 }
 
 function makeExternalClassification(overrides = {}) {
@@ -117,13 +125,13 @@ test('allow policy evaluation allows external plugin only when name and source d
         basePath: path.join(sourceDirectory, 'ExternalEcho')
     });
     const policy = parseExternalPluginAllowPolicy(`ExternalEcho@${sourceDirectory}`, { projectRoot });
-    const result = evaluateExternalPluginAllowPolicy(classification, policy, { projectRoot });
+    const result = evaluateExternalPluginAllowPolicy(classification, policy, makeEvaluationOptions(projectRoot));
 
     assert.equal(result.decision, 'would_allow');
-    assert.deepEqual(result.matchedPolicy, {
-        pluginName: 'ExternalEcho',
-        normalizedSourceDirectory: path.resolve(projectRoot, sourceDirectory)
-    });
+    assert.equal(result.baseRealPath, path.resolve(projectRoot, classification.basePath));
+    assert.equal(result.matchedPolicy.pluginName, 'ExternalEcho');
+    assert.equal(result.matchedPolicy.normalizedSourceDirectory, path.resolve(projectRoot, sourceDirectory));
+    assert.equal(result.matchedPolicy.realSourceDirectory, path.resolve(projectRoot, sourceDirectory));
     assert.match(result.reasons.join('\n'), /matched explicit name and source directory/);
 });
 
@@ -139,7 +147,7 @@ test('allow policy evaluation keeps invalid policy evidence when a valid entry m
             basePath: path.join(sourceDirectory, 'ExternalEcho')
         }),
         policy,
-        { projectRoot }
+        makeEvaluationOptions(projectRoot)
     );
 
     assert.equal(result.decision, 'would_allow');
@@ -158,11 +166,12 @@ test('allow policy evaluation accepts policy objects with sourceDirectory fallba
             entries: [{ pluginName: 'ExternalEcho', sourceDirectory }],
             errors: []
         },
-        { projectRoot }
+        makeEvaluationOptions(projectRoot)
     );
 
     assert.equal(result.decision, 'would_allow');
     assert.equal(result.matchedPolicy.normalizedSourceDirectory, sourceDirectory);
+    assert.equal(result.matchedPolicy.realSourceDirectory, sourceDirectory);
 });
 
 test('allow policy evaluation blocks same-name external plugin when policy source is a filesystem root', () => {
@@ -172,7 +181,7 @@ test('allow policy evaluation blocks same-name external plugin when policy sourc
             basePath: path.join(projectRoot, 'reviewed-plugins', 'ExternalEcho')
         }),
         `ExternalEcho@${path.parse(projectRoot).root}`,
-        { projectRoot }
+        makeEvaluationOptions(projectRoot)
     );
 
     assert.equal(result.decision, 'would_block');
@@ -191,12 +200,12 @@ test('allow policy evaluation blocks broad source directories in policy objects'
             entries: [{ pluginName: 'ExternalEcho', sourceDirectory: path.parse(projectRoot).root }],
             errors: []
         },
-        { projectRoot }
+        makeEvaluationOptions(projectRoot)
     );
 
     assert.equal(result.decision, 'would_block');
     assert.equal(result.matchedPolicy, null);
-    assert.match(result.reasons.join('\n'), /broad source directory entries/);
+    assert.match(result.reasons.join('\n'), /broad .*source directory entries/);
     assert.match(result.reasons.join('\n'), /source directory did not match/);
 });
 
@@ -209,7 +218,7 @@ test('allow policy evaluation blocks same plugin name from a different source di
             basePath: path.join(unreviewedSource, 'ExternalEcho')
         }),
         `ExternalEcho@${reviewedSource}`,
-        { projectRoot }
+        makeEvaluationOptions(projectRoot)
     );
 
     assert.equal(result.decision, 'would_block');
@@ -223,7 +232,7 @@ test('allow policy evaluation blocks external plugin when no matching name exist
     const result = evaluateExternalPluginAllowPolicy(
         makeExternalClassification(),
         `ExternalSearch@${sourceDirectory}`,
-        { projectRoot }
+        makeEvaluationOptions(projectRoot)
     );
 
     assert.equal(result.decision, 'would_block');
@@ -233,7 +242,8 @@ test('allow policy evaluation blocks external plugin when no matching name exist
 test('allow policy evaluation preserves invalid policy errors without allowing by name alone', () => {
     const result = evaluateExternalPluginAllowPolicy(
         makeExternalClassification(),
-        'ExternalEcho'
+        'ExternalEcho',
+        makeEvaluationOptions(makeProjectRoot())
     );
 
     assert.equal(result.decision, 'would_block');
@@ -253,7 +263,7 @@ test('allow policy evaluation does not mutate inputs or leak plugin config value
     const policy = parseExternalPluginAllowPolicy(`ExternalEcho@${sourceDirectory}`, { projectRoot });
     const beforeClassification = JSON.stringify(classification);
     const beforePolicy = JSON.stringify(policy);
-    const result = evaluateExternalPluginAllowPolicy(classification, policy, { projectRoot });
+    const result = evaluateExternalPluginAllowPolicy(classification, policy, makeEvaluationOptions(projectRoot));
     const serialized = JSON.stringify(result);
 
     assert.equal(result.decision, 'would_allow');
@@ -261,4 +271,64 @@ test('allow policy evaluation does not mutate inputs or leak plugin config value
     assert.equal(JSON.stringify(policy), beforePolicy);
     assert.equal(serialized.includes('SECRET_VALUE_SHOULD_NOT_APPEAR'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(result, 'pluginSpecificEnvConfig'), false);
+});
+
+test('allow policy evaluation uses fresh realpath and blocks symlink escape from reviewed source', (t) => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-external-policy-realpath-'));
+    t.after(() => {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    });
+
+    const reviewedSource = path.join(projectRoot, 'reviewed-plugins');
+    const unreviewedSource = path.join(projectRoot, 'unreviewed-plugins');
+    const escapedLink = path.join(reviewedSource, 'linked-outside');
+    const escapedPluginPath = path.join(escapedLink, 'ExternalEcho');
+
+    fs.mkdirSync(path.join(unreviewedSource, 'ExternalEcho'), { recursive: true });
+    fs.mkdirSync(reviewedSource, { recursive: true });
+    try {
+        fs.symlinkSync(unreviewedSource, escapedLink, 'junction');
+    } catch (error) {
+        t.skip(`symlink unavailable on this filesystem: ${error.code || error.message}`);
+        return;
+    }
+
+    const policy = parseExternalPluginAllowPolicy(`ExternalEcho@${reviewedSource}`, { projectRoot });
+    const result = evaluateExternalPluginAllowPolicy(
+        makeExternalClassification({
+            basePath: escapedPluginPath
+        }),
+        policy,
+        { projectRoot }
+    );
+
+    assert.equal(result.decision, 'would_block');
+    assert.equal(result.matchedPolicy, null);
+    assert.equal(result.baseRealPath, fs.realpathSync(escapedPluginPath));
+    assert.match(result.reasons.join('\n'), /source directory did not match/);
+});
+
+test('allow policy evaluation returns matched source and base realpaths', (t) => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-external-policy-match-'));
+    t.after(() => {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    });
+
+    const reviewedSource = path.join(projectRoot, 'reviewed-plugins');
+    const pluginPath = path.join(reviewedSource, 'ExternalEcho');
+    fs.mkdirSync(pluginPath, { recursive: true });
+
+    const policy = parseExternalPluginAllowPolicy(`ExternalEcho@${reviewedSource}`, { projectRoot });
+    const result = evaluateExternalPluginAllowPolicy(
+        makeExternalClassification({
+            basePath: pluginPath
+        }),
+        policy,
+        { projectRoot }
+    );
+
+    assert.equal(result.decision, 'would_allow');
+    assert.equal(result.baseRealPath, fs.realpathSync(pluginPath));
+    assert.equal(result.matchedPolicy.realSourceDirectory, fs.realpathSync(reviewedSource));
+    assert.equal(result.matchedPolicy.normalizedSourceDirectory, path.resolve(projectRoot, reviewedSource));
 });

@@ -42,8 +42,14 @@ test('secretless serum internal POST remains behind bearer auth', () => {
     );
     assert.match(serverSource, /const R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH =\s*\n\s+'\/internal\/ai-image-agents\/execute\/r2r-v2-trial-001-serum-detail-control';/);
     assert.match(serverSource, /const R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH =\s*\n\s+'\/internal\/ai-image-agents\/execute\/r2r-v2-trial-002-lantern-ecommerce-hero';/);
-    assert.match(serverSource, /req\.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH \|\|\s*\n\s*req\.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH/);
-    assert.match(serverSource, /req\.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH/);
+    assert.match(
+        serverSource,
+        /function isSerumBottleSecretlessInternalRoute\(req\) \{\s+return req && req\.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH;\s+\}/
+    );
+    assert.match(
+        serverSource,
+        /function isRuntimeToReviewTrialSecretlessInternalRoute\(req\) \{\s+return req && \(\s+req\.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH \|\|\s+req\.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH\s+\);\s+\}/
+    );
     assert.doesNotMatch(
         serverSource,
         /req\.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH[^;]+req\.method === 'POST'/s
@@ -99,7 +105,11 @@ test('runtime-to-review Trial 002 internal POST reaches route-level secretless a
     );
     assert.match(
         serverSource,
-        /const isAllowedTrial002SecretlessInternalPost =\s+req\.method === 'POST' &&\s+isRuntimeToReviewV2Trial002SecretlessInternalRoute\(req\) &&\s+isLoopbackSocket\(req\);/
+        /const enableAiImageRuntimeToReviewTrialRoutes =\s+process\.env\.ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES === 'true';/
+    );
+    assert.match(
+        serverSource,
+        /const isAllowedTrial002SecretlessInternalPost =\s+enableAiImageRuntimeToReviewTrialRoutes &&\s+req\.method === 'POST' &&/
     );
     assert.match(
         serverSource,
@@ -139,9 +149,17 @@ test('secretless internal route follows ai image agents route flag', () => {
         serverSource,
         /enableSerumBottleSecretlessInternalRoute: enableAiImageAgentsRoute,/
     );
+    assert.match(
+        serverSource,
+        /enableRuntimeToReviewTrialInternalRoutes: enableAiImageRuntimeToReviewTrialRoutes,/
+    );
     assert.match(serverSource, /if \(enableAiImageAgentsRoute\) \{/);
     assert.doesNotMatch(
         serverSource,
         /enableSerumBottleSecretlessInternalRoute: true,/
+    );
+    assert.doesNotMatch(
+        serverSource,
+        /enableRuntimeToReviewTrialInternalRoutes: true,/
     );
 });

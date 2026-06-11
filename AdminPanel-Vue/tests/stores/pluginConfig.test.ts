@@ -110,6 +110,99 @@ describe("plugin config store", () => {
     expect(store.commandDescriptions["calendar.refresh"]).toBe("refresh cmd");
   });
 
+  it("loads the plugin record matching explicit target criteria", async () => {
+    const store = usePluginConfigStore();
+
+    mockGetPlugins.mockResolvedValueOnce([
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "Core Calendar",
+        },
+        enabled: true,
+        pluginRootId: "core:legacy",
+        pluginSource: "core",
+        configEnvContent: "ENABLED=false",
+      },
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "External Calendar",
+        },
+        enabled: true,
+        pluginRootId: "external:0",
+        pluginSource: "external",
+        configEnvContent: "ENABLED=true",
+      },
+    ]);
+
+    mockParseEnvToList.mockReturnValue([
+      {
+        key: "ENABLED",
+        value: "true",
+        isCommentOrEmpty: false,
+        isMultilineQuoted: false,
+      },
+    ]);
+
+    await store.loadPluginConfig("calendar", {
+      targetCriteria: {
+        pluginRootId: "external:0",
+        pluginSource: "external",
+      },
+    });
+
+    expect(store.pluginData?.manifest.displayName).toBe("External Calendar");
+    expect(store.pluginData?.pluginRootId).toBe("external:0");
+    expect(store.pluginData?.pluginSource).toBe("external");
+  });
+
+  it("does not fall back to another duplicate plugin when explicit target criteria miss", async () => {
+    const store = usePluginConfigStore();
+
+    mockGetPlugins.mockResolvedValueOnce([
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "Core Calendar",
+        },
+        enabled: true,
+        pluginRootId: "core:legacy",
+        pluginSource: "core",
+        configEnvContent: "ENABLED=false",
+      },
+      {
+        name: "calendar",
+        manifest: {
+          name: "calendar",
+          displayName: "External Calendar",
+        },
+        enabled: true,
+        pluginRootId: "external:0",
+        pluginSource: "external",
+        configEnvContent: "ENABLED=true",
+      },
+    ]);
+
+    await store.loadPluginConfig("calendar", {
+      targetCriteria: {
+        pluginRootId: "external:missing",
+        pluginSource: "external",
+      },
+    });
+
+    expect(store.pluginData).toBeNull();
+    expect(store.configEntries).toEqual([]);
+    expect(mockParseEnvToList).not.toHaveBeenCalled();
+    expect(mockShowMessage).toHaveBeenCalledWith(
+      "未找到匹配目标的插件配置。请从插件列表重新选择明确目标。",
+      "error"
+    );
+  });
+
   it("saves merged schema and custom config entries", async () => {
     const store = usePluginConfigStore();
 
@@ -127,6 +220,8 @@ describe("plugin config store", () => {
           },
         },
         enabled: true,
+        pluginRootId: "external:0",
+        pluginSource: "external",
         configEnvContent: '# comment\nENABLED=true\nRETRIES=2\nCUSTOM_KEY=abc',
       },
     ];
@@ -179,15 +274,20 @@ describe("plugin config store", () => {
     const saveCall = mockSavePluginConfig.mock.calls[0] as [
       string,
       string,
-      { loadingKey: string }
+      { loadingKey: string },
+      { pluginRootId?: string; pluginSource?: string }
     ];
     expect(saveCall[0]).toBe("calendar");
     expect(saveCall[2]).toEqual({ loadingKey: "plugin-config.save" });
+    expect(saveCall[3]).toEqual({
+      pluginRootId: "external:0",
+      pluginSource: "external",
+    });
     expect(saveCall[1]).toContain("# comment");
     expect(saveCall[1]).toContain("ENABLED=true");
     expect(saveCall[1]).toContain("RETRIES=5");
     expect(saveCall[1]).toContain("TITLE=DefaultTitle");
-    expect(saveCall[1]).toContain('CUSTOM_KEY="overridden \\"quoted\\"\\nnext"');
+    expect(saveCall[1]).toContain('CUSTOM_KEY=\'overridden "quoted"\nnext\'');
     expect(mockShowMessage).toHaveBeenCalledWith("插件配置已保存！", "success");
   });
 });

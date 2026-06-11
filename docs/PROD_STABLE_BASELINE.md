@@ -87,6 +87,7 @@
 - `config.env.example` 中 `CHAT_LOG_ENABLED=false`。
 - AI Image Agent 管理路由必须由 `ENABLE_AI_IMAGE_AGENTS_ROUTE === 'true'` 显式开启。
 - AI Image 真执行必须由 `ENABLE_AI_IMAGE_REAL_EXECUTION === 'true'` 显式开启。
+- AI Image runtime-to-review trial 内部路由必须额外由 `ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES === 'true'` 显式开启，默认关闭。
 - 图像流水线执行必须经过 `AIGENT_PIPELINE_ALLOW_EXECUTION` 安全门。
 - AI Image 管理路由必须保留 dry-run 强制路径。
 - `dws:*` 脚本属于真实/矩阵/校准类脚本，不进入自动 CI，不在基线阶段运行。
