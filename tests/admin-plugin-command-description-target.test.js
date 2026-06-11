@@ -298,6 +298,88 @@ test('duplicate core and external pluginName blocks config writes', async (t) =>
     assertNoAbsolutePathLeak(res.body, [workspace, snapshot.coreLegacyRoot.rootPath, snapshot.externalLegacyRoots[0].rootPath]);
 });
 
+test('core config write creates regular config.env and reloads plugins', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const configPath = path.join(path.dirname(coreManifest), 'config.env');
+
+    const res = await callPluginConfig(pluginManager, {
+        content: 'EXAMPLE=value\n',
+        pluginRootId: 'core:legacy',
+        pluginSource: 'core'
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(fs.readFileSync(configPath, 'utf8'), 'EXAMPLE=value\n');
+    assert.equal(fs.lstatSync(configPath).isFile(), true);
+    assert.equal(pluginManager.loadCount, 1);
+    assert.equal(res.body.pluginRootId, 'core:legacy');
+    assert.equal(res.body.pluginSource, 'core');
+});
+
+test('core config write rejects existing config.env symlink without writing target', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const configPath = path.join(path.dirname(coreManifest), 'config.env');
+    const outsideConfigPath = path.join(workspace, 'outside-config.env');
+    const outsideConfigDir = path.join(workspace, 'outside-config-dir');
+    const outsideMarkerPath = path.join(outsideConfigDir, 'marker.txt');
+    fs.writeFileSync(outsideConfigPath, 'OUTSIDE=old\n', 'utf8');
+
+    try {
+        fs.symlinkSync(outsideConfigPath, configPath);
+    } catch (error) {
+        try {
+            fs.mkdirSync(outsideConfigDir);
+            fs.writeFileSync(outsideMarkerPath, 'OUTSIDE=old\n', 'utf8');
+            fs.symlinkSync(outsideConfigDir, configPath, process.platform === 'win32' ? 'junction' : 'dir');
+        } catch (fallbackError) {
+            t.skip(`symlink unavailable in this environment: ${error.message}; fallback failed: ${fallbackError.message}`);
+            return;
+        }
+    }
+
+    const res = await callPluginConfig(pluginManager, {
+        content: 'EXAMPLE=new\n',
+        pluginRootId: 'core:legacy',
+        pluginSource: 'core'
+    });
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.code, 'config_env_symlink_unsupported');
+    assert.equal(fs.readFileSync(outsideConfigPath, 'utf8'), 'OUTSIDE=old\n');
+    if (fs.existsSync(outsideMarkerPath)) {
+        assert.equal(fs.readFileSync(outsideMarkerPath, 'utf8'), 'OUTSIDE=old\n');
+    }
+    assert.equal(pluginManager.loadCount, 0);
+    assertNoAbsolutePathLeak(res.body, [workspace, outsideConfigPath, outsideConfigDir, snapshot.coreLegacyRoot.rootPath]);
+});
+
+test('core config write rejects existing config.env directory', async (t) => {
+    const workspace = makeTempWorkspace(t);
+    const snapshot = makeSnapshot(workspace);
+    const coreManifest = writeLegacyManifest(snapshot.coreLegacyRoot.rootPath, 'ManagedEcho');
+    const pluginManager = makePluginManager(snapshot);
+    const configPath = path.join(path.dirname(coreManifest), 'config.env');
+    fs.mkdirSync(configPath);
+
+    const res = await callPluginConfig(pluginManager, {
+        content: 'EXAMPLE=value\n',
+        pluginRootId: 'core:legacy',
+        pluginSource: 'core'
+    });
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.code, 'config_env_non_regular_unsupported');
+    assert.equal(fs.lstatSync(configPath).isDirectory(), true);
+    assert.equal(pluginManager.loadCount, 0);
+    assertNoAbsolutePathLeak(res.body, [workspace, snapshot.coreLegacyRoot.rootPath]);
+});
+
 test('duplicate core and external pluginName blocks toggle writes', async (t) => {
     const workspace = makeTempWorkspace(t);
     const snapshot = makeSnapshot(workspace, true);

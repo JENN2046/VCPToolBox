@@ -138,11 +138,84 @@ function isBlankConfigContent(content) {
 
 async function statExistingConfigEnv(configPath) {
     try {
-        return await fs.stat(configPath);
+        const stat = await fs.lstat(configPath);
+        if (stat.isSymbolicLink()) {
+            const error = new Error('config.env symlink targets are not supported.');
+            error.code = 'config_env_symlink_unsupported';
+            throw error;
+        }
+        if (!stat.isFile()) {
+            const error = new Error('config.env target must be a regular file.');
+            error.code = 'config_env_non_regular_unsupported';
+            throw error;
+        }
+        return stat;
     } catch (error) {
         if (error.code === 'ENOENT') return null;
         throw error;
     }
+}
+
+async function assertManagedConfigEnvTarget(configPath, pluginRoot) {
+    if (!await isManagedPathInsideRoot(configPath, pluginRoot)) {
+        const error = new Error('Config target is outside the managed plugin root.');
+        error.code = 'config_target_outside_root';
+        throw error;
+    }
+    return statExistingConfigEnv(configPath);
+}
+
+function createConfigEnvTempPath(configPath) {
+    const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+    return path.join(path.dirname(configPath), `.config.env.${suffix}.tmp`);
+}
+
+async function writeConfigEnvAtomic(configPath, content, pluginRoot) {
+    const tempPath = createConfigEnvTempPath(configPath);
+    let tempWritten = false;
+
+    try {
+        if (!await isManagedPathInsideRoot(tempPath, pluginRoot)) {
+            const error = new Error('Temporary config target is outside the managed plugin root.');
+            error.code = 'config_temp_target_outside_root';
+            throw error;
+        }
+
+        await fs.writeFile(tempPath, content, { encoding: 'utf-8', flag: 'wx' });
+        tempWritten = true;
+
+        const tempStat = await fs.lstat(tempPath);
+        if (tempStat.isSymbolicLink() || !tempStat.isFile()) {
+            const error = new Error('Temporary config target must be a regular file.');
+            error.code = 'config_temp_target_invalid';
+            throw error;
+        }
+
+        await assertManagedConfigEnvTarget(configPath, pluginRoot);
+        await fs.rename(tempPath, configPath);
+        tempWritten = false;
+        await assertManagedConfigEnvTarget(configPath, pluginRoot);
+    } finally {
+        if (tempWritten) {
+            try {
+                await fs.unlink(tempPath);
+            } catch (cleanupError) {
+                if (cleanupError.code !== 'ENOENT') {
+                    console.warn(`[AdminPanelRoutes] Cannot remove temporary config.env file: ${safeErrorDetails(cleanupError)}`);
+                }
+            }
+        }
+    }
+}
+
+function isConfigEnvWriteSafetyError(error) {
+    return Boolean(error && [
+        'config_target_outside_root',
+        'config_env_symlink_unsupported',
+        'config_env_non_regular_unsupported',
+        'config_temp_target_outside_root',
+        'config_temp_target_invalid'
+    ].includes(error.code));
 }
 
 function safeErrorDetails(error) {
@@ -678,13 +751,18 @@ module.exports = function(options) {
             await assertManagedManifestRecord(target);
 
             const configPath = path.join(target.pluginPath, 'config.env');
-            if (!await isManagedPathInsideRoot(configPath, target.pluginRoot)) {
-                return res.status(403).json({
-                    error: 'Config target is outside the managed plugin root.',
-                    code: 'config_target_outside_root'
-                });
+            let existingConfigStat;
+            try {
+                existingConfigStat = await assertManagedConfigEnvTarget(configPath, target.pluginRoot);
+            } catch (configTargetError) {
+                if (isConfigEnvWriteSafetyError(configTargetError)) {
+                    return res.status(403).json({
+                        error: 'Managed plugin config target rejected.',
+                        code: configTargetError.code || 'config_target_rejected'
+                    });
+                }
+                throw configTargetError;
             }
-            const existingConfigStat = await statExistingConfigEnv(configPath);
             if (
                 existingConfigStat
                 && existingConfigStat.size > 0
@@ -698,7 +776,17 @@ module.exports = function(options) {
                 });
             }
 
-            await fs.writeFile(configPath, content, 'utf-8');
+            try {
+                await writeConfigEnvAtomic(configPath, content, target.pluginRoot);
+            } catch (configWriteError) {
+                if (isConfigEnvWriteSafetyError(configWriteError)) {
+                    return res.status(403).json({
+                        error: 'Managed plugin config target rejected.',
+                        code: configWriteError.code || 'config_target_rejected'
+                    });
+                }
+                throw configWriteError;
+            }
             await pluginManager.loadPlugins();
             res.json({
                 message: `插件 ${pluginName} 的配置已保存并已重新加载。`,
