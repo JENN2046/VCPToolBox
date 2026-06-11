@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 
 function normalizeString(value) {
@@ -147,10 +148,11 @@ function normalizePolicy(policy, options = {}) {
 }
 
 function normalizeComparablePath(value, options = {}) {
-    const normalized = normalizePath(value, options.projectRoot);
-    if (!normalized) {
+    const pathValue = normalizeString(value);
+    if (!pathValue) {
         return null;
     }
+    const normalized = path.resolve(pathValue);
     return (options.platform || process.platform) === 'win32'
         ? normalized.toLowerCase()
         : normalized;
@@ -172,17 +174,34 @@ function isPathInsideOrEqual(sourceDirectory, candidatePath, options = {}) {
         && !path.isAbsolute(relativePath);
 }
 
+function resolveFreshRealPath(value, options = {}) {
+    const normalized = normalizePath(value, options.projectRoot);
+    if (!normalized) {
+        return null;
+    }
+
+    const realpathSync = typeof options.realpathSync === 'function'
+        ? options.realpathSync
+        : (fs.realpathSync.native || fs.realpathSync);
+    try {
+        return path.resolve(realpathSync(normalized));
+    } catch {
+        return null;
+    }
+}
+
 function getEntrySourceDirectory(entry) {
     return entry?.normalizedSourceDirectory || entry?.sourceDirectory;
 }
 
-function makeMatchedPolicy(entry, options = {}) {
+function makeMatchedPolicy(entry, options = {}, realSourceDirectory = null) {
     if (!entry) {
         return null;
     }
     return {
         pluginName: entry.pluginName,
-        normalizedSourceDirectory: normalizePath(getEntrySourceDirectory(entry), options.projectRoot)
+        normalizedSourceDirectory: normalizePath(getEntrySourceDirectory(entry), options.projectRoot),
+        realSourceDirectory: realSourceDirectory || resolveFreshRealPath(getEntrySourceDirectory(entry), options)
     };
 }
 
@@ -190,6 +209,7 @@ function evaluateExternalPluginAllowPolicy(classification = {}, policy, options 
     const parsedPolicy = normalizePolicy(policy, options);
     const pluginName = normalizeString(classification.pluginName || classification.name);
     const basePath = normalizePath(classification.basePath, options.projectRoot);
+    const baseRealPath = resolveFreshRealPath(classification.basePath, options);
     const isExternal = classification.isExternal === true || classification.pluginSource === 'external';
     const reasons = [];
 
@@ -197,6 +217,7 @@ function evaluateExternalPluginAllowPolicy(classification = {}, policy, options 
         return {
             pluginName: pluginName || 'unknown',
             basePath,
+            baseRealPath,
             decision: 'observe',
             matchedPolicy: null,
             reasons: ['non-external plugin does not require external allow policy']
@@ -208,31 +229,38 @@ function evaluateExternalPluginAllowPolicy(classification = {}, policy, options 
     }
     if (!basePath) {
         reasons.push('external plugin is missing a base path');
+    } else if (!baseRealPath) {
+        reasons.push('external plugin base path realpath is unavailable');
     }
     if (parsedPolicy.errors.length > 0) {
         reasons.push('external plugin allow policy contains invalid entries');
     }
 
-    if (pluginName && pluginName !== 'unknown' && basePath) {
+    if (pluginName && pluginName !== 'unknown' && basePath && baseRealPath) {
         const sameNameEntries = parsedPolicy.entries.filter((entry) => entry.pluginName === pluginName);
-        const scopedSameNameEntries = sameNameEntries.filter((entry) => (
-            !isBroadSourceDirectory(getEntrySourceDirectory(entry), options)
-        ));
+        const scopedSameNameEntries = sameNameEntries
+            .filter((entry) => !isBroadSourceDirectory(getEntrySourceDirectory(entry), options))
+            .map((entry) => ({
+                entry,
+                realSourceDirectory: resolveFreshRealPath(getEntrySourceDirectory(entry), options)
+            }))
+            .filter((item) => item.realSourceDirectory);
 
         if (sameNameEntries.length > scopedSameNameEntries.length) {
-            reasons.push('external plugin allow policy contains broad source directory entries');
+            reasons.push('external plugin allow policy contains broad or unresolved source directory entries');
         }
 
-        const matchedEntry = scopedSameNameEntries.find((entry) => (
-            isPathInsideOrEqual(getEntrySourceDirectory(entry), basePath, options)
+        const matchedEntry = scopedSameNameEntries.find((item) => (
+            isPathInsideOrEqual(item.realSourceDirectory, baseRealPath, options)
         ));
 
         if (matchedEntry) {
             return {
                 pluginName,
                 basePath,
+                baseRealPath,
                 decision: 'would_allow',
-                matchedPolicy: makeMatchedPolicy(matchedEntry, options),
+                matchedPolicy: makeMatchedPolicy(matchedEntry.entry, options, matchedEntry.realSourceDirectory),
                 reasons: [
                     'external plugin matched explicit name and source directory policy',
                     ...reasons
@@ -250,6 +278,7 @@ function evaluateExternalPluginAllowPolicy(classification = {}, policy, options 
     return {
         pluginName: pluginName || 'unknown',
         basePath,
+        baseRealPath,
         decision: 'would_block',
         matchedPolicy: null,
         reasons
