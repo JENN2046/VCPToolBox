@@ -742,10 +742,7 @@ class PluginManager extends EventEmitter {
     }
 
     _sanitizeExternalRuntimeRootId(rootId) {
-        if (typeof rootId === 'string' && rootId.startsWith('external:')) {
-            return rootId.split(':').slice(0, 2).join(':');
-        }
-        return 'external:unknown';
+        return this._sanitizeExternalRootIdForLog(rootId);
     }
 
     _sanitizeExternalRuntimeDisplayPath(displayPath) {
@@ -852,10 +849,35 @@ class PluginManager extends EventEmitter {
         if (typeof rootId !== 'string' || !rootId.trim()) {
             return safeSource === 'external' ? 'external:unknown' : `${safeSource}:unknown`;
         }
-        if (rootId.startsWith('external:')) return rootId.split(':').slice(0, 2).join(':');
+        if (rootId.startsWith('external:')) return this._sanitizeExternalRootIdForLog(rootId);
         if (rootId.startsWith('core:')) return rootId;
         if (rootId.startsWith('distributed:')) return rootId;
         return `${safeSource}:unknown`;
+    }
+
+    _sanitizeExternalRootIdForLog(rootId) {
+        if (typeof rootId !== 'string') return 'external:unknown';
+
+        const trimmed = rootId.trim();
+        if (!trimmed.startsWith('external:')) return 'external:unknown';
+
+        const value = trimmed.slice('external:'.length).trim();
+        if (!value) return 'external:unknown';
+
+        if (
+            value.includes('/') ||
+            value.includes('\\') ||
+            path.isAbsolute(value) ||
+            path.win32.isAbsolute(value)
+        ) {
+            return 'external:path';
+        }
+
+        if (!/^[A-Za-z0-9_.-]+$/.test(value)) {
+            return 'external:opaque';
+        }
+
+        return `external:${value}`;
     }
 
     _buildRuntimeDuplicateDescriptor(manifest) {

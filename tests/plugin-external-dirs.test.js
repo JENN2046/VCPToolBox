@@ -174,6 +174,38 @@ test('PluginManager duplicate runtime warning is path-safe and includes root ide
     }
 });
 
+test('PluginManager duplicate runtime warning redacts POSIX path-style external root ids', () => {
+    const originalWarn = console.warn;
+    const warnings = [];
+
+    console.warn = (...args) => warnings.push(args.map(String).join(' '));
+
+    try {
+        pluginManager._warnDuplicateLocalPluginSkipped(
+            {
+                name: 'SharedLegacyPlugin',
+                pluginSource: 'external',
+                pluginRootId: 'external:/tmp/vcp-plugin-dirs-ci/external',
+                pluginRootDisplayPath: '/tmp/vcp-plugin-dirs-ci/external',
+                basePath: '/tmp/vcp-plugin-dirs-ci/external/SharedLegacyPlugin'
+            },
+            {
+                name: 'SharedLegacyPlugin',
+                pluginSource: 'core',
+                pluginRootId: 'core:legacy',
+                pluginRootDisplayPath: 'Plugin',
+                basePath: '/tmp/vcp-plugin-dirs-ci/core/SharedLegacyPlugin'
+            }
+        );
+
+        const logText = warnings.join('\n');
+        assert.match(logText, /skipped external\/external:path/);
+        assert.equal(logText.includes('/tmp/vcp-plugin-dirs-ci'), false);
+    } finally {
+        console.warn = originalWarn;
+    }
+});
+
 test('PluginManager discovers duplicate legacy plugin manifests in resolver order', async () => {
     const root = makeTempDir();
     const coreRoot = path.join(root, 'core');
