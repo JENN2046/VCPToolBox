@@ -962,7 +962,8 @@ const largeAuthenticatedJsonBodyPaths = [
     '/v1/chat/completions',
     '/v1/chatvcp/completions',
     '/v1/embeddings',
-    '/v1/responses'
+    '/v1/responses',
+    '/admin_api/multimodal-cache/reidentify'
 ];
 
 for (const routePath of largeAuthenticatedJsonBodyPaths) {

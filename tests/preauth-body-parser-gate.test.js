@@ -42,6 +42,7 @@ test('main server parses request bodies only after admin and bearer auth gates',
     );
     assert.match(source, /const DEFAULT_AUTHENTICATED_BODY_LIMIT = '5mb';/);
     assert.match(source, /const LARGE_AUTHENTICATED_BODY_LIMIT = '300mb';/);
+    assert.match(source, /'\/admin_api\/multimodal-cache\/reidentify'/);
     assert.match(source, /app\.use\(routePath, createAuthenticatedJsonParser\(LARGE_AUTHENTICATED_BODY_LIMIT\)\);/);
 });
 
@@ -52,12 +53,25 @@ test('admin server parses admin api bodies only after adminAuth', () => {
     const preParserSource = source.slice(0, parserIndex);
 
     assertOrdered(source, 'app.use(adminAuth);', parserMarker, 'adminAuth should run before Admin API body parsing');
+    assertOrdered(
+        source,
+        parserMarker,
+        "app.use('/admin_api/multimodal-cache/reidentify', createAuthenticatedJsonParser(LARGE_AUTHENTICATED_BODY_LIMIT));",
+        'large reidentify parser should run only after adminAuth'
+    );
+    assertOrdered(
+        source,
+        "app.use('/admin_api/multimodal-cache/reidentify', createAuthenticatedJsonParser(LARGE_AUTHENTICATED_BODY_LIMIT));",
+        "app.use('/admin_api', createAuthenticatedJsonParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));",
+        'large reidentify parser should run before the default Admin API parser'
+    );
     assert.doesNotMatch(
         preParserSource,
         /app\.use\([^;\n]*express\.(?:json|urlencoded|text)\(/,
         'admin server must not register express body parsers before adminAuth'
     );
     assert.match(source, /const DEFAULT_AUTHENTICATED_BODY_LIMIT = '5mb';/);
+    assert.match(source, /const LARGE_AUTHENTICATED_BODY_LIMIT = '300mb';/);
+    assert.match(source, /app\.use\('\/admin_api\/multimodal-cache\/reidentify', createAuthenticatedJsonParser\(LARGE_AUTHENTICATED_BODY_LIMIT\)\);/);
     assert.match(source, /app\.use\('\/admin_api', createAuthenticatedJsonParser\(DEFAULT_AUTHENTICATED_BODY_LIMIT\)\);/);
-    assert.doesNotMatch(source, /limit: '300mb'/, 'admin server should not keep a 300mb body parser');
 });

@@ -51,6 +51,7 @@ app.set('trust proxy', true);
 app.use(cors({ origin: '*' }));
 
 const DEFAULT_AUTHENTICATED_BODY_LIMIT = '5mb';
+const LARGE_AUTHENTICATED_BODY_LIMIT = '300mb';
 
 function createAuthenticatedJsonParser(limit = DEFAULT_AUTHENTICATED_BODY_LIMIT) {
     return express.json({ limit });
@@ -201,6 +202,7 @@ const adminAuth = (req, res, next) => {
 
 app.use(adminAuth);
 // Parse Admin API bodies only after adminAuth has accepted the request.
+app.use('/admin_api/multimodal-cache/reidentify', createAuthenticatedJsonParser(LARGE_AUTHENTICATED_BODY_LIMIT));
 app.use('/admin_api', createAuthenticatedJsonParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
 app.use('/admin_api', createAuthenticatedUrlencodedParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
 app.use('/admin_api', createAuthenticatedTextParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
