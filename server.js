@@ -678,7 +678,14 @@ function getPluginCallbackHostName(req) {
     return host.split(':')[0];
 }
 
+function isUnsignedLoopbackPluginCallbackCompatibilityEnabled() {
+    return String(process.env.VCP_ALLOW_UNSIGNED_LOOPBACK_PLUGIN_CALLBACKS || '').toLowerCase() === 'true';
+}
+
 function isUnsignedLoopbackPluginCallbackAllowed(req) {
+    if (!isUnsignedLoopbackPluginCallbackCompatibilityEnabled()) {
+        return false;
+    }
     const hostName = getPluginCallbackHostName(req);
     const isLocalHost =
         hostName === 'localhost' ||

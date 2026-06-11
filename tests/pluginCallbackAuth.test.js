@@ -241,7 +241,10 @@ test('server gates plugin callbacks before authenticated body parsers', () => {
     );
     const nonceReplayGuardIndex = serverSource.indexOf('function consumePluginCallbackNonce');
     const authSecretsFunctionIndex = serverSource.indexOf('function getPluginCallbackAuthSecrets');
+    const loopbackCompatibilityFlagIndex = serverSource.indexOf('function isUnsignedLoopbackPluginCallbackCompatibilityEnabled');
+    const loopbackCompatibilityEnvIndex = serverSource.indexOf('VCP_ALLOW_UNSIGNED_LOOPBACK_PLUGIN_CALLBACKS');
     const loopbackCompatibilityFunctionIndex = serverSource.indexOf('function isUnsignedLoopbackPluginCallbackAllowed');
+    const loopbackCompatibilityFlagCheckIndex = serverSource.indexOf('if (!isUnsignedLoopbackPluginCallbackCompatibilityEnabled())');
     const authFunctionIndex = serverSource.indexOf('function authorizePluginCallbackRequest');
     const loopbackCompatibilityCheckIndex = serverSource.indexOf('if (isUnsignedLoopbackPluginCallbackAllowed(req))');
     const verificationIndex = serverSource.indexOf('verification = verifyPluginCallbackRequest(req, { secret });');
@@ -253,7 +256,10 @@ test('server gates plugin callbacks before authenticated body parsers', () => {
     assert.notEqual(callbackRouteIndex, -1);
     assert.notEqual(nonceReplayGuardIndex, -1);
     assert.notEqual(authSecretsFunctionIndex, -1);
+    assert.notEqual(loopbackCompatibilityFlagIndex, -1);
+    assert.notEqual(loopbackCompatibilityEnvIndex, -1);
     assert.notEqual(loopbackCompatibilityFunctionIndex, -1);
+    assert.notEqual(loopbackCompatibilityFlagCheckIndex, -1);
     assert.notEqual(authFunctionIndex, -1);
     assert.notEqual(loopbackCompatibilityCheckIndex, -1);
     assert.notEqual(verificationIndex, -1);
@@ -261,7 +267,9 @@ test('server gates plugin callbacks before authenticated body parsers', () => {
     assert.notEqual(proxyHeaderGuardIndex, -1);
     assert.equal(serverSource.includes('isTrustedLocalPluginCallbackRequest'), false);
     assert.ok(authSecretsFunctionIndex < authFunctionIndex);
+    assert.ok(loopbackCompatibilityFlagIndex < loopbackCompatibilityFunctionIndex);
     assert.ok(loopbackCompatibilityFunctionIndex < authFunctionIndex);
+    assert.ok(loopbackCompatibilityFunctionIndex < loopbackCompatibilityFlagCheckIndex);
     assert.ok(authFunctionIndex < loopbackCompatibilityCheckIndex);
     assert.ok(loopbackCompatibilityCheckIndex < verificationIndex);
     assert.ok(authFunctionIndex < verificationIndex);
