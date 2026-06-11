@@ -377,14 +377,23 @@ function resolveLifecycleScriptApproval(body = {}) {
 }
 
 function isDirectDownloadUrlInstallRequest(body = {}) {
-    return Boolean(
-        body.downloadUrl &&
-        !body.githubUrl &&
-        !(body.sourceId && body.pluginName)
-    );
+    return Boolean(body.downloadUrl);
+}
+
+function isMixedDownloadUrlInstallRequest(body = {}) {
+    return Boolean(body.downloadUrl && (body.githubUrl || body.sourceId || body.pluginName));
 }
 
 function resolveDirectDownloadUrlInstallPolicy(body = {}, env = process.env) {
+    if (isMixedDownloadUrlInstallRequest(body)) {
+        return {
+            ok: false,
+            status: 400,
+            code: 'plugin_store_download_url_mixed_target_unsupported',
+            error: 'downloadUrl installs must not be mixed with sourceId/pluginName or githubUrl targets',
+        };
+    }
+
     if (!isDirectDownloadUrlInstallRequest(body)) {
         return { ok: true };
     }

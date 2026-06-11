@@ -181,14 +181,15 @@ test('resolveLifecycleScriptApproval requires second confirmation for lifecycle 
 });
 
 test('resolveDirectDownloadUrlInstallPolicy disables direct downloadUrl installs by default', () => {
-    assert.deepEqual(
-        resolveDirectDownloadUrlInstallPolicy({ sourceId: 'official', pluginName: 'Demo', downloadUrl: 'https://example.test/demo.zip' }, {}),
-        { ok: true }
-    );
-    assert.deepEqual(
-        resolveDirectDownloadUrlInstallPolicy({ githubUrl: 'https://github.com/acme/demo', downloadUrl: 'https://example.test/demo.zip' }, {}),
-        { ok: true }
-    );
+    for (const body of [
+        { sourceId: 'official', pluginName: 'Demo', downloadUrl: 'https://example.test/demo.zip' },
+        { githubUrl: 'https://github.com/acme/demo', downloadUrl: 'https://example.test/demo.zip' },
+    ]) {
+        const mixed = resolveDirectDownloadUrlInstallPolicy(body, {});
+        assert.equal(mixed.ok, false);
+        assert.equal(mixed.status, 400);
+        assert.equal(mixed.code, 'plugin_store_download_url_mixed_target_unsupported');
+    }
 
     const denied = resolveDirectDownloadUrlInstallPolicy({ downloadUrl: 'https://example.test/demo.zip' }, {});
     assert.equal(denied.ok, false);

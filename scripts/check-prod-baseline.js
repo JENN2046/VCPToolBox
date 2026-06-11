@@ -317,6 +317,7 @@ requiredChecks.push({
     && pluginStoreRoute.includes('allowLifecycleScripts')
     && pluginStoreRoute.includes('lifecycleScriptsConfirmation')
     && pluginStoreRoute.includes('NPM_LIFECYCLE_SCRIPT_CONFIRMATION')
+    && pluginStoreRoute.includes('plugin_store_download_url_mixed_target_unsupported')
     && pluginStoreInstallTests.includes("['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund']")
     && pluginStoreInstallTests.includes('resolveLifecycleScriptApproval')
     && pluginStoreInstallTests.includes('plugin_store_direct_download_url_disabled'),
