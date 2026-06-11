@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const {
     buildLocalPluginCallbackBaseUrl,
+    createSignedPluginCallbackUrl,
     hasPluginCallbackProxyHeaders,
     signPluginCallback,
     verifyPluginCallbackAuth,
@@ -46,6 +47,31 @@ test('plugin callback helper builds loopback callback base only for numeric port
     );
     assert.equal(buildLocalPluginCallbackBaseUrl(''), '');
     assert.equal(buildLocalPluginCallbackBaseUrl('5890/path'), '');
+});
+
+test('plugin callback helper signs generated callback URLs', () => {
+    const callbackUrl = createSignedPluginCallbackUrl({
+        baseUrl: 'https://callback.example.test/plugin-callback',
+        pluginName: 'Wan2.1VideoGen',
+        taskId: 'video-1',
+        secret: 'callback-secret',
+        expiresAt: 61_000,
+        nonce: 'nonce-1'
+    });
+    const parsed = new URL(callbackUrl);
+
+    assert.equal(parsed.origin + parsed.pathname, 'https://callback.example.test/plugin-callback/Wan2.1VideoGen/video-1');
+    assert.equal(parsed.searchParams.get('vcp_cb_expires'), '61000');
+    assert.equal(parsed.searchParams.get('vcp_cb_nonce'), 'nonce-1');
+    assert.equal(verifyPluginCallbackAuth({
+        secret: 'callback-secret',
+        pluginName: 'Wan2.1VideoGen',
+        taskId: 'video-1',
+        expiresAt: parsed.searchParams.get('vcp_cb_expires'),
+        nonce: parsed.searchParams.get('vcp_cb_nonce'),
+        signature: parsed.searchParams.get('vcp_cb_sig'),
+        now: 1_000
+    }).ok, true);
 });
 
 test('plugin callback auth rejects missing, expired, and tampered signatures', () => {

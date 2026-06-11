@@ -3,15 +3,18 @@ import json
 import os
 import requests
 import base64
+import hashlib
+import hmac
 import time
 import random
+import secrets
 import threading
 from io import BytesIO
 from PIL import Image
 from dotenv import load_dotenv
 from datetime import datetime
 import traceback
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.request import url2pathname
 
 # --- 自定义异常 ---
@@ -29,6 +32,29 @@ SUPPORTED_RESOLUTIONS_MAP = {
 }
 SILICONFLOW_API_BASE = "https://api.siliconflow.cn/v1"
 PLUGIN_NAME_FOR_CALLBACK = "Wan2.1VideoGen"
+
+def build_plugin_callback_url(callback_base_url, plugin_name, request_id, auth_secret=None):
+    base = str(callback_base_url or "").rstrip("/")
+    plugin = str(plugin_name or "")
+    task_id = str(request_id or "")
+    if "/plugin-callback/" in base or base.endswith("/plugin-callback"):
+        callback_url = f"{base}/{plugin}/{task_id}"
+    else:
+        callback_url = f"{base}/plugin-callback/{plugin}/{task_id}"
+
+    if not auth_secret:
+        return callback_url
+
+    expires_at = str(int(time.time() * 1000) + 5 * 60 * 1000)
+    nonce = secrets.token_hex(12)
+    payload = "\n".join([plugin, task_id, expires_at, nonce])
+    signature = hmac.new(
+        str(auth_secret).encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    separator = "&" if "?" in callback_url else "?"
+    return f"{callback_url}{separator}{urlencode({'vcp_cb_expires': expires_at, 'vcp_cb_nonce': nonce, 'vcp_cb_sig': signature})}"
 
 # --- 日志记录 ---
 def log_event(level, message, data=None):
@@ -211,7 +237,7 @@ def download_video(video_url, request_id):
         return None
 
 # --- 后台轮询与回调 ---
-def poll_and_callback(api_key, request_id, callback_base_url, plugin_name, debug_mode):
+def poll_and_callback(api_key, request_id, callback_base_url, plugin_name, debug_mode, auth_secret=None):
     log_event("info", f"[{request_id}] Entering poll_and_callback function.", {
         "request_id": request_id,
         "callback_base_url": callback_base_url,
@@ -238,7 +264,7 @@ def poll_and_callback(api_key, request_id, callback_base_url, plugin_name, debug
 
             if current_status in ["Succeed", "Failed"]:
                 log_event("info", f"[{request_id}] Final status '{current_status}' received. Attempting callback.")
-                callback_url = f"{callback_base_url}/{plugin_name}/{request_id}"
+                callback_url = build_plugin_callback_url(callback_base_url, plugin_name, request_id, auth_secret)
                 
                 ws_notification_data = {
                     "requestId": request_id,
@@ -297,15 +323,16 @@ def poll_and_callback(api_key, request_id, callback_base_url, plugin_name, debug
                     "reason": f"Max poll attempts ({max_poll_attempts}) reached.",
                     "message": f"视频 (ID: {request_id}) 轮询超时。"
                 }
-                callback_url = f"{callback_base_url}/{plugin_name}/{request_id}"
+                callback_url = build_plugin_callback_url(callback_base_url, plugin_name, request_id, auth_secret)
                 requests.post(callback_url, json=timeout_notification_data, timeout=10)
                 log_event("info", f"[{request_id}] Sent PollingTimeout callback to {callback_url} with simplified data.")
             except Exception as cb_timeout_e:
                 log_event("error", f"[{request_id}] Failed to send PollingTimeout callback.", {"error": str(cb_timeout_e)})
 
 # --- API 调用 ---
-def submit_video_request_api(api_key, model, prompt, negative_prompt, image_size, image_base64=None, 
-                             callback_base_url=None, plugin_name_for_callback=None, debug_mode_for_polling=False):
+def submit_video_request_api(api_key, model, prompt, negative_prompt, image_size, image_base64=None,
+                             callback_base_url=None, plugin_name_for_callback=None, debug_mode_for_polling=False,
+                             callback_auth_secret=None):
     url = f"{SILICONFLOW_API_BASE}/video/submit"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -333,7 +360,12 @@ def submit_video_request_api(api_key, model, prompt, negative_prompt, image_size
 
         if callback_base_url and plugin_name_for_callback:
             polling_thread = threading.Thread(target=poll_and_callback, args=(
-                api_key, request_id, callback_base_url, plugin_name_for_callback, debug_mode_for_polling
+                api_key,
+                request_id,
+                callback_base_url,
+                plugin_name_for_callback,
+                debug_mode_for_polling,
+                callback_auth_secret
             ))
             # polling_thread.daemon = True # Threads are non-daemon by default
             polling_thread.start()
@@ -383,7 +415,8 @@ def main():
     i2v_model = os.getenv("Image2VideoModelName")
     debug_mode = os.getenv("DebugMode", "False").lower() == "true"
     # 确保从环境变量中读取时使用大写键名
-    callback_base_url_env = os.getenv("CALLBACK_BASE_URL") 
+    callback_base_url_env = os.getenv("CALLBACK_BASE_URL")
+    callback_auth_secret_env = os.getenv("CALLBACK_AUTH_SECRET")
 
     if not api_key:
         print_json_output("error", error="SILICONFLOW_API_KEY not found in environment variables.")
@@ -431,9 +464,10 @@ def main():
                     raise ValueError(f"无效的 'resolution' 参数: {resolution}。允许的值: {', '.join(SUPPORTED_RESOLUTIONS_MAP.keys())}")
                 
                 req_id_submit = submit_video_request_api(api_key, t2v_model, prompt, negative_prompt, resolution,
-                                                         callback_base_url=callback_base_url_env, 
+                                                         callback_base_url=callback_base_url_env,
                                                          plugin_name_for_callback=PLUGIN_NAME_FOR_CALLBACK,
-                                                         debug_mode_for_polling=debug_mode)
+                                                         debug_mode_for_polling=debug_mode,
+                                                         callback_auth_secret=callback_auth_secret_env)
                 result_string_for_ai = (
                     f"文生视频任务 (ID: {req_id_submit}) 已成功提交。\n"
                     f"这是一个动态上下文占位符，当任务完成时，它会被自动替换为实际结果。\n"
@@ -458,7 +492,8 @@ def main():
                 req_id_submit = submit_video_request_api(api_key, i2v_model, prompt or "", negative_prompt, target_res_key, image_base64=base64_image,
                                                          callback_base_url=callback_base_url_env,
                                                          plugin_name_for_callback=PLUGIN_NAME_FOR_CALLBACK,
-                                                         debug_mode_for_polling=debug_mode)
+                                                         debug_mode_for_polling=debug_mode,
+                                                         callback_auth_secret=callback_auth_secret_env)
                 result_string_for_ai = (
                     f"图生视频任务 (ID: {req_id_submit}) 已成功提交。\n"
                     f"这是一个动态上下文占位符，当任务完成时，它会被自动替换为实际结果。\n"

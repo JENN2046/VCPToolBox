@@ -1679,6 +1679,9 @@ class PluginManager extends EventEmitter {
                 process.env.CALLBACK_BASE_URL;
             if (callbackBaseUrl) {
                 additionalEnv.CALLBACK_BASE_URL = callbackBaseUrl;
+                if (process.env.PLUGIN_CALLBACK_SECRET || process.env.Key) {
+                    additionalEnv.CALLBACK_AUTH_SECRET = process.env.PLUGIN_CALLBACK_SECRET || process.env.Key;
+                }
             } else {
                 if (this.debugMode) console.warn(`[PluginManager executePlugin] CALLBACK_BASE_URL not configured for asynchronous plugin ${pluginName}. Callback functionality might be impaired.`);
             }

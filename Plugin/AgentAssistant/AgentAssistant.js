@@ -4,6 +4,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const { createSignedPluginCallbackUrl } = require('../../modules/pluginCallbackAuth');
 
 // --- State and Config Variables ---
 let VCP_SERVER_PORT;
@@ -995,7 +996,12 @@ async function archiveDelegationReport(delegationId, agentName, status, report, 
  * Sends the completion notification via VCP's plugin callback webhook
  */
 async function sendDelegationCallback(delegationId, status, report, agentName) {
-    const callbackUrl = `${VCP_API_TARGET_URL.replace('/v1', '')}/plugin-callback/AgentAssistant/${delegationId}`;
+    const callbackUrl = createSignedPluginCallbackUrl({
+        baseUrl: `${VCP_API_TARGET_URL.replace('/v1', '')}/plugin-callback`,
+        pluginName: 'AgentAssistant',
+        taskId: delegationId,
+        secret: process.env.PLUGIN_CALLBACK_SECRET || VCP_SERVER_ACCESS_KEY
+    });
     const payload = {
         requestId: delegationId,
         pluginName: 'AgentAssistant',

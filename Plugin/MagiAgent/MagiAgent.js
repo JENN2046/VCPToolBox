@@ -2,7 +2,10 @@ const fs = require('fs/promises');
 const path = require('path');
 const dotenv = require('dotenv');
 const axios = require('axios');
-const { buildLocalPluginCallbackBaseUrl } = require('../../modules/pluginCallbackAuth');
+const {
+    buildLocalPluginCallbackBaseUrl,
+    createSignedPluginCallbackUrl
+} = require('../../modules/pluginCallbackAuth');
 // 在 CJS 环境中，__dirname 是全局可用的。
 
 // --- 全局变量和配置 ---
@@ -251,7 +254,12 @@ async function sendCompletionCallback(meeting) {
         }
         return;
     }
-    const callbackUrl = `${callbackBaseUrl}/MagiAgent/${meeting.id}`;
+    const callbackUrl = createSignedPluginCallbackUrl({
+        baseUrl: callbackBaseUrl,
+        pluginName: 'MagiAgent',
+        taskId: meeting.id,
+        secret: process.env.PLUGIN_CALLBACK_SECRET || serverConfig.PLUGIN_CALLBACK_SECRET || serverConfig.Key
+    });
     try {
         const resultPayload = await formatMeetingResult(meeting);
         const callbackPayload = {

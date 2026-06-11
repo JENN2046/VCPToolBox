@@ -75,6 +75,16 @@ function buildLocalPluginCallbackBaseUrl(port) {
     return `http://127.0.0.1:${normalizedPort}/plugin-callback`;
 }
 
+function buildPluginCallbackUrl(baseUrl, pluginName, taskId) {
+    const base = String(baseUrl || '').replace(/\/$/, '');
+    const encodedPluginName = encodeURIComponent(String(pluginName || ''));
+    const encodedTaskId = encodeURIComponent(String(taskId || ''));
+    if (base.endsWith('/plugin-callback') || base.includes('/plugin-callback/')) {
+        return `${base}/${encodedPluginName}/${encodedTaskId}`;
+    }
+    return `${base}/plugin-callback/${encodedPluginName}/${encodedTaskId}`;
+}
+
 function buildPluginCallbackSigningPayload(pluginName, taskId, expiresAt, nonce) {
     return [
         String(pluginName || ''),
@@ -92,6 +102,31 @@ function signPluginCallback({ secret, pluginName, taskId, expiresAt, nonce }) {
         .createHmac('sha256', String(secret))
         .update(buildPluginCallbackSigningPayload(pluginName, taskId, expiresAt, nonce))
         .digest('hex');
+}
+
+function createSignedPluginCallbackUrl({
+    baseUrl,
+    pluginName,
+    taskId,
+    secret,
+    expiresAt = Date.now() + 5 * 60 * 1000,
+    nonce = crypto.randomBytes(12).toString('hex')
+}) {
+    const callbackUrl = new URL(buildPluginCallbackUrl(baseUrl, pluginName, taskId));
+    if (!secret) {
+        return callbackUrl.toString();
+    }
+    const normalizedExpiresAt = String(expiresAt);
+    callbackUrl.searchParams.set('vcp_cb_expires', normalizedExpiresAt);
+    callbackUrl.searchParams.set('vcp_cb_nonce', String(nonce));
+    callbackUrl.searchParams.set('vcp_cb_sig', signPluginCallback({
+        secret,
+        pluginName,
+        taskId,
+        expiresAt: normalizedExpiresAt,
+        nonce
+    }));
+    return callbackUrl.toString();
 }
 
 function safeEqualHex(left, right) {
@@ -192,7 +227,9 @@ function verifyPluginCallbackRequest(req, options = {}) {
 module.exports = {
     DEFAULT_MAX_FUTURE_MS,
     buildLocalPluginCallbackBaseUrl,
+    buildPluginCallbackUrl,
     buildPluginCallbackSigningPayload,
+    createSignedPluginCallbackUrl,
     getCallbackAuthFields,
     hasPluginCallbackProxyHeaders,
     signPluginCallback,
