@@ -40,7 +40,6 @@ export interface PluginSource {
   name: string
   displayUrl?: string
   redactedUrl?: string
-  url?: string
   type: 'registry' | 'github'
   builtin?: boolean
 }

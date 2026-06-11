@@ -1434,7 +1434,7 @@ function safeSourceUrlDisplay(raw: unknown) {
 }
 
 function sourceUrlDisplay(source: PluginSource) {
-  return safeSourceUrlDisplay(source.displayUrl || source.redactedUrl || source.url || '')
+  return safeSourceUrlDisplay(source.displayUrl || source.redactedUrl || '')
 }
 
 function looksLikeAbsolutePath(value: string) {

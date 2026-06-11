@@ -292,6 +292,7 @@ requiredChecks.push({
 });
 
 const pluginStoreRoute = readText('routes/admin/pluginStore.js');
+const pluginStoreApiClient = readText('AdminPanel-Vue/src/api/pluginStore.ts');
 const pluginStoreView = readText('AdminPanel-Vue/src/views/PluginStore.vue');
 const pluginStoreInstallTests = readText('tests/plugin-store-install-env-sandbox.test.js');
 const pluginStoreSsrfTests = readText('tests/plugin-store-ssrf-policy.test.js');
@@ -334,6 +335,8 @@ requiredChecks.push({
     && pluginStoreRoute.includes('const { url, ...safeSource } = source')
     && pluginStoreRoute.includes('sources: sanitizeSourcesForApi(sources)')
     && pluginStoreRoute.includes("res.json({ sources: sanitizeSourcesForApi(await loadSources()) })")
+    && !pluginStoreApiClient.includes('url?: string')
+    && !pluginStoreView.includes('source.url')
     && pluginStoreSourceTests.includes('redactSourceUrl removes credentials and token query values')
     && pluginStoreSourceTests.includes('sanitizeSourceForApi omits raw url and exposes redacted display fields')
     && pluginStoreSourceTests.includes('GET /plugin-store/sources does not return raw source URLs')
