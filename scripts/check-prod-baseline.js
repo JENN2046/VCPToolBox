@@ -318,6 +318,8 @@ const externalRunnerRfc = readText('docs/governance/EXTERNAL_RUNNER_BOUNDARY_RFC
 const jennSurfaceExtractionPlan = readText('docs/governance/JENN_SURFACE_EXTRACTION_PLAN_20260611.md');
 const gate9ExternalPackageLayoutContractPath = 'docs/governance/GATE_9_EXTERNAL_PACKAGE_LAYOUT_CONTRACT.md';
 const gate9ExternalPackageLayoutContract = readText(gate9ExternalPackageLayoutContractPath);
+const jennExternalRuntimeAllowlistContractPath = 'docs/JENN_EXTERNAL_RUNTIME_ALLOWLIST_CONTRACT.md';
+const jennExternalRuntimeAllowlistContract = readText(jennExternalRuntimeAllowlistContractPath);
 requiredChecks.push({
   label: 'Jenn surface extraction plan stays plan-only and default-off focused',
   ok: jennSurfaceExtractionPlan.includes('**Status:** plan only')
@@ -345,6 +347,63 @@ requiredChecks.push({
     && gate9ExternalPackageLayoutContract.includes('local private state')
     && gate9ExternalPackageLayoutContract.includes('No external package creation')
     && gate9ExternalPackageLayoutContract.includes('No plugin migration'),
+});
+const jennExternalRuntimeAllowlistContractMarkers = [
+  'VCPToolBox-JENN-Extensions',
+  String.raw`VCPToolBox-JENN-Extensions\Plugin`,
+  'VCPToolBox-JENN-LocalState',
+  'VCP_EXTERNAL_PLUGIN_ALLOWLIST',
+  String.raw`JennAIGentOrchestrator@A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentOrchestrator`,
+  'PlanImagePipeline',
+  'gate31d-plan-image-pipeline-no-provider-dry-run',
+  'AIGENT_ORCHESTRATOR_ALLOW_EXECUTION=false',
+  'AIGENT_ORCHESTRATOR_DEFAULT_MODE=dry-run',
+  'allowProvider: false',
+  'allowDownstream: false',
+  'allowExecution: false',
+  'dryRun: true',
+];
+const jennExternalRuntimeAllowlistContractSubstanceMarkers = [
+  'discovery/install',
+  'Runtime registration is gated separately by `VCP_EXTERNAL_PLUGIN_ALLOWLIST`',
+  'passing discovery alone is not proof of runtime registration',
+  'Runtime registration must be verified separately',
+  'exact-plugin scoped',
+  'wildcard allowlists',
+  'name-only allowlists',
+  'package-root allowlists',
+  'LocalState-root allowlists',
+  'must never be used as a plugin root',
+  'planner-only dry-run',
+  'No provider call occurred',
+  'No downstream plugin call occurred',
+  'must not be represented as provider validation',
+  'Provider work requires a separate explicit gate',
+];
+requiredChecks.push({
+  label: 'Jenn external runtime allowlist contract remains present and non-hollow',
+  ok: trackedFiles.includes(jennExternalRuntimeAllowlistContractPath)
+    && jennExternalRuntimeAllowlistContractMarkers.every((marker) => (
+      jennExternalRuntimeAllowlistContract.includes(marker)
+    ))
+    && jennExternalRuntimeAllowlistContractSubstanceMarkers.every((marker) => (
+      jennExternalRuntimeAllowlistContract.includes(marker)
+    )),
+});
+requiredChecks.push({
+  label: 'Jenn external runtime allowlist contract source boundaries remain static and separated',
+  ok: pluginRuntime.includes('VCP_EXTERNAL_PLUGIN_ALLOWLIST')
+    && pluginRuntime.includes('evaluateExternalPluginAllowPolicy')
+    && pluginRuntime.includes('external_runtime_allowlist_required')
+    && pluginRuntime.includes('external_runtime_invalid_policy')
+    && pluginRuntime.includes('external_runtime_source_mismatch')
+    && pluginRuntime.includes('_registerLocalPlugin')
+    && pluginRootResolver.includes("const VCP_PLUGIN_ALLOWED_ROOTS_ENV = 'VCP_PLUGIN_ALLOWED_ROOTS'")
+    && pluginRootResolver.includes("const VCP_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS'")
+    && pluginRootResolver.includes("const VCP_PLUGIN_INSTALL_DIR_ENV = 'VCP_PLUGIN_INSTALL_DIR'")
+    && pluginRootResolver.includes('external_roots_require_allowlist')
+    && pluginRootResolver.includes('legacyLoadRoots: [coreLegacyRoot, ...externalLegacyRoots]')
+    && pluginRootResolver.includes('plugin_install_root_not_managed'),
 });
 requiredChecks.push({
   label: 'external runner RFC keeps trusted adapter distinct from untrusted sandbox',
