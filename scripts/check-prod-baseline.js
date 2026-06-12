@@ -327,6 +327,20 @@ const jennStaticNoProviderExtractionPrepExists = fs.existsSync(
 const jennStaticNoProviderExtractionPrep = jennStaticNoProviderExtractionPrepExists
   ? readText(jennStaticNoProviderExtractionPrepPath)
   : '';
+const gate45AigentCopyIntegrityGuardPath = 'docs/governance/GATE_45_AIGENT_ORCHESTRATOR_EXTERNAL_COPY_INTEGRITY_GUARD.md';
+const gate45AigentCopyIntegrityScriptPath = 'scripts/check-jenn-aigent-orchestrator-copy-integrity.js';
+const gate45AigentCopyIntegrityGuardExists = fs.existsSync(
+  path.join(process.cwd(), gate45AigentCopyIntegrityGuardPath)
+);
+const gate45AigentCopyIntegrityScriptExists = fs.existsSync(
+  path.join(process.cwd(), gate45AigentCopyIntegrityScriptPath)
+);
+const gate45AigentCopyIntegrityGuard = gate45AigentCopyIntegrityGuardExists
+  ? readText(gate45AigentCopyIntegrityGuardPath)
+  : '';
+const gate45AigentCopyIntegrityScript = gate45AigentCopyIntegrityScriptExists
+  ? readText(gate45AigentCopyIntegrityScriptPath)
+  : '';
 requiredChecks.push({
   label: 'Jenn surface extraction plan stays plan-only and default-off focused',
   ok: jennSurfaceExtractionPlan.includes('**Status:** plan only')
@@ -379,6 +393,55 @@ requiredChecks.push({
     && jennStaticNoProviderExtractionPrepMarkers.every((marker) => (
       jennStaticNoProviderExtractionPrep.includes(marker)
     )),
+});
+const gate45GuardDocMarkers = [
+  'ready for review, not runtime cutover authorization',
+  'does not authorize provider validation',
+  'does not authorize downstream dispatch',
+  'does not modify runtime behavior',
+  'AIGentOrchestrator.js byte-for-byte equality',
+  'config.env.example byte-for-byte equality',
+  'name',
+  'description',
+  'README external preface',
+  'No runtime cutover.',
+  'No provider calls.',
+  'No downstream plugin dispatch.',
+  'No LocalState writes.',
+  'No Plugin/** modifications.',
+  'No modules/** modifications.',
+  'Core npm baseline must not depend on external package filesystem availability',
+  'Gate 31D remains planner-only no-provider evidence, not provider validation',
+  'RECOMMEND_GATE_46_CORE_REMOTE_INTEGRATION_FOR_GATE_45_GUARD',
+];
+const gate45GuardScriptMarkers = [
+  'Plugin/AIGentOrchestrator/AIGentOrchestrator.js',
+  'Plugin/JennAIGentOrchestrator/AIGentOrchestrator.js',
+  'Plugin/AIGentOrchestrator/config.env.example',
+  'Plugin/JennAIGentOrchestrator/config.env.example',
+  'plugin-manifest.json',
+  'README.md',
+  'byte-for-byte equality',
+  'Buffer.compare',
+  'name/description-only manifest divergence',
+  'README body containment / external preface allowance',
+  'provider calls: NO',
+  'downstream dispatch: NO',
+  'runtime cutover: NO',
+  'LocalState writes: NO',
+];
+requiredChecks.push({
+  label: 'Jenn AIGentOrchestrator external copy integrity guard remains explicit',
+  ok: gate45AigentCopyIntegrityGuardExists
+    && gate45AigentCopyIntegrityScriptExists
+    && gate45GuardDocMarkers.every((marker) => gate45AigentCopyIntegrityGuard.includes(marker))
+    && gate45GuardScriptMarkers.every((marker) => gate45AigentCopyIntegrityScript.includes(marker))
+    && !gate45AigentCopyIntegrityGuard.includes('RECOMMEND_GATE_46_RUNTIME_CUTOVER_READINESS_SURVEY')
+    && !gate45AigentCopyIntegrityGuard.includes('BLOCK_GATE_46')
+    && !gate45AigentCopyIntegrityScript.includes('PluginManager')
+    && !gate45AigentCopyIntegrityScript.includes('processToolCall')
+    && !gate45AigentCopyIntegrityScript.includes('writeFile')
+    && !gate45AigentCopyIntegrityScript.includes('appendFile'),
 });
 const jennExternalRuntimeAllowlistContractMarkers = [
   'VCPToolBox-JENN-Extensions',
