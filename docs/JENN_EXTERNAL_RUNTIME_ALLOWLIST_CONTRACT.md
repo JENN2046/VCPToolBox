@@ -104,6 +104,44 @@ Gate 31D proved only the planner-only dry-run path:
 Gate 31D must not be represented as provider validation, image generation validation, downstream
 execution validation, migration validation, or production readiness.
 
+## Gate 31D PlanImagePipeline ABI fixture shape
+
+The Gate 31D ABI fixture statement is scoped to the sealed Gate 31D evidence
+shape. It records the exact evidence fixture and does not redefine every valid
+input shape that the external plugin implementation may accept outside Gate 31D.
+
+```text
+plugin identity: JennAIGentOrchestrator
+command: PlanImagePipeline
+requestId: gate31d-plan-image-pipeline-no-provider-dry-run
+top-level user_input supplied: yes
+input supplied: no
+description supplied: no
+allowProvider: false
+allowDownstream: false
+allowExecution: false
+dryRun: true
+PlanRetryPipeline executed: no
+HealthCheck fallback executed: no
+processToolCall count: 1
+planner-only result observed: yes
+provider validation: no
+```
+
+For repeating or citing the Gate 31D evidence fixture, `user_input` is the
+top-level input field. `input` and `description` were absent from the Gate 31D
+toolArgs shape.
+
+input must not be substituted for user_input in the Gate 31D evidence fixture.
+
+description must not be substituted for user_input in the Gate 31D evidence fixture.
+
+This fixture-scoped prohibition does not claim that the external plugin
+implementation never accepts `description` in other contexts. `PlanRetryPipeline`
+and `HealthCheck` were not fallback commands for Gate 31D. Gate 31D remains
+no-provider, no-downstream, planner-only evidence and is not provider validation.
+Future provider validation requires a separate explicit gate.
+
 ## Future Gate Guidance
 
 Future gates must preserve these distinctions:

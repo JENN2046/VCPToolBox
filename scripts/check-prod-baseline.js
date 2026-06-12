@@ -397,6 +397,26 @@ const jennProviderBoundaryMarkers = [
   'allowExecution: false',
   'dryRun: true',
 ];
+const jennPlanImagePipelineAbiFixtureMarkers = [
+  'Gate 31D PlanImagePipeline ABI fixture shape',
+  'plugin identity: JennAIGentOrchestrator',
+  'command: PlanImagePipeline',
+  'requestId: gate31d-plan-image-pipeline-no-provider-dry-run',
+  'top-level user_input supplied: yes',
+  'input supplied: no',
+  'description supplied: no',
+  'input must not be substituted for user_input in the Gate 31D evidence fixture',
+  'description must not be substituted for user_input in the Gate 31D evidence fixture',
+  'allowProvider: false',
+  'allowDownstream: false',
+  'allowExecution: false',
+  'dryRun: true',
+  'PlanRetryPipeline executed: no',
+  'HealthCheck fallback executed: no',
+  'processToolCall count: 1',
+  'planner-only result observed: yes',
+  'provider validation: no',
+];
 requiredChecks.push({
   label: 'Jenn external runtime allowlist contract remains present and non-hollow',
   ok: trackedFiles.includes(jennExternalRuntimeAllowlistContractPath)
@@ -411,6 +431,13 @@ requiredChecks.push({
   label: 'Gate 31D remains planner-only and not provider validation',
   ok: trackedFiles.includes(jennExternalRuntimeAllowlistContractPath)
     && jennProviderBoundaryMarkers.every((marker) => (
+      jennExternalRuntimeAllowlistContract.includes(marker)
+    )),
+});
+requiredChecks.push({
+  label: 'Gate 31D PlanImagePipeline ABI fixture shape remains explicit',
+  ok: trackedFiles.includes(jennExternalRuntimeAllowlistContractPath)
+    && jennPlanImagePipelineAbiFixtureMarkers.every((marker) => (
       jennExternalRuntimeAllowlistContract.includes(marker)
     )),
 });
