@@ -15,7 +15,8 @@ Gate 30 defines the minimum safe design for a possible future
 Covered:
 
 - sealed Gate 28 `HealthCheck` evidence;
-- sealed Gate 29 post-HealthCheck limitations and next-command scope;
+- Gate 29 review-ready / unsealed post-HealthCheck limitations and
+  next-command scope evidence;
 - static `PlanImagePipeline` behavior;
 - exact future target and command candidate;
 - future payload constraints;
@@ -103,7 +104,7 @@ Gate 28 sealed evidence:
 - no provider, downstream, server, Plugin Store, persistent env/config, or
   LocalState side effect was observed.
 
-Gate 29 sealed conclusion:
+Gate 29 review-ready / unsealed conclusion:
 
 - `HealthCheck` validates only the smallest dispatch and cleanup path;
 - planner branches remain untested;

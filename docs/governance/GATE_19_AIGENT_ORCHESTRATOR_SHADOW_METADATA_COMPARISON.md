@@ -112,25 +112,31 @@ No JavaScript file was imported or executed.
 
 ## File inventory comparison
 
-Expected files are present in both core and external locations:
+Expected files are present in both core and external locations.
+
+The byte counts below are based on Git committed blob bytes from `HEAD`, not
+workspace bytes or CRLF-transformed filesystem bytes:
 
 | File | Core length | External length | Result |
 | --- | ---: | ---: | --- |
-| `AIGentOrchestrator.js` | 8703 | 8703 | MATCH |
-| `config.env.example` | 222 | 222 | MATCH |
-| `plugin-manifest.json` | 1709 | 1709 | MATCH |
-| `README.md` | 1982 | 1982 | MATCH |
+| `AIGentOrchestrator.js` | 8388 | 8388 | MATCH |
+| `config.env.example` | 217 | 217 | MATCH |
+| `plugin-manifest.json` | 1660 | 1660 | MATCH |
+| `README.md` | 1924 | 1924 | MATCH |
 
 `Compare-Object` on `Name` and `Length` returned no differences.
 
 ## SHA256 comparison
 
+The SHA256 values below are based on Git committed blob bytes from `HEAD`, not
+workspace bytes or CRLF-transformed filesystem bytes:
+
 | File | SHA256 | Result |
 | --- | --- | --- |
-| `AIGentOrchestrator.js` | `D7C3BD2FD285360A50D2DF2EA312D897B88F1B4F676CFF1E5C43BD30F72EC673` | MATCH |
-| `config.env.example` | `6B3A9775E72853600C268C06623067666775788CDAD3F2A16709E86379825E64` | MATCH |
-| `plugin-manifest.json` | `8D72E0EFEEFF869D55D50CF5AC761D541B10A57B3914A7C68C1B269FD7B39C43` | MATCH |
-| `README.md` | `76CE828DACCF388C2A9A1158BB90C95E1D2D29EC6C67CE47274F9AAFB067B685` | MATCH |
+| `AIGentOrchestrator.js` | `f60f79eaa1fd8e0e734f27c3039cea1e0becdadfaa954e29958387d9da32b4e9` | MATCH |
+| `config.env.example` | `4d66cf5a8ae9d871888122b1d7360fcbb8d8136c445ae10b534135fa1014a7ac` | MATCH |
+| `plugin-manifest.json` | `84e9ef2096a44b25938f11466bb8fba74768af62bc8d20f6783958e7901851c4` | MATCH |
+| `README.md` | `70dcfeb48970aeab0ba7707c670b597889291651e7cdcfe7d962ac2322c42a85` | MATCH |
 
 Source hash count: 4.
 

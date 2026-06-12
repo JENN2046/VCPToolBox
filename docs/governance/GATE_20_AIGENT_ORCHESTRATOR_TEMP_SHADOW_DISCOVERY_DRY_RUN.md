@@ -197,7 +197,7 @@ Forbidden external file scan returned no results for:
 
 ```text
 ^.env$
-config.env
+basename config.env
 secret
 token
 credential
@@ -207,6 +207,10 @@ output
 node_modules
 ToolConfigs
 ```
+
+For this scan, `config.env` means an exact file-name / basename match only.
+`config.env.example` is excluded from the forbidden `config.env` match because
+it is an allowed static template filename.
 
 LocalState remained marker-only:
 

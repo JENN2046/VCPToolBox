@@ -224,7 +224,7 @@ Before any later execution dry-run, preflight must prove:
 
 The future execution receipt must include:
 
-- authorization token;
+- non-secret authorization reference and/or redacted fingerprint;
 - branch, `HEAD`, `origin/main`, and worktree state;
 - temporary env values used, without secrets;
 - target plugin and command;
@@ -239,6 +239,9 @@ The future execution receipt must include:
 - cleanup result;
 - final worktree state;
 - recommendation.
+
+The receipt must not record raw authorization tokens, credentials, secrets, or
+secret-like values.
 
 ## Stop Conditions For Future Execution
 
