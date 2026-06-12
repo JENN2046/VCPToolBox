@@ -320,6 +320,13 @@ const gate9ExternalPackageLayoutContractPath = 'docs/governance/GATE_9_EXTERNAL_
 const gate9ExternalPackageLayoutContract = readText(gate9ExternalPackageLayoutContractPath);
 const jennExternalRuntimeAllowlistContractPath = 'docs/JENN_EXTERNAL_RUNTIME_ALLOWLIST_CONTRACT.md';
 const jennExternalRuntimeAllowlistContract = readText(jennExternalRuntimeAllowlistContractPath);
+const jennStaticNoProviderExtractionPrepPath = 'docs/governance/JENN_STATIC_NO_PROVIDER_EXTRACTION_PREP.md';
+const jennStaticNoProviderExtractionPrepExists = fs.existsSync(
+  path.join(process.cwd(), jennStaticNoProviderExtractionPrepPath)
+);
+const jennStaticNoProviderExtractionPrep = jennStaticNoProviderExtractionPrepExists
+  ? readText(jennStaticNoProviderExtractionPrepPath)
+  : '';
 requiredChecks.push({
   label: 'Jenn surface extraction plan stays plan-only and default-off focused',
   ok: jennSurfaceExtractionPlan.includes('**Status:** plan only')
@@ -347,6 +354,31 @@ requiredChecks.push({
     && gate9ExternalPackageLayoutContract.includes('local private state')
     && gate9ExternalPackageLayoutContract.includes('No external package creation')
     && gate9ExternalPackageLayoutContract.includes('No plugin migration'),
+});
+const jennStaticNoProviderExtractionPrepMarkers = [
+  'Gate 40 Static No-Provider Extraction Prep',
+  'RECOMMEND_GATE_40_STATIC_NO_PROVIDER_EXTRACTION_PREP',
+  'Core keeps PluginManager/runtime registration',
+  'External package owns Jenn-specific plugin implementation',
+  'LocalState remains private state, not plugin code',
+  'Provider/downstream execution remains deferred',
+  'No runtime cutover in Gate 40',
+  'No provider calls',
+  'No downstream plugin calls',
+  'No LocalState writes',
+  'No PluginManager.processToolCall invocation',
+  'No PlanImagePipeline execution',
+  'JennAIGentOrchestrator',
+  'PlanImagePipeline',
+  'aiImageJennTrialFixtures',
+  'aiImageNativeDelegateBindings',
+];
+requiredChecks.push({
+  label: 'Jenn static no-provider extraction prep contract remains explicit',
+  ok: jennStaticNoProviderExtractionPrepExists
+    && jennStaticNoProviderExtractionPrepMarkers.every((marker) => (
+      jennStaticNoProviderExtractionPrep.includes(marker)
+    )),
 });
 const jennExternalRuntimeAllowlistContractMarkers = [
   'VCPToolBox-JENN-Extensions',
