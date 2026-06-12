@@ -380,6 +380,23 @@ const jennExternalRuntimeAllowlistContractSubstanceMarkers = [
   'must not be represented as provider validation',
   'Provider work requires a separate explicit gate',
 ];
+const jennProviderBoundaryMarkers = [
+  String.raw`JennAIGentOrchestrator@A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentOrchestrator`,
+  'Gate 31D proved only the planner-only dry-run path:',
+  'Gate 31D must not be represented as provider validation',
+  'Provider work requires a separate explicit gate',
+  'No provider call occurred.',
+  'No downstream plugin call occurred.',
+  'No `VCPToolBox-JENN-LocalState` write occurred.',
+  'No persistent environment or config file was written.',
+  'No provider credentials, provider URLs, generated outputs, logs, cache, or secrets were used.',
+  'PlanImagePipeline',
+  'gate31d-plan-image-pipeline-no-provider-dry-run',
+  'allowProvider: false',
+  'allowDownstream: false',
+  'allowExecution: false',
+  'dryRun: true',
+];
 requiredChecks.push({
   label: 'Jenn external runtime allowlist contract remains present and non-hollow',
   ok: trackedFiles.includes(jennExternalRuntimeAllowlistContractPath)
@@ -387,6 +404,13 @@ requiredChecks.push({
       jennExternalRuntimeAllowlistContract.includes(marker)
     ))
     && jennExternalRuntimeAllowlistContractSubstanceMarkers.every((marker) => (
+      jennExternalRuntimeAllowlistContract.includes(marker)
+    )),
+});
+requiredChecks.push({
+  label: 'Gate 31D remains planner-only and not provider validation',
+  ok: trackedFiles.includes(jennExternalRuntimeAllowlistContractPath)
+    && jennProviderBoundaryMarkers.every((marker) => (
       jennExternalRuntimeAllowlistContract.includes(marker)
     )),
 });
