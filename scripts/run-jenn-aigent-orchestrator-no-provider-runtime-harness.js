@@ -21,6 +21,7 @@ const STAGE2_MAX_OUTPUT_BYTES = 64 * 1024;
 const STAGE2_ARG = '--stage2-direct-stdio-no-provider-probe';
 const STAGE3_ARG = '--stage3-bounded-runtime-resolution-probe';
 const STAGE3_TIMEOUT_MS = 15000;
+const STAGE4_ARG = '--stage4-harness-only-resolution-guard';
 
 function runGit(cwd, args) {
   const result = spawnSync('git', args, {
@@ -232,6 +233,50 @@ function buildStage3Receipt() {
   };
 }
 
+function buildStage4Receipt() {
+  return {
+    gate: 'Gate 64 AIGentOrchestrator harness-only resolution guard',
+    stage: 'stage4-harness-only-resolution-guard',
+    result: 'FAIL',
+    classification: 'HARNESS_ONLY_RESOLUTION_GUARD_BLOCKED',
+    coreHEAD: null,
+    coreOriginMain: null,
+    coreWorktree: null,
+    externalHEAD: null,
+    externalOriginMain: null,
+    externalWorktree: null,
+    externalOrigin: null,
+    exactExternalAllowlist: EXACT_RUNTIME_ALLOWLIST,
+    exactAllowlistParsed: false,
+    allowlistType: null,
+    wildcardAllowlistUsed: null,
+    nameOnlyAllowlistUsed: null,
+    packageRootAllowlistUsed: null,
+    localStateRootAllowlistUsed: null,
+    resolvedExternalPluginPath: null,
+    externalPathResolved: false,
+    resolvedPathIsExternalPackagePath: false,
+    manifestPath: null,
+    manifestIdentity: null,
+    manifestIdentityMatched: false,
+    coreFallback: null,
+    executionHandoff: false,
+    pluginManagerLoadPluginsInvoked: false,
+    processToolCallInvoked: false,
+    planImagePipelineExecuted: false,
+    providerCalls: false,
+    downstreamDispatch: false,
+    localStateWrites: false,
+    serverRouteActivation: false,
+    imageGeneration: false,
+    runtimeCutover: false,
+    filesModified: {
+      coreWorktree: null,
+      externalWorktree: null
+    }
+  };
+}
+
 function assertCleanState(receipt) {
   receipt.coreHEAD = runGit(PROJECT_ROOT, ['rev-parse', 'HEAD']);
   receipt.coreOriginMain = runGit(PROJECT_ROOT, ['rev-parse', 'origin/main']);
@@ -398,6 +443,71 @@ function runStage3BoundedRuntimeResolutionProbe() {
   return receipt;
 }
 
+function runStage4HarnessOnlyResolutionGuard() {
+  const receipt = buildStage4Receipt();
+
+  try {
+    assertCleanState(receipt);
+
+    const parsedAllowlist = parseExactRuntimeAllowlist(EXACT_RUNTIME_ALLOWLIST);
+    receipt.exactAllowlistParsed = true;
+    receipt.allowlistType = 'exact_path_entry_only';
+    receipt.wildcardAllowlistUsed = false;
+    receipt.nameOnlyAllowlistUsed = false;
+    receipt.packageRootAllowlistUsed = false;
+    receipt.localStateRootAllowlistUsed = false;
+    receipt.resolvedExternalPluginPath = parsedAllowlist.resolvedPluginPath;
+    receipt.externalPathResolved = true;
+    receipt.resolvedPathIsExternalPackagePath = parsedAllowlist.resolvedPluginPath === path.resolve(TARGET_PLUGIN_PATH);
+    receipt.coreFallback = parsedAllowlist.resolvedPluginPath === path.resolve(CORE_FALLBACK_PATH);
+
+    const manifestPath = path.join(parsedAllowlist.resolvedPluginPath, 'plugin-manifest.json');
+    receipt.manifestPath = manifestPath;
+
+    const failures = [];
+    if (parsedAllowlist.pluginName !== TARGET_PLUGIN_NAME) {
+      failures.push('allowlist plugin name does not match target plugin');
+    }
+    if (!receipt.resolvedPathIsExternalPackagePath) {
+      failures.push('resolved path is not the sealed external plugin path');
+    }
+    if (receipt.coreFallback) {
+      failures.push('resolved path fell back to the core plugin path');
+    }
+    if (!fs.existsSync(manifestPath)) {
+      failures.push('manifest is missing under resolved external plugin path');
+    }
+
+    if (failures.length > 0) {
+      throw new Error(`harness-only resolution guard blocked: ${failures.join('; ')}`);
+    }
+
+    const manifest = readJsonFile(manifestPath);
+    receipt.manifestIdentity = manifest.name || null;
+    receipt.manifestIdentityMatched = receipt.manifestIdentity === TARGET_PLUGIN_NAME;
+
+    if (!receipt.manifestIdentityMatched) {
+      throw new Error(`manifest identity mismatch: ${receipt.manifestIdentity || '(missing)'}`);
+    }
+
+    receipt.filesModified.coreWorktree = runGit(PROJECT_ROOT, ['status', '--short']);
+    receipt.filesModified.externalWorktree = runGit(EXTERNAL_PACKAGE_ROOT, ['status', '--short']);
+    if (receipt.filesModified.coreWorktree || receipt.filesModified.externalWorktree) {
+      throw new Error('worktree changed during Stage 4 harness-only resolution guard');
+    }
+
+    receipt.result = 'PASS';
+    receipt.classification = 'HARNESS_ONLY_RESOLUTION_GUARD_PASS';
+  } catch (error) {
+    receipt.error = error.message;
+    receipt.result = 'FAIL';
+    receipt.classification = 'HARNESS_ONLY_RESOLUTION_GUARD_BLOCKED';
+    process.exitCode = 1;
+  }
+
+  return receipt;
+}
+
 function collectBoundedOutput(current, chunk) {
   const next = current + chunk.toString();
   if (Buffer.byteLength(next, 'utf8') > STAGE2_MAX_OUTPUT_BYTES) {
@@ -548,6 +658,12 @@ function runStage2DirectStdioNoProviderProbe(stage1Receipt = null) {
 }
 
 async function main() {
+  if (process.argv.includes(STAGE4_ARG)) {
+    const stage4Receipt = runStage4HarnessOnlyResolutionGuard();
+    process.stdout.write(`${JSON.stringify(stage4Receipt, null, 2)}\n`);
+    return;
+  }
+
   if (process.argv.includes(STAGE3_ARG)) {
     const stage3Receipt = runStage3BoundedRuntimeResolutionProbe();
     process.stdout.write(`${JSON.stringify(stage3Receipt, null, 2)}\n`);
@@ -581,11 +697,13 @@ module.exports = {
   runStage1IdentityProbe,
   runStage2DirectStdioNoProviderProbe,
   runStage3BoundedRuntimeResolutionProbe,
+  runStage4HarnessOnlyResolutionGuard,
   EXACT_RUNTIME_ALLOWLIST,
   STAGE2_ARG,
   STAGE2_TIMEOUT_MS,
   STAGE3_ARG,
   STAGE3_TIMEOUT_MS,
+  STAGE4_ARG,
   TARGET_PLUGIN_NAME,
   TARGET_PLUGIN_PATH
 };
