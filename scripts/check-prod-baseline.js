@@ -496,6 +496,39 @@ requiredChecks.push({
     && !/processToolCall\s*\(/.test(jennBoundedNoProviderHarness)
     && !/server\.listen|app\.listen|createServer|setInterval|writeFile|appendFile/.test(jennBoundedNoProviderHarness),
 });
+requiredChecks.push({
+  label: 'Gate 59 bounded Stage 3 runtime resolution probe remains metadata-only and guarded',
+  ok: jennBoundedNoProviderHarness.includes('stage3_bounded_runtime_resolution_probe')
+    && jennBoundedNoProviderHarness.includes('runStage3BoundedRuntimeResolutionProbe')
+    && jennBoundedNoProviderHarness.includes('parseExactRuntimeAllowlist')
+    && jennBoundedNoProviderHarness.includes("const STAGE3_ARG = '--stage3-bounded-runtime-resolution-probe'")
+    && jennBoundedNoProviderHarness.includes('STAGE3_TIMEOUT_MS = 15000')
+    && jennBoundedNoProviderHarness.includes('allowlist must be exact plugin-name@plugin-path form')
+    && jennBoundedNoProviderHarness.includes('wildcard allowlist is forbidden')
+    && jennBoundedNoProviderHarness.includes('name-only allowlist is forbidden')
+    && jennBoundedNoProviderHarness.includes('package-root allowlist is forbidden')
+    && jennBoundedNoProviderHarness.includes('LocalState-root allowlist is forbidden')
+    && jennBoundedNoProviderHarness.includes('core fallback path is forbidden')
+    && jennBoundedNoProviderHarness.includes(String.raw`JennAIGentOrchestrator@A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentOrchestrator`)
+    && jennBoundedNoProviderHarness.includes("path.join(parsedAllowlist.resolvedPluginPath, 'plugin-manifest.json')")
+    && jennBoundedNoProviderHarness.includes('manifest identity mismatch')
+    && jennBoundedNoProviderHarness.includes('executionHandoffOccurred: false')
+    && jennBoundedNoProviderHarness.includes('childProcessStarted: false')
+    && jennBoundedNoProviderHarness.includes('broadPluginManagerLoadPluginsInvoked: false')
+    && jennBoundedNoProviderHarness.includes('processToolCallInvoked: false')
+    && jennBoundedNoProviderHarness.includes("providerCalls: 'not_called'")
+    && jennBoundedNoProviderHarness.includes("downstreamDispatch: 'not_dispatched'")
+    && jennBoundedNoProviderHarness.includes("localStateWrites: 'not_written'")
+    && jennBoundedNoProviderHarness.includes("serverRouteActivation: 'not_started'")
+    && jennBoundedNoProviderHarness.includes("realImageGeneration: 'not_started'")
+    && jennBoundedNoProviderHarness.includes("result = 'PASS'")
+    && jennBoundedNoProviderHarness.includes("result = 'BLOCKED'")
+    && !jennBoundedNoProviderHarness.includes("require('../Plugin')")
+    && !jennBoundedNoProviderHarness.includes('pluginManager.loadPlugins')
+    && !jennBoundedNoProviderHarness.includes('pluginManager.processToolCall')
+    && !/processToolCall\s*\(/.test(jennBoundedNoProviderHarness)
+    && !/server\.listen|app\.listen|createServer|setInterval|writeFile|appendFile/.test(jennBoundedNoProviderHarness),
+});
 const jennExternalRuntimeAllowlistContractSubstanceMarkers = [
   'discovery/install',
   'Runtime registration is gated separately by `VCP_EXTERNAL_PLUGIN_ALLOWLIST`',

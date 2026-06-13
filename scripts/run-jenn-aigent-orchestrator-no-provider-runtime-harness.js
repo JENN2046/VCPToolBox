@@ -19,6 +19,8 @@ const STAGE2_REQUEST_ID = 'gate55-jenn-aigent-orchestrator-bounded-stage2-direct
 const STAGE2_TIMEOUT_MS = 15000;
 const STAGE2_MAX_OUTPUT_BYTES = 64 * 1024;
 const STAGE2_ARG = '--stage2-direct-stdio-no-provider-probe';
+const STAGE3_ARG = '--stage3-bounded-runtime-resolution-probe';
+const STAGE3_TIMEOUT_MS = 15000;
 
 function runGit(cwd, args) {
   const result = spawnSync('git', args, {
@@ -191,6 +193,45 @@ function buildStage2Receipt(stage1Receipt, request) {
   };
 }
 
+function buildStage3Receipt() {
+  return {
+    gate: 'Gate 59 AIGentOrchestrator bounded runtime resolution probe',
+    stage: 'stage3_bounded_runtime_resolution_probe',
+    coreHEAD: null,
+    coreOriginMain: null,
+    coreWorktree: null,
+    externalHEAD: null,
+    externalOriginMain: null,
+    externalWorktree: null,
+    externalOrigin: null,
+    exactAllowlist: EXACT_RUNTIME_ALLOWLIST,
+    resolvedPluginPath: null,
+    pluginIdentity: null,
+    manifestPath: null,
+    coreFallbackUsed: null,
+    broadPluginManagerLoadPluginsInvoked: false,
+    processToolCallInvoked: false,
+    providerCalls: 'not_called',
+    downstreamDispatch: 'not_dispatched',
+    localStateWrites: 'not_written',
+    serverRouteActivation: 'not_started',
+    realImageGeneration: 'not_started',
+    runtimeDryRunExecuted: false,
+    planImagePipelineExecuted: false,
+    executionHandoffOccurred: false,
+    childProcessStarted: false,
+    childProcessResidual: false,
+    timeoutMs: STAGE3_TIMEOUT_MS,
+    timedOut: false,
+    timeoutHangContainment: 'metadata_only_no_child_process_no_execution_handoff',
+    filesModified: {
+      coreWorktree: null,
+      externalWorktree: null
+    },
+    result: 'BLOCKED'
+  };
+}
+
 function assertCleanState(receipt) {
   receipt.coreHEAD = runGit(PROJECT_ROOT, ['rev-parse', 'HEAD']);
   receipt.coreOriginMain = runGit(PROJECT_ROOT, ['rev-parse', 'origin/main']);
@@ -247,6 +288,114 @@ function assertExternalIdentity(receipt) {
   }
 
   receipt.coreFallbackUsed = false;
+}
+
+function parseExactRuntimeAllowlist(allowlist) {
+  const failures = [];
+  const raw = String(allowlist || '');
+  const parts = raw.split('@');
+
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    failures.push('allowlist must be exact plugin-name@plugin-path form');
+  }
+  if (/[*?]/.test(raw)) {
+    failures.push('wildcard allowlist is forbidden');
+  }
+  if (parts.length === 1 || !raw.includes('@')) {
+    failures.push('name-only allowlist is forbidden');
+  }
+
+  const pluginName = parts[0] || '';
+  const pluginPath = parts.slice(1).join('@');
+  const resolvedPluginPath = pluginPath ? path.resolve(pluginPath) : '';
+  const externalPackageRoot = path.resolve(EXTERNAL_PACKAGE_ROOT);
+  const externalPluginRoot = path.resolve(EXTERNAL_PLUGIN_ROOT);
+  const targetPluginPath = path.resolve(TARGET_PLUGIN_PATH);
+  const coreFallbackPath = path.resolve(CORE_FALLBACK_PATH);
+
+  if (raw !== String.raw`JennAIGentOrchestrator@A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentOrchestrator`) {
+    failures.push('allowlist does not match sealed exact external value');
+  }
+  if (pluginName !== TARGET_PLUGIN_NAME) {
+    failures.push(`allowlist plugin name mismatch: ${pluginName || '(missing)'}`);
+  }
+  if (resolvedPluginPath !== targetPluginPath) {
+    failures.push('allowlist path does not resolve to sealed external plugin path');
+  }
+  if (resolvedPluginPath === externalPackageRoot || resolvedPluginPath === externalPluginRoot) {
+    failures.push('package-root allowlist is forbidden');
+  }
+  if (/VCPToolBox-JENN-LocalState/i.test(resolvedPluginPath)) {
+    failures.push('LocalState-root allowlist is forbidden');
+  }
+  if (resolvedPluginPath === coreFallbackPath) {
+    failures.push('core fallback path is forbidden');
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`allowlist resolution blocked: ${failures.join('; ')}`);
+  }
+
+  return {
+    pluginName,
+    pluginPath,
+    resolvedPluginPath
+  };
+}
+
+function runStage3BoundedRuntimeResolutionProbe() {
+  const receipt = buildStage3Receipt();
+
+  try {
+    assertCleanState(receipt);
+
+    const parsedAllowlist = parseExactRuntimeAllowlist(EXACT_RUNTIME_ALLOWLIST);
+    const manifestPath = path.join(parsedAllowlist.resolvedPluginPath, 'plugin-manifest.json');
+    const sourcePath = path.join(parsedAllowlist.resolvedPluginPath, 'AIGentOrchestrator.js');
+
+    receipt.resolvedPluginPath = parsedAllowlist.resolvedPluginPath;
+    receipt.manifestPath = manifestPath;
+    receipt.coreFallbackUsed = false;
+
+    const failures = [];
+    if (parsedAllowlist.pluginName !== TARGET_PLUGIN_NAME) {
+      failures.push('resolved plugin identity does not match target');
+    }
+    if (!fs.existsSync(manifestPath)) {
+      failures.push('manifest is missing under resolved external plugin path');
+    }
+    if (!fs.existsSync(sourcePath)) {
+      failures.push('source is missing under resolved external plugin path');
+    }
+    if (path.resolve(parsedAllowlist.resolvedPluginPath) === path.resolve(CORE_FALLBACK_PATH)) {
+      failures.push('resolved path fell back to core plugin path');
+    }
+
+    if (failures.length > 0) {
+      throw new Error(`runtime resolution blocked: ${failures.join('; ')}`);
+    }
+
+    const manifest = readJsonFile(manifestPath);
+    receipt.pluginIdentity = manifest.name || null;
+
+    if (receipt.pluginIdentity !== TARGET_PLUGIN_NAME) {
+      throw new Error(`manifest identity mismatch: ${receipt.pluginIdentity || '(missing)'}`);
+    }
+
+    receipt.filesModified.coreWorktree = runGit(PROJECT_ROOT, ['status', '--short']);
+    receipt.filesModified.externalWorktree = runGit(EXTERNAL_PACKAGE_ROOT, ['status', '--short']);
+    if (receipt.filesModified.coreWorktree || receipt.filesModified.externalWorktree) {
+      throw new Error('worktree changed during Stage 3 resolution probe');
+    }
+
+    receipt.result = 'PASS';
+  } catch (error) {
+    receipt.error = error.message;
+    receipt.result = 'BLOCKED';
+    process.exitCode = 1;
+  }
+
+  return receipt;
 }
 
 function collectBoundedOutput(current, chunk) {
@@ -399,6 +548,12 @@ function runStage2DirectStdioNoProviderProbe(stage1Receipt = null) {
 }
 
 async function main() {
+  if (process.argv.includes(STAGE3_ARG)) {
+    const stage3Receipt = runStage3BoundedRuntimeResolutionProbe();
+    process.stdout.write(`${JSON.stringify(stage3Receipt, null, 2)}\n`);
+    return;
+  }
+
   if (process.argv.includes(STAGE2_ARG)) {
     const stage2Receipt = await runStage2DirectStdioNoProviderProbe();
     if (stage2Receipt.result !== 'PASS') process.exitCode = 1;
@@ -422,11 +577,15 @@ module.exports = {
   buildBaseReceipt,
   buildStage2Receipt,
   assertExternalIdentity,
+  parseExactRuntimeAllowlist,
   runStage1IdentityProbe,
   runStage2DirectStdioNoProviderProbe,
+  runStage3BoundedRuntimeResolutionProbe,
   EXACT_RUNTIME_ALLOWLIST,
   STAGE2_ARG,
   STAGE2_TIMEOUT_MS,
+  STAGE3_ARG,
+  STAGE3_TIMEOUT_MS,
   TARGET_PLUGIN_NAME,
   TARGET_PLUGIN_PATH
 };
