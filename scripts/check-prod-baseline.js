@@ -458,6 +458,23 @@ const jennExternalRuntimeAllowlistContractMarkers = [
   'allowExecution: false',
   'dryRun: true',
 ];
+const jennBoundedNoProviderHarness = readText('scripts/run-jenn-aigent-orchestrator-no-provider-runtime-harness.js');
+requiredChecks.push({
+  label: 'Gate 51B bounded no-provider harness avoids broad runtime execution surfaces',
+  ok: jennBoundedNoProviderHarness.includes('stage1_external_identity_probe')
+    && jennBoundedNoProviderHarness.includes('buildRequest')
+    && jennBoundedNoProviderHarness.includes('assertRequestShape')
+    && jennBoundedNoProviderHarness.includes('assertExternalIdentity')
+    && jennBoundedNoProviderHarness.includes('pluginManagerLoaded: false')
+    && jennBoundedNoProviderHarness.includes('processToolCallInvoked: false')
+    && jennBoundedNoProviderHarness.includes('runtimeDryRunExecuted: false')
+    && jennBoundedNoProviderHarness.includes(String.raw`JennAIGentOrchestrator@A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentOrchestrator`)
+    && !jennBoundedNoProviderHarness.includes("require('../Plugin')")
+    && !jennBoundedNoProviderHarness.includes('pluginManager.loadPlugins')
+    && !jennBoundedNoProviderHarness.includes('pluginManager.processToolCall')
+    && !/processToolCall\s*\(/.test(jennBoundedNoProviderHarness)
+    && !/server\.listen|app\.listen|createServer|setInterval|writeFile|appendFile/.test(jennBoundedNoProviderHarness),
+});
 const jennExternalRuntimeAllowlistContractSubstanceMarkers = [
   'discovery/install',
   'Runtime registration is gated separately by `VCP_EXTERNAL_PLUGIN_ALLOWLIST`',
