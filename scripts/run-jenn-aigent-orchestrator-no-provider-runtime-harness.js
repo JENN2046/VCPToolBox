@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { evaluateExactExternalPluginResolution } = require('../modules/externalPluginAllowPolicy');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const EXTERNAL_PACKAGE_ROOT = path.resolve(PROJECT_ROOT, '..', 'VCPToolBox-JENN-Extensions');
@@ -22,6 +23,10 @@ const STAGE2_ARG = '--stage2-direct-stdio-no-provider-probe';
 const STAGE3_ARG = '--stage3-bounded-runtime-resolution-probe';
 const STAGE3_TIMEOUT_MS = 15000;
 const STAGE4_ARG = '--stage4-harness-only-resolution-guard';
+const STAGE5_ARG = '--stage5-bounded-no-provider-runtime-registration-dry-run';
+const STAGE5_NAME = 'stage5-bounded-no-provider-runtime-registration-dry-run';
+const STAGE5_PASS_CLASSIFICATION = 'BOUNDED_NO_PROVIDER_RUNTIME_REGISTRATION_DRY_RUN_PASS';
+const STAGE5_BLOCKED_CLASSIFICATION = 'BOUNDED_NO_PROVIDER_RUNTIME_REGISTRATION_DRY_RUN_BLOCKED';
 
 function runGit(cwd, args) {
   const result = spawnSync('git', args, {
@@ -277,6 +282,52 @@ function buildStage4Receipt() {
   };
 }
 
+function buildStage5Receipt() {
+  return {
+    gate: 'Gate 71 AIGentOrchestrator bounded no-provider runtime registration dry-run',
+    stage: STAGE5_NAME,
+    result: 'FAIL',
+    classification: STAGE5_BLOCKED_CLASSIFICATION,
+    coreHEAD: null,
+    coreOriginMain: null,
+    coreWorktree: null,
+    externalHEAD: null,
+    externalOriginMain: null,
+    externalWorktree: null,
+    externalOrigin: null,
+    exactExternalAllowlist: EXACT_RUNTIME_ALLOWLIST,
+    targetPluginName: TARGET_PLUGIN_NAME,
+    externalTargetPath: TARGET_PLUGIN_PATH,
+    coreFallbackPath: CORE_FALLBACK_PATH,
+    policyDecision: null,
+    policyReasons: [],
+    resolvedExternalPluginPath: null,
+    manifestPath: null,
+    manifestIdentity: null,
+    negativeCases: [],
+    exactAllowlistParsed: false,
+    externalPathResolved: false,
+    resolvedPathIsExternalPackagePath: false,
+    manifestIdentityMatched: false,
+    coreFallback: false,
+    runtimeRegistrationPolicyEvaluated: false,
+    executionHandoff: false,
+    pluginManagerLoadPluginsInvoked: false,
+    processToolCallInvoked: false,
+    executePluginInvoked: false,
+    providerCalls: false,
+    downstreamDispatch: false,
+    localStateWrites: false,
+    serverRouteActivation: false,
+    imageGeneration: false,
+    runtimeCutover: false,
+    filesModified: {
+      coreWorktree: null,
+      externalWorktree: null
+    }
+  };
+}
+
 function assertCleanState(receipt) {
   receipt.coreHEAD = runGit(PROJECT_ROOT, ['rev-parse', 'HEAD']);
   receipt.coreOriginMain = runGit(PROJECT_ROOT, ['rev-parse', 'origin/main']);
@@ -297,6 +348,179 @@ function assertCleanState(receipt) {
   if (failures.length > 0) {
     throw new Error(`preflight blocked: ${failures.join('; ')}`);
   }
+}
+
+function buildStage5Classification(overrides = {}) {
+  return {
+    pluginName: TARGET_PLUGIN_NAME,
+    isExternal: true,
+    pluginSource: 'external',
+    basePath: TARGET_PLUGIN_PATH,
+    ...overrides
+  };
+}
+
+function evaluateStage5RegistrationPolicy(classification, policy = EXACT_RUNTIME_ALLOWLIST, options = {}) {
+  return evaluateExactExternalPluginResolution(classification, policy, {
+    projectRoot: PROJECT_ROOT,
+    targetPluginName: TARGET_PLUGIN_NAME,
+    targetPluginPath: TARGET_PLUGIN_PATH,
+    coreFallbackPath: CORE_FALLBACK_PATH,
+    manifestFileName: 'plugin-manifest.json',
+    ...options
+  });
+}
+
+function applyStage5PolicyDecision(receipt, policyDecision) {
+  const evidence = policyDecision.evidence || {};
+  receipt.policyDecision = policyDecision.decision || null;
+  receipt.policyReasons = Array.isArray(policyDecision.reasons) ? policyDecision.reasons.slice() : [];
+  receipt.resolvedExternalPluginPath = policyDecision.baseRealPath || policyDecision.basePath || null;
+  receipt.manifestPath = policyDecision.manifestPath || null;
+  receipt.manifestIdentity = policyDecision.manifestIdentity || null;
+  receipt.exactAllowlistParsed = evidence.exactAllowlistParsed === true;
+  receipt.externalPathResolved = evidence.externalPathResolved === true;
+  receipt.resolvedPathIsExternalPackagePath = evidence.resolvedPathIsExternalPackagePath === true;
+  receipt.manifestIdentityMatched = evidence.manifestIdentityMatched === true;
+  receipt.coreFallback = evidence.coreFallback === true;
+  receipt.runtimeRegistrationPolicyEvaluated = true;
+  receipt.executionHandoff = evidence.executionHandoff === true;
+  receipt.pluginManagerLoadPluginsInvoked = evidence.pluginManagerLoadPluginsInvoked === true;
+  receipt.processToolCallInvoked = evidence.processToolCallInvoked === true;
+  receipt.executePluginInvoked = evidence.executePluginInvoked === true;
+  receipt.providerCalls = evidence.providerCalls === true;
+  receipt.downstreamDispatch = evidence.downstreamDispatch === true;
+  receipt.localStateWrites = evidence.localStateWrites === true;
+  receipt.serverRouteActivation = evidence.serverRouteActivation === true;
+  receipt.imageGeneration = evidence.imageGeneration === true;
+  receipt.runtimeCutover = evidence.runtimeCutover === true;
+}
+
+function assertStage5NoForbiddenBoundary(evidence) {
+  const forbidden = [
+    'executionHandoff',
+    'pluginManagerLoadPluginsInvoked',
+    'processToolCallInvoked',
+    'executePluginInvoked',
+    'providerCalls',
+    'downstreamDispatch',
+    'localStateWrites',
+    'serverRouteActivation',
+    'imageGeneration',
+    'runtimeCutover'
+  ];
+  const crossed = forbidden.filter((key) => evidence[key] === true);
+  if (crossed.length > 0) {
+    throw new Error(`Stage 5 forbidden boundary crossed: ${crossed.join(', ')}`);
+  }
+}
+
+function assertStage5PositivePass(receipt) {
+  const failures = [];
+  if (receipt.policyDecision !== 'would_allow') failures.push(`policy decision was ${receipt.policyDecision || '(missing)'}`);
+  if (receipt.exactAllowlistParsed !== true) failures.push('exactAllowlistParsed must be true');
+  if (receipt.externalPathResolved !== true) failures.push('externalPathResolved must be true');
+  if (receipt.resolvedPathIsExternalPackagePath !== true) failures.push('resolvedPathIsExternalPackagePath must be true');
+  if (receipt.manifestIdentityMatched !== true) failures.push('manifestIdentityMatched must be true');
+  if (receipt.coreFallback !== false) failures.push('coreFallback must be false');
+  if (receipt.runtimeRegistrationPolicyEvaluated !== true) failures.push('runtimeRegistrationPolicyEvaluated must be true');
+
+  assertStage5NoForbiddenBoundary(receipt);
+
+  if (failures.length > 0) {
+    throw new Error(`Stage 5 positive proof blocked: ${failures.join('; ')}`);
+  }
+}
+
+function buildStage5NegativeCases() {
+  const localStateRoot = path.resolve(PROJECT_ROOT, '..', 'VCPToolBox-JENN-LocalState');
+  return [
+    {
+      name: 'missing allowlist entry',
+      classification: buildStage5Classification(),
+      policy: ''
+    },
+    {
+      name: 'wildcard allowlist',
+      classification: buildStage5Classification(),
+      policy: `${TARGET_PLUGIN_NAME}@${TARGET_PLUGIN_PATH}\\*`
+    },
+    {
+      name: 'name-only allowlist',
+      classification: buildStage5Classification(),
+      policy: TARGET_PLUGIN_NAME
+    },
+    {
+      name: 'package-root allowlist',
+      classification: buildStage5Classification(),
+      policy: `${TARGET_PLUGIN_NAME}@${EXTERNAL_PLUGIN_ROOT}`
+    },
+    {
+      name: 'LocalState-root allowlist',
+      classification: buildStage5Classification(),
+      policy: `${TARGET_PLUGIN_NAME}@${localStateRoot}`
+    },
+    {
+      name: 'path mismatch',
+      classification: buildStage5Classification({ basePath: `${TARGET_PLUGIN_PATH}-MISMATCH` }),
+      policy: EXACT_RUNTIME_ALLOWLIST
+    },
+    {
+      name: 'core fallback possibility',
+      classification: buildStage5Classification({ basePath: CORE_FALLBACK_PATH }),
+      policy: `${TARGET_PLUGIN_NAME}@${CORE_FALLBACK_PATH}`
+    },
+    {
+      name: 'manifest missing',
+      classification: buildStage5Classification(),
+      policy: EXACT_RUNTIME_ALLOWLIST,
+      options: {
+        readFileSync: () => {
+          throw new Error('mock manifest read failure');
+        }
+      }
+    },
+    {
+      name: 'manifest identity mismatch',
+      classification: buildStage5Classification(),
+      policy: EXACT_RUNTIME_ALLOWLIST,
+      options: {
+        readFileSync: () => JSON.stringify({ name: 'WrongJennAIGentOrchestrator' })
+      }
+    },
+    {
+      name: 'ambiguous plugin source',
+      classification: {
+        pluginName: TARGET_PLUGIN_NAME,
+        basePath: TARGET_PLUGIN_PATH
+      },
+      policy: EXACT_RUNTIME_ALLOWLIST
+    }
+  ];
+}
+
+function runStage5NegativeCase(caseDefinition) {
+  const decision = evaluateStage5RegistrationPolicy(
+    caseDefinition.classification,
+    caseDefinition.policy,
+    caseDefinition.options || {}
+  );
+  assertStage5NoForbiddenBoundary(decision.evidence || {});
+  return {
+    name: caseDefinition.name,
+    pass: decision.decision !== 'would_allow',
+    decision: decision.decision,
+    reasons: Array.isArray(decision.reasons) ? decision.reasons.slice() : []
+  };
+}
+
+function runStage5NegativeCases() {
+  const cases = buildStage5NegativeCases().map(runStage5NegativeCase);
+  const allowedCases = cases.filter((item) => item.pass !== true);
+  if (allowedCases.length > 0) {
+    throw new Error(`Stage 5 fail-closed cases allowed unexpectedly: ${allowedCases.map((item) => item.name).join(', ')}`);
+  }
+  return cases;
 }
 
 function assertExternalIdentity(receipt) {
@@ -508,6 +732,35 @@ function runStage4HarnessOnlyResolutionGuard() {
   return receipt;
 }
 
+function runStage5BoundedNoProviderRuntimeRegistrationDryRun() {
+  const receipt = buildStage5Receipt();
+
+  try {
+    assertCleanState(receipt);
+
+    const policyDecision = evaluateStage5RegistrationPolicy(buildStage5Classification());
+    applyStage5PolicyDecision(receipt, policyDecision);
+    assertStage5PositivePass(receipt);
+    receipt.negativeCases = runStage5NegativeCases();
+
+    receipt.filesModified.coreWorktree = runGit(PROJECT_ROOT, ['status', '--short']);
+    receipt.filesModified.externalWorktree = runGit(EXTERNAL_PACKAGE_ROOT, ['status', '--short']);
+    if (receipt.filesModified.coreWorktree || receipt.filesModified.externalWorktree) {
+      throw new Error('worktree changed during Stage 5 no-provider runtime registration dry-run');
+    }
+
+    receipt.result = 'PASS';
+    receipt.classification = STAGE5_PASS_CLASSIFICATION;
+  } catch (error) {
+    receipt.error = error.message;
+    receipt.result = 'FAIL';
+    receipt.classification = STAGE5_BLOCKED_CLASSIFICATION;
+    process.exitCode = 1;
+  }
+
+  return receipt;
+}
+
 function collectBoundedOutput(current, chunk) {
   const next = current + chunk.toString();
   if (Buffer.byteLength(next, 'utf8') > STAGE2_MAX_OUTPUT_BYTES) {
@@ -658,6 +911,12 @@ function runStage2DirectStdioNoProviderProbe(stage1Receipt = null) {
 }
 
 async function main() {
+  if (process.argv.includes(STAGE5_ARG)) {
+    const stage5Receipt = runStage5BoundedNoProviderRuntimeRegistrationDryRun();
+    process.stdout.write(`${JSON.stringify(stage5Receipt, null, 2)}\n`);
+    return;
+  }
+
   if (process.argv.includes(STAGE4_ARG)) {
     const stage4Receipt = runStage4HarnessOnlyResolutionGuard();
     process.stdout.write(`${JSON.stringify(stage4Receipt, null, 2)}\n`);
@@ -698,12 +957,14 @@ module.exports = {
   runStage2DirectStdioNoProviderProbe,
   runStage3BoundedRuntimeResolutionProbe,
   runStage4HarnessOnlyResolutionGuard,
+  runStage5BoundedNoProviderRuntimeRegistrationDryRun,
   EXACT_RUNTIME_ALLOWLIST,
   STAGE2_ARG,
   STAGE2_TIMEOUT_MS,
   STAGE3_ARG,
   STAGE3_TIMEOUT_MS,
   STAGE4_ARG,
+  STAGE5_ARG,
   TARGET_PLUGIN_NAME,
   TARGET_PLUGIN_PATH
 };
