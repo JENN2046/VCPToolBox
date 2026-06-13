@@ -3,6 +3,8 @@
 
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
 const STAGE6_ARG = '--stage6-bounded-provider-validation-probe';
 const STAGE6_NAME = 'stage6-bounded-provider-validation-probe';
@@ -11,6 +13,10 @@ const BLOCKED_CLASSIFICATION = 'BOUNDED_PROVIDER_VALIDATION_BLOCKED';
 const DEFAULT_TIMEOUT_MS = 10000;
 const MAX_TIMEOUT_MS = 30000;
 const MAX_RESPONSE_BYTES = 16 * 1024;
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const AUTHORIZED_EXTERNAL_PLUGIN_PATH = String.raw`A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentOrchestrator`;
+const TARGET_EXTERNAL_PLUGIN_PATH = path.resolve(PROJECT_ROOT, '..', 'VCPToolBox-JENN-Extensions', 'Plugin', 'JennAIGentOrchestrator');
+const CORE_FALLBACK_PATH = path.join(PROJECT_ROOT, 'Plugin', 'AIGentOrchestrator');
 
 const ENV = Object.freeze({
   providerName: 'AIGENT_ORCHESTRATOR_PROVIDER_NAME',
@@ -40,10 +46,13 @@ const SAFE_STRING_VALUES = new Set([
   ...Object.values(ENV),
   'PASS',
   'FAIL',
+  'yes',
+  'no',
   'not_configured',
   'redacted',
   'json',
-  'unknown'
+  'unknown',
+  AUTHORIZED_EXTERNAL_PLUGIN_PATH
 ]);
 
 function createBaseReceipt() {
@@ -56,6 +65,11 @@ function createBaseReceipt() {
     providerCredentialPresent: false,
     providerCredentialPrinted: false,
     rawAuthorizationHeaderPrinted: false,
+    externalPathResolved: 'no',
+    externalPathExactMatch: 'no',
+    externalPath: null,
+    coreFallback: null,
+    coreFallbackFalse: 'no',
     providerEndpointContacted: false,
     providerResponseReceived: false,
     providerAuthAccepted: false,
@@ -99,6 +113,72 @@ function createBaseReceipt() {
     },
     blockReasons: []
   };
+}
+
+function normalizeComparablePath(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function comparePath(value, expectedValue) {
+  const actual = normalizeComparablePath(value);
+  const expected = normalizeComparablePath(expectedValue);
+  return Boolean(actual && expected && actual === expected);
+}
+
+function resolveFreshRealPath(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const realpathSync = fs.realpathSync.native || fs.realpathSync;
+    return path.resolve(realpathSync(path.resolve(value)));
+  } catch (_error) {
+    return null;
+  }
+}
+
+function proveExternalPluginPath(receipt) {
+  const authorizedResolvedPath = path.resolve(AUTHORIZED_EXTERNAL_PLUGIN_PATH);
+  const targetResolvedPath = path.resolve(TARGET_EXTERNAL_PLUGIN_PATH);
+  const targetRealPath = resolveFreshRealPath(TARGET_EXTERNAL_PLUGIN_PATH);
+  const authorizedRealPath = resolveFreshRealPath(AUTHORIZED_EXTERNAL_PLUGIN_PATH);
+  const coreFallbackResolvedPath = path.resolve(CORE_FALLBACK_PATH);
+  const coreFallbackRealPath = resolveFreshRealPath(CORE_FALLBACK_PATH);
+
+  if (!targetRealPath || !authorizedRealPath) {
+    fail(receipt, 'external_path_missing');
+    return;
+  }
+
+  receipt.externalPathResolved = 'yes';
+
+  const exactExternalPath = comparePath(targetResolvedPath, authorizedResolvedPath)
+    && comparePath(targetRealPath, authorizedRealPath);
+
+  if (!exactExternalPath) {
+    fail(receipt, 'external_path_exact_match_failed');
+    return;
+  }
+
+  receipt.externalPathExactMatch = 'yes';
+  receipt.externalPath = AUTHORIZED_EXTERNAL_PLUGIN_PATH;
+
+  if (!coreFallbackRealPath) {
+    fail(receipt, 'core_fallback_proof_ambiguous');
+    return;
+  }
+
+  const coreFallback = comparePath(targetResolvedPath, coreFallbackResolvedPath)
+    || comparePath(targetRealPath, coreFallbackRealPath)
+    || comparePath(authorizedRealPath, coreFallbackRealPath);
+
+  if (coreFallback) {
+    fail(receipt, 'core_fallback_true');
+    return;
+  }
+
+  receipt.coreFallback = false;
+  receipt.coreFallbackFalse = 'yes';
 }
 
 function fail(receipt, reason) {
@@ -348,6 +428,11 @@ function isNonEmptyJsonContract(value) {
 function requiredPassFieldsMet(receipt) {
   return (
     receipt.providerValidationAttempted === true &&
+    receipt.externalPathResolved === 'yes' &&
+    receipt.externalPathExactMatch === 'yes' &&
+    receipt.externalPath === AUTHORIZED_EXTERNAL_PLUGIN_PATH &&
+    receipt.coreFallback === false &&
+    receipt.coreFallbackFalse === 'yes' &&
     receipt.providerConfigured === true &&
     receipt.providerCredentialPresent === true &&
     receipt.providerCredentialPrinted === false &&
@@ -447,6 +532,7 @@ async function main() {
   }
 
   receipt.providerValidationAttempted = true;
+  proveExternalPluginPath(receipt);
   const config = readConfig(receipt);
 
   if (receipt.blockReasons.length === 0) {
