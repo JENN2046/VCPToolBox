@@ -15,7 +15,10 @@ const { normalizeExecutionContext } = require('./modules/toolExecutionContext');
 const { buildToolApprovalEvidence } = require('./modules/toolApprovalEvidence');
 const { createPluginRootResolver } = require('./modules/pluginRootResolver');
 const { classifyExternalPluginManifest } = require('./modules/externalPluginSafetyGate');
-const { evaluateExternalPluginAllowPolicy } = require('./modules/externalPluginAllowPolicy');
+const {
+    evaluateExternalPluginAllowPolicy,
+    evaluateExactExternalPluginResolution
+} = require('./modules/externalPluginAllowPolicy');
 const {
     buildExternalPluginRuntimeEnv,
     isPluginRuntimeEnvKeyDenied
@@ -31,6 +34,15 @@ const LEGACY_PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const LEGACY_MANIFEST_FILE_NAME = 'plugin-manifest.json';
 const EXTERNAL_LEGACY_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';
 const EXTERNAL_PLUGIN_ALLOWLIST_ENV = 'VCP_EXTERNAL_PLUGIN_ALLOWLIST';
+const JENN_AIGENT_ORCHESTRATOR_PLUGIN_NAME = 'JennAIGentOrchestrator';
+const JENN_AIGENT_ORCHESTRATOR_EXTERNAL_PATH = path.resolve(
+    __dirname,
+    '..',
+    'VCPToolBox-JENN-Extensions',
+    'Plugin',
+    JENN_AIGENT_ORCHESTRATOR_PLUGIN_NAME
+);
+const JENN_AIGENT_ORCHESTRATOR_CORE_FALLBACK_PATH = path.join(LEGACY_PLUGIN_DIR, 'AIGentOrchestrator');
 const MODERN_PLUGIN_DIR = path.join(__dirname, 'plugins');
 const MODERN_PLUGIN_REGISTRY_FILE = path.join(MODERN_PLUGIN_DIR, 'registry.json');
 const MODERN_MANIFEST_FILE_NAME = 'plugin.json';
@@ -761,6 +773,11 @@ class PluginManager extends EventEmitter {
         if (/missing a concrete plugin name|missing a plugin name/i.test(reasons)) return 'external_runtime_missing_name';
         if (/missing a base path/i.test(reasons)) return 'external_runtime_missing_base_path';
         if (/invalid entries/i.test(reasons)) return 'external_runtime_invalid_policy';
+        if (/exact external plugin allowlist entry is missing/i.test(reasons)) return 'external_runtime_exact_allowlist_required';
+        if (/resolved path is not the sealed external plugin path|path mismatch/i.test(reasons)) return 'external_runtime_exact_path_required';
+        if (/manifest identity/i.test(reasons)) return 'external_runtime_manifest_identity_required';
+        if (/core fallback path is forbidden|core fallback/i.test(reasons)) return 'external_runtime_core_fallback_denied';
+        if (/package-root allowlist|LocalState-root allowlist|wildcard allowlist|name-only allowlist/i.test(reasons)) return 'external_runtime_invalid_policy';
         if (/source directory did not match/i.test(reasons)) return 'external_runtime_source_mismatch';
         if (/requires explicit name and source directory allow policy/i.test(reasons)) return 'external_runtime_allowlist_required';
         if (/entrypoint is missing or unsupported/i.test(reasons)) return 'external_runtime_unsupported_entrypoint';
@@ -833,8 +850,22 @@ class PluginManager extends EventEmitter {
             this._getExternalPluginRuntimeAllowPolicy(),
             { projectRoot: __dirname }
         );
+        const exactResolutionDecision = classification.pluginName === JENN_AIGENT_ORCHESTRATOR_PLUGIN_NAME
+            ? evaluateExactExternalPluginResolution(
+                classification,
+                this._getExternalPluginRuntimeAllowPolicy(),
+                {
+                    projectRoot: __dirname,
+                    targetPluginName: JENN_AIGENT_ORCHESTRATOR_PLUGIN_NAME,
+                    targetPluginPath: JENN_AIGENT_ORCHESTRATOR_EXTERNAL_PATH,
+                    coreFallbackPath: JENN_AIGENT_ORCHESTRATOR_CORE_FALLBACK_PATH,
+                    manifestFileName: LEGACY_MANIFEST_FILE_NAME
+                }
+            )
+            : null;
+        const runtimePolicyDecision = exactResolutionDecision || policyDecision;
         const duplicateExisting = Boolean(manifest.name && this.plugins.has(manifest.name));
-        const allowed = policyDecision.decision === 'would_allow'
+        const allowed = runtimePolicyDecision.decision === 'would_allow'
             && classification.duplicateOfBuiltIn !== true
             && duplicateExisting !== true;
 
@@ -843,7 +874,7 @@ class PluginManager extends EventEmitter {
             decision: allowed ? 'allowed' : 'blocked',
             code: allowed
                 ? 'external_runtime_registration_allowed'
-                : this._getExternalRegistrationReasonCode(policyDecision, {
+                : this._getExternalRegistrationReasonCode(runtimePolicyDecision, {
                     ...classification,
                     duplicateOfBuiltIn: classification.duplicateOfBuiltIn || duplicateExisting
                 }),
@@ -852,7 +883,8 @@ class PluginManager extends EventEmitter {
             pluginRootId: this._sanitizeExternalRuntimeRootId(manifest.pluginRootId),
             pluginRootDisplayPath: this._sanitizeExternalRuntimeDisplayPath(manifest.pluginRootDisplayPath),
             risk: classification.risk,
-            entryPointKind: classification.entryPointKind
+            entryPointKind: classification.entryPointKind,
+            boundedResolutionEvidence: exactResolutionDecision?.evidence || null
         };
     }
 

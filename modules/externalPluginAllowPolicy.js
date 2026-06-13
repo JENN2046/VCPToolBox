@@ -205,6 +205,197 @@ function makeMatchedPolicy(entry, options = {}, realSourceDirectory = null) {
     };
 }
 
+function comparePath(value, expectedValue, options = {}) {
+    const actual = normalizeComparablePath(value, options);
+    const expected = normalizeComparablePath(expectedValue, options);
+    return Boolean(actual && expected && actual === expected);
+}
+
+function readManifestIdentity(manifestPath, options = {}) {
+    const readFileSync = typeof options.readFileSync === 'function'
+        ? options.readFileSync
+        : fs.readFileSync;
+    try {
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+        return {
+            manifestIdentity: normalizeString(manifest?.name),
+            error: null
+        };
+    } catch (error) {
+        return {
+            manifestIdentity: null,
+            error: error instanceof SyntaxError ? 'manifest-json-invalid' : 'manifest-read-error'
+        };
+    }
+}
+
+function evaluateExactExternalPluginResolution(classification = {}, policy, options = {}) {
+    const targetPluginName = normalizeString(options.targetPluginName);
+    const targetPluginPath = normalizePath(options.targetPluginPath, options.projectRoot);
+    const coreFallbackPath = normalizePath(options.coreFallbackPath, options.projectRoot);
+    const manifestFileName = normalizeString(options.manifestFileName) || 'plugin-manifest.json';
+    const pluginName = normalizeString(classification.pluginName || classification.name);
+    const basePath = normalizePath(classification.basePath, options.projectRoot);
+    const baseRealPath = resolveFreshRealPath(classification.basePath, options);
+    const targetRealPath = resolveFreshRealPath(targetPluginPath, options);
+    const parsedPolicy = parseExternalPluginAllowPolicy(policy, options);
+    const isTargetPlugin = Boolean(targetPluginName && pluginName === targetPluginName);
+    const isExternal = classification.isExternal === true || classification.pluginSource === 'external';
+    const reasons = [];
+    const evidence = {
+        exactAllowlistParsed: false,
+        externalPathResolved: false,
+        resolvedPathIsExternalPackagePath: false,
+        manifestIdentityMatched: false,
+        coreFallback: false,
+        executionHandoff: false,
+        pluginManagerLoadPluginsInvoked: false,
+        processToolCallInvoked: false,
+        executePluginInvoked: false,
+        providerCalls: false,
+        downstreamDispatch: false,
+        localStateWrites: false,
+        serverRouteActivation: false,
+        imageGeneration: false,
+        runtimeCutover: false
+    };
+
+    if (!isExternal || !isTargetPlugin) {
+        return {
+            pluginName: pluginName || 'unknown',
+            basePath,
+            baseRealPath,
+            targetPluginPath,
+            targetRealPath,
+            manifestPath: null,
+            manifestIdentity: null,
+            decision: 'observe',
+            matchedPolicy: null,
+            evidence,
+            reasons: ['non-target external plugin does not use exact Jenn resolution policy']
+        };
+    }
+
+    if (!targetPluginName) {
+        reasons.push('exact external plugin resolution target name is missing');
+    }
+    if (!targetPluginPath) {
+        reasons.push('exact external plugin resolution target path is missing');
+    }
+    if (!pluginName) {
+        reasons.push('external plugin is missing a concrete plugin name');
+    }
+    if (!basePath) {
+        reasons.push('external plugin is missing a base path');
+    }
+    if (!baseRealPath) {
+        reasons.push('external plugin base path realpath is unavailable');
+    }
+    if (!targetRealPath) {
+        reasons.push('exact external plugin target path realpath is unavailable');
+    }
+    if (parsedPolicy.errors.length > 0) {
+        reasons.push('external plugin allow policy contains invalid entries');
+    }
+
+    const sameNameEntries = parsedPolicy.entries.filter((entry) => entry.pluginName === targetPluginName);
+    const targetPluginRoot = targetPluginPath ? path.dirname(targetPluginPath) : null;
+    const targetPackageRoot = targetPluginRoot ? path.dirname(targetPluginRoot) : null;
+    const localStatePattern = /LocalState|VCPToolBox-JENN-LocalState/i;
+    let exactEntry = null;
+
+    for (const entry of sameNameEntries) {
+        const sourceDirectory = getEntrySourceDirectory(entry);
+        const normalizedSourceDirectory = normalizePath(sourceDirectory, options.projectRoot);
+        if (hasWildcard(sourceDirectory) || hasWildcard(entry.pluginName)) {
+            reasons.push('wildcard allowlist is forbidden');
+            continue;
+        }
+        if (targetPluginRoot && comparePath(normalizedSourceDirectory, targetPluginRoot, options)) {
+            reasons.push('package-root allowlist is forbidden');
+            continue;
+        }
+        if (targetPackageRoot && comparePath(normalizedSourceDirectory, targetPackageRoot, options)) {
+            reasons.push('package-root allowlist is forbidden');
+            continue;
+        }
+        if (localStatePattern.test(String(normalizedSourceDirectory || sourceDirectory || ''))) {
+            reasons.push('LocalState-root allowlist is forbidden');
+            continue;
+        }
+        if (targetPluginPath && comparePath(normalizedSourceDirectory, targetPluginPath, options)) {
+            exactEntry = entry;
+        }
+    }
+
+    if (!exactEntry) {
+        reasons.push('exact external plugin allowlist entry is missing');
+    } else {
+        evidence.exactAllowlistParsed = true;
+    }
+
+    if (basePath) {
+        evidence.externalPathResolved = true;
+        evidence.resolvedPathIsExternalPackagePath = comparePath(basePath, targetPluginPath, options)
+            && comparePath(baseRealPath, targetRealPath, options);
+        evidence.coreFallback = coreFallbackPath
+            ? comparePath(basePath, coreFallbackPath, options) || comparePath(baseRealPath, coreFallbackPath, options)
+            : false;
+    }
+
+    if (!evidence.resolvedPathIsExternalPackagePath) {
+        reasons.push('resolved path is not the sealed external plugin path');
+    }
+    if (evidence.coreFallback) {
+        reasons.push('core fallback path is forbidden');
+    }
+
+    const manifestPath = basePath ? path.join(basePath, manifestFileName) : null;
+    let manifestIdentity = null;
+    if (manifestPath && evidence.resolvedPathIsExternalPackagePath) {
+        const manifestResult = readManifestIdentity(manifestPath, options);
+        manifestIdentity = manifestResult.manifestIdentity;
+        if (manifestResult.error) {
+            reasons.push(manifestResult.error === 'manifest-json-invalid'
+                ? 'manifest identity JSON is invalid'
+                : 'manifest identity could not be read');
+        }
+    } else if (manifestPath) {
+        reasons.push('manifest identity proof skipped because resolved path is not exact');
+    }
+
+    evidence.manifestIdentityMatched = Boolean(manifestIdentity && manifestIdentity === targetPluginName);
+    if (!evidence.manifestIdentityMatched) {
+        reasons.push('manifest identity mismatch');
+    }
+
+    const matchedPolicy = exactEntry
+        ? makeMatchedPolicy(exactEntry, options, resolveFreshRealPath(getEntrySourceDirectory(exactEntry), options))
+        : null;
+    const allowed = reasons.length === 0
+        && evidence.exactAllowlistParsed
+        && evidence.externalPathResolved
+        && evidence.resolvedPathIsExternalPackagePath
+        && evidence.manifestIdentityMatched
+        && evidence.coreFallback === false;
+
+    return {
+        pluginName: pluginName || 'unknown',
+        basePath,
+        baseRealPath,
+        targetPluginPath,
+        targetRealPath,
+        manifestPath,
+        manifestIdentity,
+        decision: allowed ? 'would_allow' : 'would_block',
+        matchedPolicy,
+        evidence,
+        reasons: allowed
+            ? ['external plugin matched exact Jenn runtime resolution policy']
+            : reasons
+    };
+}
+
 function evaluateExternalPluginAllowPolicy(classification = {}, policy, options = {}) {
     const parsedPolicy = normalizePolicy(policy, options);
     const pluginName = normalizeString(classification.pluginName || classification.name);
@@ -287,5 +478,6 @@ function evaluateExternalPluginAllowPolicy(classification = {}, policy, options 
 
 module.exports = {
     parseExternalPluginAllowPolicy,
-    evaluateExternalPluginAllowPolicy
+    evaluateExternalPluginAllowPolicy,
+    evaluateExactExternalPluginResolution
 };
