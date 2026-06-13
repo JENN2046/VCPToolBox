@@ -475,6 +475,27 @@ requiredChecks.push({
     && !/processToolCall\s*\(/.test(jennBoundedNoProviderHarness)
     && !/server\.listen|app\.listen|createServer|setInterval|writeFile|appendFile/.test(jennBoundedNoProviderHarness),
 });
+requiredChecks.push({
+  label: 'Gate 55 bounded Stage 2 no-provider probe remains explicit and guarded',
+  ok: jennBoundedNoProviderHarness.includes('stage2_direct_stdio_no_provider_probe')
+    && jennBoundedNoProviderHarness.includes('runStage2DirectStdioNoProviderProbe')
+    && jennBoundedNoProviderHarness.includes('buildStage2Receipt')
+    && jennBoundedNoProviderHarness.includes('STAGE2_TIMEOUT_MS = 15000')
+    && jennBoundedNoProviderHarness.includes("spawn('node', ['AIGentOrchestrator.js']")
+    && jennBoundedNoProviderHarness.includes("cwd: TARGET_PLUGIN_PATH")
+    && jennBoundedNoProviderHarness.includes("child.kill('SIGKILL')")
+    && jennBoundedNoProviderHarness.includes('child.stdin.end')
+    && jennBoundedNoProviderHarness.includes('stdoutJsonParse')
+    && jennBoundedNoProviderHarness.includes("providerCalls: 'not_called'")
+    && jennBoundedNoProviderHarness.includes("downstreamDispatch: 'not_dispatched'")
+    && jennBoundedNoProviderHarness.includes("localStateWrites: 'not_written'")
+    && jennBoundedNoProviderHarness.includes(String.raw`JennAIGentOrchestrator@A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentOrchestrator`)
+    && !jennBoundedNoProviderHarness.includes("require('../Plugin')")
+    && !jennBoundedNoProviderHarness.includes('pluginManager.loadPlugins')
+    && !jennBoundedNoProviderHarness.includes('pluginManager.processToolCall')
+    && !/processToolCall\s*\(/.test(jennBoundedNoProviderHarness)
+    && !/server\.listen|app\.listen|createServer|setInterval|writeFile|appendFile/.test(jennBoundedNoProviderHarness),
+});
 const jennExternalRuntimeAllowlistContractSubstanceMarkers = [
   'discovery/install',
   'Runtime registration is gated separately by `VCP_EXTERNAL_PLUGIN_ALLOWLIST`',

@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const EXTERNAL_PACKAGE_ROOT = path.resolve(PROJECT_ROOT, '..', 'VCPToolBox-JENN-Extensions');
@@ -12,8 +12,13 @@ const TARGET_PLUGIN_PATH = path.join(EXTERNAL_PLUGIN_ROOT, 'JennAIGentOrchestrat
 const CORE_FALLBACK_PATH = path.join(PROJECT_ROOT, 'Plugin', 'AIGentOrchestrator');
 const EXPECTED_EXTERNAL_HEAD = 'f7772c654c2d8d34698f2818fde02ec63df783cb';
 const TARGET_PLUGIN_NAME = 'JennAIGentOrchestrator';
+const TARGET_ENTRYPOINT_COMMAND = 'node AIGentOrchestrator.js';
 const EXACT_RUNTIME_ALLOWLIST = `${TARGET_PLUGIN_NAME}@${TARGET_PLUGIN_PATH}`;
 const REQUEST_ID = 'gate51b-jenn-aigent-orchestrator-bounded-stage1-identity';
+const STAGE2_REQUEST_ID = 'gate55-jenn-aigent-orchestrator-bounded-stage2-direct-stdio';
+const STAGE2_TIMEOUT_MS = 15000;
+const STAGE2_MAX_OUTPUT_BYTES = 64 * 1024;
+const STAGE2_ARG = '--stage2-direct-stdio-no-provider-probe';
 
 function runGit(cwd, args) {
   const result = spawnSync('git', args, {
@@ -54,6 +59,15 @@ function buildRequest() {
     execute_pipeline: false,
     confirm_external_effects: false,
     requested_by: 'gate-51b-bounded-no-provider-harness'
+  };
+}
+
+function buildStage2Request() {
+  return {
+    ...buildRequest(),
+    requestId: STAGE2_REQUEST_ID,
+    user_input: 'Gate 55 bounded no-provider Stage 2 direct stdio probe request shape',
+    requested_by: 'gate-55-bounded-stage2-no-provider-probe'
   };
 }
 
@@ -125,6 +139,58 @@ function buildBaseReceipt(request) {
   };
 }
 
+function buildStage2Receipt(stage1Receipt, request) {
+  return {
+    gate: 'Gate 55 AIGentOrchestrator bounded Stage 2 no-provider probe',
+    stage: 'stage2_direct_stdio_no_provider_probe',
+    coreHEAD: stage1Receipt.coreHEAD,
+    coreOriginMain: stage1Receipt.coreOriginMain,
+    coreWorktree: stage1Receipt.coreWorktree,
+    externalHEAD: stage1Receipt.externalHEAD,
+    externalOriginMain: stage1Receipt.externalOriginMain,
+    externalWorktree: stage1Receipt.externalWorktree,
+    externalOrigin: stage1Receipt.externalOrigin,
+    exactExternalPluginPath: TARGET_PLUGIN_PATH,
+    exactRuntimeAllowlist: EXACT_RUNTIME_ALLOWLIST,
+    entrypointCommand: TARGET_ENTRYPOINT_COMMAND,
+    workingDirectory: TARGET_PLUGIN_PATH,
+    requestShape: {
+      command: request.action,
+      requestId: request.requestId,
+      userInputPresent: Boolean(request.user_input),
+      inputPresent: Object.prototype.hasOwnProperty.call(request, 'input'),
+      descriptionPresent: Object.prototype.hasOwnProperty.call(request, 'description'),
+      dryRun: request.dryRun,
+      allowProvider: request.allowProvider,
+      allowDownstream: request.allowDownstream,
+      allowExecution: request.allowExecution
+    },
+    pluginManagerLoaded: false,
+    processToolCallInvoked: false,
+    providerCalls: 'not_called',
+    downstreamDispatch: 'not_dispatched',
+    localStateWrites: 'not_written',
+    serverRouteActivation: 'not_started',
+    realImageGeneration: 'not_started',
+    runtimeDryRunExecuted: false,
+    coreFallbackUsed: false,
+    childProcessStarted: false,
+    childTimeoutMs: STAGE2_TIMEOUT_MS,
+    childTimedOut: false,
+    childKilled: false,
+    childExitCode: null,
+    childSignal: null,
+    stdoutJsonParse: 'not_started',
+    responseStatus: null,
+    responseSafety: null,
+    filesModified: {
+      coreWorktree: null,
+      externalWorktree: null
+    },
+    result: 'BLOCKED'
+  };
+}
+
 function assertCleanState(receipt) {
   receipt.coreHEAD = runGit(PROJECT_ROOT, ['rev-parse', 'HEAD']);
   receipt.coreOriginMain = runGit(PROJECT_ROOT, ['rev-parse', 'origin/main']);
@@ -172,7 +238,7 @@ function assertExternalIdentity(receipt) {
   receipt.manifestCommunicationProtocol = manifest.communication?.protocol || null;
 
   if (receipt.manifestName !== TARGET_PLUGIN_NAME) failures.push(`unexpected manifest name: ${receipt.manifestName || '(missing)'}`);
-  if (receipt.manifestEntrypoint !== 'node AIGentOrchestrator.js') failures.push(`unexpected manifest entrypoint: ${receipt.manifestEntrypoint || '(missing)'}`);
+  if (receipt.manifestEntrypoint !== TARGET_ENTRYPOINT_COMMAND) failures.push(`unexpected manifest entrypoint: ${receipt.manifestEntrypoint || '(missing)'}`);
   if (receipt.manifestPluginType !== 'synchronous') failures.push(`unexpected manifest plugin type: ${receipt.manifestPluginType || '(missing)'}`);
   if (receipt.manifestCommunicationProtocol !== 'stdio') failures.push(`unexpected manifest communication protocol: ${receipt.manifestCommunicationProtocol || '(missing)'}`);
 
@@ -183,7 +249,23 @@ function assertExternalIdentity(receipt) {
   receipt.coreFallbackUsed = false;
 }
 
-function main() {
+function collectBoundedOutput(current, chunk) {
+  const next = current + chunk.toString();
+  if (Buffer.byteLength(next, 'utf8') > STAGE2_MAX_OUTPUT_BYTES) {
+    throw new Error(`child output exceeded ${STAGE2_MAX_OUTPUT_BYTES} bytes`);
+  }
+  return next;
+}
+
+function parsePluginStdoutJson(stdout) {
+  const trimmed = String(stdout || '').trim();
+  if (!trimmed) {
+    throw new Error('child stdout was empty');
+  }
+  return JSON.parse(trimmed);
+}
+
+function runStage1IdentityProbe() {
   const request = buildRequest();
   const receipt = buildBaseReceipt(request);
 
@@ -198,7 +280,135 @@ function main() {
     process.exitCode = 1;
   }
 
-  process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+  return receipt;
+}
+
+function runStage2DirectStdioNoProviderProbe(stage1Receipt = null) {
+  const stage1 = stage1Receipt || runStage1IdentityProbe();
+  if (stage1.result !== 'PASS') {
+    return {
+      ...stage1,
+      gate: 'Gate 55 AIGentOrchestrator bounded Stage 2 no-provider probe',
+      stage: 'stage2_direct_stdio_no_provider_probe',
+      result: 'BLOCKED',
+      error: `Stage 1 identity proof did not pass: ${stage1.error || 'unknown'}`
+    };
+  }
+
+  const request = buildStage2Request();
+  const receipt = buildStage2Receipt(stage1, request);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = '';
+    let stderr = '';
+    let child = null;
+
+    function finish() {
+      if (settled) return;
+      settled = true;
+      try {
+        receipt.filesModified.coreWorktree = runGit(PROJECT_ROOT, ['status', '--short']);
+        receipt.filesModified.externalWorktree = runGit(EXTERNAL_PACKAGE_ROOT, ['status', '--short']);
+        if (receipt.filesModified.coreWorktree || receipt.filesModified.externalWorktree) {
+          throw new Error('worktree changed during Stage 2 probe');
+        }
+        if (receipt.childTimedOut) {
+          throw new Error(`Stage 2 child timed out after ${STAGE2_TIMEOUT_MS}ms`);
+        }
+        if (receipt.childExitCode !== 0) {
+          throw new Error(`Stage 2 child exited with code ${receipt.childExitCode}`);
+        }
+        const parsed = parsePluginStdoutJson(stdout);
+        receipt.stdoutJsonParse = 'pass';
+        receipt.responseStatus = parsed?.status || null;
+        receipt.responseSafety = parsed?.result?.safety || null;
+        if (parsed?.status !== 'success') {
+          throw new Error(`unexpected Stage 2 response status: ${parsed?.status || '(missing)'}`);
+        }
+        receipt.result = 'PASS';
+      } catch (error) {
+        receipt.error = error.message;
+        if (receipt.stdoutJsonParse === 'not_started') receipt.stdoutJsonParse = 'blocked';
+        receipt.result = 'BLOCKED';
+      }
+      resolve(receipt);
+    }
+
+    const timeoutId = setTimeout(() => {
+      receipt.childTimedOut = true;
+      if (child && child.exitCode === null) {
+        receipt.childKilled = child.kill('SIGKILL');
+      }
+      finish();
+    }, STAGE2_TIMEOUT_MS);
+
+    try {
+      child = spawn('node', ['AIGentOrchestrator.js'], {
+        cwd: TARGET_PLUGIN_PATH,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          AIGENT_ORCHESTRATOR_ALLOW_EXECUTION: 'false',
+          AIGENT_ORCHESTRATOR_DEFAULT_MODE: 'dry-run'
+        }
+      });
+      receipt.childProcessStarted = true;
+
+      child.stdout.on('data', (chunk) => {
+        try {
+          stdout = collectBoundedOutput(stdout, chunk);
+        } catch (error) {
+          receipt.error = error.message;
+          child.kill('SIGKILL');
+        }
+      });
+
+      child.stderr.on('data', (chunk) => {
+        try {
+          stderr = collectBoundedOutput(stderr, chunk);
+        } catch (error) {
+          receipt.error = error.message;
+          child.kill('SIGKILL');
+        }
+      });
+
+      child.on('error', (error) => {
+        clearTimeout(timeoutId);
+        receipt.error = error.message;
+        receipt.stderr = stderr ? '[captured]' : '';
+        finish();
+      });
+
+      child.on('exit', (code, signal) => {
+        clearTimeout(timeoutId);
+        receipt.childExitCode = code;
+        receipt.childSignal = signal;
+        receipt.stderr = stderr ? '[captured]' : '';
+        finish();
+      });
+
+      child.stdin.end(`${JSON.stringify(request)}\n`);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      receipt.error = error.message;
+      finish();
+    }
+  });
+}
+
+async function main() {
+  if (process.argv.includes(STAGE2_ARG)) {
+    const stage2Receipt = await runStage2DirectStdioNoProviderProbe();
+    if (stage2Receipt.result !== 'PASS') process.exitCode = 1;
+    process.stdout.write(`${JSON.stringify(stage2Receipt, null, 2)}\n`);
+    return;
+  }
+
+  const stage1Receipt = runStage1IdentityProbe();
+  if (stage1Receipt.result !== 'PASS') process.exitCode = 1;
+  process.stdout.write(`${JSON.stringify(stage1Receipt, null, 2)}\n`);
 }
 
 if (require.main === module) {
@@ -207,10 +417,16 @@ if (require.main === module) {
 
 module.exports = {
   buildRequest,
+  buildStage2Request,
   assertRequestShape,
   buildBaseReceipt,
+  buildStage2Receipt,
   assertExternalIdentity,
+  runStage1IdentityProbe,
+  runStage2DirectStdioNoProviderProbe,
   EXACT_RUNTIME_ALLOWLIST,
+  STAGE2_ARG,
+  STAGE2_TIMEOUT_MS,
   TARGET_PLUGIN_NAME,
   TARGET_PLUGIN_PATH
 };
