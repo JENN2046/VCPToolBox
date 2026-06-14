@@ -41,6 +41,7 @@ const APPROVED_FIELDS = Object.freeze([
   'pre-provider guard category',
   'provider endpoint contact',
   'provider response received',
+  'provider status category',
   'provider auth accepted',
   'provider contract matched',
   'real image generation invoked',
@@ -77,6 +78,7 @@ function createProjection() {
     'pre-provider guard category': 'not reached',
     'provider endpoint contact': 'no',
     'provider response received': 'no',
+    'provider status category': 'not reached',
     'provider auth accepted': 'no',
     'provider contract matched': 'no',
     'real image generation invoked': 'no',
@@ -192,6 +194,10 @@ function validateCredentialShape(value) {
     && !/^(?:changeme|change_me|placeholder|example|dummy|test|token|secret|password|api[_-]?key)$/i.test(value);
 }
 
+function validateSizeShape(value) {
+  return /^(?:2K|4K|2048x2048|2304x1728|1728x2304|2560x1440|1440x2560|2496x1664|1664x2496|3024x1296)$/.test(value);
+}
+
 function parseGenerationConfig() {
   const endpoint = process.env[ENV.endpoint] || '';
   const credential = process.env[ENV.credential] || '';
@@ -205,7 +211,7 @@ function parseGenerationConfig() {
   if (!validateCredentialShape(credential)) return null;
   if (!/^[A-Za-z][A-Za-z0-9._-]{0,31}$/.test(authScheme)) return null;
   if (!/^[A-Za-z0-9._:-]{1,96}$/.test(model)) return null;
-  if (!/^\d{3,4}x\d{3,4}$/.test(size)) return null;
+  if (!validateSizeShape(size)) return null;
   if (prompt.length < 8 || prompt.length > 1000) return null;
 
   let parsedUrl;
@@ -224,9 +230,11 @@ function requestProvider(config, projection) {
     const body = JSON.stringify({
       model: config.model,
       prompt: config.prompt,
-      n: 1,
       size: config.size,
-      response_format: 'b64_json'
+      sequential_image_generation: 'disabled',
+      stream: false,
+      response_format: 'b64_json',
+      watermark: false
     });
     const options = {
       protocol: config.parsedUrl.protocol,
@@ -251,6 +259,7 @@ function requestProvider(config, projection) {
 
     const req = https.request(options, (res) => {
       projection['provider response received'] = 'yes';
+      projection['provider status category'] = classifyProviderStatusCategory(res.statusCode || 0);
       projection['provider auth accepted'] = res.statusCode && res.statusCode >= 200 && res.statusCode < 300 ? 'yes' : 'no';
 
       res.setEncoding('utf8');
@@ -278,11 +287,22 @@ function requestProvider(config, projection) {
     req.on('error', () => {
       if (settled) return;
       settled = true;
+      projection['provider status category'] = timedOut ? 'timeout' : 'network_error';
       resolve({ statusCode: 0, responseText: '', timedOut });
     });
 
     req.end(body);
   });
+}
+
+function classifyProviderStatusCategory(statusCode) {
+  if (statusCode === 401) return '401';
+  if (statusCode === 403) return '403';
+  if (statusCode === 404) return '404';
+  if (statusCode === 429) return '429';
+  if (statusCode === 400) return '400';
+  if (statusCode >= 500 && statusCode <= 599) return '5xx';
+  return 'unknown';
 }
 
 function extractImageBuffer(parsedResponse) {
@@ -420,6 +440,14 @@ function projectionHasOnlyApprovedValues(projection) {
     'external image surface guard',
     'generation config validation guard',
     'unknown',
+    '401',
+    '403',
+    '404',
+    '429',
+    '400',
+    '5xx',
+    'timeout',
+    'network_error',
     AUTHORIZED_EXTERNAL_PLUGIN_PATH
   ]);
 
