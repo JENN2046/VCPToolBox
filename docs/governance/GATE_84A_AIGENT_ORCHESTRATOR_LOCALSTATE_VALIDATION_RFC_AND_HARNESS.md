@@ -53,15 +53,15 @@ Future 84B mode:
 --stage84b-bounded-localstate-proof
 ```
 
-The harness defaults to fail-closed behavior when the exact future flag is not supplied. It is designed to use a temporary sandbox path only:
+The harness defaults to fail-closed behavior when the exact future flag is not supplied. It is designed to use a dedicated harness-owned sandbox path only:
 
 ```text
 default sandbox:
-  os.tmpdir()/vcp-gate-84b-localstate-sandbox
+  PROJECT_ROOT/.gate-harness-tmp/vcp-gate-84b-localstate-sandbox
 allowed sandbox root:
-  system temp directory only
+  PROJECT_ROOT/.gate-harness-tmp only
 forbidden sandbox paths:
-  project root
+  project root outside the dedicated harness temp root
   LocalState
   state
   cache

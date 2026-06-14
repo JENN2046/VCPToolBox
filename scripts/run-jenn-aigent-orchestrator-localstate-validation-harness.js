@@ -2,12 +2,12 @@
 'use strict';
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const STAGE84B_ARG = '--stage84b-bounded-localstate-proof';
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const DEFAULT_SANDBOX_ROOT = path.join(os.tmpdir(), 'vcp-gate-84b-localstate-sandbox');
+const HARNESS_TMP_ROOT = path.join(PROJECT_ROOT, '.gate-harness-tmp');
+const DEFAULT_SANDBOX_ROOT = path.join(HARNESS_TMP_ROOT, 'vcp-gate-84b-localstate-sandbox');
 const MARKER_FILE_NAME = 'gate84b-localstate-marker.json';
 
 const APPROVED_FIELDS = Object.freeze([
@@ -119,8 +119,7 @@ function resolveSandboxPath() {
 
 function sandboxPathIsAllowed(sandboxPath) {
   if (!sandboxPath || pathContainsForbiddenRuntimeName(sandboxPath)) return false;
-  if (isSubPathOrEqual(sandboxPath, PROJECT_ROOT)) return false;
-  return isSubPathOrEqual(sandboxPath, os.tmpdir());
+  return isSubPathOrEqual(sandboxPath, HARNESS_TMP_ROOT);
 }
 
 function projectionHasOnlyApprovedFields(projection) {
@@ -207,6 +206,7 @@ function writeReadAndCleanupSandbox(projection, sandboxPath) {
     try {
       if (fs.existsSync(markerPath)) fs.unlinkSync(markerPath);
       if (fs.existsSync(sandboxPath)) fs.rmdirSync(sandboxPath);
+      if (fs.existsSync(HARNESS_TMP_ROOT)) fs.rmdirSync(HARNESS_TMP_ROOT);
       projection['cleanup accepted'] = 'yes';
     } catch (_error) {
       projection['cleanup accepted'] = 'no';
