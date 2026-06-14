@@ -175,8 +175,8 @@ function proveManifestIdentity(projection) {
 
 function resultIsSanitizedHealthCheck(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const status = value.status;
-  const result = value.result;
+  const result = value.result && typeof value.result === 'object' ? value.result : value;
+  const status = value.status || 'success';
   const agents = result?.agent_roles || result?.agents;
   return status === 'success'
     && result
