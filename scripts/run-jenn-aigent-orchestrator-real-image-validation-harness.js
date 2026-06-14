@@ -374,7 +374,6 @@ async function runConfirmedProbe(projection) {
     return projection;
   }
 
-  projection['pre-provider guard category'] = 'unknown';
   const response = await requestProvider(config, projection);
   if (response.statusCode < 200 || response.statusCode >= 300) return projection;
 
