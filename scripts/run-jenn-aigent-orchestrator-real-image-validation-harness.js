@@ -38,6 +38,7 @@ const APPROVED_FIELDS = Object.freeze([
   'external path exact match',
   'external path',
   'core fallback false',
+  'pre-provider guard category',
   'provider endpoint contact',
   'provider response received',
   'provider auth accepted',
@@ -73,6 +74,7 @@ function createProjection() {
     'external path exact match': 'no',
     'external path': AUTHORIZED_EXTERNAL_PLUGIN_PATH,
     'core fallback false': 'no',
+    'pre-provider guard category': 'not reached',
     'provider endpoint contact': 'no',
     'provider response received': 'no',
     'provider auth accepted': 'no',
@@ -341,11 +343,18 @@ function writeAndVerifyTemporaryArtifact(buffer, projection) {
 
 async function runConfirmedProbe(projection) {
   if (!proveExternalPath(projection)) return projection;
-  if (!proveExternalImageSurface()) return projection;
+  if (!proveExternalImageSurface()) {
+    projection['pre-provider guard category'] = 'external image surface guard';
+    return projection;
+  }
 
   const config = parseGenerationConfig();
-  if (!config) return projection;
+  if (!config) {
+    projection['pre-provider guard category'] = 'generation config validation guard';
+    return projection;
+  }
 
+  projection['pre-provider guard category'] = 'unknown';
   const response = await requestProvider(config, projection);
   if (response.statusCode < 200 || response.statusCode >= 300) return projection;
 
@@ -407,6 +416,10 @@ function projectionHasOnlyApprovedValues(projection) {
     'FAIL',
     'BLOCKED',
     'false',
+    'not reached',
+    'external image surface guard',
+    'generation config validation guard',
+    'unknown',
     AUTHORIZED_EXTERNAL_PLUGIN_PATH
   ]);
 
