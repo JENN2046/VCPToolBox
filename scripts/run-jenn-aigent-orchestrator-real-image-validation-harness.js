@@ -429,6 +429,55 @@ function projectionHasOnlyApprovedValues(projection) {
   return true;
 }
 
+function normalizeSanitizedProjection(candidate) {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  if (!projectionHasOnlyApprovedFields(candidate)) return null;
+  if (!projectionHasOnlyApprovedValues(candidate)) return null;
+  return candidate;
+}
+
+function parseSanitizedJsonProjection(rawText) {
+  if (typeof rawText !== 'string' || !rawText.trim()) return null;
+  try {
+    return normalizeSanitizedProjection(JSON.parse(rawText));
+  } catch (_error) {
+    return null;
+  }
+}
+
+function parseSanitizedKeyValueProjection(rawText) {
+  if (typeof rawText !== 'string' || !rawText.trim()) return null;
+
+  const projection = {};
+  const approvedFieldSet = new Set(APPROVED_FIELDS);
+  for (const rawLine of rawText.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex <= 0) return null;
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    if (!approvedFieldSet.has(key)) return null;
+    projection[key] = value;
+  }
+
+  return normalizeSanitizedProjection(projection);
+}
+
+function parseSanitizedProjection(rawText) {
+  return parseSanitizedJsonProjection(rawText) || parseSanitizedKeyValueProjection(rawText);
+}
+
+function formatSanitizedKeyValueProjection(projection) {
+  const sanitizedProjection = normalizeSanitizedProjection(projection);
+  if (!sanitizedProjection) return null;
+  return APPROVED_FIELDS
+    .map((field) => `${field}: ${sanitizedProjection[field]}`)
+    .join('\n');
+}
+
 function finalizeProjection(projection) {
   if (!projectionHasOnlyApprovedFields(projection) || !projectionHasOnlyApprovedValues(projection)) {
     const blocked = createProjection();
@@ -442,7 +491,18 @@ function finalizeProjection(projection) {
 }
 
 function printProjection(projection) {
-  process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`);
+  const parsedProjection = parseSanitizedProjection(JSON.stringify(projection, null, 2));
+  const safeProjection = parsedProjection || (() => {
+    const blocked = createProjection();
+    blocked['secret-like value printed'] = 'yes';
+    return blocked;
+  })();
+  const keyValueProjection = formatSanitizedKeyValueProjection(safeProjection);
+
+  process.stdout.write(`${JSON.stringify(safeProjection, null, 2)}\n`);
+  if (keyValueProjection) {
+    process.stdout.write(`${keyValueProjection}\n`);
+  }
 }
 
 async function main() {
