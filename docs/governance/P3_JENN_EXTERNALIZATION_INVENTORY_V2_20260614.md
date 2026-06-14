@@ -91,6 +91,7 @@ prefixes:
   Agent/
   .agent_board/
   data/photo-studio/
+  modules/channelHub/
   modules/photoStudio/
   plugins/custom/shared/photo_studio_data/
 
@@ -124,6 +125,7 @@ $tracked | Where-Object { $_ -eq 'README For VCPChat.md' } | Measure-Object
 $tracked | Where-Object { $_ -like 'Agent/*' } | Measure-Object
 $tracked | Where-Object { $_ -like '.agent_board/*' } | Measure-Object
 $tracked | Where-Object { $_ -like 'data/photo-studio/*' } | Measure-Object
+$tracked | Where-Object { $_ -like 'modules/channelHub/*' } | Measure-Object
 $tracked | Where-Object { $_ -like 'modules/photoStudio/*' } | Measure-Object
 $tracked | Where-Object { $_ -like 'plugins/custom/shared/photo_studio_data/*' } | Measure-Object
 $tracked | Where-Object { $_ -match '^AdminPanel-Vue/src/app/routes/(components|manifest)\.ts$' }
@@ -185,6 +187,14 @@ Get-ChildItem -LiteralPath A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-LocalS
 Measure-PathRecordsWithSkippedChildren `
   -Root A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-LocalState `
   -SkipChildRoots 'secrets','cache','logs','outputs'
+```
+
+ChannelHub authorship and core-split evidence:
+
+```powershell
+git -c core.quotePath=false ls-files modules/channelHub | Measure-Object
+git ls-tree -r --name-only upstream/main -- modules/channelHub 2>$null | Measure-Object
+git log --oneline -- modules/channelHub
 ```
 
 ## 5. Classification Rules
@@ -289,6 +299,7 @@ Tracked Jenn-adjacent roots and exact paths:
 | `MEMORY.md` | 1 | docs_only / memory-adjacent |
 | `README For VCPChat.md` | 1 | docs_only |
 | `data/photo-studio/` | 1 | blocked local-cache-state |
+| `modules/channelHub/` | 30 | Jenn-authored keep_core / deferred-core-split; adapter contracts remain core until separate ChannelHub split design |
 | `modules/photoStudio/` | 30 | deferred adapter split |
 | `plugins/custom/shared/photo_studio_data/` | 17 | deferred shared-state |
 | `AdminPanel-Vue/src/app/routes/components.ts` | 1 | keep_core until AdminPanel extension design |
@@ -489,6 +500,12 @@ Additional path-only filesystem env observations:
 | --- | --- | --- |
 | `Plugin/ImageServer/config.env` | no | blocks `Plugin/ImageServer` from first-pass dry-run candidate selection until separately reviewed |
 
+Jenn-authored keep-core/deferred-core-split surfaces:
+
+| Surface | Evidence | Current decision |
+| --- | --- | --- |
+| `modules/channelHub/` | 30 tracked paths; absent from `upstream/main`; local history includes `feat: add channelhub core runtime`, `fix: harden ChannelHub adapter authentication`, and `feat: implement ChannelHub media transcode` | keep_core for current Jenn externalization; defer any extraction to a separate ChannelHub core-split / adapter-contract package |
+
 Deferred surfaces that need separate design gates:
 
 | Surface | Reason |
@@ -529,6 +546,7 @@ allowlists, and safety gates.
 | records derived aggregation commands | yes |
 | records candidate filesystem env-path check | yes |
 | records external AIGent manifest name collision note | yes |
+| records Jenn-authored ChannelHub keep_core/deferred-core-split classification | yes |
 | path-only for sensitive files | yes |
 | no file movement | yes |
 | no file deletion | yes |
@@ -649,4 +667,24 @@ git diff --check: pass; Git emitted only the existing LF-to-CRLF warning for the
 node --check scripts/p3-external-ecosystem-inventory.js: pass
 node --test tests/p3-external-ecosystem-inventory.test.js: 12/12 pass
 post-report summary total: 7517
+```
+
+Fourth review-fix validation run after marking `modules/channelHub/` as a
+Jenn-authored keep-core/deferred-core-split surface:
+
+```powershell
+$tracked = git -c core.quotePath=false ls-files
+$tracked | Where-Object { $_ -like 'modules/channelHub/*' } | Measure-Object
+git ls-tree -r --name-only upstream/main -- modules/channelHub 2>$null | Measure-Object
+git log --oneline -- modules/channelHub
+Select-String -Path docs/governance/P3_JENN_EXTERNALIZATION_INVENTORY_V2_20260614.md -Pattern 'modules/channelHub|ChannelHub authorship|Jenn-authored keep-core|deferred-core-split'
+```
+
+Observed result:
+
+```text
+modules/channelHub/ tracked count: 30
+upstream/main modules/channelHub/ count: 0
+ChannelHub history includes add core runtime, adapter auth hardening, and media transcode commits
+ChannelHub classification markers: present
 ```
