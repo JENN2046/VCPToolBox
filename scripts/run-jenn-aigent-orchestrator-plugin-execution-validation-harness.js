@@ -177,12 +177,14 @@ function resultIsSanitizedHealthCheck(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const status = value.status;
   const result = value.result;
+  const agents = result?.agent_roles || result?.agents;
   return status === 'success'
     && result
     && typeof result === 'object'
     && result.allow_execution === false
     && result.default_mode === 'dry-run'
-    && (Array.isArray(result.agent_roles) || Array.isArray(result.agents));
+    && agents
+    && typeof agents === 'object';
 }
 
 function projectionHasOnlyApprovedFields(projection) {
