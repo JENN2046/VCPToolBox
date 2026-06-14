@@ -100,18 +100,18 @@ Observed source file sizes:
 | `Plugin/AIGentQuality/config.env.example` | 299 | future copy candidate; template only |
 | `Plugin/AIGentQuality/plugin-manifest.json` | 2296 | future copy candidate |
 
-Source SHA256 baseline:
+Source Git blob SHA256 baseline:
 
 | Path | SHA256 |
 | --- | --- |
-| `Plugin/AIGentQuality/AIGentQuality.js` | `90B4F545FB108653C90D5F3FEC794D33CE23575352FE84743583E91DA92EEA86` |
-| `Plugin/AIGentQuality/README.md` | `3AE1902FC40D31525E8EF19FEDD57B0A98509A9AAA5AA4BD1624827988EAA4A6` |
-| `Plugin/AIGentQuality/config.env.example` | `62C817C9BC627778986D32EB50AF868EF1B9352A5C1BB8FACE3A6C80E885B48C` |
-| `Plugin/AIGentQuality/plugin-manifest.json` | `775E3C96FC1091C0974B366BED63CC3251146815FD32C350E3449969EC1A02E4` |
+| `Plugin/AIGentQuality/AIGentQuality.js` | `437B3E4E6B6A3CAE387294523FFCE25F674E280A8B2124DEF38803B6EAAE5327` |
+| `Plugin/AIGentQuality/README.md` | `9FE6E67D62C1F03783E83885B656CEA55E78096D7D23F95A590F5C643A576DBE` |
+| `Plugin/AIGentQuality/config.env.example` | `82F702E2C1B75BDABFE7E60B1CDA5D4B2D81C3F3AB5A142EC9B1F5320D922C94` |
+| `Plugin/AIGentQuality/plugin-manifest.json` | `6D4F7769659822131E5AF409ED8B6A574C75F6AC6640F87BED90772D61B48803` |
 
-These hashes are evidence for this dry-run only. A future real copy gate must
-recompute them immediately before copying and compare copied files after the
-copy.
+These hashes are computed from Git blob bytes, not from platform-specific
+working-tree bytes. A future real copy gate must recompute them immediately
+before copying and compare copied files after the copy.
 
 Filesystem env/runtime path check at review time:
 
@@ -322,15 +322,24 @@ Test-Path A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\AIGen
 Test-Path A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentQuality
 ```
 
-Source hash baseline:
+Source Git blob hash baseline:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath `
-  Plugin/AIGentQuality/AIGentQuality.js,`
-  Plugin/AIGentQuality/README.md,`
-  Plugin/AIGentQuality/config.env.example,`
-  Plugin/AIGentQuality/plugin-manifest.json |
-  Select-Object Algorithm,Hash,Path
+@'
+const { execFileSync } = require('child_process');
+const crypto = require('crypto');
+const files = [
+  'Plugin/AIGentQuality/AIGentQuality.js',
+  'Plugin/AIGentQuality/README.md',
+  'Plugin/AIGentQuality/config.env.example',
+  'Plugin/AIGentQuality/plugin-manifest.json',
+];
+for (const file of files) {
+  const data = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'buffer' });
+  const hash = crypto.createHash('sha256').update(data).digest('hex').toUpperCase();
+  console.log(`${hash}  ${file}`);
+}
+'@ | node -
 ```
 
 Observed validation results from this dry-run:
@@ -466,7 +475,7 @@ Review checks:
 
 | Check | Result |
 | --- | --- |
-| Source SHA256 hashes match current files | pass |
+| Source Git blob SHA256 hashes match current committed bytes | pass |
 | Sensitive plugin-local paths remain absent | pass |
 | External target paths remain absent | pass |
 | External package worktree remains clean | pass |
