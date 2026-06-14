@@ -14,12 +14,15 @@ const EXTERNAL_PLUGIN_PATH = path.resolve(
   'Plugin',
   'JennAIGentOrchestrator'
 );
+const EXTERNAL_PLUGIN_ROOT_PATH = path.dirname(EXTERNAL_PLUGIN_PATH);
 const CORE_FALLBACK_PATH = path.join(PROJECT_ROOT, 'Plugin', 'AIGentOrchestrator');
 const MANIFEST_PATH = path.join(EXTERNAL_PLUGIN_PATH, 'plugin-manifest.json');
 const PLUGIN_NAME = 'JennAIGentOrchestrator';
 const HARNESS_TIMEOUT_MS = 75000;
 const TIMEOUT_BLOCKER_CATEGORY = 'HARNESS_TIMEOUT_NO_SANITIZED_PROJECTION_PREVENTED';
 const TIMEOUT_BRANCH = 'no_provider_plugin_execution_harness_timeout_guard';
+const ORIGINAL_STDOUT_WRITE = process.stdout.write.bind(process.stdout);
+const ORIGINAL_STDERR_WRITE = process.stderr.write.bind(process.stderr);
 
 const APPROVED_FIELDS = Object.freeze([
   'result',
@@ -177,7 +180,7 @@ function resultIsSanitizedHealthCheck(value) {
     && typeof result === 'object'
     && result.allow_execution === false
     && result.default_mode === 'dry-run'
-    && Array.isArray(result.agent_roles);
+    && (Array.isArray(result.agent_roles) || Array.isArray(result.agents));
 }
 
 function projectionHasOnlyApprovedFields(projection) {
@@ -248,7 +251,7 @@ function finishWithProjection(projection) {
   const output = buildProjectionOutput(safeProjection);
   const forceExitTimer = setTimeout(() => process.exit(exitCode), 1000);
   if (typeof forceExitTimer.unref === 'function') forceExitTimer.unref();
-  process.stdout.write(output, () => process.exit(exitCode));
+  ORIGINAL_STDOUT_WRITE(output, () => process.exit(exitCode));
 }
 
 function determineMode() {
@@ -264,7 +267,62 @@ function createCleanupState() {
   return {
     pluginManager: null,
     originalSpawnPluginProcess: null,
-    childProcesses: new Set()
+    childProcesses: new Set(),
+    originalEnv: {
+      VCP_PLUGIN_DIRS: process.env.VCP_PLUGIN_DIRS,
+      VCP_PLUGIN_ALLOWED_ROOTS: process.env.VCP_PLUGIN_ALLOWED_ROOTS
+    }
+  };
+}
+
+function splitPathListForHarness(rawValue) {
+  if (!rawValue || typeof rawValue !== 'string') return [];
+  return rawValue
+    .split(/[;\r\n]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function pathListIncludesPath(entries, targetPath) {
+  return entries.some((entry) => comparePath(entry, targetPath));
+}
+
+function appendPathListEntry(rawValue, targetPath) {
+  const entries = splitPathListForHarness(rawValue);
+  if (!pathListIncludesPath(entries, targetPath)) entries.push(targetPath);
+  return entries.join(';');
+}
+
+function configureExternalPluginEnvironment(cleanupState) {
+  cleanupState.originalEnv.VCP_PLUGIN_DIRS = process.env.VCP_PLUGIN_DIRS;
+  cleanupState.originalEnv.VCP_PLUGIN_ALLOWED_ROOTS = process.env.VCP_PLUGIN_ALLOWED_ROOTS;
+  process.env.VCP_PLUGIN_DIRS = appendPathListEntry(process.env.VCP_PLUGIN_DIRS, EXTERNAL_PLUGIN_ROOT_PATH);
+  process.env.VCP_PLUGIN_ALLOWED_ROOTS = appendPathListEntry(
+    process.env.VCP_PLUGIN_ALLOWED_ROOTS,
+    EXTERNAL_PLUGIN_ROOT_PATH
+  );
+}
+
+function restoreExternalPluginEnvironment(cleanupState) {
+  for (const [key, value] of Object.entries(cleanupState.originalEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
+function silenceRawProcessOutput() {
+  process.stdout.write = function silentStdoutWrite(_chunk, encoding, callback) {
+    const cb = typeof encoding === 'function' ? encoding : callback;
+    if (typeof cb === 'function') process.nextTick(cb);
+    return true;
+  };
+  process.stderr.write = function silentStderrWrite(_chunk, encoding, callback) {
+    const cb = typeof encoding === 'function' ? encoding : callback;
+    if (typeof cb === 'function') process.nextTick(cb);
+    return true;
   };
 }
 
@@ -296,6 +354,7 @@ function cleanupTrackedProcesses(cleanupState) {
   if (cleanupState.pluginManager && cleanupState.originalSpawnPluginProcess) {
     cleanupState.pluginManager._spawnPluginProcess = cleanupState.originalSpawnPluginProcess;
   }
+  restoreExternalPluginEnvironment(cleanupState);
 
   for (const childProcess of cleanupState.childProcesses) {
     const stillRunning = childProcess
@@ -451,6 +510,8 @@ async function main() {
 
   const projection = createProjection(mode);
   const cleanupState = createCleanupState();
+  configureExternalPluginEnvironment(cleanupState);
+  silenceRawProcessOutput();
   const finalProjection = await runProofWithTimeout(
     runStage8Proof(projection, cleanupState),
     projection,
