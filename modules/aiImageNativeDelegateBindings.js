@@ -1,7 +1,7 @@
 'use strict';
 
-// Temporary core binding data for Jenn AI Image native delegate registration.
-// Later migration target: Jenn External Ecosystem / Adapter Layer.
+// Core adapter binding data for AI Image native delegate registration.
+// Later migration target: external AI Image adapter layer.
 // This module must stay side-effect-free: no IO, env reads, routes, services, or execution dispatch.
 
 const SERUM_BOTTLE_SECRETLESS_DOUBAO_ALLOWED_COMMANDS = Object.freeze([
@@ -26,7 +26,17 @@ const SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS = Object.freeze({
   providerBindingRefRedacted: true,
 });
 
+const AI_IMAGE_NATIVE_DELEGATE_BINDINGS = Object.freeze({
+  serumBottleSecretlessDoubao: SERUM_BOTTLE_SECRETLESS_DOUBAO_BINDING,
+});
+
+const AI_IMAGE_NATIVE_DELEGATE_RUNTIME_METADATA_DEFAULTS = Object.freeze({
+  serumBottleSecretlessDoubao: SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS,
+});
+
 module.exports = Object.freeze({
+  AI_IMAGE_NATIVE_DELEGATE_BINDINGS,
+  AI_IMAGE_NATIVE_DELEGATE_RUNTIME_METADATA_DEFAULTS,
   SERUM_BOTTLE_SECRETLESS_DOUBAO_BINDING,
   SERUM_BOTTLE_SECRETLESS_DOUBAO_ALLOWED_COMMANDS,
   SERUM_BOTTLE_SECRETLESS_DOUBAO_RUNTIME_METADATA_DEFAULTS,

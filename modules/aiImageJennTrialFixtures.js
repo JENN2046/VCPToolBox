@@ -1,7 +1,7 @@
 'use strict';
 
-// Temporary core fixture data for Jenn AI Image trial bindings.
-// Later migration target: Jenn External Ecosystem adapter package.
+// Core adapter fixture data for AI Image trial bindings.
+// Later migration target: external AI Image adapter package.
 // This module must stay side-effect-free: no IO, env reads, routes, services, or execution dispatch.
 
 const SERUM_BOTTLE_SECRETLESS_MODE = 'serum_bottle_secretless_internal_execute';
@@ -87,7 +87,50 @@ const AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES = Object.freeze({
     R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE,
 });
 
+const AI_IMAGE_SECRETLESS_TRIAL_FIXTURES = Object.freeze({
+  serumBottleSecretless: Object.freeze({
+    mode: SERUM_BOTTLE_SECRETLESS_MODE,
+    activationId: SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID,
+    pipelineId: SERUM_BOTTLE_SECRETLESS_EXACT_PIPELINE_ID,
+    receiptRef: SERUM_BOTTLE_SECRETLESS_EXACT_RECEIPT_REF,
+    artifactRecordRef: SERUM_BOTTLE_SECRETLESS_EXACT_ARTIFACT_RECORD_REF,
+    outputDirectoryRef: SERUM_BOTTLE_SECRETLESS_EXACT_OUTPUT_DIRECTORY_REF,
+    outputRefPrefix: SERUM_BOTTLE_SECRETLESS_OUTPUT_REF_PREFIX,
+    authorizedRouteIds: SERUM_BOTTLE_SECRETLESS_AUTHORIZED_ROUTE_ID_LIST,
+  }),
+  runtimeToReviewV2Trial001: Object.freeze({
+    mode: R2R_V2_TRIAL_001_SECRETLESS_MODE,
+    activationId: R2R_V2_TRIAL_001_EXACT_ACTIVATION_ID,
+    pipelineId: R2R_V2_TRIAL_001_EXACT_PIPELINE_ID,
+    promptPackageRef: R2R_V2_TRIAL_001_EXACT_PROMPT_PACKAGE_REF,
+    receiptRef: R2R_V2_TRIAL_001_EXACT_RECEIPT_REF,
+    artifactRecordRef: R2R_V2_TRIAL_001_EXACT_ARTIFACT_RECORD_REF,
+    reviewBridgeRef: R2R_V2_TRIAL_001_EXACT_REVIEW_BRIDGE_REF,
+    outputDirectoryRef: R2R_V2_TRIAL_001_EXACT_OUTPUT_DIRECTORY_REF,
+    routeId: R2R_V2_TRIAL_001_ROUTE_ID,
+    outputRefPrefix: R2R_V2_TRIAL_001_OUTPUT_REF_PREFIX,
+  }),
+  runtimeToReviewV2Trial002: Object.freeze({
+    mode: R2R_V2_TRIAL_002_SECRETLESS_MODE,
+    activationId: R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID,
+    pipelineId: R2R_V2_TRIAL_002_EXACT_PIPELINE_ID,
+    promptPackageRef: R2R_V2_TRIAL_002_EXACT_PROMPT_PACKAGE_REF,
+    receiptRef: R2R_V2_TRIAL_002_EXACT_RECEIPT_REF,
+    artifactRecordRef: R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF,
+    reviewBridgeRef: R2R_V2_TRIAL_002_EXACT_REVIEW_BRIDGE_REF,
+    outputDirectoryRef: R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF,
+    routeId: R2R_V2_TRIAL_002_ROUTE_ID,
+    doubaoProjectBasePathOverride: R2R_V2_TRIAL_002_EXACT_DOUBAO_PROJECT_BASE_PATH_OVERRIDE,
+    outputRefPrefix: R2R_V2_TRIAL_002_OUTPUT_REF_PREFIX,
+  }),
+});
+
+const AI_IMAGE_DOUBAO_PROJECT_BASE_PATH_OVERRIDES =
+  AUTHORIZED_DOUBAO_PROJECT_BASE_PATH_OVERRIDES;
+
 module.exports = Object.freeze({
+  AI_IMAGE_SECRETLESS_TRIAL_FIXTURES,
+  AI_IMAGE_DOUBAO_PROJECT_BASE_PATH_OVERRIDES,
   SERUM_BOTTLE_SECRETLESS_MODE,
   R2R_V2_TRIAL_001_SECRETLESS_MODE,
   R2R_V2_TRIAL_002_SECRETLESS_MODE,
