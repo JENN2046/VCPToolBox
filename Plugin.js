@@ -967,6 +967,16 @@ class PluginManager extends EventEmitter {
                 if (!folder.isDirectory()) continue;
 
                 const pluginPath = path.join(pluginRoot, folder.name);
+                const disabledMarkerPath = path.join(pluginPath, '.disabled');
+                try {
+                    await fs.access(disabledMarkerPath);
+                    continue;
+                } catch (error) {
+                    if (error.code !== 'ENOENT') {
+                        continue;
+                    }
+                }
+
                 const manifestPath = path.join(pluginPath, LEGACY_MANIFEST_FILE_NAME);
                 try {
                     const manifestContent = await fs.readFile(manifestPath, 'utf-8');
