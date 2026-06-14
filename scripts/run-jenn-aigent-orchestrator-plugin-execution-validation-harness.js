@@ -17,6 +17,9 @@ const EXTERNAL_PLUGIN_PATH = path.resolve(
 const CORE_FALLBACK_PATH = path.join(PROJECT_ROOT, 'Plugin', 'AIGentOrchestrator');
 const MANIFEST_PATH = path.join(EXTERNAL_PLUGIN_PATH, 'plugin-manifest.json');
 const PLUGIN_NAME = 'JennAIGentOrchestrator';
+const HARNESS_TIMEOUT_MS = 75000;
+const TIMEOUT_BLOCKER_CATEGORY = 'HARNESS_TIMEOUT_NO_SANITIZED_PROJECTION_PREVENTED';
+const TIMEOUT_BRANCH = 'no_provider_plugin_execution_harness_timeout_guard';
 
 const APPROVED_FIELDS = Object.freeze([
   'result',
@@ -33,6 +36,7 @@ const APPROVED_FIELDS = Object.freeze([
   'executePlugin called',
   'plugin handler reached',
   'plugin result sanitized',
+  'plugin execution result accepted',
   'provider endpoint contact',
   'real image generation invoked',
   'image output produced',
@@ -50,6 +54,7 @@ const APPROVED_FIELDS = Object.freeze([
   'secret-like value printed',
   'sanitizer suspected forbidden output',
   'exact sanitized blocker category',
+  'exact sanitized branch',
   'retry started',
   'Gate 84 started'
 ]);
@@ -70,6 +75,7 @@ function createProjection(mode = 'not selected') {
     'executePlugin called': 'no',
     'plugin handler reached': 'no',
     'plugin result sanitized': 'no',
+    'plugin execution result accepted': 'no',
     'provider endpoint contact': 'no',
     'real image generation invoked': 'no',
     'image output produced': 'no',
@@ -87,6 +93,7 @@ function createProjection(mode = 'not selected') {
     'secret-like value printed': 'no',
     'sanitizer suspected forbidden output': 'no',
     'exact sanitized blocker category': 'stage8 mode not selected',
+    'exact sanitized branch': 'not selected',
     'retry started': 'no',
     'Gate 84 started': 'no'
   };
@@ -200,6 +207,8 @@ function projectionHasOnlyApprovedValues(projection) {
     'registered plugin is not sealed external source',
     'plugin execution error',
     'plugin result sanitizer rejected',
+    TIMEOUT_BLOCKER_CATEGORY,
+    TIMEOUT_BRANCH,
     EXTERNAL_PLUGIN_PATH
   ]);
 
@@ -221,7 +230,7 @@ function formatSanitizedKeyValueProjection(projection) {
     .join('\n');
 }
 
-function printProjection(projection) {
+function buildProjectionOutput(projection) {
   const safeProjection = normalizeSanitizedProjection(projection) || (() => {
     const blocked = createProjection();
     blocked['secret-like value printed'] = 'yes';
@@ -229,9 +238,17 @@ function printProjection(projection) {
     return blocked;
   })();
 
-  process.stdout.write(`${JSON.stringify(safeProjection, null, 2)}\n`);
   const keyValueProjection = formatSanitizedKeyValueProjection(safeProjection);
-  if (keyValueProjection) process.stdout.write(`${keyValueProjection}\n`);
+  return `${JSON.stringify(safeProjection, null, 2)}\n${keyValueProjection ? `${keyValueProjection}\n` : ''}`;
+}
+
+function finishWithProjection(projection) {
+  const safeProjection = normalizeSanitizedProjection(projection) || createProjection();
+  const exitCode = safeProjection.result === 'PASS' ? 0 : 1;
+  const output = buildProjectionOutput(safeProjection);
+  const forceExitTimer = setTimeout(() => process.exit(exitCode), 1000);
+  if (typeof forceExitTimer.unref === 'function') forceExitTimer.unref();
+  process.stdout.write(output, () => process.exit(exitCode));
 }
 
 function determineMode() {
@@ -243,13 +260,111 @@ function determineMode() {
   return hasNoProviderArg ? 'no-provider' : 'provider-preserving';
 }
 
-async function runStage8Proof(projection) {
+function createCleanupState() {
+  return {
+    pluginManager: null,
+    originalSpawnPluginProcess: null,
+    childProcesses: new Set()
+  };
+}
+
+function trackPluginProcess(cleanupState, childProcess) {
+  if (!childProcess || typeof childProcess !== 'object') return childProcess;
+  cleanupState.childProcesses.add(childProcess);
+  const forget = () => cleanupState.childProcesses.delete(childProcess);
+  if (typeof childProcess.once === 'function') {
+    childProcess.once('exit', forget);
+    childProcess.once('close', forget);
+    childProcess.once('error', forget);
+  }
+  return childProcess;
+}
+
+function installSpawnTracker(pluginManager, cleanupState) {
+  if (!pluginManager || typeof pluginManager._spawnPluginProcess !== 'function') return;
+  if (cleanupState.originalSpawnPluginProcess) return;
+
+  cleanupState.pluginManager = pluginManager;
+  cleanupState.originalSpawnPluginProcess = pluginManager._spawnPluginProcess;
+  pluginManager._spawnPluginProcess = function trackedSpawnPluginProcess(...args) {
+    const childProcess = cleanupState.originalSpawnPluginProcess.apply(this, args);
+    return trackPluginProcess(cleanupState, childProcess);
+  };
+}
+
+function cleanupTrackedProcesses(cleanupState) {
+  if (cleanupState.pluginManager && cleanupState.originalSpawnPluginProcess) {
+    cleanupState.pluginManager._spawnPluginProcess = cleanupState.originalSpawnPluginProcess;
+  }
+
+  for (const childProcess of cleanupState.childProcesses) {
+    const stillRunning = childProcess
+      && childProcess.exitCode === null
+      && childProcess.signalCode === null
+      && childProcess.killed !== true;
+    if (!stillRunning) continue;
+    try {
+      childProcess.kill('SIGKILL');
+    } catch (_error) {
+      // Best-effort cleanup only; sanitized projection remains the authority.
+    }
+  }
+  cleanupState.childProcesses.clear();
+}
+
+function markTimeoutProjection(projection) {
+  projection.result = 'BLOCKED';
+  projection['exact sanitized blocker category'] = TIMEOUT_BLOCKER_CATEGORY;
+  projection['exact sanitized branch'] = TIMEOUT_BRANCH;
+  projection['plugin execution result accepted'] = 'no';
+  projection['provider endpoint contact'] = 'no';
+  projection['real image generation invoked'] = 'no';
+  projection['image output produced'] = 'no';
+  projection['LocalState write'] = 'no';
+  projection['server route activation'] = 'no';
+  projection['runtime cutover'] = 'no';
+  projection['core copy removal'] = 'no';
+  projection['retry started'] = 'no';
+  projection['Gate 84 started'] = 'no';
+  return projection;
+}
+
+function runProofWithTimeout(proofPromise, projection, cleanupState) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanupTrackedProcesses(cleanupState);
+      resolve(markTimeoutProjection(projection));
+    }, HARNESS_TIMEOUT_MS);
+
+    proofPromise.then(
+      (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        resolve(result);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        projection['exact sanitized blocker category'] = 'plugin execution error';
+        resolve(projection);
+      }
+    );
+  });
+}
+
+async function runStage8Proof(projection, cleanupState) {
   if (!proveExternalResolution(projection)) return projection;
   if (!proveManifestIdentity(projection)) return projection;
 
   let pluginManager;
   try {
     pluginManager = require(path.join(PROJECT_ROOT, 'Plugin.js'));
+    installSpawnTracker(pluginManager, cleanupState);
     await pluginManager.loadPlugins();
   } catch (_error) {
     projection['exact sanitized blocker category'] = 'plugin registry load failed';
@@ -290,6 +405,7 @@ async function runStage8Proof(projection) {
     );
     projection['plugin handler reached'] = 'yes';
     projection['plugin result sanitized'] = resultIsSanitizedHealthCheck(result) ? 'yes' : 'no';
+    projection['plugin execution result accepted'] = projection['plugin result sanitized'];
   } catch (_error) {
     projection['exact sanitized blocker category'] = 'plugin execution error';
     return projection;
@@ -311,6 +427,7 @@ async function runStage8Proof(projection) {
     && projection['executePlugin called'] === 'yes'
     && projection['plugin handler reached'] === 'yes'
     && projection['plugin result sanitized'] === 'yes'
+    && projection['plugin execution result accepted'] === 'yes'
     && projection['provider endpoint contact'] === 'no'
     && projection['real image generation invoked'] === 'no'
     && projection['image output produced'] === 'no'
@@ -328,20 +445,23 @@ async function runStage8Proof(projection) {
 async function main() {
   const mode = determineMode();
   if (!mode) {
-    printProjection(createProjection());
-    process.exitCode = 1;
+    finishWithProjection(createProjection());
     return;
   }
 
   const projection = createProjection(mode);
-  const finalProjection = await runStage8Proof(projection);
-  printProjection(finalProjection);
-  process.exitCode = finalProjection.result === 'PASS' ? 0 : 1;
+  const cleanupState = createCleanupState();
+  const finalProjection = await runProofWithTimeout(
+    runStage8Proof(projection, cleanupState),
+    projection,
+    cleanupState
+  );
+  cleanupTrackedProcesses(cleanupState);
+  finishWithProjection(finalProjection);
 }
 
 main().catch(() => {
   const projection = createProjection();
   projection['exact sanitized blocker category'] = 'plugin execution error';
-  printProjection(projection);
-  process.exitCode = 1;
+  finishWithProjection(projection);
 });
