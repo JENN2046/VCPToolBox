@@ -21,6 +21,8 @@ const PLUGIN_NAME = 'JennAIGentOrchestrator';
 const HARNESS_TIMEOUT_MS = 75000;
 const TIMEOUT_BLOCKER_CATEGORY = 'HARNESS_TIMEOUT_NO_SANITIZED_PROJECTION_PREVENTED';
 const TIMEOUT_BRANCH = 'no_provider_plugin_execution_harness_timeout_guard';
+const NO_PROVIDER_PASS_BRANCH = 'no_provider_plugin_execution_harness';
+const PROVIDER_PRESERVING_PASS_BRANCH = 'provider_preserving_plugin_execution_harness';
 const EXTERNAL_ALLOWLIST_ENV = 'VCP_EXTERNAL_PLUGIN_ALLOWLIST';
 const EXACT_EXTERNAL_ALLOWLIST_ENTRY = `${PLUGIN_NAME}@${EXTERNAL_PLUGIN_PATH}`;
 const ORIGINAL_STDOUT_WRITE = process.stdout.write.bind(process.stdout);
@@ -67,7 +69,7 @@ const APPROVED_FIELDS = Object.freeze([
 function createProjection(mode = 'not selected') {
   return {
     result: 'BLOCKED',
-    route: '83B',
+    route: mode === 'provider-preserving' ? '83C' : '83B',
     mode,
     'external path resolved': 'no',
     'external path exact match': 'no',
@@ -200,9 +202,13 @@ function projectionHasOnlyApprovedValues(projection) {
     'PASS',
     'BLOCKED',
     '83B',
+    '83C',
     'not selected',
     'no-provider',
     'provider-preserving',
+    'none',
+    NO_PROVIDER_PASS_BRANCH,
+    PROVIDER_PRESERVING_PASS_BRANCH,
     'stage8 mode not selected',
     'invalid stage8 mode',
     'external path unresolved',
@@ -505,6 +511,10 @@ async function runStage8Proof(projection, cleanupState) {
     && projection['core copy removal'] === 'no'
   ) {
     projection.result = 'PASS';
+    projection['exact sanitized blocker category'] = 'none';
+    projection['exact sanitized branch'] = projection.mode === 'provider-preserving'
+      ? PROVIDER_PRESERVING_PASS_BRANCH
+      : NO_PROVIDER_PASS_BRANCH;
   }
 
   return projection;
