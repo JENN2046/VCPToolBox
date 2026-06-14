@@ -21,6 +21,8 @@ const PLUGIN_NAME = 'JennAIGentOrchestrator';
 const HARNESS_TIMEOUT_MS = 75000;
 const TIMEOUT_BLOCKER_CATEGORY = 'HARNESS_TIMEOUT_NO_SANITIZED_PROJECTION_PREVENTED';
 const TIMEOUT_BRANCH = 'no_provider_plugin_execution_harness_timeout_guard';
+const EXTERNAL_ALLOWLIST_ENV = 'VCP_EXTERNAL_PLUGIN_ALLOWLIST';
+const EXACT_EXTERNAL_ALLOWLIST_ENTRY = `${PLUGIN_NAME}@${EXTERNAL_PLUGIN_PATH}`;
 const ORIGINAL_STDOUT_WRITE = process.stdout.write.bind(process.stdout);
 const ORIGINAL_STDERR_WRITE = process.stderr.write.bind(process.stderr);
 
@@ -270,7 +272,8 @@ function createCleanupState() {
     childProcesses: new Set(),
     originalEnv: {
       VCP_PLUGIN_DIRS: process.env.VCP_PLUGIN_DIRS,
-      VCP_PLUGIN_ALLOWED_ROOTS: process.env.VCP_PLUGIN_ALLOWED_ROOTS
+      VCP_PLUGIN_ALLOWED_ROOTS: process.env.VCP_PLUGIN_ALLOWED_ROOTS,
+      VCP_EXTERNAL_PLUGIN_ALLOWLIST: process.env[EXTERNAL_ALLOWLIST_ENV]
     }
   };
 }
@@ -300,6 +303,10 @@ function configureExternalPluginEnvironment(cleanupState) {
   process.env.VCP_PLUGIN_ALLOWED_ROOTS = appendPathListEntry(
     process.env.VCP_PLUGIN_ALLOWED_ROOTS,
     EXTERNAL_PLUGIN_ROOT_PATH
+  );
+  process.env[EXTERNAL_ALLOWLIST_ENV] = appendPathListEntry(
+    process.env[EXTERNAL_ALLOWLIST_ENV],
+    EXACT_EXTERNAL_ALLOWLIST_ENTRY
   );
 }
 
