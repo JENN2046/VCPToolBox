@@ -27,12 +27,12 @@ execution checklist that still stops before copy.
 
 ## 2. Current State
 
-Core repository:
+Core repository basis before this document edit:
 
 ```text
 path: A:\AGENTS_OS_Workspace\runtime\VCPToolBox
 branch: codex/p7-aigentquality-copy-preflight
-head: 622991a7bf0f3aae5af22f272b14326f6b90237d
+base head: 622991a7bf0f3aae5af22f272b14326f6b90237d
 basis: merged PR #260
 worktree before this document edit: clean
 ```
