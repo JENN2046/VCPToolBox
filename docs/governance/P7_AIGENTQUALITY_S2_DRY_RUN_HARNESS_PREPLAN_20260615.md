@@ -160,7 +160,13 @@ The scoped inventory includes:
 .env.test.local
 .env.production.local
 .env.*.local
-config.env and **/config.env
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+**/.env.*.local
+config.env, config.env.local, **/config.env, and **/config.env.local
 ModelRedirect.json
 agent_map.json
 preprocessor_order.json
