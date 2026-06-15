@@ -2,8 +2,9 @@
 
 Date: 2026-06-15
 
-Status: docs-only RFC refreshed after external package `main@beb072b`.
-The next step is a planned core-side shadow/cutover dry-run only.
+Status: docs-only RFC refreshed after external package `main@beb072b` and
+core-side Layer 4 isolated `pluginManager.loadPlugins` legacy-external
+discovery-to-registration proof.
 
 Scope: core `Plugin/AIGentQuality/`, external `Plugin/AIGentQuality/`,
 external `Plugin/JennAIGentQualityTrial/`, and core external-plugin discovery
@@ -34,12 +35,14 @@ Core repository:
 
 ```text
 path: A:\AGENTS_OS_Workspace\runtime\VCPToolBox
-branch: codex/aigentquality-shadow-cutover-rfc
-base head: 851d4e616a381c428ab41e2e51c88052e51b32e8
-worktree during this RFC refresh: governance docs untracked only
+initial RFC branch: codex/aigentquality-shadow-cutover-rfc
+initial RFC base head: 851d4e616a381c428ab41e2e51c88052e51b32e8
+Layer 4 branch: codex/aigentquality-loadplugins-dry-run
+Layer 4 base head: a0e816e9fe62eee8970dc6e6bc957953de98a25e
+worktree during Layer 4 receipt update: this governance doc modified only
 ```
 
-External package repository:
+External package repository PR #1 evidence:
 
 ```text
 path: A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions
@@ -52,6 +55,14 @@ clean Codex Review comment covered: 7cc63c5ef9
 squash merge commit: bd9997f130713f63f3b8d805c71bfb606039d565
 external package main after sync: bd9997f130713f63f3b8d805c71bfb606039d565
 PR state observed after merge: merged, branch preserved, no reported checks
+```
+
+Current external package state for Layer 4:
+
+```text
+branch: main
+head: beb072b8ad1530dd62c526c71e4cc09930068685
+renamed trial path: Plugin/JennAIGentQualityTrial/
 ```
 
 PR #1 source state:
@@ -379,6 +390,8 @@ Minimum dry-run layers:
 1. Resolver-only proof.
 2. Registration-only proof.
 3. Optional stdio smoke proof with temporary image fixtures.
+4. Isolated `pluginManager.loadPlugins` legacy-external
+   discovery-to-registration proof.
 
 Layer 1 - resolver-only proof:
 
@@ -430,7 +443,25 @@ Layer 3 - optional stdio smoke proof:
   - no workflow invocation, generation retry, provider call, persistent write,
     or operator path read occurs.
 
-Minimum validation commands for the next dry-run gate:
+Layer 4 - isolated loadPlugins legacy-external discovery-to-registration proof:
+
+- Only after Layer 1, Layer 2, and Layer 3 pass.
+- Use isolated `PluginManager` singleton state and restore it before exit.
+- Use a temporary empty core legacy `Plugin/` root so the proof does not
+  initialize real core direct/service plugins.
+- Use the real external package `Plugin/` root under temporary process env.
+- Patch modern plugin discovery to empty in-process for this proof only.
+- Expected result:
+  - `pluginManager.loadPlugins` is invoked;
+  - resolver order remains `core:legacy` then `external:1`;
+  - only `JennAIGentQualityTrial` is registered;
+  - other external package plugins remain blocked by runtime allowlist policy;
+  - no `processToolCall`, `executePlugin`, server start, provider call,
+    persistent env change, or repository file copy/move/delete occurs.
+- This is not a production full-plugin-universe proof, not a modern registry
+  proof, and not server-level runtime activation.
+
+Minimum validation commands for dry-run gates:
 
 ```powershell
 git status -sb
@@ -452,6 +483,7 @@ external package main is beb072b: yes
 resolver discovered external Plugin root only under temporary env: yes
 JennAIGentQualityTrial blocked without runtime allowlist: yes
 JennAIGentQualityTrial registerable with exact name@plugin-path allowlist: yes
+isolated pluginManager.loadPlugins legacy-external discovery-to-registration proof: yes
 AIGentQuality still resolves to core identity: yes
 no persistent env/config/admin/server change: yes
 no operator image path read: yes
@@ -566,6 +598,51 @@ warning disposition: record as a separate future hardening candidate; do not
   mix shell:true spawn hardening into this extraction dry-run gate
 ```
 
+Layer 4 isolated loadPlugins legacy-external discovery-to-registration proof receipt:
+
+```text
+authorization: 授权执行 full loadPlugins discovery-to-registration proof，只用临时进程环境和隔离 PluginManager 状态。
+core branch: codex/aigentquality-loadplugins-dry-run
+core head: a0e816e9fe62eee8970dc6e6bc957953de98a25e
+external package branch: main
+external package head: beb072b8ad1530dd62c526c71e4cc09930068685
+proof mode: one-shot Node harness with isolated PluginManager singleton state;
+  not production full-plugin-universe loading and not modern registry proof
+temporary process env:
+  VCP_PLUGIN_ALLOWED_ROOTS=A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions
+  VCP_PLUGIN_DIRS=A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin
+  VCP_EXTERNAL_PLUGIN_ALLOWLIST=JennAIGentQualityTrial@A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentQualityTrial
+  VCP_PLUGIN_INSTALL_DIR unset
+temporary core legacy root: OS temp directory with an empty Plugin/ subdirectory
+external legacy root: A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin
+resolver roots:
+  core:legacy, source=core, allowConfigEnv=true, temp Plugin/ root
+  external:1, source=external, allowConfigEnv=false, external package Plugin/ root
+modern plugin discovery: patched to empty in-process for this proof only
+pluginManager.loadPlugins invoked: yes
+registered plugins:
+  JennAIGentQualityTrial, source=external, rootId=external:1, protocol=stdio
+blocked external plugins:
+  NoopJennExternalPlugin: external_runtime_allowlist_required
+  JennAIGentQuality: external_runtime_allowlist_required
+  AIGentOrchestrator: external_runtime_allowlist_required
+  JennAIGentOrchestrator: external_runtime_exact_allowlist_required
+preprocessors discovered: 0
+service modules registered: 0
+tools_changed emitted: yes, local_reload
+processToolCall invoked: no
+executePlugin invoked: no
+server start: no
+operator image path read: no
+persistent env changed: no; all temporary env keys restored
+files copied, moved, or deleted in repositories: no
+temporary proof directory cleanup: completed
+observed warning: VectorDBManager not set; expected because server.js was not
+  started and this proof only verifies discovery-to-registration
+execution note: one-shot process explicitly shut down ToolApprovalManager before
+  exit so the proof process did not leave a node - handle behind
+```
+
 Stop conditions:
 
 - external package `main` is not
@@ -599,6 +676,15 @@ Observed result:
 
 ```text
 40/40 pass
+```
+
+Additional Layer 4 receipt validation:
+
+```text
+isolated loadPlugins legacy-external one-shot Node proof: COMPLETED_VALIDATED
+git diff --check: pass
+node --test tests/plugin-external-dirs.test.js tests/plugin-external-runtime-registration-gate.test.js tests/externalPluginAllowPolicy.test.js tests/plugin-external-runtime-direct-policy.test.js tests/plugin-external-runtime-env-sandbox.test.js
+observed result: 54/54 pass
 ```
 
 Additional PR #1 behavior checks observed in the external package branch:
@@ -645,10 +731,10 @@ Important covered behavior:
 Current open gate:
 
 ```text
-Layer 1 resolver-only proof, Layer 2 registration-only proof, and Layer 3
-stdio smoke proof are complete.
-They are layered proofs, not a full pluginManager.loadPlugins end-to-end
-discovery-to-registration proof and not a server-level runtime activation.
+Layer 1 resolver-only proof, Layer 2 registration-only proof, Layer 3 stdio
+smoke proof, and Layer 4 isolated pluginManager.loadPlugins legacy-external
+discovery-to-registration proof are complete.
+These are still not server-level runtime activation.
 ```
 
 This is no longer a PR #1 or PR #2 review or merge blocker. External package
@@ -661,8 +747,8 @@ Resume rule:
 
 - if the next user message asks to continue the minimum dry-run, first re-check
   both repository heads and worktrees, then decide whether the next requested
-  proof is full discovery-to-registration, docs-only submission, or a deferred
-  cutover RFC;
+  proof is docs-only submission, a deferred cutover RFC, or a server-level
+  runtime activation proposal;
 - if the external package `main` head changed before dry-run execution,
   re-check PR #2 merge evidence and explain whether the new head supersedes
   `beb072b8ad1530dd62c526c71e4cc09930068685`;
@@ -678,7 +764,8 @@ Current result: docs-only RFC.
 
 ```text
 No runtime activation.
-No external discovery env change.
+No persistent external discovery env change; Layer 4 used temporary process env
+only.
 No core disable, deletion, move, or stub replacement.
 External package PR #1 was squash merged after explicit user request.
 Local-only JennAIGentQualityTrial copy gate was completed after explicit user
@@ -688,17 +775,19 @@ Local external package main is synced to beb072b8ad1530dd62c526c71e4cc0993006868
 Core-side minimum dry-run Layer 1 resolver-only proof executed and passed.
 Core-side minimum dry-run Layer 2 registration-only proof executed and passed.
 Core-side minimum dry-run Layer 3 stdio smoke proof executed and passed.
-Layer 1 and Layer 2 are layered evidence only; complete loadPlugins discovery
-to registration remains unproven.
+Core-side Layer 4 isolated loadPlugins legacy-external
+discovery-to-registration proof executed and passed.
 Layer 3 is stdio execution evidence only; server-level runtime activation
 remains unproven.
-No core repository commit, push, merge, or PR action authorized by this document.
+No core repository runtime change, merge, server activation, or branch movement
+is authorized by this document. Docs-only commit/PR publication requires a
+separate explicit gate.
 ```
 
 Next safe action:
 
 ```text
-Review the docs-only PR that carries the Layer 1, Layer 2, and Layer 3
-receipts. If accepted and merged, either keep the dry-run stopped at layered
-evidence or authorize a full loadPlugins discovery-to-registration proof.
+Review the docs-only PR carrying this Layer 4 receipt. If accepted, either keep
+the dry-run stopped before server activation or prepare a separate server-level
+runtime activation proposal.
 ```
