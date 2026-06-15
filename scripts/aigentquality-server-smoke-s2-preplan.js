@@ -62,6 +62,12 @@ const EXPECTED_COMMANDS = [
 ];
 const STATUS_GIT_GLOBAL_ARGS = ['--no-optional-locks'];
 const SENSITIVE_IGNORED_RUNTIME_PATHS = [
+  ':/.env',
+  ':/.env.local',
+  ':/.env.development.local',
+  ':/.env.test.local',
+  ':/.env.production.local',
+  ':(glob).env.*.local',
   ':/config.env',
   ':/config.env.local',
   ':(glob)**/config.env',

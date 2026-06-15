@@ -148,6 +148,12 @@ sensitive runtime/config/generated paths that plain `git status --short` hides,
 including:
 
 ```text
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
 config.env and **/config.env
 ModelRedirect.json
 agent_map.json
