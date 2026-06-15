@@ -199,6 +199,7 @@ Plugin/**/logs/
 Plugin/**/logs/**
 Plugin/**/secrets/
 Plugin/**/secrets/**
+Plugin/UserAuth/code.bin
 Plugin/**/state/
 Plugin/**/state/**
 Plugin/**/*.log

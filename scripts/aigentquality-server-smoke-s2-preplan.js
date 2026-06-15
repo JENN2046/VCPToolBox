@@ -110,6 +110,7 @@ const SENSITIVE_IGNORED_RUNTIME_PATHS = [
   ':(glob)Plugin/**/logs/**',
   ':(glob)Plugin/**/secrets',
   ':(glob)Plugin/**/secrets/**',
+  ':/Plugin/UserAuth/code.bin',
   ':(glob)Plugin/**/state',
   ':(glob)Plugin/**/state/**',
   ':(glob)Plugin/**/*.log',
