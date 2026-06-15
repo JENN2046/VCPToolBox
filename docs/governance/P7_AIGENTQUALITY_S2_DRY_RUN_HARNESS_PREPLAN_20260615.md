@@ -188,6 +188,12 @@ secrets/**
 DebugLog/
 ip_blacklist.json
 VectorStore
+image/fluxgen/
+image/fluxgen/**
+image/gptimagegen/
+image/gptimagegen/**
+image/bilibili/
+image/bilibili/**
 Plugin/EmojiListGenerator/generated_lists/
 Plugin/**/.cache/
 Plugin/**/.cache/**
