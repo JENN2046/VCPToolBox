@@ -79,6 +79,14 @@ const SENSITIVE_IGNORED_RUNTIME_PATHS = [
   ':/state',
   ':/.cache',
   ':/.cache/**',
+  ':/cache',
+  ':/cache/**',
+  ':/outputs',
+  ':/outputs/**',
+  ':/logs',
+  ':/logs/**',
+  ':/secrets',
+  ':/secrets/**',
   ':/DebugLog',
   ':/ip_blacklist.json',
   ':/VectorStore',
@@ -87,8 +95,17 @@ const SENSITIVE_IGNORED_RUNTIME_PATHS = [
   ':(glob)Plugin/**/.cache/**',
   ':(glob)Plugin/**/.cache*',
   ':(glob)Plugin/**/.cache*/**',
+  ':(glob)Plugin/**/cache',
+  ':(glob)Plugin/**/cache/**',
+  ':(glob)Plugin/**/outputs',
+  ':(glob)Plugin/**/outputs/**',
+  ':(glob)Plugin/**/logs',
+  ':(glob)Plugin/**/logs/**',
+  ':(glob)Plugin/**/secrets',
+  ':(glob)Plugin/**/secrets/**',
   ':(glob)Plugin/**/state',
   ':(glob)Plugin/**/state/**',
+  ':(glob)Plugin/**/*.log',
   ':(glob)Plugin/**/*.sqlite',
   ':(glob)Plugin/**/*.sqlite-shm',
   ':(glob)Plugin/**/*.sqlite-wal',
@@ -262,6 +279,13 @@ const externalGit = fileExists(TARGET_MANIFEST)
       statusOk: false,
       statusError: 'target manifest missing; external git status not read',
     };
+const externalIgnoredRuntime = fileExists(TARGET_MANIFEST)
+  ? ignoredRuntimeState(EXTERNAL_PACKAGE_ROOT)
+  : {
+      ok: false,
+      statusShort: '',
+      error: 'target manifest missing; external ignored runtime inventory not read',
+    };
 
 const s0Exists = fileExists(S0_DOC);
 const s1Exists = fileExists(S1_DOC);
@@ -347,6 +371,9 @@ const disallowedCoreStatusEntries = coreStatusEntries.filter((entry) =>
 );
 const ignoredRuntimeStatusEntries = statusEntries(
   coreIgnoredRuntime.statusShort,
+);
+const externalIgnoredRuntimeStatusEntries = statusEntries(
+  externalIgnoredRuntime.statusShort,
 );
 
 addCheck(checks, 'core git head observed', Boolean(coreGit.head), coreGit.head);
@@ -476,6 +503,24 @@ if (!coreIgnoredRuntime.ok) {
   );
 }
 
+if (!externalIgnoredRuntime.ok) {
+  staticBlockedReasons.push(
+    `external package sensitive ignored runtime inventory failed: ${externalIgnoredRuntime.error}`,
+  );
+  realS2BlockedReasons.push(
+    'external package sensitive ignored runtime inventory failed',
+  );
+} else if (externalIgnoredRuntimeStatusEntries.length > 0) {
+  staticBlockedReasons.push(
+    `external package has sensitive ignored runtime artifacts: ${externalIgnoredRuntimeStatusEntries
+      .map((entry) => entry.line)
+      .join('; ')}`,
+  );
+  realS2BlockedReasons.push(
+    'external package has sensitive ignored runtime artifacts',
+  );
+}
+
 if (coreGit.statusOk && coreGit.statusShort) {
   realS2BlockedReasons.push('core worktree must be clean before real S2');
 }
@@ -532,7 +577,14 @@ const receipt = {
     core: {
       branch: coreGit.branch,
       head: coreGit.head,
-      worktreeClean: coreGit.statusOk && !coreGit.statusShort,
+      worktreeClean:
+        coreGit.statusOk &&
+        !coreGit.statusShort &&
+        coreIgnoredRuntime.ok &&
+        ignoredRuntimeStatusEntries.length === 0,
+      normalStatusClean: coreGit.statusOk && !coreGit.statusShort,
+      ignoredRuntimeClean:
+        coreIgnoredRuntime.ok && ignoredRuntimeStatusEntries.length === 0,
       statusOk: coreGit.statusOk,
       statusError: coreGit.statusError,
       statusShort: coreGit.statusShort || '',
@@ -540,7 +592,15 @@ const receipt = {
     external: {
       branch: externalGit.branch,
       head: externalGit.head,
-      worktreeClean: externalGit.statusOk && !externalGit.statusShort,
+      worktreeClean:
+        externalGit.statusOk &&
+        !externalGit.statusShort &&
+        externalIgnoredRuntime.ok &&
+        externalIgnoredRuntimeStatusEntries.length === 0,
+      normalStatusClean: externalGit.statusOk && !externalGit.statusShort,
+      ignoredRuntimeClean:
+        externalIgnoredRuntime.ok &&
+        externalIgnoredRuntimeStatusEntries.length === 0,
       statusOk: externalGit.statusOk,
       statusError: externalGit.statusError,
       statusShort: externalGit.statusShort || '',
@@ -556,6 +616,14 @@ const receipt = {
     ignoredRuntimeStatusShort: coreIgnoredRuntime.statusShort || '',
     ignoredRuntimeStatusEntries,
     ignoredRuntimeInventoryError: coreIgnoredRuntime.error || '',
+    coreIgnoredRuntimeStatusShort: coreIgnoredRuntime.statusShort || '',
+    coreIgnoredRuntimeStatusEntries: ignoredRuntimeStatusEntries,
+    coreIgnoredRuntimeInventoryError: coreIgnoredRuntime.error || '',
+    externalIgnoredRuntimeStatusShort:
+      externalIgnoredRuntime.statusShort || '',
+    externalIgnoredRuntimeStatusEntries,
+    externalIgnoredRuntimeInventoryError:
+      externalIgnoredRuntime.error || '',
   },
   manifest: {
     path: TARGET_MANIFEST,

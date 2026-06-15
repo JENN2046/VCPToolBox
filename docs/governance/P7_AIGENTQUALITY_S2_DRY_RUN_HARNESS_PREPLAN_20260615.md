@@ -109,7 +109,7 @@ target plugin manifest identity checks
 future S2 artifact absence checks
 strict-clean readiness if requested
 default dirty-worktree allowlist result
-sensitive ignored runtime inventory result
+core and external package sensitive ignored runtime inventory results
 real S2 blocked reasons, if any
 ```
 
@@ -144,8 +144,14 @@ must set `PREPLAN_STATIC_BLOCKED`; `null` or missing status output must never
 be interpreted as a clean worktree.
 
 The dirty-worktree check must also include scoped ignored-status inventory for
-sensitive runtime/config/generated paths that plain `git status --short` hides,
-including:
+sensitive runtime/config/generated paths that plain `git status --short` hides.
+The helper must run this inventory against both the core repository and the
+external package repository, using each repository root as the Git cwd. This
+keeps hidden external plugin artifacts such as
+`Plugin/JennAIGentQualityTrial/config.env`, `Plugin/**/state/`, cache
+directories, and sqlite files from being reported as clean.
+
+The scoped inventory includes:
 
 ```text
 .env
@@ -163,6 +169,14 @@ SemanticModelRouter.local.json
 state/
 .cache/
 .cache/**
+cache/
+cache/**
+outputs/
+outputs/**
+logs/
+logs/**
+secrets/
+secrets/**
 DebugLog/
 ip_blacklist.json
 VectorStore
@@ -171,8 +185,17 @@ Plugin/**/.cache/
 Plugin/**/.cache/**
 Plugin/**/.cache*
 Plugin/**/.cache*/**
+Plugin/**/cache/
+Plugin/**/cache/**
+Plugin/**/outputs/
+Plugin/**/outputs/**
+Plugin/**/logs/
+Plugin/**/logs/**
+Plugin/**/secrets/
+Plugin/**/secrets/**
 Plugin/**/state/
 Plugin/**/state/**
+Plugin/**/*.log
 Plugin/**/*.sqlite, Plugin/**/*.sqlite-shm, Plugin/**/*.sqlite-wal,
 Plugin/**/*.db
 Plugin/OneRing/data/
@@ -181,9 +204,9 @@ ToolConfigs/dynamic_tool_catalog.json
 ToolConfigs/dynamic_tool_categories.json
 ```
 
-If any scoped ignored runtime artifact exists, default mode must block
-`PREPLAN_STATIC_READY` and include the ignored-status receipt entries. The
-script must not read file contents from these paths.
+If any scoped ignored runtime artifact exists in either repository, default mode
+must block `PREPLAN_STATIC_READY` and include the ignored-status receipt
+entries. The script must not read file contents from these paths.
 
 ## 5. Manifest Identity Checks
 
