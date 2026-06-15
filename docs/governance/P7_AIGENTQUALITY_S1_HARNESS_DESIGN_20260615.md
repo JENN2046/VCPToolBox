@@ -126,6 +126,17 @@ routes/taskScheduler.js:263 reads pending timed tasks
 routes/taskScheduler.js:283 initializes scheduler and watcher
 ```
 
+Post-listen behavior must also be isolated:
+
+```text
+WebSocketServer.js:102 initializes a WebSocket server on the HTTP server
+WebSocketServer.js:43  can create repository-root VCPAsyncResults during
+  distributed callback handling
+FileFetcherServer.js:10 defines repository-root .file_cache
+FileFetcherServer.js:21 initializes FileFetcherServer
+FileFetcherServer.js:28 creates repository-root .file_cache
+```
+
 ## 5. Chosen Harness Shape
 
 Preferred future shape:
@@ -224,6 +235,7 @@ install child_process spawn guard before Plugin.js loads
 intercept selected local module loads
 patch pluginManager after Plugin.js loads
 patch http/https listen behavior if host binding is not otherwise solved
+intercept post-listen WebSocketServer and FileFetcherServer initialization
 record every allowed interception in a receipt
 ```
 
@@ -425,6 +437,40 @@ arguments, final arguments, address, and port in the receipt.
 Fallback: add a tiny reviewed core test seam for host binding before S2. Do not
 use an unreviewed production behavior assumption.
 
+### Post-Listen WebSocket And FileFetcher
+
+Problem:
+
+```text
+server.js treats app.listen as the start of a callback, not the end of startup.
+Inside that callback it initializes WebSocketServer and then
+FileFetcherServer.initialize. FileFetcherServer.initialize creates the
+repository-root .file_cache directory.
+```
+
+Required S2 harness behavior:
+
+```text
+WebSocketServer.initialize intercepted: yes
+WebSocketServer.setPluginManager intercepted: yes
+WebSocketServer upgrade server created: no
+WebSocketServer VCPAsyncResults write attempted: no
+FileFetcherServer.initialize intercepted: yes
+FileFetcherServer .file_cache write attempted: no
+post-listen interception receipt written: yes
+```
+
+Preferred method: return reviewed stubs for `./WebSocketServer.js` and
+`./FileFetcherServer.js` from the preload module loader. The WebSocket stub must
+provide the methods server startup expects, including `initialize`,
+`setPluginManager`, broadcast helpers, lookup helpers, and `shutdown`, but each
+method should only record a receipt or return an inert value. The FileFetcher
+stub must provide `initialize`, `fetchFile`, and `resolveFileUrl`; `initialize`
+must only record a receipt and must not create `.file_cache`.
+
+S2 cannot claim success at `server reached app.listen: yes` until both
+post-listen stubs have recorded their expected receipt entries.
+
 ## 9. Repository Write Guard
 
 The preload seam must install a fail-closed write guard for common write APIs:
@@ -509,6 +555,11 @@ static plugin startup execution: no
 Python prewarm: no
 taskScheduler real initialize: no
 operator VCPTimedContacts read/write: no
+WebSocketServer real initialize: no
+WebSocketServer post-listen interception receipt: yes
+FileFetcherServer real initialize: no
+FileFetcherServer .file_cache write attempted: no
+FileFetcherServer post-listen interception receipt: yes
 processToolCall invoked: no
 executePlugin invoked: no
 child_process.spawn invoked: no
@@ -535,6 +586,8 @@ Stop before implementing or running the harness if:
   Python prewarm, plugin env loading, and dynamic registry writes;
 - `loadPlugins` cannot be limited to reviewed manifest-only registration
   without requiring or initializing direct service/preprocessor modules;
+- post-listen WebSocketServer and FileFetcherServer initialization cannot be
+  stubbed or recorded before S2;
 - the host bind cannot be restricted or explicitly accepted;
 - the future run would require real API keys, operator image paths, provider
   calls, workflow calls, PM2, Docker, AdminPanel writes, or persistent env
@@ -548,6 +601,8 @@ Stop during future S2 if:
   spawned;
 - `taskScheduler` reads or writes operator `VCPTimedContacts`;
 - `processToolCall` or `executePlugin` is invoked;
+- real WebSocketServer initialization creates an upgrade server;
+- FileFetcherServer initializes or writes `.file_cache` under the repository;
 - an unexpected external plugin registers;
 - the target external plugin fails to register;
 - the server binds an unexpected address or port;
