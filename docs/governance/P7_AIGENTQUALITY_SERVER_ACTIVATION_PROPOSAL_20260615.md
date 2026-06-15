@@ -94,7 +94,8 @@ Known write surfaces during or near server startup include:
 - `KNOWLEDGEBASE_ROOT_PATH` / vector store target;
 - ChannelHub `state/channelHub/*` under its configured base directory;
 - static plugin generated outputs;
-- logs and runtime state under project-local or configured paths.
+- logs and runtime state under project-local or configured paths, including
+  ignored paths such as `DebugLog/*` and `ToolConfigs/dynamic_tool_*.json`.
 
 Therefore the next authorized step must not be an ordinary server start. It
 must first define an isolated server harness and prove all writes are confined
@@ -213,6 +214,15 @@ Under ordinary server startup, core legacy plugins are expected to register.
 Do not require core AIGentOrchestrator to be absent unless a reviewed core
 plugin filtering seam is part of the harness. The S2 success criteria must
 distinguish core plugin registration from external plugin registration.
+
+Git-tracked diff checks are not enough for server smoke validation because
+startup can write ignored runtime files. Known examples include
+DebugLog/ServerLog.txt from logger initialization and
+ToolConfigs/dynamic_tool_catalog.json or dynamic_tool_categories.json from
+dynamicToolRegistry initialization. Before any real server smoke, either:
+1. redirect or disable these writes through a reviewed harness seam, or
+2. take explicit before/after inventories of approved ignored runtime paths and
+fail the smoke on any unapproved ignored-file change.
 ```
 
 These questions must be resolved before Gate S2.
@@ -245,7 +255,8 @@ operator image path read: no
 provider/network/workflow/generation call: no
 persistent env changed: no
 core plugin changed: no
-repository diff after shutdown: none
+tracked repository diff after shutdown: none
+ignored runtime-state inventory after shutdown: no unapproved changes
 temporary directories cleaned or retained only as explicit evidence: yes
 ```
 
@@ -255,6 +266,7 @@ Allowed smoke observations:
   listen success;
 - process exit code after controlled shutdown;
 - `git status --short --branch` before and after;
+- ignored-file before/after inventory for approved runtime-state paths;
 - temporary directory inventory.
 
 Not allowed in S2:
@@ -291,6 +303,7 @@ Stop before any server process is started if:
 - a free test port cannot be selected;
 - server bind containment cannot be guaranteed or explicitly accepted;
 - required temp data roots cannot be created;
+- ignored runtime-state paths cannot be redirected, disabled, or inventoried;
 - static plugin side effects cannot be bounded or explicitly deferred;
 - core plugin initialization side effects cannot be inventoried or bounded;
 - the future command would read real operator `config.env`;
@@ -306,6 +319,7 @@ Stop during a future server smoke if:
 - any unexpected external plugin registers;
 - `JennAIGentQualityTrial` fails to register under exact allowlist;
 - repository diff appears after shutdown;
+- ignored runtime-state inventory shows unapproved changes after shutdown;
 - operator image path is accessed;
 - any provider/network/workflow/generation call is observed;
 - child process does not exit after the controlled timeout.
