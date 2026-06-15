@@ -90,13 +90,17 @@ library:
 ```text
 server.js:5      calls dotenv.config({ path: 'config.env' })
 server.js:33-35  initializes and overrides the server logger during import
+server.js:131    defines repository-root ip_blacklist.json
 server.js:361    starts a process-level interval during import
+server.js:471-490 loadBlacklist can call saveBlacklist and write ip_blacklist.json
 server.js:649    reads PORT from process.env
 server.js:2010   invokes pluginManager.loadPlugins()
 server.js:2119   invokes pluginManager.initializeStaticPlugins()
 server.js:2121   invokes pluginManager.prewarmPythonPlugins()
 server.js:2161   invokes taskScheduler.initialize(...)
+server.js:2168   invokes loadBlacklist before pre-listen manager initialization
 server.js:2202   invokes sarPromptManager.initialize(...)
+server.js:2206   invokes initialize(), which loads plugins and initializes services
 server.js:2210   constructs ChannelHubService
 server.js:2234   calls app.listen(port) without an explicit host argument
 server.js:2262   initializes WebSocketServer after listen
@@ -147,7 +151,7 @@ Preferred future shape:
 ```text
 parent verifier process
   -> builds temp run root
-  -> builds clean child env from allowlist
+  -> builds clean child env from allowlist without inheriting parent env
   -> writes harness config under temp run root
   -> spawns node with --require <reviewed preload seam>
        cwd: temp cwd without config.env
@@ -170,6 +174,16 @@ the proposed approach before any runnable harness exists.
 ## 6. Clean Child Env Design
 
 The child env must not be built by spreading `process.env`.
+
+The child spawn mechanism must replace the environment, not merely override the
+parent process environment. `Start-Process -Environment` alone is disallowed for
+S2 because it inherits parent variables by default. Preferred future S2 runner:
+a Node parent verifier uses `child_process.spawn(process.execPath, args, {
+cwd, env: childEnv, stdio })`, where `childEnv` is a newly constructed object.
+
+The receipt must record the exact child env key set before spawn and the preload
+must record the child env key set after startup. S2 fails if either set contains
+any key outside the reviewed allowlist.
 
 Allowed baseline categories:
 
@@ -238,6 +252,7 @@ verify harness config path resolves under the temp run root
 install repository read guard before server.js loads
 install repository write guard before server.js loads
 install child_process spawn guard before Plugin.js loads
+intercept or redirect repository-root ip_blacklist.json before loadBlacklist
 intercept selected local module loads
 patch pluginManager after Plugin.js loads
 patch http/https listen behavior if host binding is not otherwise solved
@@ -295,6 +310,34 @@ to return `{}`, intercept `dotenv.config` receipt evidence, block
 repository-root `config.env` reads in the read guard, and prevent static plugin
 execution.
 
+### IP Blacklist State
+
+Problem:
+
+```text
+server.js defines BLACKLIST_FILE as repository-root ip_blacklist.json.
+startServer calls loadBlacklist before pre-listen manager initialization.
+When ip_blacklist.json is absent, loadBlacklist calls saveBlacklist, which
+writes repository-root ip_blacklist.json through fs.writeFile.
+```
+
+Required S2 harness behavior:
+
+```text
+loadBlacklist path interception installed before startServer executes: yes
+repository-root ip_blacklist.json read attempted: no
+repository-root ip_blacklist.json write attempted: no
+temp ip_blacklist fixture path used: yes
+blacklist interception receipt written before pluginManager.loadPlugins: yes
+```
+
+Preferred method: install a targeted fs path redirect in the preload seam before
+`server.js` loads, mapping the core repository `ip_blacklist.json` path to
+`<run root>\state\ip_blacklist.json`. The receipt must record the original
+path, redirected path, read/write operation, and whether the temp fixture was
+created. Any unredirected repository-root `ip_blacklist.json` access fails
+closed.
+
 ### PluginManager Startup Execution
 
 Problem:
@@ -317,7 +360,7 @@ pluginManager.initializeStaticPlugins intercepted: yes
 pluginManager.prewarmPythonPlugins intercepted: yes
 pluginManager.processToolCall invoked: no
 pluginManager.executePlugin invoked: no
-child_process.spawn invoked: no
+server/plugin child_process.spawn invoked: no
 ```
 
 Preferred method: patch the PluginManager singleton after `Plugin.js` loads:
@@ -531,6 +574,7 @@ Sensitive read targets that must fail closed:
 ```text
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\config.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\.env
+A:\AGENTS_OS_Workspace\runtime\VCPToolBox\ip_blacklist.json
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\Plugin\*\config.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\*\config.env
 secret-like files under either repository, including token, cookie, session,
@@ -606,16 +650,25 @@ $runRoot = Join-Path $env:TEMP "vcptoolbox-aigentquality-server-smoke-<timestamp
 $cwd = Join-Path $runRoot "cwd"
 $config = Join-Path $runRoot "harness-config.json"
 
-$childEnv = @{
-  VCP_AIGENTQUALITY_S2_HARNESS_CONFIG = $config
-  # plus the reviewed clean child env keys listed in Section 6
-}
+node A:\AGENTS_OS_Workspace\runtime\VCPToolBox\scripts\aigentquality-server-smoke-s2.js `
+  --run-root $runRoot `
+  --config $config
+```
 
-Start-Process -FilePath node -ArgumentList @(
+The future parent verifier script must spawn the server child with an explicit
+replacement environment:
+
+```javascript
+const childEnv = buildReviewedAllowlistEnv(config);
+const child = spawn(process.execPath, [
   '--require',
-  'A:\AGENTS_OS_Workspace\runtime\VCPToolBox\tests\harness\aigentquality-server-smoke-preload.js',
-  'A:\AGENTS_OS_Workspace\runtime\VCPToolBox\server.js'
-) -WorkingDirectory $cwd -Environment $childEnv
+  'A:\\AGENTS_OS_Workspace\\runtime\\VCPToolBox\\tests\\harness\\aigentquality-server-smoke-preload.js',
+  'A:\\AGENTS_OS_Workspace\\runtime\\VCPToolBox\\server.js',
+], {
+  cwd,
+  env: childEnv,
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
 ```
 
 Future child process attributes:
@@ -623,6 +676,7 @@ Future child process attributes:
 ```text
 cwd: <run root>\cwd
 env: clean allowlist only
+spawn mechanism: child_process.spawn with replacement env object
 harness config env: VCP_AIGENTQUALITY_S2_HARNESS_CONFIG=<run root>\harness-config.json
 stdio: captured
 timeout: short and reviewed
@@ -640,6 +694,8 @@ core repo clean before and after: yes
 external repo clean before and after: yes
 server child cwd is temp and has no config.env: yes
 child env built from clean allowlist: yes
+child process spawned with replacement env object: yes
+child env exact key set matches reviewed allowlist: yes
 harness config loaded from explicit temp env path: yes
 harness config path resolves under temp run root: yes
 secret-like parent env inherited: no
@@ -648,6 +704,9 @@ logger writes to core DebugLog: no
 repository-root config.env read attempted: no
 plugin-level config.env read attempted: no
 dotenv resolved only against temp cwd: yes
+blacklist path redirected before startServer: yes
+repository-root ip_blacklist.json read/write attempted: no
+temp ip_blacklist fixture used: yes
 dynamicToolRegistry core ToolConfigs write: no
 KnowledgeBaseManager real store init: no
 sarPromptManager real initialize: no
@@ -670,7 +729,7 @@ FileFetcherServer .file_cache write attempted: no
 FileFetcherServer post-listen interception receipt: yes
 processToolCall invoked: no
 executePlugin invoked: no
-child_process.spawn invoked: no
+server/plugin child_process.spawn invoked: no
 server reached app.listen: yes
 bind address accepted: yes
 provider/network/workflow/generation call: no
@@ -689,6 +748,8 @@ Stop before implementing or running the harness if:
   a reviewed successor;
 - the S1 design is not reviewed;
 - the child env cannot be constructed without inheriting secret-like parent env;
+- the child spawn mechanism cannot replace the parent environment with an exact
+  reviewed allowlist;
 - the harness config path cannot be passed through an explicit clean child env
   key under the temp run root;
 - the read guard cannot fail closed before `server.js` and startup modules load;
@@ -696,8 +757,8 @@ Stop before implementing or running the harness if:
   FileHandle, stream, access/stat, and `dotenv.config` read paths;
 - the write guard cannot fail closed;
 - the preload seam cannot intercept logger, scheduler, static execution,
-  Python prewarm, plugin env loading, SarPromptManager, and dynamic registry
-  writes;
+  Python prewarm, plugin env loading, blacklist state, SarPromptManager, and
+  dynamic registry writes;
 - the write guard does not cover `fs.promises.*` and FileHandle write methods
   before startup modules bind `require('fs').promises`;
 - `loadPlugins` cannot be limited to reviewed manifest-only registration
@@ -714,9 +775,12 @@ Stop during future S2 if:
 - preload cannot load harness config from
   `VCP_AIGENTQUALITY_S2_HARNESS_CONFIG`;
 - the harness config path is outside the temp run root;
+- the observed child env contains any key outside the reviewed allowlist;
 - any repository write is attempted outside the temp run root;
 - any repository-root `config.env`, `.env`, plugin `config.env`, or
   secret-like file read is attempted;
+- repository-root `ip_blacklist.json` is read or written instead of the temp
+  fixture;
 - any static plugin command, Python prewarm process, or plugin process is
   spawned;
 - `taskScheduler` reads or writes operator `VCPTimedContacts`;
