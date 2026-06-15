@@ -182,6 +182,7 @@ Allowed baseline categories:
 Application values:
 
 ```text
+VCP_AIGENTQUALITY_S2_HARNESS_CONFIG=<run root>\harness-config.json
 PORT=<rechecked free local test port>
 DebugMode=false
 CHAT_LOG_ENABLED=false
@@ -232,7 +233,9 @@ temporary run root. Its job is to make unsafe startup paths fail closed.
 Required preload behavior:
 
 ```text
-load harness config from a temp-only path
+load harness config from VCP_AIGENTQUALITY_S2_HARNESS_CONFIG
+verify harness config path resolves under the temp run root
+install repository read guard before server.js loads
 install repository write guard before server.js loads
 install child_process spawn guard before Plugin.js loads
 intercept selected local module loads
@@ -288,8 +291,9 @@ static plugin scripts executed: no
 ```
 
 Preferred method: run from temp cwd, patch `pluginManager._loadPluginEnvConfig`
-to return `{}`, block repository-root `config.env` reads in the read guard, and
-prevent static plugin execution.
+to return `{}`, intercept `dotenv.config` receipt evidence, block
+repository-root `config.env` reads in the read guard, and prevent static plugin
+execution.
 
 ### PluginManager Startup Execution
 
@@ -498,7 +502,56 @@ must only record a receipt and must not create `.file_cache`.
 S2 cannot claim success at `server reached app.listen: yes` until both
 post-listen stubs have recorded their expected receipt entries.
 
-## 9. Repository Write Guard
+## 9. Repository Read Guard
+
+The preload seam must install a fail-closed read guard before `server.js` or
+any startup module can bind `require('fs')` or `require('fs').promises`.
+
+Required guarded read APIs:
+
+```text
+fs.readFile / readFileSync
+fs.open / openSync
+fs.createReadStream
+fs.stat / statSync
+fs.access / accessSync
+fs.existsSync
+fs.promises.readFile
+fs.promises.open
+fs.promises.stat
+fs.promises.access
+FileHandle.read
+FileHandle.readFile
+FileHandle.createReadStream
+dotenv.config
+```
+
+Sensitive read targets that must fail closed:
+
+```text
+A:\AGENTS_OS_Workspace\runtime\VCPToolBox\config.env
+A:\AGENTS_OS_Workspace\runtime\VCPToolBox\.env
+A:\AGENTS_OS_Workspace\runtime\VCPToolBox\Plugin\*\config.env
+A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\*\config.env
+secret-like files under either repository, including token, cookie, session,
+password, credential, key, private, and bearer material
+```
+
+Allowed repository reads:
+
+```text
+source files needed to load server.js and reviewed stubs
+plugin-manifest.json files needed for manifest-only registration
+non-secret governance/test files needed by the harness
+```
+
+The read guard must record every blocked sensitive read and every allowed
+exception class in the receipt. S2 must fail if any repository-root `config.env`
+or plugin `config.env` read is attempted, even if the read would have returned
+ENOENT. `dotenv.config` must be intercepted or wrapped so the receipt proves it
+resolved only against the temporary cwd and never against the operator checkout.
+
+## 10. Repository Write Guard
 
 The preload seam must install a fail-closed write guard for common write APIs:
 
@@ -544,7 +597,7 @@ The guard must wrap both the callback/sync `fs` API surface and the
 `require('fs').promises` surface before any startup module loads, because many
 startup modules bind `const fs = require('fs').promises` at import time.
 
-## 10. Future S2 Command Plan
+## 11. Future S2 Command Plan
 
 This is a future plan only. Do not run it during S1.
 
@@ -553,9 +606,16 @@ $runRoot = Join-Path $env:TEMP "vcptoolbox-aigentquality-server-smoke-<timestamp
 $cwd = Join-Path $runRoot "cwd"
 $config = Join-Path $runRoot "harness-config.json"
 
-node `
-  --require A:\AGENTS_OS_Workspace\runtime\VCPToolBox\tests\harness\aigentquality-server-smoke-preload.js `
-  A:\AGENTS_OS_Workspace\runtime\VCPToolBox\server.js
+$childEnv = @{
+  VCP_AIGENTQUALITY_S2_HARNESS_CONFIG = $config
+  # plus the reviewed clean child env keys listed in Section 6
+}
+
+Start-Process -FilePath node -ArgumentList @(
+  '--require',
+  'A:\AGENTS_OS_Workspace\runtime\VCPToolBox\tests\harness\aigentquality-server-smoke-preload.js',
+  'A:\AGENTS_OS_Workspace\runtime\VCPToolBox\server.js'
+) -WorkingDirectory $cwd -Environment $childEnv
 ```
 
 Future child process attributes:
@@ -563,6 +623,7 @@ Future child process attributes:
 ```text
 cwd: <run root>\cwd
 env: clean allowlist only
+harness config env: VCP_AIGENTQUALITY_S2_HARNESS_CONFIG=<run root>\harness-config.json
 stdio: captured
 timeout: short and reviewed
 shutdown: controlled after listen evidence
@@ -570,7 +631,7 @@ shutdown: controlled after listen evidence
 
 The parent verifier must not send `/v1/chat/completions` or invoke any plugin.
 
-## 11. Future S2 Success Evidence
+## 12. Future S2 Success Evidence
 
 S2 may pass only if all of these are true:
 
@@ -579,10 +640,14 @@ core repo clean before and after: yes
 external repo clean before and after: yes
 server child cwd is temp and has no config.env: yes
 child env built from clean allowlist: yes
+harness config loaded from explicit temp env path: yes
+harness config path resolves under temp run root: yes
 secret-like parent env inherited: no
+read guard installed before startup modules loaded: yes
 logger writes to core DebugLog: no
-repository-root config.env read: no
-plugin-level config.env read: no
+repository-root config.env read attempted: no
+plugin-level config.env read attempted: no
+dotenv resolved only against temp cwd: yes
 dynamicToolRegistry core ToolConfigs write: no
 KnowledgeBaseManager real store init: no
 sarPromptManager real initialize: no
@@ -614,7 +679,7 @@ ignored runtime-state inventory changed outside allowed temp root: no
 temporary evidence retained or cleaned by explicit policy: yes
 ```
 
-## 12. Stop Conditions
+## 13. Stop Conditions
 
 Stop before implementing or running the harness if:
 
@@ -624,6 +689,11 @@ Stop before implementing or running the harness if:
   a reviewed successor;
 - the S1 design is not reviewed;
 - the child env cannot be constructed without inheriting secret-like parent env;
+- the harness config path cannot be passed through an explicit clean child env
+  key under the temp run root;
+- the read guard cannot fail closed before `server.js` and startup modules load;
+- the read guard does not cover `fs` callback/sync, `fs.promises`,
+  FileHandle, stream, access/stat, and `dotenv.config` read paths;
 - the write guard cannot fail closed;
 - the preload seam cannot intercept logger, scheduler, static execution,
   Python prewarm, plugin env loading, SarPromptManager, and dynamic registry
@@ -641,8 +711,12 @@ Stop before implementing or running the harness if:
 
 Stop during future S2 if:
 
+- preload cannot load harness config from
+  `VCP_AIGENTQUALITY_S2_HARNESS_CONFIG`;
+- the harness config path is outside the temp run root;
 - any repository write is attempted outside the temp run root;
-- any repository-root `config.env` or plugin `config.env` is read;
+- any repository-root `config.env`, `.env`, plugin `config.env`, or
+  secret-like file read is attempted;
 - any static plugin command, Python prewarm process, or plugin process is
   spawned;
 - `taskScheduler` reads or writes operator `VCPTimedContacts`;
@@ -657,7 +731,7 @@ Stop during future S2 if:
 - any provider, workflow, generation, OCR, OpenPose, moderation, or operator
   image path access is observed.
 
-## 13. S1 Result
+## 14. S1 Result
 
 ```text
 S1 harness design drafted: yes
@@ -670,7 +744,7 @@ persistent env changed: no
 S2 authorized: no
 ```
 
-## 14. Validation For This Design
+## 15. Validation For This Design
 
 Validation commands:
 
@@ -684,7 +758,7 @@ node --test tests/plugin-external-dirs.test.js tests/plugin-external-runtime-reg
 No server process, plugin execution, provider call, workflow call, or runtime
 activation is part of S1 validation.
 
-## 15. Next Safe Action
+## 16. Next Safe Action
 
 Review this S1 design together with the S0 evidence. If accepted, open one PR
 containing both docs-only commits. Do not implement or run the S2 harness until
