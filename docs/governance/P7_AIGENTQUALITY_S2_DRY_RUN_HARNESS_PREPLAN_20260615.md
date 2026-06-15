@@ -177,6 +177,8 @@ state/
 .cache/**
 cache/
 cache/**
+output/
+output/**
 outputs/
 outputs/**
 logs/
@@ -193,6 +195,8 @@ Plugin/**/.cache*
 Plugin/**/.cache*/**
 Plugin/**/cache/
 Plugin/**/cache/**
+Plugin/**/output/
+Plugin/**/output/**
 Plugin/**/outputs/
 Plugin/**/outputs/**
 Plugin/**/logs/
