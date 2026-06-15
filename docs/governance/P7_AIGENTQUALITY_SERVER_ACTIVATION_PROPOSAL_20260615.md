@@ -78,6 +78,8 @@ proof. The current `server.js` startup path:
 - initializes service plugins and mounts admin/internal routes;
 - initializes ChannelHub and its state stores;
 - initializes static plugins and prewarms Python plugins;
+- may run static plugin scripts that read repository-root `config.env`
+  directly from plugin code, independent of the server child process cwd;
 - imports `node-fetch`;
 - starts `app.listen(port)`;
 - initializes WebSocketServer and FileFetcherServer.
@@ -159,7 +161,8 @@ Proposed harness constraints:
 - run from a temporary current working directory that does not contain
   `config.env`; this only prevents the root
   `dotenv.config({ path: 'config.env' })` read and does not cover plugin-level
-  `Plugin/*/config.env` loading;
+  `Plugin/*/config.env` loading or plugin scripts that directly resolve the
+  repository-root `config.env`;
 - set all required environment values explicitly in the child process env;
 - set `PORT` to a reviewed free test port;
 - set fake local-only `API_Key`, `Key`, `Image_Key`, `File_Key`,
@@ -210,6 +213,17 @@ the operator checkout. Before any real server smoke, either:
 config.env file, or
 2. add a reviewed harness/test seam that disables plugin-level env loading.
 
+Some static plugins also read the repository-root `config.env` directly from
+their own scripts, bypassing the temporary cwd guard and PluginManager's
+plugin-level env loader. Current examples include
+`Plugin/WeatherReporter/weather-reporter.js` and
+`Plugin/MCPOMonitor/mcpo_monitor.js`, which resolve `../../config.env` from the
+plugin directory. Before any real server smoke, either:
+1. add a reviewed harness/test seam that prevents static plugin execution or
+   disables repository-root config reads from plugin scripts, or
+2. provide an explicit inventory proving no loaded plugin script can read the
+   repository-root `config.env`.
+
 Under ordinary server startup, core legacy plugins are expected to register.
 Do not require core AIGentOrchestrator to be absent unless a reviewed core
 plugin filtering seam is part of the harness. The S2 success criteria must
@@ -240,6 +254,7 @@ Minimum success evidence:
 server process started from temporary cwd: yes
 real config.env read: no
 plugin-level config.env read: no
+plugin-script repository-root config.env read: no
 network bind containment reviewed and accepted: yes
 pluginManager.loadPlugins invoked by server.js: yes
 JennAIGentQualityTrial registered from external package: yes
@@ -300,6 +315,8 @@ Stop before any server process is started if:
 - a temp cwd without `config.env` cannot be guaranteed;
 - plugin-level `config.env` files in loaded plugin roots cannot be ruled out or
   disabled by a reviewed harness seam;
+- plugin scripts that directly resolve repository-root `config.env` cannot be
+  ruled out or disabled by a reviewed harness seam;
 - a free test port cannot be selected;
 - server bind containment cannot be guaranteed or explicitly accepted;
 - required temp data roots cannot be created;
@@ -315,6 +332,7 @@ Stop before any server process is started if:
 Stop during a future server smoke if:
 
 - server reads real `config.env`;
+- a plugin script reads repository-root `config.env`;
 - server binds an unexpected address or port;
 - any unexpected external plugin registers;
 - `JennAIGentQualityTrial` fails to register under exact allowlist;
