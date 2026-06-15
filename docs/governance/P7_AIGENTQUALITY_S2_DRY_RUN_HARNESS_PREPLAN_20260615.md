@@ -155,10 +155,16 @@ preprocessor_order.json
 tag-processor-config.env
 SemanticModelRouter.local.json
 state/
+.cache/
+.cache/**
 DebugLog/
 ip_blacklist.json
 VectorStore
 Plugin/EmojiListGenerator/generated_lists/
+Plugin/**/.cache/
+Plugin/**/.cache/**
+Plugin/**/.cache*
+Plugin/**/.cache*/**
 Plugin/**/state/
 Plugin/**/state/**
 Plugin/**/*.sqlite, Plugin/**/*.sqlite-shm, Plugin/**/*.sqlite-wal,
