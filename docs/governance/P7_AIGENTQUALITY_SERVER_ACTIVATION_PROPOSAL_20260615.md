@@ -156,8 +156,9 @@ Proposed harness constraints:
 
 - spawn a child process only after a later explicit gate;
 - run from a temporary current working directory that does not contain
-  `config.env`, so `dotenv.config({ path: 'config.env' })` cannot read the
-  real core repo config file;
+  `config.env`; this only prevents the root
+  `dotenv.config({ path: 'config.env' })` read and does not cover plugin-level
+  `Plugin/*/config.env` loading;
 - set all required environment values explicitly in the child process env;
 - set `PORT` to a reviewed free test port;
 - set fake local-only `API_Key`, `Key`, `Image_Key`, `File_Key`,
