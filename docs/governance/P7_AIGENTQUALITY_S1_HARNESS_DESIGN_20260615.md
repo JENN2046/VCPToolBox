@@ -100,7 +100,11 @@ server.js:2121   invokes pluginManager.prewarmPythonPlugins()
 server.js:2131   enumerates Plugin/EmojiListGenerator/generated_lists
 server.js:2161   invokes taskScheduler.initialize(...)
 server.js:2168   invokes loadBlacklist before pre-listen manager initialization
+server.js:2178   loads ModelRedirect.json through modelRedirectHandler
 server.js:2182   invokes semanticModelRouter.initialize(...)
+server.js:2188   invokes agentManager.initialize(...)
+server.js:2193   invokes tvsManager.initialize(...)
+server.js:2198   invokes toolboxManager.initialize(...)
 server.js:2202   invokes sarPromptManager.initialize(...)
 server.js:2206   invokes initialize(), which loads plugins and initializes services
 server.js:2210   constructs ChannelHubService
@@ -113,6 +117,7 @@ server.js:2274   calls startServer().catch(...)
 The future harness must also account for plugin manager behavior:
 
 ```text
+Plugin.js:49     defines repository-root preprocessor_order.json
 Plugin.js:131    constructs ToolApprovalManager for toolApprovalConfig.json
 Plugin.js:282    core plugin child env inherits process.env
 Plugin.js:313    static plugin execution can spawn with shell: true
@@ -122,6 +127,7 @@ Plugin.js:601    _loadPluginEnvConfig reads Plugin/*/config.env
 Plugin.js:963    _discoverLegacyPluginManifestsFromDir enumerates plugin roots
 Plugin.js:1048   direct service/preprocessor manifests can require plugin code
 Plugin.js:1069   loadPlugins discovers and registers plugin manifests
+Plugin.js:1132   reads repository-root preprocessor_order.json
 Plugin.js:1169   loadPlugins can call module.initialize for direct modules
 Plugin.js:1961   initializeServices mounts service plugin routes
 ```
@@ -151,6 +157,12 @@ modules/toolApprovalManager.js:16 constructs and immediately loads/watches
 modules/semanticRouterConfig.js:164 can create SemanticModelRouter.json
 modules/semanticModelRouter.js:75 initializes config and starts a watcher
 modules/semanticModelRouter.js:178 can fs.watch repository-root config dir
+modelRedirectHandler.js:19 can read repository-root ModelRedirect.json
+modules/agentManager.js:38 reads repository-root agent_map.json
+modules/agentManager.js:72 and :82 can watch agent_map.json and Agent files
+modules/tvsManager.js:26 can watch TVStxt
+modules/toolboxManager.js:49 reads repository-root toolbox_map.json
+modules/toolboxManager.js:78 and :86 can watch toolbox_map.json and TVStxt
 ```
 
 ## 5. Chosen Harness Shape
@@ -385,6 +397,47 @@ used by `server.js`, but `initialize` must only record a receipt. A later S1
 revision may choose temp-path redirection instead, but it must prove all reads,
 writes, and watchers resolve under `<run root>` before S2.
 
+### Pre-Plugin Config Managers
+
+Problem:
+
+```text
+Before PluginManager.loadPlugins, startServer loads ModelRedirect.json and
+initializes AgentManager, TvsManager, and ToolboxManager. These managers can
+read repository-root ModelRedirect.json, agent_map.json, toolbox_map.json, scan
+operator Agent/TVStxt trees, and start fs/chokidar watchers.
+
+During loadPlugins, PluginManager can also read repository-root
+preprocessor_order.json while constructing message preprocessor order.
+```
+
+Required S2 harness behavior:
+
+```text
+modelRedirectHandler.loadModelRedirectConfig intercepted: yes
+repository-root ModelRedirect.json read attempted: no
+AgentManager.initialize intercepted: yes
+repository-root agent_map.json read/watch attempted: no
+operator Agent directory scan/watch attempted: no
+TvsManager.initialize intercepted: yes
+operator TVStxt watch attempted: no
+ToolboxManager.initialize intercepted: yes
+repository-root toolbox_map.json read/watch attempted: no
+operator TVStxt read/watch attempted: no
+preprocessor_order.json read intercepted: yes
+pre-plugin config manager receipts written before pluginManager.loadPlugins: yes
+```
+
+Preferred method: return reviewed stubs for `./modelRedirectHandler.js`,
+`./modules/agentManager.js`, `./modules/tvsManager.js`, and
+`./modules/toolboxManager.js` from the preload module loader. Each stub must
+expose the methods `server.js` calls and must record initialization without
+reading or watching operator files. Patch PluginManager's preprocessor-order
+step to use an empty harness-configured order and receipt instead of reading
+`preprocessor_order.json`. A later S1 revision may redirect these managers to
+temp fixtures, but S2 must prove every map/config read, directory scan, and
+watch target resolves under `<run root>`.
+
 ### PluginManager Startup Execution
 
 Problem:
@@ -427,6 +480,8 @@ Preferred method: patch the PluginManager singleton after `Plugin.js` loads:
 - replace `initializeStaticPlugins` with a no-op receipt entry;
 - replace `prewarmPythonPlugins` with a no-op receipt entry;
 - replace `_loadPluginEnvConfig` with a no-op receipt entry;
+- replace preprocessor-order loading with an empty harness-configured order and
+  a receipt entry;
 - wrap `processToolCall` and `executePlugin` to fail if called;
 - wrap `_spawnPluginProcess` to fail if called.
 
@@ -800,6 +855,14 @@ ToolApprovalManager real config read/watch attempted: no
 ToolApprovalManager stub receipt: yes
 SemanticModelRouter real config read/write/watch attempted: no
 SemanticModelRouter stub receipt: yes
+ModelRedirect real config read attempted: no
+ModelRedirect stub receipt: yes
+AgentManager real map read or Agent scan/watch attempted: no
+AgentManager stub receipt: yes
+TvsManager real TVStxt watch attempted: no
+TvsManager stub receipt: yes
+ToolboxManager real map read or TVStxt watch attempted: no
+ToolboxManager stub receipt: yes
 dynamicToolRegistry core ToolConfigs write: no
 KnowledgeBaseManager real store init: no
 sarPromptManager real initialize: no
@@ -807,6 +870,8 @@ sarPromptManager sarprompt.json write attempted: no
 pluginManager.loadPlugins invoked by server.js: yes
 loadPlugins manifest-only registration seam active: yes
 legacy plugin directory enumeration stubbed: yes
+preprocessor_order real read attempted: no
+preprocessor_order harness receipt: yes
 JennAIGentQualityTrial registered from external package: yes
 unexpected external plugins registered: no
 direct service/preprocessor plugin code required: no
@@ -858,8 +923,12 @@ Stop before implementing or running the harness if:
   SarPromptManager, and dynamic registry writes;
 - ToolApprovalManager and SemanticModelRouter cannot be stubbed or redirected
   before they read or watch repository-root config files;
+- ModelRedirect, AgentManager, TvsManager, and ToolboxManager cannot be stubbed
+  or redirected before they read, scan, or watch repository/operator paths;
 - legacy plugin discovery cannot use a reviewed harness manifest list without
   enumerating plugin roots;
+- PluginManager preprocessor-order loading cannot be replaced with an empty
+  harness-configured receipt;
 - EmojiListGenerator `generated_lists` enumeration cannot be stubbed or
   redirected before `initialize()` reaches task scheduler startup;
 - the write guard does not cover `fs.promises.*` and FileHandle write methods
@@ -889,6 +958,13 @@ Stop during future S2 if:
 - ToolApprovalManager reads or watches repository-root `toolApprovalConfig.json`;
 - SemanticModelRouter reads, writes, or watches repository-root
   `SemanticModelRouter.json` or its config directory;
+- ModelRedirect reads repository-root `ModelRedirect.json`;
+- AgentManager reads or watches repository-root `agent_map.json` or scans or
+  watches the operator Agent directory;
+- TvsManager watches the operator TVStxt directory;
+- ToolboxManager reads or watches repository-root `toolbox_map.json` or watches
+  the operator TVStxt directory;
+- PluginManager reads repository-root `preprocessor_order.json`;
 - PluginManager legacy discovery uses real `fs.readdir` on a core or external
   plugin root;
 - EmojiListGenerator `generated_lists` is enumerated from the operator
