@@ -221,6 +221,19 @@ ToolConfigs/dynamic_tool_catalog.json
 ToolConfigs/dynamic_tool_categories.json
 ```
 
+The scoped inventory must exclude dependency trees from those broad pathspecs:
+
+```text
+node_modules/
+node_modules/**
+**/node_modules/
+**/node_modules/**
+```
+
+Dependency package files are not operator/runtime artifacts for this gate, and
+ignored package internals can otherwise satisfy broad patterns such as
+`Plugin/**/*.log`.
+
 If any scoped ignored runtime artifact exists in either repository, default mode
 must block `PREPLAN_STATIC_READY` and include the ignored-status receipt
 entries. The script must not read file contents from these paths.

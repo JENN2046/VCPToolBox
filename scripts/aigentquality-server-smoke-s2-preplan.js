@@ -61,6 +61,12 @@ const EXPECTED_COMMANDS = [
   'HealthCheck',
 ];
 const STATUS_GIT_GLOBAL_ARGS = ['--no-optional-locks'];
+const IGNORED_RUNTIME_EXCLUDED_PATHS = [
+  ':(exclude)node_modules',
+  ':(exclude,glob)node_modules/**',
+  ':(exclude,glob)**/node_modules',
+  ':(exclude,glob)**/node_modules/**',
+];
 const SENSITIVE_IGNORED_RUNTIME_PATHS = [
   ':/.env',
   ':/.env.local',
@@ -210,6 +216,7 @@ function ignoredRuntimeState(cwd) {
     '--untracked-files=normal',
     '--',
     ...SENSITIVE_IGNORED_RUNTIME_PATHS,
+    ...IGNORED_RUNTIME_EXCLUDED_PATHS,
   ]);
 
   return {
@@ -631,6 +638,7 @@ const receipt = {
     coreStatusEntries,
     disallowedCoreStatusEntries,
     sensitiveIgnoredRuntimePathspecs: SENSITIVE_IGNORED_RUNTIME_PATHS,
+    ignoredRuntimeExcludedPathspecs: IGNORED_RUNTIME_EXCLUDED_PATHS,
     ignoredRuntimeStatusShort: coreIgnoredRuntime.statusShort || '',
     ignoredRuntimeStatusEntries,
     ignoredRuntimeInventoryError: coreIgnoredRuntime.error || '',
