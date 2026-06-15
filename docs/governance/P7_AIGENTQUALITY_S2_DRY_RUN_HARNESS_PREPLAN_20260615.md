@@ -109,6 +109,7 @@ target plugin manifest identity checks
 future S2 artifact absence checks
 strict-clean readiness if requested
 default dirty-worktree allowlist result
+sensitive ignored runtime inventory result
 real S2 blocked reasons, if any
 ```
 
@@ -124,6 +125,35 @@ Any other core worktree change, including `server.js`, `config.env`, runtime
 state, plugin files, generated files, or unrelated docs, must block
 `PREPLAN_STATIC_READY`. A future real S2 run must require a fully clean
 worktree.
+
+The dirty-worktree check must also include scoped ignored-status inventory for
+sensitive runtime/config/generated paths that plain `git status --short` hides,
+including:
+
+```text
+config.env and **/config.env
+ModelRedirect.json
+agent_map.json
+preprocessor_order.json
+tag-processor-config.env
+SemanticModelRouter.local.json
+state/
+DebugLog/
+ip_blacklist.json
+VectorStore
+Plugin/EmojiListGenerator/generated_lists/
+Plugin/**/state/
+Plugin/**/*.sqlite, Plugin/**/*.sqlite-shm, Plugin/**/*.sqlite-wal,
+Plugin/**/*.db
+Plugin/OneRing/data/
+Plugin/ProjectAnalyst/database/
+ToolConfigs/dynamic_tool_catalog.json
+ToolConfigs/dynamic_tool_categories.json
+```
+
+If any scoped ignored runtime artifact exists, default mode must block
+`PREPLAN_STATIC_READY` and include the ignored-status receipt entries. The
+script must not read file contents from these paths.
 
 ## 5. Manifest Identity Checks
 
@@ -228,7 +258,9 @@ Expected result:
 
 ```text
 static preplan script syntax: pass
-static preplan receipt: pass
+static preplan receipt in a clean checkout: PREPLAN_STATIC_READY
+static preplan receipt with sensitive ignored runtime artifacts:
+  PREPLAN_STATIC_BLOCKED
 real server start: not run
 server import: not run
 plugin execution: not run

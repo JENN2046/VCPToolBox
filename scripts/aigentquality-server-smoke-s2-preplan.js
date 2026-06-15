@@ -60,6 +60,30 @@ const EXPECTED_COMMANDS = [
   'BuildRetryPlan',
   'HealthCheck',
 ];
+const SENSITIVE_IGNORED_RUNTIME_PATHS = [
+  ':/config.env',
+  ':/config.env.local',
+  ':(glob)**/config.env',
+  ':/ModelRedirect.json',
+  ':/agent_map.json',
+  ':/preprocessor_order.json',
+  ':/tag-processor-config.env',
+  ':/SemanticModelRouter.local.json',
+  ':/state',
+  ':/DebugLog',
+  ':/ip_blacklist.json',
+  ':/VectorStore',
+  ':/Plugin/EmojiListGenerator/generated_lists',
+  ':(glob)Plugin/**/state',
+  ':(glob)Plugin/**/*.sqlite',
+  ':(glob)Plugin/**/*.sqlite-shm',
+  ':(glob)Plugin/**/*.sqlite-wal',
+  ':(glob)Plugin/**/*.db',
+  ':/Plugin/OneRing/data',
+  ':/Plugin/ProjectAnalyst/database',
+  ':/ToolConfigs/dynamic_tool_catalog.json',
+  ':/ToolConfigs/dynamic_tool_categories.json',
+];
 
 const args = new Set(process.argv.slice(2));
 const jsonMode = args.has('--json');
@@ -108,6 +132,23 @@ function gitState(cwd) {
     branch: gitValue(cwd, ['branch', '--show-current']),
     head: gitValue(cwd, ['rev-parse', 'HEAD']),
     statusShort: gitValue(cwd, ['status', '--short']),
+  };
+}
+
+function ignoredRuntimeState(cwd) {
+  const result = runGit(cwd, [
+    'status',
+    '--short',
+    '--ignored',
+    '--untracked-files=normal',
+    '--',
+    ...SENSITIVE_IGNORED_RUNTIME_PATHS,
+  ]);
+
+  return {
+    ok: result.ok,
+    statusShort: result.ok ? result.stdout : '',
+    error: result.ok ? '' : result.stderr,
   };
 }
 
@@ -169,6 +210,7 @@ const defaultAllowedDirtyPaths = new Set([
 ]);
 
 const coreGit = gitState(PROJECT_ROOT);
+const coreIgnoredRuntime = ignoredRuntimeState(PROJECT_ROOT);
 const coreContainsExpectedBase = runGit(PROJECT_ROOT, [
   'merge-base',
   '--is-ancestor',
@@ -261,6 +303,9 @@ const coreStatusEntries = statusEntries(coreGit.statusShort);
 const disallowedCoreStatusEntries = coreStatusEntries.filter((entry) =>
   entry.paths.some((statusPath) => !defaultAllowedDirtyPaths.has(statusPath)),
 );
+const ignoredRuntimeStatusEntries = statusEntries(
+  coreIgnoredRuntime.statusShort,
+);
 
 addCheck(checks, 'core git head observed', Boolean(coreGit.head), coreGit.head);
 addCheck(
@@ -349,6 +394,22 @@ if (disallowedCoreStatusEntries.length > 0) {
   );
 }
 
+if (!coreIgnoredRuntime.ok) {
+  staticBlockedReasons.push(
+    `sensitive ignored runtime inventory failed: ${coreIgnoredRuntime.error}`,
+  );
+  realS2BlockedReasons.push('sensitive ignored runtime inventory failed');
+} else if (ignoredRuntimeStatusEntries.length > 0) {
+  staticBlockedReasons.push(
+    `core worktree has sensitive ignored runtime artifacts: ${ignoredRuntimeStatusEntries
+      .map((entry) => entry.line)
+      .join('; ')}`,
+  );
+  realS2BlockedReasons.push(
+    'core worktree has sensitive ignored runtime artifacts',
+  );
+}
+
 if (coreGit.statusShort) {
   realS2BlockedReasons.push('core worktree must be clean before real S2');
 }
@@ -420,6 +481,10 @@ const receipt = {
     defaultAllowedCoreDirtyPaths: [...defaultAllowedDirtyPaths],
     coreStatusEntries,
     disallowedCoreStatusEntries,
+    sensitiveIgnoredRuntimePathspecs: SENSITIVE_IGNORED_RUNTIME_PATHS,
+    ignoredRuntimeStatusShort: coreIgnoredRuntime.statusShort || '',
+    ignoredRuntimeStatusEntries,
+    ignoredRuntimeInventoryError: coreIgnoredRuntime.error || '',
   },
   manifest: {
     path: TARGET_MANIFEST,
