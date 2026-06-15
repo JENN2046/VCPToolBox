@@ -163,7 +163,15 @@ Proposed harness constraints:
   `dotenv.config({ path: 'config.env' })` read and does not cover plugin-level
   `Plugin/*/config.env` loading or plugin scripts that directly resolve the
   repository-root `config.env`;
-- set all required environment values explicitly in the child process env;
+- build the child process env from an empty or reviewed allowlist baseline, not
+  by spreading or inheriting the parent shell `process.env`;
+- include only the minimal runtime variables needed to launch Node plus the
+  explicit fake test values listed below;
+- fail preflight if the child env would inherit provider keys, tokens,
+  passwords, bearer values, API keys, cookie/session values, or other operator
+  secrets from the parent shell;
+- set all required application environment values explicitly in the child
+  process env;
 - set `PORT` to a reviewed free test port;
 - set fake local-only `API_Key`, `Key`, `Image_Key`, `File_Key`,
   `VCP_Key`, `AdminUsername`, and `AdminPassword`;
@@ -190,10 +198,12 @@ Before any real server smoke, decide whether to:
 2. run inside a network-isolated environment, or
 3. explicitly accept the bind behavior for a very short local smoke.
 
-server.js initializes static plugins and prewarms Python plugins.
-Before any real server smoke, decide whether to:
-1. accept only temporary-path writes and prove no repo diff after exit, or
-2. add a separate test harness that disables static plugin side effects.
+server.js initializes static plugins and prewarms Python plugins. The static
+plugin path calls `_executeStaticPluginCommand()` and can spawn plugin commands
+with `shell: true`; Python prewarm can spawn `python -c ...`. Before any real
+server smoke, add a reviewed harness/test seam that disables or intercepts
+both startup paths. Do not enter S2 merely by accepting temporary-path writes or
+by checking repository diffs after exit.
 
 server.js and pluginManager.loadPlugins use the real core Plugin/ root and
 plugins/registry.json from __dirname.
@@ -223,6 +233,12 @@ plugin directory. Before any real server smoke, either:
    disables repository-root config reads from plugin scripts, or
 2. provide an explicit inventory proving no loaded plugin script can read the
    repository-root `config.env`.
+
+Core static plugin child processes inherit the server process env through
+`PluginManager._buildPluginProcessEnv()` for non-external plugins. Therefore a
+clean server child env is a prerequisite even if static plugin execution is
+disabled or intercepted, because any later approved plugin process would
+otherwise receive inherited operator secrets.
 
 Under ordinary server startup, core legacy plugins are expected to register.
 Do not require core AIGentOrchestrator to be absent unless a reviewed core
@@ -255,6 +271,11 @@ server process started from temporary cwd: yes
 real config.env read: no
 plugin-level config.env read: no
 plugin-script repository-root config.env read: no
+child process env built from clean allowlist baseline: yes
+parent shell provider/token/secret env inherited: no
+startup static plugin command execution disabled or intercepted: yes
+startup Python prewarm disabled or intercepted: yes
+startup plugin child process spawned: no
 network bind containment reviewed and accepted: yes
 pluginManager.loadPlugins invoked by server.js: yes
 JennAIGentQualityTrial registered from external package: yes
@@ -291,7 +312,10 @@ Not allowed in S2:
 - scan a real image directory;
 - trigger workflow or provider calls;
 - use real API keys or operator secrets;
-- leave the child process running.
+- leave the child process running;
+- inherit the parent shell environment wholesale;
+- spawn static plugin commands during startup;
+- run Python prewarm during startup.
 
 ### Gate S3 - Optional Authenticated Read-Only Endpoint Smoke
 
@@ -313,15 +337,21 @@ Stop before any server process is started if:
 - external package head differs from the expected reviewed head and has not
   been explained;
 - a temp cwd without `config.env` cannot be guaranteed;
+- a clean child env cannot be built from an empty or reviewed allowlist
+  baseline;
+- the proposed child env would inherit provider keys, tokens, passwords,
+  bearer values, API keys, cookie/session values, or other operator secrets;
 - plugin-level `config.env` files in loaded plugin roots cannot be ruled out or
   disabled by a reviewed harness seam;
 - plugin scripts that directly resolve repository-root `config.env` cannot be
   ruled out or disabled by a reviewed harness seam;
+- startup static plugin command execution and Python prewarm cannot be disabled
+  or intercepted by a reviewed harness seam;
 - a free test port cannot be selected;
 - server bind containment cannot be guaranteed or explicitly accepted;
 - required temp data roots cannot be created;
 - ignored runtime-state paths cannot be redirected, disabled, or inventoried;
-- static plugin side effects cannot be bounded or explicitly deferred;
+- startup plugin process execution cannot be proven disabled or intercepted;
 - core plugin initialization side effects cannot be inventoried or bounded;
 - the future command would read real operator `config.env`;
 - the future command would write to core repo runtime state;
@@ -332,7 +362,10 @@ Stop before any server process is started if:
 Stop during a future server smoke if:
 
 - server reads real `config.env`;
+- server inherits provider keys, tokens, passwords, bearer values, API keys, or
+  other operator secrets from the parent shell;
 - a plugin script reads repository-root `config.env`;
+- a static plugin command or Python prewarm process is spawned;
 - server binds an unexpected address or port;
 - any unexpected external plugin registers;
 - `JennAIGentQualityTrial` fails to register under exact allowlist;
