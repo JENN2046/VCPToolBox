@@ -199,6 +199,19 @@ to:
 or
 2. add a reviewed harness/test seam that filters or stubs non-target side
 effects.
+
+PluginManager also reads plugin-level config.env files through
+_loadPluginEnvConfig() while loading manifests. A temporary cwd only blocks the
+root config.env read; it does not block untracked Plugin/*/config.env files in
+the operator checkout. Before any real server smoke, either:
+1. prove every loaded core and target external plugin directory has no
+config.env file, or
+2. add a reviewed harness/test seam that disables plugin-level env loading.
+
+Under ordinary server startup, core legacy plugins are expected to register.
+Do not require core AIGentOrchestrator to be absent unless a reviewed core
+plugin filtering seam is part of the harness. The S2 success criteria must
+distinguish core plugin registration from external plugin registration.
 ```
 
 These questions must be resolved before Gate S2.
@@ -215,13 +228,15 @@ Minimum success evidence:
 ```text
 server process started from temporary cwd: yes
 real config.env read: no
+plugin-level config.env read: no
 network bind containment reviewed and accepted: yes
 pluginManager.loadPlugins invoked by server.js: yes
 JennAIGentQualityTrial registered from external package: yes
 NoopJennExternalPlugin not registered unless explicitly allowlisted: yes
 JennAIGentQuality not registered unless explicitly allowlisted: yes
-AIGentOrchestrator not registered unless explicitly allowlisted: yes
-JennAIGentOrchestrator not registered unless exact policy permits it: yes
+core AIGentOrchestrator may register from core legacy root: yes
+external AIGentOrchestrator not registered unless explicitly allowlisted: yes
+external JennAIGentOrchestrator not registered unless exact policy permits it: yes
 server reached app.listen: yes
 processToolCall invoked: no
 executePlugin invoked: no
@@ -270,6 +285,8 @@ Stop before any server process is started if:
 - external package head differs from the expected reviewed head and has not
   been explained;
 - a temp cwd without `config.env` cannot be guaranteed;
+- plugin-level `config.env` files in loaded plugin roots cannot be ruled out or
+  disabled by a reviewed harness seam;
 - a free test port cannot be selected;
 - server bind containment cannot be guaranteed or explicitly accepted;
 - required temp data roots cannot be created;
