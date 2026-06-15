@@ -747,6 +747,7 @@ fs.mkdir / mkdirSync
 fs.rename / renameSync
 fs.unlink / unlinkSync
 fs.rm / rmSync
+fs.open / openSync when flags allow write, append, truncate, or create
 fs.createWriteStream
 fs.watch
 fs.watchFile
@@ -933,6 +934,9 @@ Stop before implementing or running the harness if:
   redirected before `initialize()` reaches task scheduler startup;
 - the write guard does not cover `fs.promises.*` and FileHandle write methods
   before startup modules bind `require('fs').promises`;
+- the write guard does not reject callback/sync `fs.open` and `fs.openSync`
+  calls when flags allow write, append, truncate, or create outside the temp
+  run root;
 - `loadPlugins` cannot be limited to reviewed manifest-only registration
   without requiring or initializing direct service/preprocessor modules;
 - post-listen WebSocketServer and FileFetcherServer initialization cannot be
