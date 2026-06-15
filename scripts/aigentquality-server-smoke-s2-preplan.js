@@ -131,7 +131,11 @@ function gitState(cwd) {
   return {
     branch: gitValue(cwd, ['branch', '--show-current']),
     head: gitValue(cwd, ['rev-parse', 'HEAD']),
-    statusShort: gitValue(cwd, ['status', '--short']),
+    statusShort: gitValue(cwd, [
+      'status',
+      '--short',
+      '--untracked-files=normal',
+    ]),
   };
 }
 

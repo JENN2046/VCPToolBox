@@ -126,6 +126,13 @@ state, plugin files, generated files, or unrelated docs, must block
 `PREPLAN_STATIC_READY`. A future real S2 run must require a fully clean
 worktree.
 
+The normal dirty-worktree status check must force
+`--untracked-files=normal` for both the core repository and the external
+package. It must not depend on a developer's local
+`status.showUntrackedFiles` Git configuration, because hidden untracked files
+can otherwise bypass `disallowedCoreStatusEntries`, `--strict-clean`, and
+external package dirty checks.
+
 The dirty-worktree check must also include scoped ignored-status inventory for
 sensitive runtime/config/generated paths that plain `git status --short` hides,
 including:
