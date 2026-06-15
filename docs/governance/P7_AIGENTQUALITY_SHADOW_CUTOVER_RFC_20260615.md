@@ -698,8 +698,7 @@ No core repository commit, push, merge, or PR action authorized by this document
 Next safe action:
 
 ```text
-Review the Layer 1, Layer 2, and Layer 3 receipts. If accepted, either keep the
-dry-run stopped at layered evidence, authorize a full loadPlugins
-discovery-to-registration proof, or authorize a docs-only commit/PR for the
-governance receipts.
+Review the docs-only PR that carries the Layer 1, Layer 2, and Layer 3
+receipts. If accepted and merged, either keep the dry-run stopped at layered
+evidence or authorize a full loadPlugins discovery-to-registration proof.
 ```

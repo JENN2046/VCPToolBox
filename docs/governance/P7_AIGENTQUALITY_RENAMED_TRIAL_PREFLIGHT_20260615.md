@@ -2,11 +2,15 @@
 
 Date: 2026-06-15
 
-Status: preflight plus local-only copy gate receipt. The local-only copy gate
-created an untracked renamed trial directory after explicit user authorization.
-No runtime activation, commit, push, PR, merge, core disablement, core deletion,
-persistent environment change, loader priority change, or server start is
-authorized by this document.
+Status: preflight, local-only copy gate receipt, and external package PR #2
+merge receipt. The local-only copy gate first created a renamed trial directory
+after explicit user authorization; a later explicit gate committed it, opened
+PR #2, marked it ready, triggered review, and squash merged it into the
+external package `main` at `beb072b8ad1530dd62c526c71e4cc09930068685`.
+No runtime activation, core disablement, core deletion, persistent environment
+change, loader priority change, server start, or later commit, push, PR, merge,
+or branch deletion is authorized by this document without a separate explicit
+gate.
 
 Scope: renamed external trial candidate for `Plugin/AIGentQuality/`.
 
@@ -138,9 +142,9 @@ The renamed trial must preserve these invariants:
   generation invocation;
 - no commit, push, PR, merge, or branch deletion without explicit remote gate.
 
-## 5. Future Copy Gate Plan
+## 5. Copy Gate Source And Execution
 
-A future authorized copy gate should use Git blob bytes from external package
+The authorized local-only copy gate used Git blob bytes from external package
 `main` at `bd9997f130713f63f3b8d805c71bfb606039d565`.
 
 Exact source blob paths:
@@ -152,12 +156,12 @@ bd9997f130713f63f3b8d805c71bfb606039d565:Plugin/AIGentQuality/config.env.example
 bd9997f130713f63f3b8d805c71bfb606039d565:Plugin/AIGentQuality/plugin-manifest.json
 ```
 
-The future copy must be byte-preserving before the allowed manifest and README
+The copy was byte-preserving before the allowed manifest and README
 identity edits. Do not use clipboard copy, rendered markdown, shell text
 concatenation, or formatted transcript output as the source. Record source and
 target `git hash-object` evidence for each file after the copy.
 
-The copy gate should:
+The copy gate execution recipe was:
 
 1. Re-check both repositories are on expected heads and clean except for known
    docs-only governance files.
@@ -169,7 +173,9 @@ The copy gate should:
 6. Stop before commit, push, PR, runtime activation, or any core repository
    change unless explicitly authorized.
 
-This preflight does not authorize step 2 or later.
+This section is historical execution evidence, not standing authorization for a
+repeat copy. Any retry, replacement, or additional copy requires a separate
+explicit gate.
 
 ## 6. Validation Commands For A Later Copy Gate
 
@@ -368,11 +374,18 @@ Stop after local write but before commit/push if:
 
 ## 10. Rollback
 
-Because the future copy gate should be local-only until separately authorized,
-rollback is limited to removing only the newly created trial directory from the
-working tree before any commit.
+Before PR #2 was committed and merged, rollback would have been limited to
+removing only the newly created trial directory from the external package
+working tree.
 
-Do not run rollback automatically. Before any recursive removal, first resolve
+That local rollback path is no longer current because PR #2 was squash merged
+into external package `main` at
+`beb072b8ad1530dd62c526c71e4cc09930068685`. Current rollback must be a
+separate reviewed PR or revert against the external package; this document does
+not authorize recursive local deletion, history rewrite, branch deletion, or
+force push.
+
+If a future local uncommitted cleanup is separately authorized, first resolve
 the absolute target path, verify it is exactly
 `A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\JennAIGentQualityTrial`,
 verify no other files are included, and get explicit user approval for that
@@ -380,10 +393,10 @@ destructive local cleanup.
 
 ## 11. Current Result
 
-Current result: external package commit/PR gate completed after local-only
-renamed-trial copy gate review.
-Copy-gate review found and fixed one README-only broken link in the untracked
-trial directory.
+Current result: external package commit/PR/merge gate completed after
+local-only renamed-trial copy gate review.
+Copy-gate review found and fixed one README-only broken link in the
+then-untracked trial directory before the external package PR was opened.
 
 ```text
 Plugin/JennAIGentQualityTrial/ committed in the external package worktree.
@@ -391,7 +404,8 @@ Trial README no longer references docs/AI_IMAGE_QUALITY_CONTRACT.md.
 No runtime activation.
 No external discovery env change.
 No core disable, deletion, move, or stub replacement.
-No merge or branch deletion.
+PR #2 later merged only after explicit authorization.
+No branch deletion.
 ```
 
 External package PR gate receipt:
