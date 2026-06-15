@@ -94,6 +94,8 @@ server.js:131    defines repository-root ip_blacklist.json
 server.js:361    starts a process-level interval during import
 server.js:471-490 loadBlacklist can call saveBlacklist and write ip_blacklist.json
 server.js:649    reads PORT from process.env
+server.js:1098   constructs routes/codexOAuthResponses before startServer
+server.js:1672   constructs routes/adminPanelRoutes before startServer
 server.js:2010   invokes pluginManager.loadPlugins()
 server.js:2119   invokes pluginManager.initializeStaticPlugins()
 server.js:2121   invokes pluginManager.prewarmPythonPlugins()
@@ -163,6 +165,16 @@ modules/agentManager.js:72 and :82 can watch agent_map.json and Agent files
 modules/tvsManager.js:26 can watch TVStxt
 modules/toolboxManager.js:49 reads repository-root toolbox_map.json
 modules/toolboxManager.js:78 and :86 can watch toolbox_map.json and TVStxt
+routes/adminPanelRoutes.js mounts routes/admin/pluginStore.js during router
+  construction
+routes/admin/pluginStore.js:35-36 defines repository-root tmp/uploads paths
+routes/admin/pluginStore.js:1555-1556 creates tmp and tmp/uploads during
+  router construction
+routes/codexOAuthResponses.js:720 constructs a trace store during router
+  construction
+modules/codexOAuthTraceStore.js:7 defines state/oauth-auth/codex-oauth-traces.json
+modules/codexOAuthTraceStore.js:35 loads trace store from disk during
+  construction
 ```
 
 ## 5. Chosen Harness Shape
@@ -275,6 +287,7 @@ install repository write guard before server.js loads
 install child_process spawn guard before Plugin.js loads
 intercept fs.watch, fs.watchFile, and chokidar.watch before startup modules load
 intercept or redirect repository-root ip_blacklist.json before loadBlacklist
+intercept AdminPanel and OAuth route construction before router side effects
 intercept selected local module loads
 patch pluginManager after Plugin.js loads
 patch http/https listen behavior if host binding is not otherwise solved
@@ -437,6 +450,45 @@ step to use an empty harness-configured order and receipt instead of reading
 `preprocessor_order.json`. A later S1 revision may redirect these managers to
 temp fixtures, but S2 must prove every map/config read, directory scan, and
 watch target resolves under `<run root>`.
+
+### AdminPanel And OAuth Route Construction
+
+Problem:
+
+```text
+server.js constructs routes/codexOAuthResponses and routes/adminPanelRoutes
+before startServer and before app.listen.
+
+routes/adminPanelRoutes mounts routes/admin/pluginStore.js while constructing
+the admin router. PluginStore immediately creates repository-root tmp and
+tmp/uploads through fs.mkdirSync.
+
+routes/codexOAuthResponses constructs a Codex OAuth trace store. The trace
+store checks and loads repository-root
+state/oauth-auth/codex-oauth-traces.json during construction.
+```
+
+Required S2 harness behavior:
+
+```text
+adminPanelRoutes construction intercepted: yes
+routes/admin/pluginStore.js real module required: no
+repository-root tmp directory write attempted: no
+repository-root tmp/uploads directory write attempted: no
+codexOAuthResponses construction intercepted: yes
+repository-root codex-oauth trace read attempted: no
+repository-root codex-oauth trace write attempted: no
+admin/oauth route construction receipts written before startServer: yes
+```
+
+Preferred method: return reviewed stubs for `./routes/adminPanelRoutes.js` and
+`./routes/codexOAuthResponses.js` from the preload module loader. Each stub must
+return an inert `express.Router()` instance, expose any static helper functions
+that `server.js` reads, including `fetchCodexOAuthModels`, and record a receipt.
+A later S1 revision may redirect pluginStore temp/upload paths and OAuth trace
+paths to `<run root>`, but S2 must prove that no real
+`routes/admin/pluginStore.js` constructor side effect or repository-root OAuth
+trace read/write happened before app.listen.
 
 ### PluginManager Startup Execution
 
@@ -709,6 +761,7 @@ Sensitive read targets that must fail closed:
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\config.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\ip_blacklist.json
+A:\AGENTS_OS_Workspace\runtime\VCPToolBox\state\oauth-auth\codex-oauth-traces.json
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\Plugin\*\config.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\*\config.env
 secret-like files under either repository, including token, cookie, session,
@@ -864,6 +917,12 @@ TvsManager real TVStxt watch attempted: no
 TvsManager stub receipt: yes
 ToolboxManager real map read or TVStxt watch attempted: no
 ToolboxManager stub receipt: yes
+adminPanelRoutes real construction attempted: no
+adminPanelRoutes stub receipt: yes
+pluginStore real module required: no
+pluginStore tmp/uploads write attempted: no
+codexOAuthResponses real trace store read/write attempted: no
+codexOAuthResponses stub receipt: yes
 dynamicToolRegistry core ToolConfigs write: no
 KnowledgeBaseManager real store init: no
 sarPromptManager real initialize: no
@@ -926,6 +985,8 @@ Stop before implementing or running the harness if:
   before they read or watch repository-root config files;
 - ModelRedirect, AgentManager, TvsManager, and ToolboxManager cannot be stubbed
   or redirected before they read, scan, or watch repository/operator paths;
+- adminPanelRoutes and codexOAuthResponses cannot be stubbed or redirected
+  before they construct pluginStore or OAuth trace storage;
 - legacy plugin discovery cannot use a reviewed harness manifest list without
   enumerating plugin roots;
 - PluginManager preprocessor-order loading cannot be replaced with an empty
@@ -968,6 +1029,10 @@ Stop during future S2 if:
 - TvsManager watches the operator TVStxt directory;
 - ToolboxManager reads or watches repository-root `toolbox_map.json` or watches
   the operator TVStxt directory;
+- routes/admin/pluginStore.js is required for real during route construction;
+- repository-root `tmp` or `tmp/uploads` is created or written by pluginStore;
+- routes/codexOAuthResponses reads or writes repository-root
+  `state/oauth-auth/codex-oauth-traces.json`;
 - PluginManager reads repository-root `preprocessor_order.json`;
 - PluginManager legacy discovery uses real `fs.readdir` on a core or external
   plugin root;
