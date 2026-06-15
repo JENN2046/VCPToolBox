@@ -75,6 +75,7 @@ const SENSITIVE_IGNORED_RUNTIME_PATHS = [
   ':/VectorStore',
   ':/Plugin/EmojiListGenerator/generated_lists',
   ':(glob)Plugin/**/state',
+  ':(glob)Plugin/**/state/**',
   ':(glob)Plugin/**/*.sqlite',
   ':(glob)Plugin/**/*.sqlite-shm',
   ':(glob)Plugin/**/*.sqlite-wal',
@@ -113,29 +114,41 @@ function runGit(cwd, gitArgs) {
     timeout: 15000,
     windowsHide: true,
   });
+  const stderr = (result.stderr || '').trimEnd();
+  const errorMessage =
+    result.error && result.error.message ? result.error.message : '';
+  const fallbackError =
+    result.status === 0
+      ? ''
+      : `git exited with status ${result.status}; signal ${result.signal || 'none'}`;
 
   return {
     ok: result.status === 0,
     status: result.status,
     stdout: (result.stdout || '').trimEnd(),
-    stderr: (result.stderr || '').trimEnd(),
+    stderr: stderr || errorMessage || fallbackError,
   };
 }
 
-function gitValue(cwd, gitArgs) {
-  const result = runGit(cwd, gitArgs);
-  return result.ok ? result.stdout : null;
-}
-
 function gitState(cwd) {
+  const branch = runGit(cwd, ['branch', '--show-current']);
+  const head = runGit(cwd, ['rev-parse', 'HEAD']);
+  const status = runGit(cwd, [
+    'status',
+    '--short',
+    '--untracked-files=normal',
+  ]);
+
   return {
-    branch: gitValue(cwd, ['branch', '--show-current']),
-    head: gitValue(cwd, ['rev-parse', 'HEAD']),
-    statusShort: gitValue(cwd, [
-      'status',
-      '--short',
-      '--untracked-files=normal',
-    ]),
+    branch: branch.ok ? branch.stdout : null,
+    branchOk: branch.ok,
+    branchError: branch.ok ? '' : branch.stderr,
+    head: head.ok ? head.stdout : null,
+    headOk: head.ok,
+    headError: head.ok ? '' : head.stderr,
+    statusShort: status.ok ? status.stdout : null,
+    statusOk: status.ok,
+    statusError: status.ok ? '' : status.stderr,
   };
 }
 
@@ -223,7 +236,17 @@ const coreContainsExpectedBase = runGit(PROJECT_ROOT, [
 ]).ok;
 const externalGit = fileExists(TARGET_MANIFEST)
   ? gitState(EXTERNAL_PACKAGE_ROOT)
-  : { branch: null, head: null, statusShort: null };
+  : {
+      branch: null,
+      branchOk: false,
+      branchError: 'target manifest missing; external git branch not read',
+      head: null,
+      headOk: false,
+      headError: 'target manifest missing; external git head not read',
+      statusShort: null,
+      statusOk: false,
+      statusError: 'target manifest missing; external git status not read',
+    };
 
 const s0Exists = fileExists(S0_DOC);
 const s1Exists = fileExists(S1_DOC);
@@ -314,6 +337,12 @@ const ignoredRuntimeStatusEntries = statusEntries(
 addCheck(checks, 'core git head observed', Boolean(coreGit.head), coreGit.head);
 addCheck(
   checks,
+  'core git status read',
+  coreGit.statusOk,
+  coreGit.statusError || 'ok',
+);
+addCheck(
+  checks,
   'core branch is S2 dry-run branch',
   coreGit.branch === 'codex/aigentquality-s2-server-smoke-dry-run',
   coreGit.branch,
@@ -329,6 +358,12 @@ addCheck(
   'external package head observed',
   externalGit.head === EXPECTED_EXTERNAL_HEAD,
   externalGit.head,
+);
+addCheck(
+  checks,
+  'external package git status read',
+  externalGit.statusOk,
+  externalGit.statusError || 'ok',
 );
 addCheck(checks, 'S0 evidence doc exists', s0Exists, rel(S0_DOC));
 addCheck(checks, 'S1 harness design doc exists', s1Exists, rel(S1_DOC));
@@ -386,7 +421,19 @@ addCheck(
   rel(FUTURE_PRELOAD),
 );
 
-if (strictClean && coreGit.statusShort) {
+if (!coreGit.statusOk) {
+  staticBlockedReasons.push(`core git status failed: ${coreGit.statusError}`);
+  realS2BlockedReasons.push('core git status failed');
+}
+
+if (!externalGit.statusOk) {
+  staticBlockedReasons.push(
+    `external package git status failed: ${externalGit.statusError}`,
+  );
+  realS2BlockedReasons.push('external package git status failed');
+}
+
+if (strictClean && coreGit.statusOk && coreGit.statusShort) {
   staticBlockedReasons.push('core worktree is dirty under --strict-clean');
 }
 
@@ -414,11 +461,11 @@ if (!coreIgnoredRuntime.ok) {
   );
 }
 
-if (coreGit.statusShort) {
+if (coreGit.statusOk && coreGit.statusShort) {
   realS2BlockedReasons.push('core worktree must be clean before real S2');
 }
 
-if (externalGit.statusShort) {
+if (externalGit.statusOk && externalGit.statusShort) {
   staticBlockedReasons.push('external package worktree is dirty');
   realS2BlockedReasons.push('external package worktree must be clean before real S2');
 }
@@ -470,13 +517,17 @@ const receipt = {
     core: {
       branch: coreGit.branch,
       head: coreGit.head,
-      worktreeClean: !coreGit.statusShort,
+      worktreeClean: coreGit.statusOk && !coreGit.statusShort,
+      statusOk: coreGit.statusOk,
+      statusError: coreGit.statusError,
       statusShort: coreGit.statusShort || '',
     },
     external: {
       branch: externalGit.branch,
       head: externalGit.head,
-      worktreeClean: !externalGit.statusShort,
+      worktreeClean: externalGit.statusOk && !externalGit.statusShort,
+      statusOk: externalGit.statusOk,
+      statusError: externalGit.statusError,
       statusShort: externalGit.statusShort || '',
     },
   },

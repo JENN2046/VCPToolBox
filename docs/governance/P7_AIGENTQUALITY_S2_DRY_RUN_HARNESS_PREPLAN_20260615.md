@@ -133,6 +133,11 @@ package. It must not depend on a developer's local
 can otherwise bypass `disallowedCoreStatusEntries`, `--strict-clean`, and
 external package dirty checks.
 
+If the normal Git status command cannot be read for either repository, the
+script must fail closed. A non-zero exit, timeout, or other status read error
+must set `PREPLAN_STATIC_BLOCKED`; `null` or missing status output must never
+be interpreted as a clean worktree.
+
 The dirty-worktree check must also include scoped ignored-status inventory for
 sensitive runtime/config/generated paths that plain `git status --short` hides,
 including:
@@ -150,6 +155,7 @@ ip_blacklist.json
 VectorStore
 Plugin/EmojiListGenerator/generated_lists/
 Plugin/**/state/
+Plugin/**/state/**
 Plugin/**/*.sqlite, Plugin/**/*.sqlite-shm, Plugin/**/*.sqlite-wal,
 Plugin/**/*.db
 Plugin/OneRing/data/
