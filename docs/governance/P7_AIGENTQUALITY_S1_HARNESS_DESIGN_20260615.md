@@ -89,6 +89,7 @@ library:
 
 ```text
 server.js:5      calls dotenv.config({ path: 'config.env' })
+server.js:19     imports EmbeddingUtils during module load
 server.js:33-35  initializes and overrides the server logger during import
 server.js:131    defines repository-root ip_blacklist.json
 server.js:361    starts a process-level interval during import
@@ -96,6 +97,7 @@ server.js:471-490 loadBlacklist can call saveBlacklist and write ip_blacklist.js
 server.js:649    reads PORT from process.env
 server.js:1098   constructs routes/codexOAuthResponses before startServer
 server.js:1672   constructs routes/adminPanelRoutes before startServer
+server.js:1701   imports routes/image-rating-api before startServer
 server.js:2010   invokes pluginManager.loadPlugins()
 server.js:2119   invokes pluginManager.initializeStaticPlugins()
 server.js:2121   invokes pluginManager.prewarmPythonPlugins()
@@ -175,6 +177,12 @@ routes/codexOAuthResponses.js:720 constructs a trace store during router
 modules/codexOAuthTraceStore.js:7 defines state/oauth-auth/codex-oauth-traces.json
 modules/codexOAuthTraceStore.js:35 loads trace store from disk during
   construction
+EmbeddingUtils.js:17-31 checks and reads state/embedding-fallback-stats.json
+  during module load
+routes/image-rating-api.js:19-24 requires ImageRatingManager and initializes
+  its database during module load
+Plugin/ImageRatingManager/image-rating-manager.js:10 opens
+  Plugin/ImageRatingManager/image_ratings.sqlite and WAL side files
 ```
 
 ## 5. Chosen Harness Shape
@@ -288,6 +296,7 @@ install child_process spawn guard before Plugin.js loads
 intercept fs.watch, fs.watchFile, and chokidar.watch before startup modules load
 intercept or redirect repository-root ip_blacklist.json before loadBlacklist
 intercept AdminPanel and OAuth route construction before router side effects
+intercept EmbeddingUtils and image-rating route import-time state before startup
 intercept selected local module loads
 patch pluginManager after Plugin.js loads
 patch http/https listen behavior if host binding is not otherwise solved
@@ -489,6 +498,42 @@ A later S1 revision may redirect pluginStore temp/upload paths and OAuth trace
 paths to `<run root>`, but S2 must prove that no real
 `routes/admin/pluginStore.js` constructor side effect or repository-root OAuth
 trace read/write happened before app.listen.
+
+### Import-Time Runtime State Modules
+
+Problem:
+
+```text
+server.js imports EmbeddingUtils during module load. EmbeddingUtils immediately
+hydrates fallback stats from repository-root state/embedding-fallback-stats.json
+through existsSync/readFileSync.
+
+server.js imports routes/image-rating-api before startServer. That route
+requires Plugin/ImageRatingManager/image-rating-manager.js and calls
+initDatabase during module load, opening or creating
+Plugin/ImageRatingManager/image_ratings.sqlite plus SQLite WAL side files.
+```
+
+Required S2 harness behavior:
+
+```text
+EmbeddingUtils import-time hydration intercepted: yes
+repository-root embedding fallback stats read attempted: no
+EmbeddingUtils stub receipt: yes
+image-rating-api real module required: no
+ImageRatingManager real database opened: no
+image_ratings.sqlite write attempted: no
+image-rating route stub receipt: yes
+```
+
+Preferred method: return reviewed stubs for `./EmbeddingUtils.js` and
+`./routes/image-rating-api.js` from the preload module loader. The
+EmbeddingUtils stub must expose the functions `server.js` reads, including
+`getEmbeddingFallbackStats`, without hydrating or persisting repository state.
+The image-rating route stub must return an inert `express.Router()` and must
+not require `Plugin/ImageRatingManager/image-rating-manager.js`. A later S1
+revision may redirect these state paths to `<run root>`, but S2 must prove no
+repository-root fallback stats file or ImageRating SQLite/WAL file is touched.
 
 ### PluginManager Startup Execution
 
@@ -762,6 +807,7 @@ A:\AGENTS_OS_Workspace\runtime\VCPToolBox\config.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\ip_blacklist.json
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\state\oauth-auth\codex-oauth-traces.json
+A:\AGENTS_OS_Workspace\runtime\VCPToolBox\state\embedding-fallback-stats.json
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox\Plugin\*\config.env
 A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions\Plugin\*\config.env
 secret-like files under either repository, including token, cookie, session,
@@ -923,6 +969,11 @@ pluginStore real module required: no
 pluginStore tmp/uploads write attempted: no
 codexOAuthResponses real trace store read/write attempted: no
 codexOAuthResponses stub receipt: yes
+EmbeddingUtils real fallback stats hydration attempted: no
+EmbeddingUtils stub receipt: yes
+image-rating-api real module required: no
+ImageRatingManager real SQLite open attempted: no
+image-rating route stub receipt: yes
 dynamicToolRegistry core ToolConfigs write: no
 KnowledgeBaseManager real store init: no
 sarPromptManager real initialize: no
@@ -987,6 +1038,8 @@ Stop before implementing or running the harness if:
   or redirected before they read, scan, or watch repository/operator paths;
 - adminPanelRoutes and codexOAuthResponses cannot be stubbed or redirected
   before they construct pluginStore or OAuth trace storage;
+- EmbeddingUtils and image-rating-api cannot be stubbed or redirected before
+  they read runtime state or open the ImageRating SQLite database;
 - legacy plugin discovery cannot use a reviewed harness manifest list without
   enumerating plugin roots;
 - PluginManager preprocessor-order loading cannot be replaced with an empty
@@ -1033,6 +1086,12 @@ Stop during future S2 if:
 - repository-root `tmp` or `tmp/uploads` is created or written by pluginStore;
 - routes/codexOAuthResponses reads or writes repository-root
   `state/oauth-auth/codex-oauth-traces.json`;
+- EmbeddingUtils reads or writes repository-root
+  `state/embedding-fallback-stats.json`;
+- routes/image-rating-api requires the real ImageRatingManager during route
+  construction;
+- ImageRatingManager opens or writes repository-root
+  `Plugin/ImageRatingManager/image_ratings.sqlite` or SQLite side files;
 - PluginManager reads repository-root `preprocessor_order.json`;
 - PluginManager legacy discovery uses real `fs.readdir` on a core or external
   plugin root;
