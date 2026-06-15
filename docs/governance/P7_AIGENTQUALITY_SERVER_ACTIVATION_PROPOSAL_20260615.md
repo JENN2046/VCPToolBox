@@ -205,6 +205,19 @@ server smoke, add a reviewed harness/test seam that disables or intercepts
 both startup paths. Do not enter S2 merely by accepting temporary-path writes or
 by checking repository diffs after exit.
 
+server.js initializes `routes/taskScheduler.js` before `app.listen`.
+`taskScheduler.initialize()` calls `scheduleAllPendingTasks()` against the
+repository-root `VCPTimedContacts/` directory; an overdue ignored
+`VCPTimedContacts/*.json` file can immediately call
+`pluginManager.processToolCall()` and then delete or write task files. Before
+any real server smoke, either:
+1. add a reviewed harness/test seam that disables or intercepts
+   `taskScheduler.initialize()`, including the watcher startup path, or
+2. redirect the scheduler to an empty temporary timed-contact directory and
+   record a before-start inventory proving there are no pending task files.
+Do not enter S2 if the scheduler can read or write the operator checkout's
+`VCPTimedContacts/` directory.
+
 server.js and pluginManager.loadPlugins use the real core Plugin/ root and
 plugins/registry.json from __dirname.
 Before any real server smoke, inventory which core direct, service,
@@ -276,6 +289,9 @@ parent shell provider/token/secret env inherited: no
 startup static plugin command execution disabled or intercepted: yes
 startup Python prewarm disabled or intercepted: yes
 startup plugin child process spawned: no
+taskScheduler.initialize disabled/intercepted or redirected to empty temp dir: yes
+scheduler pending task inventory before startup: empty
+scheduler task execution attempted: no
 network bind containment reviewed and accepted: yes
 pluginManager.loadPlugins invoked by server.js: yes
 JennAIGentQualityTrial registered from external package: yes
@@ -303,6 +319,7 @@ Allowed smoke observations:
 - process exit code after controlled shutdown;
 - `git status --short --branch` before and after;
 - ignored-file before/after inventory for approved runtime-state paths;
+- scheduler temporary timed-contact directory inventory;
 - temporary directory inventory.
 
 Not allowed in S2:
@@ -315,7 +332,10 @@ Not allowed in S2:
 - leave the child process running;
 - inherit the parent shell environment wholesale;
 - spawn static plugin commands during startup;
-- run Python prewarm during startup.
+- run Python prewarm during startup;
+- read or write the operator checkout's `VCPTimedContacts/` directory;
+- discover, schedule, execute, delete, or rewrite any timed-contact task during
+  startup.
 
 ### Gate S3 - Optional Authenticated Read-Only Endpoint Smoke
 
@@ -347,6 +367,9 @@ Stop before any server process is started if:
   ruled out or disabled by a reviewed harness seam;
 - startup static plugin command execution and Python prewarm cannot be disabled
   or intercepted by a reviewed harness seam;
+- `taskScheduler.initialize()` cannot be disabled, intercepted, or redirected
+  to an empty temporary timed-contact directory with before-start inventory
+  evidence;
 - a free test port cannot be selected;
 - server bind containment cannot be guaranteed or explicitly accepted;
 - required temp data roots cannot be created;
@@ -366,6 +389,10 @@ Stop during a future server smoke if:
   other operator secrets from the parent shell;
 - a plugin script reads repository-root `config.env`;
 - a static plugin command or Python prewarm process is spawned;
+- taskScheduler reads or writes the operator checkout's `VCPTimedContacts/`
+  directory;
+- any timed-contact task is discovered, scheduled, executed, deleted, or
+  rewritten during startup;
 - server binds an unexpected address or port;
 - any unexpected external plugin registers;
 - `JennAIGentQualityTrial` fails to register under exact allowlist;
