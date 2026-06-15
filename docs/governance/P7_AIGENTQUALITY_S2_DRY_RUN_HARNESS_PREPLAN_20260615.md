@@ -108,11 +108,22 @@ S0/S1 document marker checks
 target plugin manifest identity checks
 future S2 artifact absence checks
 strict-clean readiness if requested
+default dirty-worktree allowlist result
 real S2 blocked reasons, if any
 ```
 
-Default mode may pass while the current branch has this preplan's uncommitted
-doc/script edits. A future real S2 run must require a clean worktree.
+Default mode may pass only while the current branch has this preplan's own
+uncommitted doc/script edits:
+
+```text
+docs/governance/P7_AIGENTQUALITY_S2_DRY_RUN_HARNESS_PREPLAN_20260615.md
+scripts/aigentquality-server-smoke-s2-preplan.js
+```
+
+Any other core worktree change, including `server.js`, `config.env`, runtime
+state, plugin files, generated files, or unrelated docs, must block
+`PREPLAN_STATIC_READY`. A future real S2 run must require a fully clean
+worktree.
 
 ## 5. Manifest Identity Checks
 

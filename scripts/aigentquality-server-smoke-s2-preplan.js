@@ -40,6 +40,17 @@ const FUTURE_PRELOAD = path.join(
   'harness',
   'aigentquality-server-smoke-preload.js',
 );
+const S2_PREPLAN_DOC = path.join(
+  PROJECT_ROOT,
+  'docs',
+  'governance',
+  'P7_AIGENTQUALITY_S2_DRY_RUN_HARNESS_PREPLAN_20260615.md',
+);
+const S2_PREPLAN_SCRIPT = path.join(
+  PROJECT_ROOT,
+  'scripts',
+  'aigentquality-server-smoke-s2-preplan.js',
+);
 
 const EXPECTED_CORE_BASE = '7b283ca704c541ba69270a9e86b2cd8606a71aaf';
 const EXPECTED_EXTERNAL_HEAD = 'beb072b8ad1530dd62c526c71e4cc09930068685';
@@ -82,8 +93,8 @@ function runGit(cwd, gitArgs) {
   return {
     ok: result.status === 0,
     status: result.status,
-    stdout: (result.stdout || '').trim(),
-    stderr: (result.stderr || '').trim(),
+    stdout: (result.stdout || '').trimEnd(),
+    stderr: (result.stderr || '').trimEnd(),
   };
 }
 
@@ -98,6 +109,33 @@ function gitState(cwd) {
     head: gitValue(cwd, ['rev-parse', 'HEAD']),
     statusShort: gitValue(cwd, ['status', '--short']),
   };
+}
+
+function normalizeStatusPath(statusPath) {
+  let normalized = statusPath.trim();
+  if (normalized.startsWith('"') && normalized.endsWith('"')) {
+    normalized = normalized.slice(1, -1);
+  }
+  return normalized.replace(/\\/g, '/');
+}
+
+function statusEntries(statusShort) {
+  if (!statusShort) {
+    return [];
+  }
+
+  return statusShort
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const status = line.slice(0, 2);
+      const payload = line.length > 3 ? line.slice(3) : '';
+      const paths = payload.includes(' -> ')
+        ? payload.split(' -> ').map(normalizeStatusPath)
+        : [normalizeStatusPath(payload)];
+
+      return { line, status, paths };
+    });
 }
 
 function hasAllMarkers(text, markers) {
@@ -125,6 +163,10 @@ function addCheck(checks, name, ok, detail) {
 const checks = [];
 const staticBlockedReasons = [];
 const realS2BlockedReasons = [];
+const defaultAllowedDirtyPaths = new Set([
+  rel(S2_PREPLAN_DOC),
+  rel(S2_PREPLAN_SCRIPT),
+]);
 
 const coreGit = gitState(PROJECT_ROOT);
 const coreContainsExpectedBase = runGit(PROJECT_ROOT, [
@@ -215,6 +257,10 @@ const manifestCheckDetails = {
 
 const futureParentRunnerExists = fileExists(FUTURE_PARENT_RUNNER);
 const futurePreloadExists = fileExists(FUTURE_PRELOAD);
+const coreStatusEntries = statusEntries(coreGit.statusShort);
+const disallowedCoreStatusEntries = coreStatusEntries.filter((entry) =>
+  entry.paths.some((statusPath) => !defaultAllowedDirtyPaths.has(statusPath)),
+);
 
 addCheck(checks, 'core git head observed', Boolean(coreGit.head), coreGit.head);
 addCheck(
@@ -237,6 +283,18 @@ addCheck(
 );
 addCheck(checks, 'S0 evidence doc exists', s0Exists, rel(S0_DOC));
 addCheck(checks, 'S1 harness design doc exists', s1Exists, rel(S1_DOC));
+addCheck(
+  checks,
+  'S2 preplan doc exists',
+  fileExists(S2_PREPLAN_DOC),
+  rel(S2_PREPLAN_DOC),
+);
+addCheck(
+  checks,
+  'S2 preplan script exists',
+  fileExists(S2_PREPLAN_SCRIPT),
+  rel(S2_PREPLAN_SCRIPT),
+);
 addCheck(
   checks,
   'S0 doc still forbids server activation',
@@ -283,6 +341,14 @@ if (strictClean && coreGit.statusShort) {
   staticBlockedReasons.push('core worktree is dirty under --strict-clean');
 }
 
+if (disallowedCoreStatusEntries.length > 0) {
+  staticBlockedReasons.push(
+    `core worktree has disallowed dirty paths: ${disallowedCoreStatusEntries
+      .map((entry) => entry.line)
+      .join('; ')}`,
+  );
+}
+
 if (coreGit.statusShort) {
   realS2BlockedReasons.push('core worktree must be clean before real S2');
 }
@@ -325,6 +391,8 @@ const receipt = {
     targetManifest: TARGET_MANIFEST,
     s0Doc: rel(S0_DOC),
     s1Doc: rel(S1_DOC),
+    s2PreplanDoc: rel(S2_PREPLAN_DOC),
+    s2PreplanScript: rel(S2_PREPLAN_SCRIPT),
     futureParentRunner: rel(FUTURE_PARENT_RUNNER),
     futurePreload: rel(FUTURE_PRELOAD),
   },
@@ -346,6 +414,12 @@ const receipt = {
       worktreeClean: !externalGit.statusShort,
       statusShort: externalGit.statusShort || '',
     },
+  },
+  dirtyWorktreePolicy: {
+    strictClean,
+    defaultAllowedCoreDirtyPaths: [...defaultAllowedDirtyPaths],
+    coreStatusEntries,
+    disallowedCoreStatusEntries,
   },
   manifest: {
     path: TARGET_MANIFEST,
