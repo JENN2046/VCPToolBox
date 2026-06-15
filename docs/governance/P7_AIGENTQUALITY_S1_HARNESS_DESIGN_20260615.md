@@ -96,6 +96,7 @@ server.js:2010   invokes pluginManager.loadPlugins()
 server.js:2119   invokes pluginManager.initializeStaticPlugins()
 server.js:2121   invokes pluginManager.prewarmPythonPlugins()
 server.js:2161   invokes taskScheduler.initialize(...)
+server.js:2202   invokes sarPromptManager.initialize(...)
 server.js:2210   constructs ChannelHubService
 server.js:2234   calls app.listen(port) without an explicit host argument
 server.js:2262   initializes WebSocketServer after listen
@@ -135,6 +136,8 @@ WebSocketServer.js:43  can create repository-root VCPAsyncResults during
 FileFetcherServer.js:10 defines repository-root .file_cache
 FileFetcherServer.js:21 initializes FileFetcherServer
 FileFetcherServer.js:28 creates repository-root .file_cache
+modules/sarPromptManager.js:78 can write repository-root sarprompt.json through
+  fs.promises.writeFile during startup migration
 ```
 
 ## 5. Chosen Harness Shape
@@ -393,6 +396,30 @@ Preferred method: return a reviewed stub for `./KnowledgeBaseManager.js` with
 `initialize()` and `shutdown()` no-ops plus any methods needed by plugin
 registration. Do not initialize real vector stores during S2.
 
+### SarPromptManager
+
+Problem:
+
+```text
+server.js calls sarPromptManager.initialize before app.listen. The current
+manager writes repository-root sarprompt.json through fs.promises.writeFile
+when the file is missing.
+```
+
+Required S2 harness behavior:
+
+```text
+sarPromptManager.initialize intercepted: yes
+repository-root sarprompt.json write attempted: no
+sarPromptManager watcher started: no
+```
+
+Preferred method: return a reviewed stub for `./modules/sarPromptManager.js`
+with `initialize()` and any server-required accessors as inert receipt-only
+methods. A later revision may instead add a reviewed temp path seam, but S2
+must not rely on the write guard as the only protection for this known startup
+write.
+
 ### ChannelHub
 
 Problem:
@@ -484,6 +511,17 @@ fs.unlink / unlinkSync
 fs.rm / rmSync
 fs.createWriteStream
 fs.watch
+fs.promises.writeFile
+fs.promises.appendFile
+fs.promises.mkdir
+fs.promises.rename
+fs.promises.unlink
+fs.promises.rm
+fs.promises.open
+FileHandle.write
+FileHandle.writeFile
+FileHandle.appendFile
+FileHandle.createWriteStream
 ```
 
 Allowed write roots in future S2:
@@ -502,6 +540,9 @@ A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions
 The guard must fail the child process if any write or watcher target resolves
 outside the temp run root. If a Windows system temp path is needed by Node
 internals, it must be the same `<run root>` or explicitly listed in the receipt.
+The guard must wrap both the callback/sync `fs` API surface and the
+`require('fs').promises` surface before any startup module loads, because many
+startup modules bind `const fs = require('fs').promises` at import time.
 
 ## 10. Future S2 Command Plan
 
@@ -544,6 +585,8 @@ repository-root config.env read: no
 plugin-level config.env read: no
 dynamicToolRegistry core ToolConfigs write: no
 KnowledgeBaseManager real store init: no
+sarPromptManager real initialize: no
+sarPromptManager sarprompt.json write attempted: no
 pluginManager.loadPlugins invoked by server.js: yes
 loadPlugins manifest-only registration seam active: yes
 JennAIGentQualityTrial registered from external package: yes
@@ -583,7 +626,10 @@ Stop before implementing or running the harness if:
 - the child env cannot be constructed without inheriting secret-like parent env;
 - the write guard cannot fail closed;
 - the preload seam cannot intercept logger, scheduler, static execution,
-  Python prewarm, plugin env loading, and dynamic registry writes;
+  Python prewarm, plugin env loading, SarPromptManager, and dynamic registry
+  writes;
+- the write guard does not cover `fs.promises.*` and FileHandle write methods
+  before startup modules bind `require('fs').promises`;
 - `loadPlugins` cannot be limited to reviewed manifest-only registration
   without requiring or initializing direct service/preprocessor modules;
 - post-listen WebSocketServer and FileFetcherServer initialization cannot be
@@ -600,6 +646,8 @@ Stop during future S2 if:
 - any static plugin command, Python prewarm process, or plugin process is
   spawned;
 - `taskScheduler` reads or writes operator `VCPTimedContacts`;
+- SarPromptManager initializes for real or writes repository-root
+  `sarprompt.json`;
 - `processToolCall` or `executePlugin` is invoked;
 - real WebSocketServer initialization creates an upgrade server;
 - FileFetcherServer initializes or writes `.file_cache` under the repository;
