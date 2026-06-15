@@ -133,6 +133,11 @@ package. It must not depend on a developer's local
 can otherwise bypass `disallowedCoreStatusEntries`, `--strict-clean`, and
 external package dirty checks.
 
+All `git status` calls made by the helper must run as
+`git --no-optional-locks status ...`. The helper is a read-only preplan, so it
+must not refresh or write the Git index while preparing a receipt that reports
+`wroteFiles: false`.
+
 If the normal Git status command cannot be read for either repository, the
 script must fail closed. A non-zero exit, timeout, or other status read error
 must set `PREPLAN_STATIC_BLOCKED`; `null` or missing status output must never

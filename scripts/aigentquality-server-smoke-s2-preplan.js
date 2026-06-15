@@ -60,6 +60,7 @@ const EXPECTED_COMMANDS = [
   'BuildRetryPlan',
   'HealthCheck',
 ];
+const STATUS_GIT_GLOBAL_ARGS = ['--no-optional-locks'];
 const SENSITIVE_IGNORED_RUNTIME_PATHS = [
   ':/config.env',
   ':/config.env.local',
@@ -107,7 +108,9 @@ function readText(filePath) {
 }
 
 function runGit(cwd, gitArgs) {
-  const result = spawnSync('git', gitArgs, {
+  const effectiveGitArgs =
+    gitArgs[0] === 'status' ? [...STATUS_GIT_GLOBAL_ARGS, ...gitArgs] : gitArgs;
+  const result = spawnSync('git', effectiveGitArgs, {
     cwd,
     encoding: 'utf8',
     shell: false,
@@ -533,6 +536,7 @@ const receipt = {
   },
   dirtyWorktreePolicy: {
     strictClean,
+    statusGitGlobalArgs: STATUS_GIT_GLOBAL_ARGS,
     defaultAllowedCoreDirtyPaths: [...defaultAllowedDirtyPaths],
     coreStatusEntries,
     disallowedCoreStatusEntries,
