@@ -97,8 +97,10 @@ server.js:649    reads PORT from process.env
 server.js:2010   invokes pluginManager.loadPlugins()
 server.js:2119   invokes pluginManager.initializeStaticPlugins()
 server.js:2121   invokes pluginManager.prewarmPythonPlugins()
+server.js:2131   enumerates Plugin/EmojiListGenerator/generated_lists
 server.js:2161   invokes taskScheduler.initialize(...)
 server.js:2168   invokes loadBlacklist before pre-listen manager initialization
+server.js:2182   invokes semanticModelRouter.initialize(...)
 server.js:2202   invokes sarPromptManager.initialize(...)
 server.js:2206   invokes initialize(), which loads plugins and initializes services
 server.js:2210   constructs ChannelHubService
@@ -111,11 +113,13 @@ server.js:2274   calls startServer().catch(...)
 The future harness must also account for plugin manager behavior:
 
 ```text
+Plugin.js:131    constructs ToolApprovalManager for toolApprovalConfig.json
 Plugin.js:282    core plugin child env inherits process.env
 Plugin.js:313    static plugin execution can spawn with shell: true
 Plugin.js:434    initializeStaticPlugins starts background static updates
 Plugin.js:472    prewarmPythonPlugins can spawn python
 Plugin.js:601    _loadPluginEnvConfig reads Plugin/*/config.env
+Plugin.js:963    _discoverLegacyPluginManifestsFromDir enumerates plugin roots
 Plugin.js:1048   direct service/preprocessor manifests can require plugin code
 Plugin.js:1069   loadPlugins discovers and registers plugin manifests
 Plugin.js:1169   loadPlugins can call module.initialize for direct modules
@@ -142,6 +146,11 @@ FileFetcherServer.js:21 initializes FileFetcherServer
 FileFetcherServer.js:28 creates repository-root .file_cache
 modules/sarPromptManager.js:78 can write repository-root sarprompt.json through
   fs.promises.writeFile during startup migration
+modules/toolApprovalManager.js:16 constructs and immediately loads/watches
+  toolApprovalConfig.json
+modules/semanticRouterConfig.js:164 can create SemanticModelRouter.json
+modules/semanticModelRouter.js:75 initializes config and starts a watcher
+modules/semanticModelRouter.js:178 can fs.watch repository-root config dir
 ```
 
 ## 5. Chosen Harness Shape
@@ -252,6 +261,7 @@ verify harness config path resolves under the temp run root
 install repository read guard before server.js loads
 install repository write guard before server.js loads
 install child_process spawn guard before Plugin.js loads
+intercept fs.watch, fs.watchFile, and chokidar.watch before startup modules load
 intercept or redirect repository-root ip_blacklist.json before loadBlacklist
 intercept selected local module loads
 patch pluginManager after Plugin.js loads
@@ -338,6 +348,43 @@ path, redirected path, read/write operation, and whether the temp fixture was
 created. Any unredirected repository-root `ip_blacklist.json` access fails
 closed.
 
+### Startup Config Watchers
+
+Problem:
+
+```text
+Plugin.js constructs ToolApprovalManager during PluginManager construction.
+ToolApprovalManager reads repository-root toolApprovalConfig.json and starts a
+chokidar watcher.
+
+server.js calls semanticModelRouter.initialize before app.listen.
+SemanticModelRouter can create/read SemanticModelRouter.json and fs.watch the
+repository-root config directory.
+```
+
+Required S2 harness behavior:
+
+```text
+ToolApprovalManager construction intercepted: yes
+repository-root toolApprovalConfig.json read attempted: no
+ToolApprovalManager chokidar watcher started: no
+semanticModelRouter.initialize intercepted: yes
+repository-root SemanticModelRouter.json read/write attempted: no
+repository-root SemanticModelRouter config watcher started: no
+startup config watcher receipts written before app.listen: yes
+```
+
+Preferred method: return reviewed stubs for `./modules/toolApprovalManager.js`
+and `./modules/semanticModelRouter.js` from the preload module loader. The
+ToolApprovalManager stub must expose the methods PluginManager expects while
+returning inert local-only decisions and recording construction; required
+methods include `getApprovalDecision`, `shouldApprove`, `getTimeoutMs`, and
+`shutdown`. The SemanticModelRouter stub must expose `initialize`,
+`closeWatchers`, `getVirtualModels`, `isRoutingModel`, and request-time helpers
+used by `server.js`, but `initialize` must only record a receipt. A later S1
+revision may choose temp-path redirection instead, but it must prove all reads,
+writes, and watchers resolve under `<run root>` before S2.
+
 ### PluginManager Startup Execution
 
 Problem:
@@ -367,6 +414,9 @@ Preferred method: patch the PluginManager singleton after `Plugin.js` loads:
 
 - keep `loadPlugins` as the server-invoked entrypoint, but patch its risky
   internals to manifest-only behavior;
+- replace `_discoverLegacyPluginManifestsFromDir` with a harness-configured
+  manifest list so plugin root discovery does not enumerate core or external
+  plugin directories;
 - replace `_discoverModernPluginManifests` with an empty result unless a later
   S1 revision inventories and accepts modern registry loading;
 - wrap `_registerLocalPlugin` so it evaluates external runtime policy and
@@ -379,6 +429,30 @@ Preferred method: patch the PluginManager singleton after `Plugin.js` loads:
 - replace `_loadPluginEnvConfig` with a no-op receipt entry;
 - wrap `processToolCall` and `executePlugin` to fail if called;
 - wrap `_spawnPluginProcess` to fail if called.
+
+### Emoji List Directory Cache
+
+Problem:
+
+```text
+server.js enumerates Plugin/EmojiListGenerator/generated_lists before
+taskScheduler.initialize. That directory contains runtime/generated plugin
+state and is not needed for AIGentQuality registration proof.
+```
+
+Required S2 harness behavior:
+
+```text
+EmojiListGenerator generated_lists enumeration intercepted: yes
+repository-root generated_lists directory read attempted: no
+emoji cache temp fixture list returned: yes
+emoji cache receipt written before taskScheduler.initialize: yes
+```
+
+Preferred method: intercept the exact `fs.promises.readdir` call for
+`Plugin\EmojiListGenerator\generated_lists` and return an empty temp fixture
+list with a receipt. S2 must not read the real repository generated_lists
+directory or any files inside it.
 
 ### Task Scheduler
 
@@ -556,16 +630,21 @@ Required guarded read APIs:
 fs.readFile / readFileSync
 fs.open / openSync
 fs.createReadStream
+fs.readdir / readdirSync
+fs.opendir / opendirSync
 fs.stat / statSync
 fs.access / accessSync
 fs.existsSync
 fs.promises.readFile
 fs.promises.open
+fs.promises.readdir
+fs.promises.opendir
 fs.promises.stat
 fs.promises.access
 FileHandle.read
 FileHandle.readFile
 FileHandle.createReadStream
+Dir.read / readSync / async iterator
 dotenv.config
 ```
 
@@ -589,6 +668,13 @@ plugin-manifest.json files needed for manifest-only registration
 non-secret governance/test files needed by the harness
 ```
 
+Directory enumeration is denied by default. Any allowed repository directory
+read must be named in the harness config and receipt before spawn. S2 must not
+claim success if PluginManager discovery enumerates core or external plugin
+roots, if EmojiListGenerator `generated_lists` is enumerated from the operator
+checkout, or if any runtime/generated directory is scanned without an explicit
+stub.
+
 The read guard must record every blocked sensitive read and every allowed
 exception class in the receipt. S2 must fail if any repository-root `config.env`
 or plugin `config.env` read is attempted, even if the read would have returned
@@ -608,6 +694,8 @@ fs.unlink / unlinkSync
 fs.rm / rmSync
 fs.createWriteStream
 fs.watch
+fs.watchFile
+chokidar.watch
 fs.promises.writeFile
 fs.promises.appendFile
 fs.promises.mkdir
@@ -700,6 +788,7 @@ harness config loaded from explicit temp env path: yes
 harness config path resolves under temp run root: yes
 secret-like parent env inherited: no
 read guard installed before startup modules loaded: yes
+directory read guard installed before startup modules loaded: yes
 logger writes to core DebugLog: no
 repository-root config.env read attempted: no
 plugin-level config.env read attempted: no
@@ -707,12 +796,17 @@ dotenv resolved only against temp cwd: yes
 blacklist path redirected before startServer: yes
 repository-root ip_blacklist.json read/write attempted: no
 temp ip_blacklist fixture used: yes
+ToolApprovalManager real config read/watch attempted: no
+ToolApprovalManager stub receipt: yes
+SemanticModelRouter real config read/write/watch attempted: no
+SemanticModelRouter stub receipt: yes
 dynamicToolRegistry core ToolConfigs write: no
 KnowledgeBaseManager real store init: no
 sarPromptManager real initialize: no
 sarPromptManager sarprompt.json write attempted: no
 pluginManager.loadPlugins invoked by server.js: yes
 loadPlugins manifest-only registration seam active: yes
+legacy plugin directory enumeration stubbed: yes
 JennAIGentQualityTrial registered from external package: yes
 unexpected external plugins registered: no
 direct service/preprocessor plugin code required: no
@@ -720,6 +814,8 @@ direct service/preprocessor module.initialize invoked: no
 initializeServices real service side effects: no
 static plugin startup execution: no
 Python prewarm: no
+EmojiListGenerator generated_lists real directory read: no
+directory read receipts complete: yes
 taskScheduler real initialize: no
 operator VCPTimedContacts read/write: no
 WebSocketServer real initialize: no
@@ -754,11 +850,18 @@ Stop before implementing or running the harness if:
   key under the temp run root;
 - the read guard cannot fail closed before `server.js` and startup modules load;
 - the read guard does not cover `fs` callback/sync, `fs.promises`,
-  FileHandle, stream, access/stat, and `dotenv.config` read paths;
+  FileHandle, stream, access/stat, directory enumeration, and `dotenv.config`
+  read paths;
 - the write guard cannot fail closed;
 - the preload seam cannot intercept logger, scheduler, static execution,
-  Python prewarm, plugin env loading, blacklist state, SarPromptManager, and
-  dynamic registry writes;
+  Python prewarm, plugin env loading, blacklist state, startup config watchers,
+  SarPromptManager, and dynamic registry writes;
+- ToolApprovalManager and SemanticModelRouter cannot be stubbed or redirected
+  before they read or watch repository-root config files;
+- legacy plugin discovery cannot use a reviewed harness manifest list without
+  enumerating plugin roots;
+- EmojiListGenerator `generated_lists` enumeration cannot be stubbed or
+  redirected before `initialize()` reaches task scheduler startup;
 - the write guard does not cover `fs.promises.*` and FileHandle write methods
   before startup modules bind `require('fs').promises`;
 - `loadPlugins` cannot be limited to reviewed manifest-only registration
@@ -779,8 +882,17 @@ Stop during future S2 if:
 - any repository write is attempted outside the temp run root;
 - any repository-root `config.env`, `.env`, plugin `config.env`, or
   secret-like file read is attempted;
+- any repository directory enumeration occurs outside the reviewed allowlist or
+  without a receipt;
 - repository-root `ip_blacklist.json` is read or written instead of the temp
   fixture;
+- ToolApprovalManager reads or watches repository-root `toolApprovalConfig.json`;
+- SemanticModelRouter reads, writes, or watches repository-root
+  `SemanticModelRouter.json` or its config directory;
+- PluginManager legacy discovery uses real `fs.readdir` on a core or external
+  plugin root;
+- EmojiListGenerator `generated_lists` is enumerated from the operator
+  checkout;
 - any static plugin command, Python prewarm process, or plugin process is
   spawned;
 - `taskScheduler` reads or writes operator `VCPTimedContacts`;
