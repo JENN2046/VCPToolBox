@@ -45,6 +45,13 @@ It must not:
 - write runtime files;
 - call provider or network APIs.
 
+Before loading any child gate module, the parent preflight must read the core
+Git status and apply the dirty-worktree policy. If the core worktree has any
+disallowed dirty path, or if Git status cannot be read, the parent must skip
+child gate loading and return a blocked receipt. This keeps default clean-mode
+evidence from executing locally modified child gate code before it has proved
+the checkout is review-clean.
+
 ## 3. Required Child Receipts
 
 The parent preflight requires these child results:
@@ -97,6 +104,7 @@ safetyAssertions.wroteRuntimeFiles: false
 safetyAssertions.networkOrProviderCalls: false
 dirtyWorktreePolicy.reviewEvidenceUsable: boolean
 childGateSummary: result and safety summary for each child gate
+childGateLoadPolicy: whether child modules were loaded or skipped before require
 guardedSmokeReadiness.ready: false
 blockedReasons: array
 ```

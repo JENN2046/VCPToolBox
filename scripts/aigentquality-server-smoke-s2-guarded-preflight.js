@@ -309,9 +309,28 @@ async function buildReceipt() {
     EXPECTED_CORE_BASE,
     'HEAD',
   ]).ok;
+  const childGateLoadBlockedReasons = [];
   const childGates = [];
 
-  if (!hasForbiddenExecutionArg(args)) {
+  if (hasForbiddenExecutionArg(args)) {
+    childGateLoadBlockedReasons.push(
+      `server execution args are outside this gate: ${forbiddenExecutionArgs.join(', ')}`,
+    );
+  }
+  if (!coreGit.statusOk) {
+    childGateLoadBlockedReasons.push(
+      `core git status failed: ${coreGit.statusError}`,
+    );
+  }
+  if (disallowedCoreStatusEntries.length > 0) {
+    childGateLoadBlockedReasons.push(
+      `core worktree has disallowed dirty paths: ${disallowedCoreStatusEntries
+        .map((entry) => entry.line)
+        .join('; ')}`,
+    );
+  }
+
+  if (childGateLoadBlockedReasons.length === 0) {
     for (const gate of CHILD_GATES) {
       childGates.push(
         await buildChildGateReceipt(gate, {
@@ -322,13 +341,15 @@ async function buildReceipt() {
     }
   }
 
-  const childResultsReady = childGates.every((gate) => gate.ready);
-  const childSafetyAssertionsAllFalse = childGates.every(
+  const childReceiptsCollected = childGates.length === CHILD_GATES.length;
+  const childResultsReady =
+    childReceiptsCollected && childGates.every((gate) => gate.ready);
+  const childSafetyAssertionsAllFalse = childReceiptsCollected && childGates.every(
     (gate) => gate.safetyAssertionsAllFalse,
   );
-  const childReviewEvidenceUsable = childGates.every(
-    (gate) => gate.reviewEvidenceUsable,
-  );
+  const childReviewEvidenceUsable =
+    childReceiptsCollected &&
+    childGates.every((gate) => gate.reviewEvidenceUsable);
   const guardedPlan = childGates.find(
     (gate) => gate.name === 'guardedSmokePlan',
   );
@@ -341,13 +362,14 @@ async function buildReceipt() {
   addCheck(checks, 'preflight doc exists', fileExists(PREFLIGHT_DOC), rel(PREFLIGHT_DOC));
   addCheck(checks, 'no unknown args', unknownArgs.length === 0, unknownArgs);
   addCheck(checks, 'real server execution not requested', forbiddenExecutionArgs.length === 0, forbiddenExecutionArgs);
-  addCheck(checks, 'child receipts collected', childGates.length === CHILD_GATES.length, childGates.map((gate) => gate.name));
+  addCheck(checks, 'child gate loading allowed', childGateLoadBlockedReasons.length === 0, childGateLoadBlockedReasons);
+  addCheck(checks, 'child receipts collected', childReceiptsCollected, childGates.map((gate) => gate.name));
   addCheck(checks, 'child gates report READY', childResultsReady, childGates.map((gate) => ({ name: gate.name, result: gate.result, error: gate.error })));
   addCheck(checks, 'child safety assertions remain false', childSafetyAssertionsAllFalse, childGates.map((gate) => ({ name: gate.name, violations: gate.safetyViolations })));
   addCheck(
     checks,
     'clean-mode child receipts are review evidence',
-    allowDevDirtyPreflight || childReviewEvidenceUsable,
+    childReceiptsCollected && (allowDevDirtyPreflight || childReviewEvidenceUsable),
     childGates.map((gate) => ({
       name: gate.name,
       reviewEvidenceUsable: gate.reviewEvidenceUsable,
@@ -405,6 +427,9 @@ async function buildReceipt() {
   }
   if (coreGit.statusOk && coreGit.statusShort) {
     guardedSmokeBlockedReasons.push('core worktree must be clean before real S2');
+  }
+  for (const reason of childGateLoadBlockedReasons) {
+    blockedReasons.push(`child gate loading skipped: ${reason}`);
   }
   for (const gate of childGates) {
     if (gate.error) {
@@ -499,6 +524,16 @@ async function buildReceipt() {
       preflightFilesMustBeCleanByDefault: true,
       childReceiptDevModeUsed: allowDevDirtyPreflight,
       allowedDirtyPaths: [...allowedDirtySet],
+    },
+    childGateLoadPolicy: {
+      loadAllowed: childGateLoadBlockedReasons.length === 0,
+      loadBlockedReasons: childGateLoadBlockedReasons,
+      requiredBeforeRequire: [
+        'core git status read',
+        'core worktree dirty policy passes',
+        'real server execution not requested',
+      ],
+      skippedBeforeRequire: childGateLoadBlockedReasons.length > 0,
     },
     childGateSummary: childGates.map((gate) => ({
       name: gate.name,
