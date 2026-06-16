@@ -46,6 +46,8 @@ Allowed in this gate:
 - validate the external `JennAIGentQualityTrial` manifest identity;
 - inventory sensitive ignored runtime/config artifacts without reading their
   contents;
+- include pending scheduler state under `VCPTimedContacts/` and
+  `VCPTimedResults/` in the strict-clean inventory;
 - build a replacement child-env plan without spreading `process.env`;
 - validate that secret-like child env keys are absent except explicit fake
   local-only values;
