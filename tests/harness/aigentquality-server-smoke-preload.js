@@ -10,6 +10,7 @@ const https = require('https');
 const Module = require('module');
 
 const GUARD_BLOCKED_ERROR_CODE = 'AIGENTQUALITY_S2_GUARD_BLOCKED';
+const ALLOWED_LISTEN_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 const REQUIRED_GUARD_GROUPS = Object.freeze([
   'repository-read-guard',
@@ -216,6 +217,62 @@ function createGuardBlockedError(apiName, targetPath, reason) {
   error.targetPath = targetPath;
   error.guardReason = reason;
   return error;
+}
+
+function parseExplicitListenHost(args) {
+  if (args.length === 0) {
+    return {
+      host: null,
+      allowed: false,
+      reason: 'listen host is not explicit',
+    };
+  }
+
+  const [firstArg, secondArg] = args;
+  if (
+    firstArg &&
+    typeof firstArg === 'object' &&
+    !(firstArg instanceof Number) &&
+    !(firstArg instanceof String)
+  ) {
+    const hasHost = Object.prototype.hasOwnProperty.call(firstArg, 'host');
+    const hasPort = Object.prototype.hasOwnProperty.call(firstArg, 'port');
+    const hasPath = Object.prototype.hasOwnProperty.call(firstArg, 'path');
+    const hasFd = Object.prototype.hasOwnProperty.call(firstArg, 'fd');
+    const host =
+      hasHost && typeof firstArg.host === 'string' ? firstArg.host : null;
+    const isExplicitTcpHost =
+      hasPort && !hasPath && !hasFd && host && ALLOWED_LISTEN_HOSTS.has(host);
+    return {
+      host,
+      allowed: Boolean(isExplicitTcpHost),
+      reason: isExplicitTcpHost
+        ? 'explicit listen options host'
+        : host
+          ? 'listen options host is not localhost'
+          : 'listen options must specify TCP port and localhost host',
+    };
+  }
+
+  if (typeof firstArg === 'number') {
+    const host = typeof secondArg === 'string' ? secondArg : null;
+    const isExplicitHost = host && ALLOWED_LISTEN_HOSTS.has(host);
+    return {
+      host,
+      allowed: Boolean(isExplicitHost),
+      reason: isExplicitHost
+        ? 'explicit listen host argument'
+        : host
+          ? 'listen host argument is not localhost'
+          : 'listen host argument is not explicit',
+    };
+  }
+
+  return {
+    host: null,
+    allowed: false,
+    reason: 'listen overload has no explicit TCP localhost host',
+  };
 }
 
 function buildPreloadContractReceipt(options = {}) {
@@ -843,24 +900,22 @@ function installProcessAndListenGuards(state, restores) {
 
   const guardListen = (protocol, original) =>
     function guardedListen(...args) {
-      const host = args.find((arg) => typeof arg === 'string');
-      const allowed =
-        host === undefined || host === '127.0.0.1' || host === 'localhost';
+      const listenTarget = parseExplicitListenHost(args);
       recordGuardEvent(state, {
         apiName: `${protocol}.Server.listen`,
         accessKind: 'listen',
         targetPath: null,
-        decision: allowed ? 'allowed' : 'blocked',
-        reason: allowed
+        decision: listenTarget.allowed ? 'allowed' : 'blocked',
+        reason: listenTarget.allowed
           ? 'localhost-only listen target'
-          : 'non-localhost listen target',
-        host: host || null,
+          : listenTarget.reason,
+        host: listenTarget.host,
       });
-      if (!allowed) {
+      if (!listenTarget.allowed) {
         throw createGuardBlockedError(
           `${protocol}.Server.listen`,
           null,
-          'non-localhost listen target',
+          listenTarget.reason,
         );
       }
       return original.apply(this, args);
@@ -1022,10 +1077,34 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     await expectGuardBlock(receipt, 'block child process spawn', () =>
       childProcess.spawnSync(process.execPath, ['--version']),
     );
+    await expectGuardBlock(receipt, 'block implicit listen host', () => {
+      const server = http.createServer();
+      try {
+        server.listen(0);
+      } finally {
+        server.close();
+      }
+    });
     await expectGuardBlock(receipt, 'block non-localhost listen', () => {
       const server = http.createServer();
       try {
         server.listen(0, '0.0.0.0');
+      } finally {
+        server.close();
+      }
+    });
+    await expectGuardBlock(receipt, 'block options implicit listen host', () => {
+      const server = http.createServer();
+      try {
+        server.listen({ port: 0 });
+      } finally {
+        server.close();
+      }
+    });
+    await expectGuardBlock(receipt, 'block options non-localhost listen', () => {
+      const server = http.createServer();
+      try {
+        server.listen({ port: 0, host: '0.0.0.0' });
       } finally {
         server.close();
       }

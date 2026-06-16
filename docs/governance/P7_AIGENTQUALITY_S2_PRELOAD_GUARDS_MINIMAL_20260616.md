@@ -48,7 +48,8 @@ code in this gate, and the probe uninstalls all monkeypatches before returning.
 - verify the guard blocks repository writes and copy writes;
 - verify the guard blocks `fs.watch`;
 - verify the guard blocks child process execution;
-- verify the guard blocks non-localhost `http.Server.listen`;
+- verify the guard blocks implicit-host and non-localhost `http.Server.listen`
+  overloads;
 - emit a receipt.
 
 ## 4. Not Allowed In This Gate
@@ -94,12 +95,21 @@ block repository write: blocked
 block promises copy destination write: blocked
 block repository watch: blocked
 block child process spawn: blocked
+block implicit listen host: blocked
 block non-localhost listen: blocked
+block options implicit listen host: blocked
+block options non-localhost listen: blocked
 ```
 
 The parent runner also requires the blocked event API list to include
 `fs.promises.copyFile:to`, so the copy probe proves the destination write guard
 and not only a missing source read.
+
+The parent runner also requires blocked `http.Server.listen` events for both
+implicit host and `0.0.0.0` host overloads. The guard is fail-closed for
+`listen(port)`, `listen(port, callback)`, path/fd/handle overloads, and options
+objects that do not explicitly specify TCP `port` plus `localhost`, `127.0.0.1`,
+or `::1`.
 
 ## 6. Dirty Worktree Policy
 

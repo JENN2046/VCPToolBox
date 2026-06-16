@@ -127,6 +127,16 @@ function probeBlockedEventApiNames(probeReceipt) {
   return events.map((event) => event.apiName);
 }
 
+function probeBlockedListenEvents(probeReceipt) {
+  const events =
+    probeReceipt &&
+    probeReceipt.installReceiptAfterProbe &&
+    Array.isArray(probeReceipt.installReceiptAfterProbe.blockedEvents)
+      ? probeReceipt.installReceiptAfterProbe.blockedEvents
+      : [];
+  return events.filter((event) => event.apiName === 'http.Server.listen');
+}
+
 async function buildReceipt() {
   const args = new Set(process.argv.slice(2));
   const jsonMode = args.has('--json');
@@ -186,6 +196,7 @@ async function buildReceipt() {
   }
 
   const blockedEventApiNames = probeBlockedEventApiNames(probeReceipt);
+  const blockedListenEvents = probeBlockedListenEvents(probeReceipt);
 
   addCheck(checks, 'core git status read', coreGit.statusOk, coreGit.statusError || 'ok');
   addCheck(checks, 'core contains preload guard base', coreContainsExpectedBase, EXPECTED_CORE_BASE);
@@ -201,6 +212,19 @@ async function buildReceipt() {
     'copy write destination guard observed',
     blockedEventApiNames.includes('fs.promises.copyFile:to'),
     blockedEventApiNames,
+  );
+  addCheck(
+    checks,
+    'explicit localhost listen overload guards observed',
+    [
+      'listen host argument is not explicit',
+      'listen host argument is not localhost',
+      'listen options must specify TCP port and localhost host',
+      'listen options host is not localhost',
+    ].every((reason) =>
+      blockedListenEvents.some((event) => event.reason === reason),
+    ),
+    blockedListenEvents,
   );
   addCheck(checks, 'real server execution not requested', !executeServerRequested, '--execute-server');
 
