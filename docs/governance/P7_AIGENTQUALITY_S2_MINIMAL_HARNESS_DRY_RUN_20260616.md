@@ -81,6 +81,7 @@ boundPort: false
 executedPlugin: false
 networkOrProviderCalls: false
 child env built without spreading process.env: true
+preload require allowed only after clean dirty policy: true
 preload contract validates: true
 result: S2_HARNESS_DRY_RUN_READY
 ```
@@ -102,6 +103,11 @@ The reviewed harness files must be clean by default. Local edits to the parent
 runner, preload, or this implementation note must block `S2_HARNESS_DRY_RUN_READY`
 unless the caller explicitly passes `--allow-dev-dirty-harness` during local
 development. Do not use that flag as evidence for a reviewed S2 gate.
+
+The parent runner must enforce that dirty policy before requiring the preload
+module. If the reviewed harness is dirty or the core git status cannot be read,
+the receipt must skip `require()` for the preload and report
+`preloadRequirePolicy.requireAllowed: false`.
 
 A real listen smoke remains a later explicit authorization boundary.
 

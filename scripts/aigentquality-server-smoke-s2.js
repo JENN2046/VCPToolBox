@@ -425,19 +425,44 @@ function buildReceipt() {
     ok: false,
     failures: ['preload contract not loaded'],
   };
-  try {
-    const preload = requirePreloadContract();
-    preloadContract = preload.buildPreloadContractReceipt({
-      projectRoot: PROJECT_ROOT,
-      externalPackageRoot: EXTERNAL_PACKAGE_ROOT,
-      runRoot: plannedRunRoot,
-      harnessConfigPath: childEnvPlan.runRootPaths.harnessConfig,
-    });
-    preloadValidation = preload.validatePreloadContractReceipt(preloadContract);
-  } catch (error) {
+  const preloadRequireBlockedReasons = [];
+  if (!coreGit.statusOk) {
+    preloadRequireBlockedReasons.push(
+      `core git status failed: ${coreGit.statusError}`,
+    );
+  }
+  if (disallowedCoreStatusEntries.length > 0) {
+    preloadRequireBlockedReasons.push(
+      `core worktree has disallowed dirty paths: ${disallowedCoreStatusEntries
+        .map((entry) => entry.line)
+        .join('; ')}`,
+    );
+  }
+  const preloadRequireAllowed = preloadRequireBlockedReasons.length === 0;
+
+  if (preloadRequireAllowed) {
+    try {
+      const preload = requirePreloadContract();
+      preloadContract = preload.buildPreloadContractReceipt({
+        projectRoot: PROJECT_ROOT,
+        externalPackageRoot: EXTERNAL_PACKAGE_ROOT,
+        runRoot: plannedRunRoot,
+        harnessConfigPath: childEnvPlan.runRootPaths.harnessConfig,
+      });
+      preloadValidation = preload.validatePreloadContractReceipt(preloadContract);
+    } catch (error) {
+      preloadValidation = {
+        ok: false,
+        failures: [error.message],
+      };
+    }
+  } else {
     preloadValidation = {
       ok: false,
-      failures: [error.message],
+      failures: [
+        'preload contract require skipped until core worktree dirty policy passes',
+        ...preloadRequireBlockedReasons,
+      ],
     };
   }
 
@@ -646,6 +671,14 @@ function buildReceipt() {
       commands: commandList,
     },
     preloadContract,
+    preloadRequirePolicy: {
+      requireAllowed: preloadRequireAllowed,
+      requireBlockedReasons: preloadRequireBlockedReasons,
+      requiredBeforeRequire: [
+        'core git status read',
+        'core worktree dirty policy passes',
+      ],
+    },
     preloadValidation,
     checks,
     dryRunBlockedReasons,
