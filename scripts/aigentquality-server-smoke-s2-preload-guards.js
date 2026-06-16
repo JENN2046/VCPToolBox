@@ -224,7 +224,19 @@ async function buildReceipt() {
     blockedEvents.some(
       (event) =>
         event.apiName === 'fs.readFileSync' &&
-        event.reason === 'runRoot read target resolves outside allowed root',
+        event.reason === 'runRoot target resolves outside allowed root',
+    ),
+    blockedEvents,
+  );
+  addCheck(
+    checks,
+    'runRoot symlink write/watch escape guards observed',
+    ['fs.writeFileSync', 'fs.watch'].every((apiName) =>
+      blockedEvents.some(
+        (event) =>
+          event.apiName === apiName &&
+          event.reason === 'runRoot target resolves outside allowed root',
+      ),
     ),
     blockedEvents,
   );

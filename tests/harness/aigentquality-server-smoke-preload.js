@@ -549,7 +549,7 @@ function nearestExistingPathUnderRoot(state, targetPath, rootPath) {
   return null;
 }
 
-function resolveAllowedReadRootTarget(state, targetPath, rootPath, rootName) {
+function resolveAllowedRootTarget(state, targetPath, rootPath, rootName) {
   if (!isPathUnder(targetPath, rootPath)) {
     return { matched: false, allowed: false };
   }
@@ -563,7 +563,7 @@ function resolveAllowedReadRootTarget(state, targetPath, rootPath, rootName) {
     return {
       matched: true,
       allowed: true,
-      reason: `${rootName} read target does not exist yet`,
+      reason: `${rootName} target has no existing parent`,
     };
   }
 
@@ -579,7 +579,7 @@ function resolveAllowedReadRootTarget(state, targetPath, rootPath, rootName) {
     return {
       matched: true,
       allowed: false,
-      reason: `${rootName} read target resolves outside allowed root`,
+      reason: `${rootName} target resolves outside allowed root`,
       realPath: nearestRealPath,
     };
   }
@@ -587,7 +587,7 @@ function resolveAllowedReadRootTarget(state, targetPath, rootPath, rootName) {
   return {
     matched: true,
     allowed: true,
-    reason: `allowed ${rootName} read target`,
+    reason: `allowed ${rootName} target`,
     realPath: nearestRealPath,
   };
 }
@@ -619,7 +619,7 @@ function resolveAllowedReadFileTarget(state, targetPath) {
 function resolveAllowedReadTarget(state, targetPath) {
   if (!targetPath) return { matched: false, allowed: false };
 
-  const runRootDecision = resolveAllowedReadRootTarget(
+  const runRootDecision = resolveAllowedRootTarget(
     state,
     targetPath,
     state.runRoot,
@@ -631,7 +631,7 @@ function resolveAllowedReadTarget(state, targetPath) {
   if (fileDecision.matched) return fileDecision;
 
   for (const root of state.allowedReadRoots) {
-    const rootDecision = resolveAllowedReadRootTarget(
+    const rootDecision = resolveAllowedRootTarget(
       state,
       targetPath,
       root,
@@ -641,6 +641,10 @@ function resolveAllowedReadTarget(state, targetPath) {
   }
 
   return { matched: false, allowed: false };
+}
+
+function resolveAllowedTempWriteWatchTarget(state, targetPath) {
+  return resolveAllowedRootTarget(state, targetPath, state.runRoot, 'runRoot');
 }
 
 function guardPathAccess(state, apiName, target, accessKind) {
@@ -703,11 +707,16 @@ function guardPathAccess(state, apiName, target, accessKind) {
   }
 
   if (accessKind === 'write' || accessKind === 'watch') {
-    if (isPathUnder(targetPath, state.runRoot)) {
+    const allowedTempTarget = resolveAllowedTempWriteWatchTarget(
+      state,
+      targetPath,
+    );
+    if (allowedTempTarget.matched && allowedTempTarget.allowed) {
       recordGuardEvent(state, {
         apiName,
         accessKind,
         targetPath,
+        realPath: allowedTempTarget.realPath || null,
         decision: 'allowed',
         reason: 'allowed temp run root target',
       });
@@ -717,13 +726,18 @@ function guardPathAccess(state, apiName, target, accessKind) {
       apiName,
       accessKind,
       targetPath,
+      realPath: allowedTempTarget.realPath || null,
       decision: 'blocked',
-      reason: 'write/watch target is outside runRoot',
+      reason: allowedTempTarget.matched
+        ? allowedTempTarget.reason
+        : 'write/watch target is outside runRoot',
     });
     throw createGuardBlockedError(
       apiName,
       targetPath,
-      'write/watch target is outside runRoot',
+      allowedTempTarget.matched
+        ? allowedTempTarget.reason
+        : 'write/watch target is outside runRoot',
     );
   }
 
@@ -1260,6 +1274,16 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     options.runRoot,
     'synthetic-link-to-core-config.env',
   );
+  const syntheticRunRootWriteSymlinkPath = path.join(
+    options.runRoot,
+    'synthetic-link-to-core-tmp',
+    'write-escape.txt',
+  );
+  const syntheticRunRootWatchSymlinkPath = path.join(
+    options.runRoot,
+    'synthetic-link-to-core-tmp',
+    'watch-escape.txt',
+  );
   const controller = installPreloadGuards({
     ...options,
     allowSyntheticRealpathOverrides: true,
@@ -1268,6 +1292,14 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
       [syntheticRunRootSymlinkPath]: path.join(
         options.projectRoot,
         'config.env',
+      ),
+      [path.dirname(syntheticRunRootWriteSymlinkPath)]: path.join(
+        options.projectRoot,
+        'tmp',
+      ),
+      [path.dirname(syntheticRunRootWatchSymlinkPath)]: path.join(
+        options.projectRoot,
+        'tmp',
       ),
     },
   });
@@ -1302,6 +1334,12 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     );
     await expectGuardBlock(receipt, 'block repository write', () =>
       fs.writeFileSync(path.join(projectRoot, 'tmp', 'guard-probe.txt'), 'x'),
+    );
+    await expectGuardBlock(receipt, 'block runRoot symlink write escape', () =>
+      fs.writeFileSync(syntheticRunRootWriteSymlinkPath, 'x'),
+    );
+    await expectGuardBlock(receipt, 'block runRoot symlink watch escape', () =>
+      fs.watch(syntheticRunRootWatchSymlinkPath, () => {}),
     );
     await expectGuardBlock(receipt, 'block symlink creation', () =>
       fs.symlinkSync(

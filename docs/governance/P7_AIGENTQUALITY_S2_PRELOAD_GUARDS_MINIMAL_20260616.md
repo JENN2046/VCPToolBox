@@ -45,7 +45,7 @@ code in this gate, and the probe uninstalls all monkeypatches before returning.
 - run synthetic blocked operations against reviewed repository paths;
 - verify the guard blocks repository config reads;
 - verify the guard blocks repository directory enumeration;
-- verify the guard blocks `runRoot` symlink read escapes;
+- verify the guard blocks `runRoot` symlink read/write/watch escapes;
 - verify the guard blocks repository writes and copy writes;
 - verify the guard blocks symlink creation;
 - verify the guard blocks `fs.watch`;
@@ -95,6 +95,8 @@ block repository config read: blocked
 block repository directory read: blocked
 block runRoot symlink read escape: blocked
 block repository write: blocked
+block runRoot symlink write escape: blocked
+block runRoot symlink watch escape: blocked
 block symlink creation: blocked
 block promises symlink creation: blocked
 block promises copy destination write: blocked
@@ -118,11 +120,11 @@ implicit host and `0.0.0.0` host overloads. The guard is fail-closed for
 objects that do not explicitly specify TCP `port` plus `localhost`, `127.0.0.1`,
 or `::1`.
 
-The read guard must resolve existing targets or their nearest existing parent
-before allowing `runRoot` reads. A path that is textually under `runRoot` but
-resolves outside that root is blocked, and link/symlink creation is forbidden
-after guard installation. The listen guard treats `undefined`, `null`, empty,
-NaN, and out-of-range option ports as non-explicit ports.
+The read, write, and watch guards must resolve existing targets or their nearest
+existing parent before allowing `runRoot` access. A path that is textually under
+`runRoot` but resolves outside that root is blocked, and link/symlink creation
+is forbidden after guard installation. The listen guard treats `undefined`,
+`null`, empty, NaN, and out-of-range option ports as non-explicit ports.
 
 ## 6. Dirty Worktree Policy
 
