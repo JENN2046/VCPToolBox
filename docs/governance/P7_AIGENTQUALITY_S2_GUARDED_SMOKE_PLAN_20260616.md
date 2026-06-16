@@ -81,6 +81,8 @@ guardInstallImplemented: false
 harnessConfigPathUnderRunRoot: true
 result: S2_GUARDED_SMOKE_PLAN_READY
 guardedSmokeReadiness.ready: false
+child env exact key set matches reviewed allowlist: true
+harness config env value matches reviewed plan: true
 ```
 
 `guardedSmokeReadiness.ready` must stay `false` in this gate because the real
@@ -116,6 +118,21 @@ It must also carry the reviewed startup stubs, including:
 This step does not claim those stubs are installed. It only proves the future
 receipt shape is explicit and reviewable.
 
+The required write/watch API list also includes copy surfaces:
+
+```text
+fs.copyFile
+fs.copyFileSync
+fs.cp
+fs.cpSync
+fs.promises.copyFile
+fs.promises.cp
+```
+
+Those entries are required because admin/plugin-store code can use copy-style
+filesystem writes; future guarded smoke must not treat copy operations as a
+write-guard blind spot.
+
 ## 6. Dirty Worktree Policy
 
 Default mode requires the plan script, guarded plan doc, existing dry-run
@@ -142,6 +159,14 @@ worktree must be clean.
 Receipts produced with `--allow-dev-dirty-plan` must report
 `reviewEvidenceUsable: false`. Reviewed gate evidence requires the default clean
 mode after these files are committed.
+
+The child env check must compare the actual child env key set against an
+explicit allowlist. Optional platform keys such as `SystemRoot`, `ComSpec`,
+`PATHEXT`, and `PATH` may appear only when the reviewed env builder copies them
+from the parent. Any extra non-secret key, not only secret-like keys, must block
+`S2_GUARDED_SMOKE_PLAN_READY`. The
+`VCP_AIGENTQUALITY_S2_HARNESS_CONFIG` env value must exactly match the planned
+harness config path under the planned run root.
 
 Scoped ignored runtime/config artifacts are inventoried without reading
 contents. They are recorded as real guarded-smoke blockers by default and block

@@ -72,6 +72,38 @@ const EXPECTED_COMMANDS = Object.freeze([
   'InspectBatch',
   'InspectImage',
 ]);
+const REQUIRED_CHILD_ENV_KEYS = Object.freeze([
+  'TEMP',
+  'TMP',
+  'VCP_AIGENTQUALITY_S2_HARNESS_CONFIG',
+  'PORT',
+  'DebugMode',
+  'CHAT_LOG_ENABLED',
+  'API_URL',
+  'API_Key',
+  'Key',
+  'Image_Key',
+  'File_Key',
+  'VCP_Key',
+  'AdminUsername',
+  'AdminPassword',
+  'AGENT_DIR_PATH',
+  'TVSTXT_DIR_PATH',
+  'KNOWLEDGEBASE_ROOT_PATH',
+  'CHANNELHUB_BASE_DIR',
+  'ENABLE_AI_IMAGE_AGENTS_ROUTE',
+  'ENABLE_AI_IMAGE_REAL_EXECUTION',
+  'ENABLE_NATIVE_DOUBAO_SECRETLESS_RUNTIME_DELEGATE',
+  'VCP_PLUGIN_ALLOWED_ROOTS',
+  'VCP_PLUGIN_DIRS',
+  'VCP_EXTERNAL_PLUGIN_ALLOWLIST',
+]);
+const OPTIONAL_PLATFORM_CHILD_ENV_KEYS = Object.freeze([
+  'SystemRoot',
+  'ComSpec',
+  'PATHEXT',
+  'PATH',
+]);
 const SECRET_LIKE_ENV_KEY = /(?:api[_-]?key|token|secret|password|passwd|credential|cookie|session|bearer|authorization|openai|anthropic|gemini|doubao)/i;
 const ALLOWED_DEV_DIRTY_PATHS = Object.freeze([
   rel(THIS_SCRIPT),
@@ -315,6 +347,105 @@ function secretLikeParentEnvKeyCount() {
     .length;
 }
 
+function sortedStringArray(values) {
+  return [...values].sort((a, b) =>
+    a.localeCompare(b, 'en', { sensitivity: 'base' }),
+  );
+}
+
+function sameStringArray(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function childEnvKeySetValidation(env) {
+  const actualKeys = sortedStringArray(Object.keys(env || {}));
+  const actualKeySet = new Set(actualKeys);
+  const requiredKeySet = new Set(REQUIRED_CHILD_ENV_KEYS);
+  const optionalLowerSet = new Set(
+    OPTIONAL_PLATFORM_CHILD_ENV_KEYS.map((key) => key.toLowerCase()),
+  );
+  const optionalKeysPresent = actualKeys.filter((key) =>
+    optionalLowerSet.has(key.toLowerCase()),
+  );
+  const expectedKeys = sortedStringArray([
+    ...REQUIRED_CHILD_ENV_KEYS,
+    ...optionalKeysPresent,
+  ]);
+  const missingRequiredKeys = sortedStringArray(
+    REQUIRED_CHILD_ENV_KEYS.filter((key) => !actualKeySet.has(key)),
+  );
+  const unexpectedKeys = actualKeys.filter(
+    (key) =>
+      !requiredKeySet.has(key) && !optionalLowerSet.has(key.toLowerCase()),
+  );
+
+  return {
+    ok:
+      missingRequiredKeys.length === 0 &&
+      unexpectedKeys.length === 0 &&
+      sameStringArray(actualKeys, expectedKeys),
+    actualKeys,
+    expectedKeys,
+    requiredKeys: [...REQUIRED_CHILD_ENV_KEYS],
+    optionalPlatformKeys: [...OPTIONAL_PLATFORM_CHILD_ENV_KEYS],
+    optionalKeysPresent,
+    missingRequiredKeys,
+    unexpectedKeys,
+  };
+}
+
+function comparablePath(filePath) {
+  if (!filePath) return null;
+  const resolved = path.resolve(filePath);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function sameResolvedPath(left, right) {
+  const leftPath = comparablePath(left);
+  const rightPath = comparablePath(right);
+  return Boolean(leftPath && rightPath && leftPath === rightPath);
+}
+
+function isPathUnder(childPath, parentPath) {
+  if (!childPath || !parentPath) return false;
+  const child = path.resolve(childPath);
+  const parent = path.resolve(parentPath);
+  const relativePath = path.relative(parent, child);
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  );
+}
+
+function childHarnessConfigValidation(childEnvPlan, plannedHarnessConfig, runRoot) {
+  const envValue =
+    childEnvPlan &&
+    childEnvPlan.env &&
+    childEnvPlan.env.VCP_AIGENTQUALITY_S2_HARNESS_CONFIG;
+  const runRootPath =
+    childEnvPlan &&
+    childEnvPlan.runRootPaths &&
+    childEnvPlan.runRootPaths.harnessConfig;
+  const envMatchesExpected = sameResolvedPath(envValue, plannedHarnessConfig);
+  const runRootPathMatchesExpected = sameResolvedPath(
+    runRootPath,
+    plannedHarnessConfig,
+  );
+  const envPathUnderRunRoot = isPathUnder(envValue, runRoot);
+
+  return {
+    ok:
+      envMatchesExpected && runRootPathMatchesExpected && envPathUnderRunRoot,
+    expectedHarnessConfig: plannedHarnessConfig,
+    envValue,
+    runRootPath,
+    envMatchesExpected,
+    runRootPathMatchesExpected,
+    envPathUnderRunRoot,
+  };
+}
+
 function buildReceipt() {
   const args = new Set(process.argv.slice(2));
   const jsonMode = args.has('--json');
@@ -414,6 +545,14 @@ function buildReceipt() {
       ],
     };
   }
+  const childEnvKeySet = childEnvKeySetValidation(
+    childEnvPlan ? childEnvPlan.env : {},
+  );
+  const childHarnessConfig = childHarnessConfigValidation(
+    childEnvPlan,
+    plannedHarnessConfig,
+    plannedRunRoot,
+  );
 
   const s1Markers = [
     'S2 authorized: no',
@@ -467,6 +606,8 @@ function buildReceipt() {
   addCheck(checks, 'manifest command set matches expected', JSON.stringify(commandList) === JSON.stringify([...EXPECTED_COMMANDS]), commandList);
   addCheck(checks, 'child env builder loaded from reviewed dry-run runner', Boolean(childEnvPlan), rel(S2_DRY_RUNNER));
   addCheck(checks, 'child env external allowlist matches target', s2Runner && s2Runner.EXACT_EXTERNAL_ALLOWLIST === EXACT_EXTERNAL_ALLOWLIST, s2Runner && s2Runner.EXACT_EXTERNAL_ALLOWLIST);
+  addCheck(checks, 'child env exact key set matches reviewed allowlist', childEnvKeySet.ok, childEnvKeySet);
+  addCheck(checks, 'child harness config env value matches reviewed plan', childHarnessConfig.ok, childHarnessConfig);
   addCheck(checks, 'child env excludes extra secret-like keys', childSecretLikeKeys.length === 0, childSecretLikeKeys);
   addCheck(checks, 'guarded smoke plan validates', guardedPlanValidation.ok, guardedPlanValidation.failures);
   addCheck(checks, 'guarded smoke plan remains plan-only', guardedPlanReceipt && guardedPlanReceipt.guardInstallImplemented === false, guardedPlanReceipt && guardedPlanReceipt.guardInstallImplemented);
@@ -626,9 +767,15 @@ function buildReceipt() {
     childEnvPlan: childEnvPlan
       ? {
           builtWithoutSpreadingProcessEnv: true,
-          keySet: Object.keys(childEnvPlan.env).sort((a, b) =>
-            a.localeCompare(b, 'en', { sensitivity: 'base' }),
-          ),
+          keySet: childEnvKeySet.actualKeys,
+          expectedKeySet: childEnvKeySet.expectedKeys,
+          requiredKeySet: childEnvKeySet.requiredKeys,
+          optionalPlatformKeySet: childEnvKeySet.optionalPlatformKeys,
+          optionalPlatformKeysPresent: childEnvKeySet.optionalKeysPresent,
+          missingRequiredKeys: childEnvKeySet.missingRequiredKeys,
+          unexpectedKeys: childEnvKeySet.unexpectedKeys,
+          exactKeySetMatches: childEnvKeySet.ok,
+          harnessConfig: childHarnessConfig,
           secretLikeParentEnvKeyCount: secretLikeParentEnvKeyCount(),
           secretLikeChildEnvKeys: childSecretLikeKeys,
           valuesRedacted: true,
