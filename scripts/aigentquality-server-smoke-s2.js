@@ -50,7 +50,6 @@ const S2_PREPLAN_DOC = path.join(
   'P7_AIGENTQUALITY_S2_DRY_RUN_HARNESS_PREPLAN_20260615.md',
 );
 
-const EXPECTED_BRANCH = 'codex/aigentquality-s2-harness-dry-run';
 const EXPECTED_CORE_BASE = '7ec538fe76bcfb54d20c025ef6a5d8833b415d0e';
 const EXPECTED_EXTERNAL_HEAD = 'beb072b8ad1530dd62c526c71e4cc09930068685';
 const TARGET_PLUGIN_NAME = 'JennAIGentQualityTrial';
@@ -438,7 +437,6 @@ function buildReceipt() {
     };
   }
 
-  addCheck(checks, 'core branch is S2 harness branch', coreGit.branch === EXPECTED_BRANCH, coreGit.branch);
   addCheck(checks, 'core git status read', coreGit.statusOk, coreGit.statusError || 'ok');
   addCheck(checks, 'core ignored runtime inventory read', coreIgnoredRuntime.ok, coreIgnoredRuntime.error || 'ok');
   addCheck(checks, 'core contains merged S2 preplan base', coreContainsExpectedBase, EXPECTED_CORE_BASE);
@@ -576,6 +574,7 @@ function buildReceipt() {
       targetPluginName: TARGET_PLUGIN_NAME,
       exactExternalAllowlist: EXACT_EXTERNAL_ALLOWLIST,
       commands: EXPECTED_COMMANDS,
+      branchPolicy: 'record-only; dry-run readiness is not tied to a temporary author branch',
     },
     git: {
       core: {
@@ -690,6 +689,5 @@ module.exports = {
   buildReceipt,
   buildReviewedChildEnv,
   secretLikeChildEnvKeys,
-  EXPECTED_BRANCH,
   EXACT_EXTERNAL_ALLOWLIST,
 };

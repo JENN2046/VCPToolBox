@@ -72,6 +72,7 @@ The dry-run receipt must show:
 mode: aigentquality-s2-minimal-harness-dry-run
 dryRunAuthorized: true
 realServerStartAuthorized: false
+branch policy: record-only; not tied to the temporary author branch
 startedServer: false
 importedServer: false
 spawnedServer: false
@@ -90,6 +91,11 @@ artifacts are recorded under `git.*.ignoredRuntimeStatusEntries` and
 proving the harness file shape. Run the parent with `--strict-clean` when the
 goal is to fail the dry-run on any sensitive ignored runtime artifact before a
 future real S2 attempt.
+
+The current branch name is receipt evidence only. The dry-run remains portable
+after merge to `main` or another clean checkout as long as the expected baseline
+commit is an ancestor of `HEAD`; it must not depend on the temporary author
+branch name.
 
 A real listen smoke remains a later explicit authorization boundary.
 
