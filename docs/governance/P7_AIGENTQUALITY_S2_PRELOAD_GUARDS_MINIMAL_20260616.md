@@ -48,6 +48,7 @@ code in this gate, and the probe uninstalls all monkeypatches before returning.
 - verify the guard blocks `runRoot` symlink read/write/watch escapes;
 - verify the guard blocks missing-`runRoot` ancestor write/watch escapes;
 - verify the guard blocks repository writes and copy writes;
+- verify canonical temp parent realpaths still reach the copy destination guard;
 - verify the guard blocks symlink creation;
 - verify the guard blocks `fs.watch`;
 - verify the guard blocks child process execution;
@@ -100,6 +101,7 @@ block runRoot symlink write escape: blocked
 block runRoot symlink watch escape: blocked
 block missing runRoot ancestor write escape: blocked
 block missing runRoot ancestor watch escape: blocked
+block canonical temp parent copy destination write: blocked
 block symlink creation: blocked
 block promises symlink creation: blocked
 block promises copy destination write: blocked
@@ -127,9 +129,11 @@ The read, write, and watch guards must resolve existing targets or their nearest
 existing parent before allowing `runRoot` access. A path that is textually under
 `runRoot` but resolves outside that root is blocked. If `runRoot` does not exist,
 the guard must still resolve ancestors above `runRoot` before allowing writes or
-watches. Link/symlink creation is forbidden after guard installation. The listen
-guard treats `undefined`, `null`, empty, NaN, and out-of-range option ports as
-non-explicit ports.
+watches. The guard compares canonical paths against the canonical temp root, so
+safe symlinked temp parents such as `/tmp -> /private/tmp` do not block before
+the destination write guard can run. Link/symlink creation is forbidden after
+guard installation. The listen guard treats `undefined`, `null`, empty, NaN, and
+out-of-range option ports as non-explicit ports.
 
 ## 6. Dirty Worktree Policy
 

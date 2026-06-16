@@ -141,6 +141,14 @@ function probeBlockedListenEvents(probeReceipt) {
   );
 }
 
+function probeOkNames(probeReceipt) {
+  return probeReceipt && Array.isArray(probeReceipt.probes)
+    ? probeReceipt.probes
+        .filter((probe) => probe.ok)
+        .map((probe) => probe.name)
+    : [];
+}
+
 async function buildReceipt() {
   const args = new Set(process.argv.slice(2));
   const jsonMode = args.has('--json');
@@ -202,6 +210,7 @@ async function buildReceipt() {
   const blockedEventApiNames = probeBlockedEventApiNames(probeReceipt);
   const blockedEvents = probeBlockedEvents(probeReceipt);
   const blockedListenEvents = probeBlockedListenEvents(probeReceipt);
+  const okProbeNames = probeOkNames(probeReceipt);
 
   addCheck(checks, 'core git status read', coreGit.statusOk, coreGit.statusError || 'ok');
   addCheck(checks, 'core contains preload guard base', coreContainsExpectedBase, EXPECTED_CORE_BASE);
@@ -247,10 +256,17 @@ async function buildReceipt() {
       blockedEvents.some(
         (event) =>
           event.apiName === apiName &&
-          event.reason === 'runRoot root resolves outside expected path',
+          event.reason === 'runRoot root resolves inside guarded repository root',
       ),
     ),
     blockedEvents,
+  );
+  addCheck(
+    checks,
+    'canonical temp parent copy destination guard observed',
+    okProbeNames.includes('block canonical temp parent copy destination write') &&
+      blockedEventApiNames.includes('fs.promises.copyFile:to'),
+    okProbeNames,
   );
   addCheck(
     checks,

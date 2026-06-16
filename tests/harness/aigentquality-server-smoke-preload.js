@@ -592,11 +592,14 @@ function resolveAllowedRootTarget(state, targetPath, rootPath, rootName) {
     };
   }
 
-  if (!isPathUnder(rootResolution.resolvedPath, rootPath)) {
+  if (
+    isPathUnder(rootResolution.resolvedPath, state.projectRoot) ||
+    isPathUnder(rootResolution.resolvedPath, state.externalPackageRoot)
+  ) {
     return {
       matched: true,
       allowed: false,
-      reason: `${rootName} root resolves outside expected path`,
+      reason: `${rootName} root resolves inside guarded repository root`,
       realPath: rootResolution.resolvedPath,
     };
   }
@@ -1319,6 +1322,10 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     options.runRoot,
     'missing-ancestor-watch.txt',
   );
+  const syntheticCanonicalTempParentCopySourcePath = path.join(
+    options.runRoot,
+    'canonical-temp-parent-source.txt',
+  );
   const controller = installPreloadGuards({
     ...options,
     allowSyntheticRealpathOverrides: true,
@@ -1361,7 +1368,11 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     projectRoot,
     'synthetic-temp-parent-escape',
   );
-  async function withSyntheticRunRootParentEscape(action) {
+  const syntheticCanonicalTempParentPath = path.join(
+    syntheticRunRootParentPath,
+    'synthetic-canonical-temp-parent',
+  );
+  async function withSyntheticRunRootParentRealpath(realPath, action) {
     const parentPath = normalizePathForReceipt(syntheticRunRootParentPath);
     const hadPrevious = controller._state.syntheticRealpathOverrides.has(
       parentPath,
@@ -1371,7 +1382,7 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     );
     controller._state.syntheticRealpathOverrides.set(
       parentPath,
-      normalizePathForReceipt(syntheticRunRootParentEscapePath),
+      normalizePathForReceipt(realPath),
     );
     try {
       return await action();
@@ -1382,6 +1393,18 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
         controller._state.syntheticRealpathOverrides.delete(parentPath);
       }
     }
+  }
+  async function withSyntheticRunRootParentEscape(action) {
+    return withSyntheticRunRootParentRealpath(
+      syntheticRunRootParentEscapePath,
+      action,
+    );
+  }
+  async function withSyntheticCanonicalTempParent(action) {
+    return withSyntheticRunRootParentRealpath(
+      syntheticCanonicalTempParentPath,
+      action,
+    );
   }
 
   try {
@@ -1432,6 +1455,17 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
         path.join(projectRoot, 'config.env'),
         path.join(options.runRoot, 'promises-link-to-core-config.env'),
       ),
+    );
+    await expectGuardBlock(
+      receipt,
+      'block canonical temp parent copy destination write',
+      () =>
+        withSyntheticCanonicalTempParent(() =>
+          fs.promises.copyFile(
+            syntheticCanonicalTempParentCopySourcePath,
+            path.join(projectRoot, 'tmp', 'canonical-guard-copy.txt'),
+          ),
+        ),
     );
     await expectGuardBlock(receipt, 'block promises copy destination write', () =>
       fs.promises.copyFile(
