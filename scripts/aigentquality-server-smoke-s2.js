@@ -153,7 +153,11 @@ const EXPECTED_COMMANDS = Object.freeze([
 const DEVELOPMENT_ALLOWED_DIRTY_PATHS = Object.freeze([
   rel(PRELOAD_FILE),
   rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2.js')),
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2-guarded-plan.js')),
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2-preload-guards.js')),
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2-guarded-preflight.js')),
   rel(S2_IMPLEMENTATION_DOC),
+  rel(path.join(PROJECT_ROOT, 'docs', 'governance', 'P7_AIGENTQUALITY_S2_GUARDED_SMOKE_PREFLIGHT_20260617.md')),
 ]);
 
 const ALLOWED_SECRET_LIKE_CHILD_ENV_KEYS = Object.freeze([

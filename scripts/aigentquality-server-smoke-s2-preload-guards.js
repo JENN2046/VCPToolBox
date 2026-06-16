@@ -34,9 +34,13 @@ const EXPECTED_CORE_BASE = '978fe3c505862ccf358b134d219d07e7bff58b7d';
 const EXPECTED_EXTERNAL_HEAD = 'beb072b8ad1530dd62c526c71e4cc09930068685';
 const STATUS_GIT_GLOBAL_ARGS = ['--no-optional-locks'];
 const DEVELOPMENT_ALLOWED_DIRTY_PATHS = Object.freeze([
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2.js')),
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2-guarded-plan.js')),
   rel(THIS_SCRIPT),
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2-guarded-preflight.js')),
   rel(PRELOAD_FILE),
   rel(GUARD_PLAN_DOC),
+  rel(path.join(PROJECT_ROOT, 'docs', 'governance', 'P7_AIGENTQUALITY_S2_GUARDED_SMOKE_PREFLIGHT_20260617.md')),
 ]);
 
 function rel(filePath) {

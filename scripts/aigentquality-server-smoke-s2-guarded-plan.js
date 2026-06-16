@@ -106,8 +106,12 @@ const OPTIONAL_PLATFORM_CHILD_ENV_KEYS = Object.freeze([
 ]);
 const SECRET_LIKE_ENV_KEY = /(?:api[_-]?key|token|secret|password|passwd|credential|cookie|session|bearer|authorization|openai|anthropic|gemini|doubao)/i;
 const ALLOWED_DEV_DIRTY_PATHS = Object.freeze([
+  rel(S2_DRY_RUNNER),
   rel(THIS_SCRIPT),
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2-preload-guards.js')),
+  rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2-guarded-preflight.js')),
   rel(GUARDED_PLAN_DOC),
+  rel(path.join(PROJECT_ROOT, 'docs', 'governance', 'P7_AIGENTQUALITY_S2_GUARDED_SMOKE_PREFLIGHT_20260617.md')),
   rel(PRELOAD_FILE),
 ]);
 const IGNORED_RUNTIME_EXCLUDED_PATHS = Object.freeze([
