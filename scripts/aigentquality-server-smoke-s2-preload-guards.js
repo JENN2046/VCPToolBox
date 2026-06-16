@@ -242,6 +242,18 @@ async function buildReceipt() {
   );
   addCheck(
     checks,
+    'missing runRoot ancestor write/watch escape guards observed',
+    ['fs.mkdirSync', 'fs.watch'].every((apiName) =>
+      blockedEvents.some(
+        (event) =>
+          event.apiName === apiName &&
+          event.reason === 'runRoot root resolves outside expected path',
+      ),
+    ),
+    blockedEvents,
+  );
+  addCheck(
+    checks,
     'symlink creation guard observed',
     blockedEventApiNames.includes('fs.symlinkSync') &&
       blockedEventApiNames.includes('fs.promises.symlink'),

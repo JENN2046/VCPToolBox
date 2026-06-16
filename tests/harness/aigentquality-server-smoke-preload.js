@@ -537,10 +537,9 @@ function pathExistsForGuard(state, targetPath) {
   }
 }
 
-function nearestExistingPathUnderRoot(state, targetPath, rootPath) {
+function nearestExistingPathForTarget(state, targetPath) {
   let currentPath = normalizePathForReceipt(targetPath);
-  const root = normalizePathForReceipt(rootPath);
-  while (currentPath && isPathUnder(currentPath, root)) {
+  while (currentPath) {
     if (pathExistsForGuard(state, currentPath)) return currentPath;
     const parentPath = path.dirname(currentPath);
     if (parentPath === currentPath) break;
@@ -549,38 +548,65 @@ function nearestExistingPathUnderRoot(state, targetPath, rootPath) {
   return null;
 }
 
+function resolvePathThroughNearestExistingAncestor(state, targetPath) {
+  const normalizedTarget = normalizePathForReceipt(targetPath);
+  const nearestExistingPath = nearestExistingPathForTarget(
+    state,
+    normalizedTarget,
+  );
+  if (!nearestExistingPath) {
+    return null;
+  }
+  const nearestRealPath = realpathForGuard(state, nearestExistingPath);
+  return {
+    nearestExistingPath,
+    nearestRealPath,
+    resolvedPath: normalizePathForReceipt(
+      path.join(
+        nearestRealPath,
+        path.relative(nearestExistingPath, normalizedTarget),
+      ),
+    ),
+  };
+}
+
 function resolveAllowedRootTarget(state, targetPath, rootPath, rootName) {
   if (!isPathUnder(targetPath, rootPath)) {
     return { matched: false, allowed: false };
   }
 
-  const nearestExistingPath = nearestExistingPathUnderRoot(
+  const rootResolution = resolvePathThroughNearestExistingAncestor(
     state,
-    targetPath,
     rootPath,
   );
-  if (!nearestExistingPath) {
+  const targetResolution = resolvePathThroughNearestExistingAncestor(
+    state,
+    targetPath,
+  );
+
+  if (!rootResolution || !targetResolution) {
     return {
       matched: true,
-      allowed: true,
-      reason: `${rootName} target has no existing parent`,
+      allowed: false,
+      reason: `${rootName} target has no resolvable existing ancestor`,
     };
   }
 
-  const nearestRealPath = realpathForGuard(state, nearestExistingPath);
-  const rootRealPath = pathExistsForGuard(state, rootPath)
-    ? realpathForGuard(state, rootPath)
-    : rootPath;
+  if (!isPathUnder(rootResolution.resolvedPath, rootPath)) {
+    return {
+      matched: true,
+      allowed: false,
+      reason: `${rootName} root resolves outside expected path`,
+      realPath: rootResolution.resolvedPath,
+    };
+  }
 
-  if (
-    !isPathUnder(rootRealPath, rootPath) ||
-    !isPathUnder(nearestRealPath, rootRealPath)
-  ) {
+  if (!isPathUnder(targetResolution.resolvedPath, rootResolution.resolvedPath)) {
     return {
       matched: true,
       allowed: false,
       reason: `${rootName} target resolves outside allowed root`,
-      realPath: nearestRealPath,
+      realPath: targetResolution.resolvedPath,
     };
   }
 
@@ -588,7 +614,7 @@ function resolveAllowedRootTarget(state, targetPath, rootPath, rootName) {
     matched: true,
     allowed: true,
     reason: `allowed ${rootName} target`,
-    realPath: nearestRealPath,
+    realPath: targetResolution.resolvedPath,
   };
 }
 
@@ -1284,6 +1310,15 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     'synthetic-link-to-core-tmp',
     'watch-escape.txt',
   );
+  const syntheticMissingRunRootAncestorWritePath = path.join(
+    options.runRoot,
+    'missing-ancestor-write',
+    'subdir',
+  );
+  const syntheticMissingRunRootAncestorWatchPath = path.join(
+    options.runRoot,
+    'missing-ancestor-watch.txt',
+  );
   const controller = installPreloadGuards({
     ...options,
     allowSyntheticRealpathOverrides: true,
@@ -1321,6 +1356,33 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
 
   const projectRoot = options.projectRoot;
   const externalPackageRoot = options.externalPackageRoot;
+  const syntheticRunRootParentPath = path.dirname(options.runRoot);
+  const syntheticRunRootParentEscapePath = path.join(
+    projectRoot,
+    'synthetic-temp-parent-escape',
+  );
+  async function withSyntheticRunRootParentEscape(action) {
+    const parentPath = normalizePathForReceipt(syntheticRunRootParentPath);
+    const hadPrevious = controller._state.syntheticRealpathOverrides.has(
+      parentPath,
+    );
+    const previous = controller._state.syntheticRealpathOverrides.get(
+      parentPath,
+    );
+    controller._state.syntheticRealpathOverrides.set(
+      parentPath,
+      normalizePathForReceipt(syntheticRunRootParentEscapePath),
+    );
+    try {
+      return await action();
+    } finally {
+      if (hadPrevious) {
+        controller._state.syntheticRealpathOverrides.set(parentPath, previous);
+      } else {
+        controller._state.syntheticRealpathOverrides.delete(parentPath);
+      }
+    }
+  }
 
   try {
     await expectGuardBlock(receipt, 'block repository config read', () =>
@@ -1340,6 +1402,24 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     );
     await expectGuardBlock(receipt, 'block runRoot symlink watch escape', () =>
       fs.watch(syntheticRunRootWatchSymlinkPath, () => {}),
+    );
+    await expectGuardBlock(
+      receipt,
+      'block missing runRoot ancestor write escape',
+      () =>
+        withSyntheticRunRootParentEscape(() =>
+          fs.mkdirSync(syntheticMissingRunRootAncestorWritePath, {
+            recursive: true,
+          }),
+        ),
+    );
+    await expectGuardBlock(
+      receipt,
+      'block missing runRoot ancestor watch escape',
+      () =>
+        withSyntheticRunRootParentEscape(() =>
+          fs.watch(syntheticMissingRunRootAncestorWatchPath, () => {}),
+        ),
     );
     await expectGuardBlock(receipt, 'block symlink creation', () =>
       fs.symlinkSync(

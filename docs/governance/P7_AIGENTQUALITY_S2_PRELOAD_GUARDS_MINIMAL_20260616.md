@@ -46,6 +46,7 @@ code in this gate, and the probe uninstalls all monkeypatches before returning.
 - verify the guard blocks repository config reads;
 - verify the guard blocks repository directory enumeration;
 - verify the guard blocks `runRoot` symlink read/write/watch escapes;
+- verify the guard blocks missing-`runRoot` ancestor write/watch escapes;
 - verify the guard blocks repository writes and copy writes;
 - verify the guard blocks symlink creation;
 - verify the guard blocks `fs.watch`;
@@ -97,6 +98,8 @@ block runRoot symlink read escape: blocked
 block repository write: blocked
 block runRoot symlink write escape: blocked
 block runRoot symlink watch escape: blocked
+block missing runRoot ancestor write escape: blocked
+block missing runRoot ancestor watch escape: blocked
 block symlink creation: blocked
 block promises symlink creation: blocked
 block promises copy destination write: blocked
@@ -122,9 +125,11 @@ or `::1`.
 
 The read, write, and watch guards must resolve existing targets or their nearest
 existing parent before allowing `runRoot` access. A path that is textually under
-`runRoot` but resolves outside that root is blocked, and link/symlink creation
-is forbidden after guard installation. The listen guard treats `undefined`,
-`null`, empty, NaN, and out-of-range option ports as non-explicit ports.
+`runRoot` but resolves outside that root is blocked. If `runRoot` does not exist,
+the guard must still resolve ancestors above `runRoot` before allowing writes or
+watches. Link/symlink creation is forbidden after guard installation. The listen
+guard treats `undefined`, `null`, empty, NaN, and out-of-range option ports as
+non-explicit ports.
 
 ## 6. Dirty Worktree Policy
 
