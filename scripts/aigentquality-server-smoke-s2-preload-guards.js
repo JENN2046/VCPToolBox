@@ -127,14 +127,18 @@ function probeBlockedEventApiNames(probeReceipt) {
   return events.map((event) => event.apiName);
 }
 
-function probeBlockedListenEvents(probeReceipt) {
-  const events =
-    probeReceipt &&
+function probeBlockedEvents(probeReceipt) {
+  return probeReceipt &&
     probeReceipt.installReceiptAfterProbe &&
     Array.isArray(probeReceipt.installReceiptAfterProbe.blockedEvents)
-      ? probeReceipt.installReceiptAfterProbe.blockedEvents
-      : [];
-  return events.filter((event) => event.apiName === 'http.Server.listen');
+    ? probeReceipt.installReceiptAfterProbe.blockedEvents
+    : [];
+}
+
+function probeBlockedListenEvents(probeReceipt) {
+  return probeBlockedEvents(probeReceipt).filter(
+    (event) => event.apiName === 'http.Server.listen',
+  );
 }
 
 async function buildReceipt() {
@@ -196,6 +200,7 @@ async function buildReceipt() {
   }
 
   const blockedEventApiNames = probeBlockedEventApiNames(probeReceipt);
+  const blockedEvents = probeBlockedEvents(probeReceipt);
   const blockedListenEvents = probeBlockedListenEvents(probeReceipt);
 
   addCheck(checks, 'core git status read', coreGit.statusOk, coreGit.statusError || 'ok');
@@ -215,12 +220,30 @@ async function buildReceipt() {
   );
   addCheck(
     checks,
+    'runRoot symlink read escape guard observed',
+    blockedEvents.some(
+      (event) =>
+        event.apiName === 'fs.readFileSync' &&
+        event.reason === 'runRoot read target resolves outside allowed root',
+    ),
+    blockedEvents,
+  );
+  addCheck(
+    checks,
+    'symlink creation guard observed',
+    blockedEventApiNames.includes('fs.symlinkSync') &&
+      blockedEventApiNames.includes('fs.promises.symlink'),
+    blockedEventApiNames,
+  );
+  addCheck(
+    checks,
     'explicit localhost listen overload guards observed',
     [
       'listen host argument is not explicit',
       'listen host argument is not localhost',
       'listen options must specify TCP port and localhost host',
       'listen options host is not localhost',
+      'listen options port is not explicit',
     ].every((reason) =>
       blockedListenEvents.some((event) => event.reason === reason),
     ),

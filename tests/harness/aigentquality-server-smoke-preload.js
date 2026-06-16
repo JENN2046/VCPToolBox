@@ -11,6 +11,11 @@ const Module = require('module');
 
 const GUARD_BLOCKED_ERROR_CODE = 'AIGENTQUALITY_S2_GUARD_BLOCKED';
 const ALLOWED_LISTEN_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const ORIGINAL_FS_LSTAT_SYNC = fs.lstatSync.bind(fs);
+const ORIGINAL_FS_REALPATH_SYNC =
+  typeof fs.realpathSync.native === 'function'
+    ? fs.realpathSync.native.bind(fs.realpathSync)
+    : fs.realpathSync.bind(fs);
 
 const REQUIRED_GUARD_GROUPS = Object.freeze([
   'repository-read-guard',
@@ -108,6 +113,10 @@ const REQUIRED_WRITE_WATCH_GUARD_APIS = Object.freeze([
   'fs.unlinkSync',
   'fs.rm',
   'fs.rmSync',
+  'fs.link',
+  'fs.linkSync',
+  'fs.symlink',
+  'fs.symlinkSync',
   'fs.open',
   'fs.openSync',
   'fs.copyFile',
@@ -124,6 +133,8 @@ const REQUIRED_WRITE_WATCH_GUARD_APIS = Object.freeze([
   'fs.promises.rename',
   'fs.promises.unlink',
   'fs.promises.rm',
+  'fs.promises.link',
+  'fs.promises.symlink',
   'fs.promises.open',
   'fs.promises.copyFile',
   'fs.promises.cp',
@@ -219,6 +230,17 @@ function createGuardBlockedError(apiName, targetPath, reason) {
   return error;
 }
 
+function isExplicitTcpPort(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 && value <= 65535;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const port = Number(value);
+    return Number.isInteger(port) && port >= 0 && port <= 65535;
+  }
+  return false;
+}
+
 function parseExplicitListenHost(args) {
   if (args.length === 0) {
     return {
@@ -239,16 +261,23 @@ function parseExplicitListenHost(args) {
     const hasPort = Object.prototype.hasOwnProperty.call(firstArg, 'port');
     const hasPath = Object.prototype.hasOwnProperty.call(firstArg, 'path');
     const hasFd = Object.prototype.hasOwnProperty.call(firstArg, 'fd');
+    const hasExplicitPort = hasPort && isExplicitTcpPort(firstArg.port);
     const host =
       hasHost && typeof firstArg.host === 'string' ? firstArg.host : null;
     const isExplicitTcpHost =
-      hasPort && !hasPath && !hasFd && host && ALLOWED_LISTEN_HOSTS.has(host);
+      hasExplicitPort &&
+      !hasPath &&
+      !hasFd &&
+      host &&
+      ALLOWED_LISTEN_HOSTS.has(host);
     return {
       host,
       allowed: Boolean(isExplicitTcpHost),
       reason: isExplicitTcpHost
         ? 'explicit listen options host'
-        : host
+        : !hasExplicitPort
+          ? 'listen options port is not explicit'
+          : host
           ? 'listen options host is not localhost'
           : 'listen options must specify TCP port and localhost host',
     };
@@ -256,13 +285,17 @@ function parseExplicitListenHost(args) {
 
   if (typeof firstArg === 'number') {
     const host = typeof secondArg === 'string' ? secondArg : null;
-    const isExplicitHost = host && ALLOWED_LISTEN_HOSTS.has(host);
+    const hasExplicitPort = isExplicitTcpPort(firstArg);
+    const isExplicitHost =
+      hasExplicitPort && host && ALLOWED_LISTEN_HOSTS.has(host);
     return {
       host,
       allowed: Boolean(isExplicitHost),
       reason: isExplicitHost
         ? 'explicit listen host argument'
-        : host
+        : !hasExplicitPort
+          ? 'listen port argument is not explicit'
+          : host
           ? 'listen host argument is not localhost'
           : 'listen host argument is not explicit',
     };
@@ -431,6 +464,17 @@ function createGuardState(options = {}) {
   const allowedReadFiles = new Set(
     (options.allowedReadFiles || []).map(normalizePathForReceipt),
   );
+  const syntheticRealpathOverrides =
+    options.allowSyntheticRealpathOverrides === true
+      ? new Map(
+          Object.entries(options.syntheticRealpathOverrides || {}).map(
+            ([fromPath, toPath]) => [
+              normalizePathForReceipt(fromPath),
+              normalizePathForReceipt(toPath),
+            ],
+          ),
+        )
+      : new Map();
   const failures = [];
 
   if (!projectRoot) failures.push('projectRoot is required');
@@ -454,6 +498,7 @@ function createGuardState(options = {}) {
     harnessConfigPath,
     allowedReadRoots,
     allowedReadFiles,
+    syntheticRealpathOverrides,
     events: [],
     blocked: [],
     allowed: [],
@@ -472,11 +517,130 @@ function recordGuardEvent(state, entry) {
   if (event.decision === 'allowed') state.allowed.push(event);
 }
 
-function isAllowedReadTarget(state, targetPath) {
-  if (!targetPath) return false;
-  if (isPathUnder(targetPath, state.runRoot)) return true;
-  if (state.allowedReadFiles.has(path.resolve(targetPath))) return true;
-  return state.allowedReadRoots.some((root) => isPathUnder(targetPath, root));
+function realpathForGuard(state, targetPath) {
+  const normalizedTarget = normalizePathForReceipt(targetPath);
+  if (state.syntheticRealpathOverrides.has(normalizedTarget)) {
+    return state.syntheticRealpathOverrides.get(normalizedTarget);
+  }
+  return normalizePathForReceipt(ORIGINAL_FS_REALPATH_SYNC(normalizedTarget));
+}
+
+function pathExistsForGuard(state, targetPath) {
+  const normalizedTarget = normalizePathForReceipt(targetPath);
+  if (state.syntheticRealpathOverrides.has(normalizedTarget)) return true;
+  try {
+    ORIGINAL_FS_LSTAT_SYNC(normalizedTarget);
+    return true;
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function nearestExistingPathUnderRoot(state, targetPath, rootPath) {
+  let currentPath = normalizePathForReceipt(targetPath);
+  const root = normalizePathForReceipt(rootPath);
+  while (currentPath && isPathUnder(currentPath, root)) {
+    if (pathExistsForGuard(state, currentPath)) return currentPath;
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) break;
+    currentPath = parentPath;
+  }
+  return null;
+}
+
+function resolveAllowedReadRootTarget(state, targetPath, rootPath, rootName) {
+  if (!isPathUnder(targetPath, rootPath)) {
+    return { matched: false, allowed: false };
+  }
+
+  const nearestExistingPath = nearestExistingPathUnderRoot(
+    state,
+    targetPath,
+    rootPath,
+  );
+  if (!nearestExistingPath) {
+    return {
+      matched: true,
+      allowed: true,
+      reason: `${rootName} read target does not exist yet`,
+    };
+  }
+
+  const nearestRealPath = realpathForGuard(state, nearestExistingPath);
+  const rootRealPath = pathExistsForGuard(state, rootPath)
+    ? realpathForGuard(state, rootPath)
+    : rootPath;
+
+  if (
+    !isPathUnder(rootRealPath, rootPath) ||
+    !isPathUnder(nearestRealPath, rootRealPath)
+  ) {
+    return {
+      matched: true,
+      allowed: false,
+      reason: `${rootName} read target resolves outside allowed root`,
+      realPath: nearestRealPath,
+    };
+  }
+
+  return {
+    matched: true,
+    allowed: true,
+    reason: `allowed ${rootName} read target`,
+    realPath: nearestRealPath,
+  };
+}
+
+function resolveAllowedReadFileTarget(state, targetPath) {
+  const normalizedTarget = normalizePathForReceipt(targetPath);
+  if (!state.allowedReadFiles.has(normalizedTarget)) {
+    return { matched: false, allowed: false };
+  }
+  if (!pathExistsForGuard(state, normalizedTarget)) {
+    return {
+      matched: true,
+      allowed: true,
+      reason: 'allowed read file does not exist yet',
+    };
+  }
+  const realPath = realpathForGuard(state, normalizedTarget);
+  return {
+    matched: true,
+    allowed: realPath === normalizedTarget,
+    reason:
+      realPath === normalizedTarget
+        ? 'allowed reviewed read file'
+        : 'allowed read file resolves outside reviewed path',
+    realPath,
+  };
+}
+
+function resolveAllowedReadTarget(state, targetPath) {
+  if (!targetPath) return { matched: false, allowed: false };
+
+  const runRootDecision = resolveAllowedReadRootTarget(
+    state,
+    targetPath,
+    state.runRoot,
+    'runRoot',
+  );
+  if (runRootDecision.matched) return runRootDecision;
+
+  const fileDecision = resolveAllowedReadFileTarget(state, targetPath);
+  if (fileDecision.matched) return fileDecision;
+
+  for (const root of state.allowedReadRoots) {
+    const rootDecision = resolveAllowedReadRootTarget(
+      state,
+      targetPath,
+      root,
+      'allowlisted root',
+    );
+    if (rootDecision.matched) return rootDecision;
+  }
+
+  return { matched: false, allowed: false };
 }
 
 function guardPathAccess(state, apiName, target, accessKind) {
@@ -503,14 +667,23 @@ function guardPathAccess(state, apiName, target, accessKind) {
   );
 
   if (accessKind === 'read' || accessKind === 'directory-read') {
-    if (isAllowedReadTarget(state, targetPath)) {
+    const allowedReadTarget = resolveAllowedReadTarget(state, targetPath);
+    if (allowedReadTarget.matched) {
       recordGuardEvent(state, {
         apiName,
         accessKind,
         targetPath,
-        decision: 'allowed',
-        reason: 'allowed read target',
+        realPath: allowedReadTarget.realPath || null,
+        decision: allowedReadTarget.allowed ? 'allowed' : 'blocked',
+        reason: allowedReadTarget.reason,
       });
+      if (!allowedReadTarget.allowed) {
+        throw createGuardBlockedError(
+          apiName,
+          targetPath,
+          allowedReadTarget.reason,
+        );
+      }
       return targetPath;
     }
     if (underProjectRoot || underExternalPackageRoot) {
@@ -758,6 +931,30 @@ function installFsWriteWatchGuards(state, restores) {
     }
   }
 
+  for (const methodName of ['link', 'linkSync', 'symlink', 'symlinkSync']) {
+    if (
+      wrapMethod(restores, fs, methodName, (original) =>
+        function guardedFsLink(fromPath, toPath, ...rest) {
+          const targetPath = normalizeMaybePath(toPath);
+          recordGuardEvent(state, {
+            apiName: `fs.${methodName}`,
+            accessKind: 'write',
+            targetPath,
+            decision: 'blocked',
+            reason: 'link and symlink creation is forbidden in preload guard',
+          });
+          throw createGuardBlockedError(
+            `fs.${methodName}`,
+            targetPath,
+            'link and symlink creation is forbidden in preload guard',
+          );
+        },
+      )
+    ) {
+      state.installed.push(`fs.${methodName}`);
+    }
+  }
+
   for (const methodName of ['open', 'openSync']) {
     if (
       wrapMethod(restores, fs, methodName, (original) =>
@@ -857,6 +1054,30 @@ function installFsWriteWatchGuards(state, restores) {
               'write',
             );
             return original.call(this, fromPath, toPath, ...rest);
+          },
+        )
+      ) {
+        state.installed.push(`fs.promises.${methodName}`);
+      }
+    }
+
+    for (const methodName of ['link', 'symlink']) {
+      if (
+        wrapMethod(restores, fs.promises, methodName, (original) =>
+          function guardedFsPromisesLink(fromPath, toPath, ...rest) {
+            const targetPath = normalizeMaybePath(toPath);
+            recordGuardEvent(state, {
+              apiName: `fs.promises.${methodName}`,
+              accessKind: 'write',
+              targetPath,
+              decision: 'blocked',
+              reason: 'link and symlink creation is forbidden in preload guard',
+            });
+            throw createGuardBlockedError(
+              `fs.promises.${methodName}`,
+              targetPath,
+              'link and symlink creation is forbidden in preload guard',
+            );
           },
         )
       ) {
@@ -1035,7 +1256,21 @@ async function expectGuardBlock(receipt, name, action) {
 }
 
 async function runPreloadGuardSyntheticProbe(options = {}) {
-  const controller = installPreloadGuards(options);
+  const syntheticRunRootSymlinkPath = path.join(
+    options.runRoot,
+    'synthetic-link-to-core-config.env',
+  );
+  const controller = installPreloadGuards({
+    ...options,
+    allowSyntheticRealpathOverrides: true,
+    syntheticRealpathOverrides: {
+      ...(options.syntheticRealpathOverrides || {}),
+      [syntheticRunRootSymlinkPath]: path.join(
+        options.projectRoot,
+        'config.env',
+      ),
+    },
+  });
   const receipt = {
     mode: 'aigentquality-s2-preload-guard-synthetic-probe',
     startedServer: false,
@@ -1062,8 +1297,23 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     await expectGuardBlock(receipt, 'block repository directory read', () =>
       fs.readdirSync(projectRoot),
     );
+    await expectGuardBlock(receipt, 'block runRoot symlink read escape', () =>
+      fs.readFileSync(syntheticRunRootSymlinkPath, 'utf8'),
+    );
     await expectGuardBlock(receipt, 'block repository write', () =>
       fs.writeFileSync(path.join(projectRoot, 'tmp', 'guard-probe.txt'), 'x'),
+    );
+    await expectGuardBlock(receipt, 'block symlink creation', () =>
+      fs.symlinkSync(
+        path.join(projectRoot, 'config.env'),
+        path.join(options.runRoot, 'link-to-core-config.env'),
+      ),
+    );
+    await expectGuardBlock(receipt, 'block promises symlink creation', () =>
+      fs.promises.symlink(
+        path.join(projectRoot, 'config.env'),
+        path.join(options.runRoot, 'promises-link-to-core-config.env'),
+      ),
     );
     await expectGuardBlock(receipt, 'block promises copy destination write', () =>
       fs.promises.copyFile(
@@ -1105,6 +1355,22 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
       const server = http.createServer();
       try {
         server.listen({ port: 0, host: '0.0.0.0' });
+      } finally {
+        server.close();
+      }
+    });
+    await expectGuardBlock(receipt, 'block options undefined listen port', () => {
+      const server = http.createServer();
+      try {
+        server.listen({ port: undefined, host: 'localhost' });
+      } finally {
+        server.close();
+      }
+    });
+    await expectGuardBlock(receipt, 'block options null listen port', () => {
+      const server = http.createServer();
+      try {
+        server.listen({ port: null, host: 'localhost' });
       } finally {
         server.close();
       }
