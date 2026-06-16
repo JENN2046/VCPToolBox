@@ -53,6 +53,7 @@ const S2_PREPLAN_DOC = path.join(
 const EXPECTED_CORE_BASE = '7ec538fe76bcfb54d20c025ef6a5d8833b415d0e';
 const EXPECTED_EXTERNAL_HEAD = 'beb072b8ad1530dd62c526c71e4cc09930068685';
 const TARGET_PLUGIN_NAME = 'JennAIGentQualityTrial';
+const TARGET_ENTRYPOINT_TYPE = 'nodejs';
 const TARGET_ENTRYPOINT = 'node AIGentQuality.js';
 const EXACT_EXTERNAL_ALLOWLIST = `${TARGET_PLUGIN_NAME}@${EXTERNAL_PLUGIN_ROOT}`;
 const STATUS_GIT_GLOBAL_ARGS = ['--no-optional-locks'];
@@ -458,7 +459,8 @@ function buildReceipt() {
   addCheck(checks, 'S2 preplan names future preload', s2PreplanText.includes('tests/harness/aigentquality-server-smoke-preload.js'), rel(PRELOAD_FILE));
   addCheck(checks, 'manifest name matches target', manifest && manifest.name === TARGET_PLUGIN_NAME, manifest && manifest.name);
   addCheck(checks, 'manifest type is synchronous', manifest && manifest.pluginType === 'synchronous', manifest && manifest.pluginType);
-  addCheck(checks, 'manifest entry point is node stdio command', manifest && manifest.entryPoint && manifest.entryPoint.command === TARGET_ENTRYPOINT, manifest && manifest.entryPoint);
+  addCheck(checks, 'manifest entry point type is nodejs', manifest && manifest.entryPoint && manifest.entryPoint.type === TARGET_ENTRYPOINT_TYPE, manifest && manifest.entryPoint);
+  addCheck(checks, 'manifest entry point command matches target', manifest && manifest.entryPoint && manifest.entryPoint.command === TARGET_ENTRYPOINT, manifest && manifest.entryPoint);
   addCheck(checks, 'manifest protocol is stdio', manifest && manifest.communication && manifest.communication.protocol === 'stdio', manifest && manifest.communication);
   addCheck(
     checks,
