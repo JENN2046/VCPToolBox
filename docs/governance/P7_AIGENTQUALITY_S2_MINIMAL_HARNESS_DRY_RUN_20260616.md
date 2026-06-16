@@ -73,6 +73,7 @@ mode: aigentquality-s2-minimal-harness-dry-run
 dryRunAuthorized: true
 realServerStartAuthorized: false
 branch policy: record-only; not tied to the temporary author branch
+harness files clean by default: true
 startedServer: false
 importedServer: false
 spawnedServer: false
@@ -97,6 +98,11 @@ after merge to `main` or another clean checkout as long as the expected baseline
 commit is an ancestor of `HEAD`; it must not depend on the temporary author
 branch name.
 
+The reviewed harness files must be clean by default. Local edits to the parent
+runner, preload, or this implementation note must block `S2_HARNESS_DRY_RUN_READY`
+unless the caller explicitly passes `--allow-dev-dirty-harness` during local
+development. Do not use that flag as evidence for a reviewed S2 gate.
+
 A real listen smoke remains a later explicit authorization boundary.
 
 ## 5. Validation
@@ -108,6 +114,7 @@ node --check scripts/aigentquality-server-smoke-s2.js
 node --check tests/harness/aigentquality-server-smoke-preload.js
 node tests/harness/aigentquality-server-smoke-preload.js
 node scripts/aigentquality-server-smoke-s2.js --json
+node scripts/aigentquality-server-smoke-s2.js --json --allow-dev-dirty-harness
 node scripts/aigentquality-server-smoke-s2.js --json --strict-clean
 git diff --check -- scripts/aigentquality-server-smoke-s2.js tests/harness/aigentquality-server-smoke-preload.js docs/governance/P7_AIGENTQUALITY_S2_MINIMAL_HARNESS_DRY_RUN_20260616.md
 ```
@@ -117,6 +124,7 @@ Expected result:
 ```text
 preload self-test: CONTRACT_READY
 parent dry-run: S2_HARNESS_DRY_RUN_READY
+local dirty harness dry-run: requires --allow-dev-dirty-harness and is not reviewed-gate evidence
 strict clean: may block if this operator checkout contains ignored runtime/config artifacts
 server start: no
 server import: no

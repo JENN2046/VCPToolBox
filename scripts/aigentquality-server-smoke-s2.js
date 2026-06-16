@@ -142,7 +142,7 @@ const EXPECTED_COMMANDS = Object.freeze([
   'InspectImage',
 ]);
 
-const ALLOWED_DIRTY_PATHS = Object.freeze([
+const DEVELOPMENT_ALLOWED_DIRTY_PATHS = Object.freeze([
   rel(PRELOAD_FILE),
   rel(path.join(PROJECT_ROOT, 'scripts', 'aigentquality-server-smoke-s2.js')),
   rel(S2_IMPLEMENTATION_DOC),
@@ -380,6 +380,7 @@ function buildReceipt() {
   const executeServerRequested = args.has('--execute-server');
   const jsonMode = args.has('--json');
   const strictClean = args.has('--strict-clean');
+  const allowDevDirtyHarness = args.has('--allow-dev-dirty-harness');
   const plannedRunRoot = path.join(
     os.tmpdir(),
     'vcptoolbox-aigentquality-server-smoke-DRYRUN-NOT-CREATED',
@@ -397,7 +398,9 @@ function buildReceipt() {
   const externalIgnoredRuntimeStatusEntries = statusEntries(
     externalIgnoredRuntime.statusShort,
   );
-  const allowedDirtySet = new Set(ALLOWED_DIRTY_PATHS);
+  const allowedDirtySet = new Set(
+    allowDevDirtyHarness ? DEVELOPMENT_ALLOWED_DIRTY_PATHS : [],
+  );
   const disallowedCoreStatusEntries = coreStatusEntries.filter((entry) =>
     entry.paths.some((statusPath) => !allowedDirtySet.has(statusPath)),
   );
@@ -545,6 +548,7 @@ function buildReceipt() {
       realServerStartAuthorized: false,
       executeServerRequested,
       strictClean,
+      allowDevDirtyHarness,
     },
     safetyAssertions: {
       startedServer: false,
@@ -583,7 +587,8 @@ function buildReceipt() {
         statusOk: coreGit.statusOk,
         statusError: coreGit.statusError,
         statusShort: coreGit.statusShort || '',
-        allowedDirtyPaths: ALLOWED_DIRTY_PATHS,
+        allowedDirtyPaths: [...allowedDirtySet],
+        developmentAllowedDirtyPaths: DEVELOPMENT_ALLOWED_DIRTY_PATHS,
         disallowedCoreStatusEntries,
         ignoredRuntimeStatusShort: coreIgnoredRuntime.statusShort || '',
         ignoredRuntimeStatusEntries: coreIgnoredRuntimeStatusEntries,
@@ -604,6 +609,8 @@ function buildReceipt() {
       statusGitGlobalArgs: STATUS_GIT_GLOBAL_ARGS,
       statusUntrackedMode: 'all',
       strictClean,
+      allowDevDirtyHarness,
+      harnessFilesMustBeCleanByDefault: true,
       ignoredRuntimeArtifactsBlockDryRunOnlyUnderStrictClean: true,
       sensitiveIgnoredRuntimePathspecs: SENSITIVE_IGNORED_RUNTIME_PATHS,
       ignoredRuntimeExcludedPathspecs: IGNORED_RUNTIME_EXCLUDED_PATHS,
