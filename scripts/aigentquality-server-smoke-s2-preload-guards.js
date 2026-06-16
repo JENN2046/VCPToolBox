@@ -239,6 +239,20 @@ async function buildReceipt() {
   );
   addCheck(
     checks,
+    'canonical repository read guard observed',
+    okProbeNames.includes('block canonical repository config read') &&
+      blockedEvents.some(
+        (event) =>
+          event.apiName === 'fs.readFileSync' &&
+          event.reason === 'repository read target is not allowlisted' &&
+          String(event.targetPath || '').includes(
+            'synthetic-canonical-project-root',
+          ),
+      ),
+    blockedEvents,
+  );
+  addCheck(
+    checks,
     'runRoot symlink write/watch escape guards observed',
     ['fs.writeFileSync', 'fs.watch'].every((apiName) =>
       blockedEvents.some(

@@ -491,9 +491,11 @@ function createGuardState(options = {}) {
     throw error;
   }
 
-  return {
+  const state = {
     projectRoot,
     externalPackageRoot,
+    canonicalProjectRoot: null,
+    canonicalExternalPackageRoot: null,
     runRoot,
     harnessConfigPath,
     allowedReadRoots,
@@ -505,6 +507,14 @@ function createGuardState(options = {}) {
     installed: [],
     uninstalled: false,
   };
+
+  state.canonicalProjectRoot = realpathForGuard(state, projectRoot);
+  state.canonicalExternalPackageRoot = realpathForGuard(
+    state,
+    externalPackageRoot,
+  );
+
+  return state;
 }
 
 function recordGuardEvent(state, entry) {
@@ -593,8 +603,7 @@ function resolveAllowedRootTarget(state, targetPath, rootPath, rootName) {
   }
 
   if (
-    isPathUnder(rootResolution.resolvedPath, state.projectRoot) ||
-    isPathUnder(rootResolution.resolvedPath, state.externalPackageRoot)
+    isGuardedRepositoryPath(state, rootResolution.resolvedPath)
   ) {
     return {
       matched: true,
@@ -619,6 +628,29 @@ function resolveAllowedRootTarget(state, targetPath, rootPath, rootName) {
     reason: `allowed ${rootName} target`,
     realPath: targetResolution.resolvedPath,
   };
+}
+
+function guardedRepositoryRoots(state) {
+  return [
+    state.projectRoot,
+    state.externalPackageRoot,
+    state.canonicalProjectRoot,
+    state.canonicalExternalPackageRoot,
+  ].filter(Boolean);
+}
+
+function isGuardedRepositoryPath(state, targetPath) {
+  const normalizedTarget = normalizePathForReceipt(targetPath);
+  const targetResolution = resolvePathThroughNearestExistingAncestor(
+    state,
+    normalizedTarget,
+  );
+  const resolvedTarget = targetResolution ? targetResolution.resolvedPath : null;
+  return guardedRepositoryRoots(state).some(
+    (root) =>
+      isPathUnder(normalizedTarget, root) ||
+      (resolvedTarget && isPathUnder(resolvedTarget, root)),
+  );
 }
 
 function resolveAllowedReadFileTarget(state, targetPath) {
@@ -693,11 +725,7 @@ function guardPathAccess(state, apiName, target, accessKind) {
     );
   }
 
-  const underProjectRoot = isPathUnder(targetPath, state.projectRoot);
-  const underExternalPackageRoot = isPathUnder(
-    targetPath,
-    state.externalPackageRoot,
-  );
+  const underGuardedRepositoryRoot = isGuardedRepositoryPath(state, targetPath);
 
   if (accessKind === 'read' || accessKind === 'directory-read') {
     const allowedReadTarget = resolveAllowedReadTarget(state, targetPath);
@@ -719,7 +747,7 @@ function guardPathAccess(state, apiName, target, accessKind) {
       }
       return targetPath;
     }
-    if (underProjectRoot || underExternalPackageRoot) {
+    if (underGuardedRepositoryRoot) {
       recordGuardEvent(state, {
         apiName,
         accessKind,
@@ -1234,6 +1262,8 @@ function buildPreloadGuardInstallReceipt(state) {
     realServerStartAuthorized: false,
     projectRoot: state.projectRoot,
     externalPackageRoot: state.externalPackageRoot,
+    canonicalProjectRoot: state.canonicalProjectRoot,
+    canonicalExternalPackageRoot: state.canonicalExternalPackageRoot,
     runRoot: state.runRoot,
     harnessConfigPath: state.harnessConfigPath,
     requiredGuardGroups: [...REQUIRED_GUARD_GROUPS],
@@ -1326,11 +1356,21 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
     options.runRoot,
     'canonical-temp-parent-source.txt',
   );
+  const syntheticCanonicalProjectRootPath = path.join(
+    path.dirname(options.projectRoot),
+    'synthetic-canonical-project-root',
+  );
+  const syntheticCanonicalProjectConfigPath = path.join(
+    syntheticCanonicalProjectRootPath,
+    'config.env',
+  );
   const controller = installPreloadGuards({
     ...options,
     allowSyntheticRealpathOverrides: true,
     syntheticRealpathOverrides: {
       ...(options.syntheticRealpathOverrides || {}),
+      [options.projectRoot]: syntheticCanonicalProjectRootPath,
+      [syntheticCanonicalProjectConfigPath]: syntheticCanonicalProjectConfigPath,
       [syntheticRunRootSymlinkPath]: path.join(
         options.projectRoot,
         'config.env',
@@ -1410,6 +1450,9 @@ async function runPreloadGuardSyntheticProbe(options = {}) {
   try {
     await expectGuardBlock(receipt, 'block repository config read', () =>
       fs.readFileSync(path.join(projectRoot, 'config.env'), 'utf8'),
+    );
+    await expectGuardBlock(receipt, 'block canonical repository config read', () =>
+      fs.readFileSync(syntheticCanonicalProjectConfigPath, 'utf8'),
     );
     await expectGuardBlock(receipt, 'block repository directory read', () =>
       fs.readdirSync(projectRoot),

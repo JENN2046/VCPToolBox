@@ -44,6 +44,7 @@ code in this gate, and the probe uninstalls all monkeypatches before returning.
 - install guard primitives in the current test process;
 - run synthetic blocked operations against reviewed repository paths;
 - verify the guard blocks repository config reads;
+- verify the guard blocks canonical repository config reads;
 - verify the guard blocks repository directory enumeration;
 - verify the guard blocks `runRoot` symlink read/write/watch escapes;
 - verify the guard blocks missing-`runRoot` ancestor write/watch escapes;
@@ -94,6 +95,7 @@ The nested synthetic probe must show:
 mode: aigentquality-s2-preload-guard-synthetic-probe
 result: PRELOAD_GUARD_PROBE_READY
 block repository config read: blocked
+block canonical repository config read: blocked
 block repository directory read: blocked
 block runRoot symlink read escape: blocked
 block repository write: blocked
@@ -134,6 +136,11 @@ safe symlinked temp parents such as `/tmp -> /private/tmp` do not block before
 the destination write guard can run. Link/symlink creation is forbidden after
 guard installation. The listen guard treats `undefined`, `null`, empty, NaN, and
 out-of-range option ports as non-explicit ports.
+
+Repository read checks must compare both lexical and canonical repository roots.
+If the checkout or external package is reached through a symlinked path, reads
+through the canonical realpath still count as repository reads and must be
+blocked unless explicitly allowlisted.
 
 ## 6. Dirty Worktree Policy
 
