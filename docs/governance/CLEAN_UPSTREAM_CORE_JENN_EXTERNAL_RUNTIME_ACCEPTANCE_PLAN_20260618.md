@@ -80,7 +80,7 @@ N/A       不适用
   当前厚 fork，只读参考源与行为对照来源
 ```
 
-当前本机可将 `%WORKSPACE_PARENT%` 映射为 `A:\AGENTS_OS_Workspace\runtime`，但该映射只用于本机执行，不作为跨环境规范。
+具体本机路径不在本计划主文档中固化；由 Phase 0 只读基线确认任务书记录当次执行映射。
 
 ## 5. 分域验收表
 
@@ -324,7 +324,7 @@ core 写入私有本地路径或具体 trial id
 没有 checksum 就删除旧文件
 没有 parity checklist 就宣称迁移完成
 为了接外部包大改 Plugin.js / server.js / AdminPanel
-外部 repo / remote / release / deploy 未授权执行
+external repo writes / remote writes / release / deploy 未授权执行
 ```
 
 ## 10. 当前建议
