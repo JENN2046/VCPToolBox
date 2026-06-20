@@ -71,7 +71,7 @@ M7 决策完成：10 / 10
 
 ## 3. 当前 Sprint 清单
 
-当前 sprint 只展开 M1 和 M2 起步任务。后续 milestone 等任务书写好后再展开，不提前摊开。
+当前 sprint 已展开到 M7 决策完成。M8 upstream PR / 长期 rebase workflow 尚未展开，因为不自动打开 upstream PR。
 
 | 完成 | ID | 父项 | 权重 | 任务 | Status | 证据 |
 | --- | --- | --- | ---: | --- | --- | --- |
@@ -84,6 +84,19 @@ M7 决策完成：10 / 10
 | [x] | S7 | M2 | 3 | 落地完整 denylist / `.gitignore` baseline | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S7_DENYLIST_GITIGNORE_BASELINE_20260621.md`；复用 AGENTS sensitive paths、S2 harness sensitive pathspecs、P3E taxonomy；保留 `Plugin/**/dist/**`，默认排除 `.agent_board/**`。 |
 | [x] | S8 | M2 | 3 | 定义 LocalState skeleton 和 `.agent_board/**` 人工 gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S8_LOCALSTATE_AGENT_BOARD_GATE_20260621.md`；LocalState private-by-default；`.agent_board/**` 有单独 gate，默认 blocked，不能自动 copy/checksum/migrate。 |
 | [x] | S9 | M2 | 3 | 定义 manifests / checksum 规则 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S9_MANIFEST_CHECKSUM_RULES_20260621.md`；先 denylist / paths-only secret-risk scan，再生成 `MANIFEST.sha256`；checksum 不等于 runtime registration proof。 |
+| [x] | S10 | M3 | 4 | 确认 `JennAIGentOrchestrator` external copy-first pilot | PASS | External package `Plugin/JennAIGentOrchestrator/`；manifest identity `JennAIGentOrchestrator`；runtime payload refresh limited to reviewed source files；source `.disabled` 未复制。 |
+| [x] | S11 | M3 | 4 | 路径级 secret-risk scan 和 pilot checksum | PASS | `SOURCE_PATH_SCAN_CLEAN count=5`；`TARGET_POST_COPY_PATH_SCAN_CLEAN count=4`；`PACKAGE_PATH_SCAN_CLEAN count=29`；`MANIFEST_VERIFY_PASS count=4`。 |
+| [x] | S12 | M3 | 4 | 写入 M3 external receipt 并记录 tracker | PASS | External package commit `b4f250e`；`receipts/M3_JENN_AIGENT_ORCHESTRATOR_COPY_FIRST_RECEIPT_20260621.md`；core tracker commit `f8b798bc`。 |
+| [x] | S13 | M4 | 3 | 验证 external discovery / registration gate | PASS | `node tests/plugin-external-dirs.test.js`：`14 pass / 0 fail`；`node tests/plugin-external-runtime-registration-gate.test.js`：`6 pass / 0 fail`；`node tests/plugin-external-runtime-direct-policy.test.js`：`5 pass / 0 fail`。 |
+| [x] | S14 | M4 | 4 | 执行 Jenn no-provider shadow validation | PASS | `node scripts/run-jenn-aigent-orchestrator-plugin-execution-validation-harness.js --stage8-no-provider-external-plugin-execution-proof`：PASS；provider/image/LocalState/server/runtime cutover 均为 no。 |
+| [x] | S15 | M4 | 3 | 执行 rollback overlay drill 并写 receipt | PASS | `node scripts/run-jenn-aigent-orchestrator-rollback-drill-harness.js --stage88-rollback-drill-proof`：PASS；`docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M4_SHADOW_VALIDATION_ROLLBACK_RECEIPT_20260621.md`。 |
+| [x] | S16 | M5 | 4 | 定义 Agent externalization contract | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M5_AGENT_LOCALSTATE_ADMIN_CONTRACTS_20260621.md`；定义 `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS`；docs-only。 |
+| [x] | S17 | M5 | 5 | 定义 LocalState contract | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M5_AGENT_LOCALSTATE_ADMIN_CONTRACTS_20260621.md`；定义 `VCP_LOCAL_STATE_DIR`；LocalState 非 plugin/Agent/Admin root；`.agent_board/**` 仍 blocked。 |
+| [x] | S18 | M5 | 5 | 定义 AdminPanel extension contract | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M5_AGENT_LOCALSTATE_ADMIN_CONTRACTS_20260621.md`；定义 `VCP_ADMIN_EXTENSION_DIRS`；未运行 AdminPanel build；未注册 route。 |
+| [x] | S19 | M6 | 5 | 定义 AI Image adapter 外置边界 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；generic adapter、provider-off、无 Jenn trial/provider 常量写回 core。 |
+| [x] | S20 | M6 | 4 | 定义 Codex/Memory 外置边界 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；manifest/path/fixture-only validation；不读取 private memory。 |
+| [x] | S21 | M6 | 5 | 定义 PhotoStudio 外置边界 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；no-auto-write；项目数据留在 LocalState/private lane。 |
+| [x] | S22 | M7 | 10 | 完成 stub / untrack / remove 决策包但不执行 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M7_STUB_UNTRACK_REMOVE_DECISION_20260621.md`；决策：keep core fallback；不 delete/untrack/stub；不改 dispatch；不打开 upstream PR。 |
 
 M1 完成规则：
 
@@ -98,6 +111,17 @@ M2 起步规则：
 copy-first 迁移开始前，S6-S9 必须先被规划并验收。
 M2 只有在 External Runtime 和 LocalState skeleton 都具备 denylist 与 checksum 规则后，才能变成 PASS。
 当前 M2 进度：S6+S7+S8+S9 = 12 / 12。
+```
+
+M3-M7 完成规则：
+
+```text
+M3：S10+S11+S12 = 12 / 12。
+M4：S13+S14+S15 = 10 / 10。
+M5：S16+S17+S18 = 14 / 14。
+M6：S19+S20+S21 = 14 / 14。
+M7：S22 = 10 / 10；这是决策完成，不是 delete/untrack/stub 执行完成。
+M8 尚未展开，因为 upstream PR 不自动打开。
 ```
 
 ## 4. 后续领域展开
