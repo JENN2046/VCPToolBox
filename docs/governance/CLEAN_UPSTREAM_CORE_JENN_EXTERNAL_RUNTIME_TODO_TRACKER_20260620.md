@@ -1,6 +1,6 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [#########-] 87% (87 / 100)
+Progress: [#########-] 94% (94 / 100)
 
 Last updated: 2026-06-21
 
@@ -53,7 +53,7 @@ Last updated: 2026-06-21
 | [x] | M5 | 14 | Agent / LocalState / AdminPanel contracts | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M5_AGENT_LOCALSTATE_ADMIN_CONTRACTS_20260621.md`；定义 `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS`、`VCP_LOCAL_STATE_DIR`、`VCP_ADMIN_EXTENSION_DIRS`；docs-only。 |
 | [x] | M6 | 14 | AI Image / Codex-Memory / PhotoStudio 外置化 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；定义 adapter / memory / PhotoStudio 外置边界；clean core 不放 private state；docs-only。 |
 | [x] | M7 | 10 | Stub / untrack / remove 决策 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M7_STUB_UNTRACK_REMOVE_DECISION_20260621.md`；决策完成：keep core fallback，不执行 delete/untrack/stub，不改 dispatch，不开 upstream PR。 |
-| [ ] | M8 | 10 | Upstream PR 和长期 rebase workflow | TODO | 只有 Jenn fork 内部验收完成后，才打开 upstream PR。 |
+| [ ] | M8 | 10 | Upstream PR 和长期 rebase workflow | PARTIAL | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md`；workflow / rebase gate ready；upstream/main `f8d45479` 预检无重叠文件；打开 upstream PR 仍需当前轮明确人工授权。 |
 
 当前计分：
 
@@ -66,12 +66,13 @@ M4 已完成：10 / 10
 M5 已完成：14 / 14
 M6 已完成：14 / 14
 M7 决策完成：10 / 10
-全局总分：87 / 100
+M8 部分完成：7 / 10
+全局总分：94 / 100
 ```
 
 ## 3. 当前 Sprint 清单
 
-当前 sprint 已展开到 M7 决策完成。M8 upstream PR / 长期 rebase workflow 尚未展开，因为不自动打开 upstream PR。
+当前 sprint 已展开到 M8 upstream PR / 长期 rebase workflow。M8 可以完成 workflow / rebase gate，但不自动打开 upstream PR。
 
 | 完成 | ID | 父项 | 权重 | 任务 | Status | 证据 |
 | --- | --- | --- | ---: | --- | --- | --- |
@@ -97,6 +98,9 @@ M7 决策完成：10 / 10
 | [x] | S20 | M6 | 4 | 定义 Codex/Memory 外置边界 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；manifest/path/fixture-only validation；不读取 private memory。 |
 | [x] | S21 | M6 | 5 | 定义 PhotoStudio 外置边界 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；no-auto-write；项目数据留在 LocalState/private lane。 |
 | [x] | S22 | M7 | 10 | 完成 stub / untrack / remove 决策包但不执行 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M7_STUB_UNTRACK_REMOVE_DECISION_20260621.md`；决策：keep core fallback；不 delete/untrack/stub；不改 dispatch；不打开 upstream PR。 |
+| [x] | S23 | M8 | 3 | 准备 upstream PR readiness packet | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md`；明确 upstream candidate 只能来自 `origin/codex/upstream-main-clean-base` / Phase 1 generic contract，不使用 M2-M8 governance branch 直接开 PR。 |
+| [x] | S24 | M8 | 4 | 定义长期 rebase workflow 和 conflict budget | PASS | `upstream/main` 已 fetch 到 `f8d45479`；merge-base `f901f1a9`；read-only preflight：upstream changed files `12`、clean-base changed files `11`、intersection `0`、merge-tree conflict markers none observed。 |
+| [ ] | S25 | M8 | 3 | 人工授权后打开 upstream PR | BLOCKED | 不自动打开 upstream PR；需要当前轮明确授权目标仓库 `lioensky/VCPToolBox`、source branch、target branch 和 action `open upstream PR`。 |
 
 M1 完成规则：
 
@@ -121,7 +125,7 @@ M4：S13+S14+S15 = 10 / 10。
 M5：S16+S17+S18 = 14 / 14。
 M6：S19+S20+S21 = 14 / 14。
 M7：S22 = 10 / 10；这是决策完成，不是 delete/untrack/stub 执行完成。
-M8 尚未展开，因为 upstream PR 不自动打开。
+M8：S23+S24 = 7 / 10；S25 需要人工授权后才能打开 upstream PR，当前保持 BLOCKED。
 ```
 
 ## 4. 后续领域展开
@@ -148,7 +152,7 @@ M8 尚未展开，因为 upstream PR 不自动打开。
 | Phase 1 validation 稳定 | 在 final head `a4225aca` 上通过 syntax checks 和 6-test command：`65 pass / 0 fail` | PASS |
 | Phase 边界清楚 | Phase 2 copy-first/checksum/denylist 不混进 PR #272 | PASS |
 | 没有 secret/runtime 文件 | diff 不包含 env、config、state、cache、log、image、auth material | PASS for PR #272 |
-| Upstream 目标决策 | 只有内部验收完成后，才打开新的 upstream PR | TODO |
+| Upstream 目标决策 | M8 workflow / rebase gate ready；latest upstream/main `f8d45479`；打开 upstream PR 仍需当前轮明确人工授权 | BLOCKED |
 
 ## 6. 回滚说明
 
