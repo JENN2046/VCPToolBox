@@ -8,7 +8,9 @@ const pluginManager = require('../Plugin.js');
 const { classifyExternalPluginManifest } = require('../modules/externalPluginSafetyGate');
 const {
     createPluginRootResolver,
-    splitPathList
+    splitPathList,
+    discoverLegacyManifestRecordsFromRoot,
+    BLOCKED_MANIFEST_FILE_NAME
 } = require('../modules/pluginRootResolver');
 
 after(() => {
@@ -26,6 +28,17 @@ function writeLegacyManifest(root, folderName, manifest) {
     fs.mkdirSync(pluginDir, { recursive: true });
     fs.writeFileSync(
         path.join(pluginDir, 'plugin-manifest.json'),
+        JSON.stringify(manifest, null, 2),
+        'utf8'
+    );
+    return pluginDir;
+}
+
+function writeBlockedLegacyManifest(root, folderName, manifest) {
+    const pluginDir = path.join(root, folderName);
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+        path.join(pluginDir, BLOCKED_MANIFEST_FILE_NAME),
         JSON.stringify(manifest, null, 2),
         'utf8'
     );
@@ -94,6 +107,39 @@ test('legacy external discovery reads plugin-manifest.json without executing plu
         assert.equal(safetyDecision.isExternal, true);
         assert.equal(safetyDecision.decision, 'would_block');
         assert.equal(safetyDecision.risk, 'executes_process');
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('legacy external discovery reads blocked manifests as disabled evidence without .disabled', async () => {
+    const root = makeTempDir();
+    const pluginDir = writeBlockedLegacyManifest(root, 'JennAIGentOrchestrator', {
+        name: 'JennAIGentOrchestrator',
+        displayName: 'Jenn AIGent Orchestrator',
+        pluginType: 'synchronous',
+        entryPoint: { command: 'node AIGentOrchestrator.js' },
+        communication: { protocol: 'stdio', timeout: 1000 }
+    });
+
+    try {
+        assert.equal(fs.existsSync(path.join(pluginDir, '.disabled')), false);
+
+        const result = await discoverLegacyManifestRecordsFromRoot({
+            rootId: 'external:1',
+            source: 'external',
+            rootPath: root,
+            displayPath: '[external]/Plugin',
+            allowConfigEnv: false
+        });
+
+        assert.deepEqual(result.diagnostics, []);
+        assert.equal(result.records.length, 1);
+        assert.equal(result.records[0].name, 'JennAIGentOrchestrator');
+        assert.equal(result.records[0].enabled, false);
+        assert.equal(result.records[0].manifestPath, path.join(pluginDir, BLOCKED_MANIFEST_FILE_NAME));
+        assert.equal(result.records[0].source, 'external');
+        assert.equal(result.records[0].allowConfigEnv, false);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }

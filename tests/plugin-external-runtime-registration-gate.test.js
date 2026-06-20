@@ -155,6 +155,47 @@ test('external same-name plugin cannot override an existing core plugin', async 
     });
 });
 
+test('JennAIGentOrchestrator registers beside AIGentOrchestrator core fallback with exact policy', async () => {
+    await withPluginManagerState(async ({ warnings }) => {
+        const workspaceRoot = makeTempDir();
+        const externalPackageRoot = path.join(workspaceRoot, 'VCPToolBox-JENN-Extensions');
+        const externalPluginRoot = path.join(externalPackageRoot, 'Plugin');
+        try {
+            const coreFallbackManifest = {
+                name: 'AIGentOrchestrator',
+                displayName: 'AIGent Orchestrator',
+                pluginSource: 'legacy',
+                pluginType: 'synchronous',
+                entryPoint: { command: 'node AIGentOrchestrator.js' },
+                communication: { protocol: 'stdio' },
+                basePath: path.join(workspaceRoot, 'Plugin', 'AIGentOrchestrator')
+            };
+            pluginManager.plugins.set(coreFallbackManifest.name, coreFallbackManifest);
+
+            const externalManifest = makeExternalManifest(externalPluginRoot, {
+                name: 'JennAIGentOrchestrator',
+                pluginRootId: 'external:1',
+                pluginRootDisplayPath: '[external]/Plugin'
+            });
+            process.env.VCP_EXTERNAL_PLUGIN_ALLOWLIST = `${externalManifest.name}@${externalPluginRoot}`;
+
+            const registered = await pluginManager._registerLocalPlugin(externalManifest, new Map(), []);
+
+            assert.equal(registered, true);
+            assert.equal(pluginManager.plugins.get('AIGentOrchestrator'), coreFallbackManifest);
+            assert.equal(pluginManager.plugins.get('JennAIGentOrchestrator'), externalManifest);
+            assert.notEqual(externalManifest.name, coreFallbackManifest.name);
+            assert.equal(
+                externalManifest.basePath,
+                path.join(externalPackageRoot, 'Plugin', 'JennAIGentOrchestrator')
+            );
+            assert.doesNotMatch(warnings.join('\n'), /duplicate_core_name|duplicateOfBuiltIn/);
+        } finally {
+            fs.rmSync(workspaceRoot, { recursive: true, force: true });
+        }
+    });
+});
+
 test('blocked external direct plugin is not required during registration', async () => {
     await withPluginManagerState(async () => {
         const root = makeTempDir();
