@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [#####-----] 49% (49 / 100)
+Progress: [#########-] 87% (87 / 100)
 
 Last updated: 2026-06-21
 
-当前里程碑：M5 - Agent / LocalState / AdminPanel contracts
+当前里程碑：M8 - Upstream PR 和长期 rebase workflow
 
 状态来源：
 
@@ -50,9 +50,9 @@ Last updated: 2026-06-21
 | [x] | M2 | 12 | External Runtime / LocalState skeleton | PASS | S6 任务书、S7 denylist / `.gitignore` baseline、S8 LocalState / `.agent_board/**` gate、S9 manifest / checksum rules 已写；M3 copy-first 仍需单独执行。 |
 | [x] | M3 | 12 | `JennAIGentOrchestrator` copy-first 试点 | PASS | External package commit `b4f250e`；receipt `receipts/M3_JENN_AIGENT_ORCHESTRATOR_COPY_FIRST_RECEIPT_20260621.md`；paths-only scan clean；`MANIFEST_VERIFY_PASS count=4`；manifest identity `JennAIGentOrchestrator`。 |
 | [x] | M4 | 10 | Shadow validation 和 rollback 演练 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M4_SHADOW_VALIDATION_ROLLBACK_RECEIPT_20260621.md`；external discovery / registration gate tests `14+6+5 pass`；Jenn no-provider shadow harness PASS；rollback overlay PASS。 |
-| [ ] | M5 | 14 | Agent / LocalState / AdminPanel contracts | TODO | 需要 `VCP_AGENT_DIRS`、`VCP_LOCAL_STATE_DIR`、Admin extension contract。 |
-| [ ] | M6 | 14 | AI Image / Codex-Memory / PhotoStudio 外置化 | TODO | 需要 adapter 边界，并证明 clean core 不含 private state。 |
-| [ ] | M7 | 10 | Stub / untrack / remove 决策 | TODO | 必须先完成 copy-first、checksum、validation、rollback 和人工确认。 |
+| [x] | M5 | 14 | Agent / LocalState / AdminPanel contracts | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M5_AGENT_LOCALSTATE_ADMIN_CONTRACTS_20260621.md`；定义 `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS`、`VCP_LOCAL_STATE_DIR`、`VCP_ADMIN_EXTENSION_DIRS`；docs-only。 |
+| [x] | M6 | 14 | AI Image / Codex-Memory / PhotoStudio 外置化 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；定义 adapter / memory / PhotoStudio 外置边界；clean core 不放 private state；docs-only。 |
+| [x] | M7 | 10 | Stub / untrack / remove 决策 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M7_STUB_UNTRACK_REMOVE_DECISION_20260621.md`；决策完成：keep core fallback，不执行 delete/untrack/stub，不改 dispatch，不开 upstream PR。 |
 | [ ] | M8 | 10 | Upstream PR 和长期 rebase workflow | TODO | 只有 Jenn fork 内部验收完成后，才打开 upstream PR。 |
 
 当前计分：
@@ -63,7 +63,10 @@ M1 已完成并内部合并：12 / 12
 M2 已完成：12 / 12
 M3 已完成：12 / 12
 M4 已完成：10 / 10
-全局总分：49 / 100
+M5 已完成：14 / 14
+M6 已完成：14 / 14
+M7 决策完成：10 / 10
+全局总分：87 / 100
 ```
 
 ## 3. 当前 Sprint 清单
