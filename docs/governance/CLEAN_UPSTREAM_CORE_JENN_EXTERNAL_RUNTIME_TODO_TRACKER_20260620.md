@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [####------] 39% (39 / 100)
+Progress: [#####-----] 49% (49 / 100)
 
 Last updated: 2026-06-21
 
-当前里程碑：M4 - Shadow validation 和 rollback 演练
+当前里程碑：M5 - Agent / LocalState / AdminPanel contracts
 
 状态来源：
 
@@ -49,7 +49,7 @@ Last updated: 2026-06-21
 | [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 已合并到 Jenn clean base；merge commit `86c69e8d`；final head `a4225aca`；review threads 全部 resolved；6-test 复跑：`65 pass / 0 fail`。 |
 | [x] | M2 | 12 | External Runtime / LocalState skeleton | PASS | S6 任务书、S7 denylist / `.gitignore` baseline、S8 LocalState / `.agent_board/**` gate、S9 manifest / checksum rules 已写；M3 copy-first 仍需单独执行。 |
 | [x] | M3 | 12 | `JennAIGentOrchestrator` copy-first 试点 | PASS | External package commit `b4f250e`；receipt `receipts/M3_JENN_AIGENT_ORCHESTRATOR_COPY_FIRST_RECEIPT_20260621.md`；paths-only scan clean；`MANIFEST_VERIFY_PASS count=4`；manifest identity `JennAIGentOrchestrator`。 |
-| [ ] | M4 | 10 | Shadow validation 和 rollback 演练 | TODO | 需要 discovery、disabled、exact allowlist、rollback proof。 |
+| [x] | M4 | 10 | Shadow validation 和 rollback 演练 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M4_SHADOW_VALIDATION_ROLLBACK_RECEIPT_20260621.md`；external discovery / registration gate tests `14+6+5 pass`；Jenn no-provider shadow harness PASS；rollback overlay PASS。 |
 | [ ] | M5 | 14 | Agent / LocalState / AdminPanel contracts | TODO | 需要 `VCP_AGENT_DIRS`、`VCP_LOCAL_STATE_DIR`、Admin extension contract。 |
 | [ ] | M6 | 14 | AI Image / Codex-Memory / PhotoStudio 外置化 | TODO | 需要 adapter 边界，并证明 clean core 不含 private state。 |
 | [ ] | M7 | 10 | Stub / untrack / remove 决策 | TODO | 必须先完成 copy-first、checksum、validation、rollback 和人工确认。 |
@@ -62,7 +62,8 @@ M0 部分基线分：3 / 6
 M1 已完成并内部合并：12 / 12
 M2 已完成：12 / 12
 M3 已完成：12 / 12
-全局总分：39 / 100
+M4 已完成：10 / 10
+全局总分：49 / 100
 ```
 
 ## 3. 当前 Sprint 清单
