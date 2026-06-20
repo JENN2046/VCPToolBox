@@ -2,7 +2,7 @@
 
 Date: 2026-06-21
 
-Status: WORKFLOW_READY_UPSTREAM_PR_BLOCKED_BY_HUMAN_GATE
+Status: WORKFLOW_READY_UPSTREAM_PR_DEFERRED_BY_USER
 
 Parent tracker: `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_TODO_TRACKER_20260620.md`
 
@@ -11,6 +11,8 @@ Parent tracker: `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_TODO_
 M8 prepares the upstream PR and long-term rebase workflow for the clean-core route.
 
 This document does not open an upstream PR. It defines the gate that must pass before any future PR to `lioensky/VCPToolBox` is created.
+
+Current user decision: skip opening the `lioensky/VCPToolBox` upstream PR for now.
 
 ## 2. Hard Boundaries
 
@@ -98,7 +100,7 @@ Do not open the upstream PR unless all of the following are true in the same exe
 
 | Gate | Required evidence | Status now |
 | --- | --- | --- |
-| Human authorization | Explicit current-turn approval naming `lioensky/VCPToolBox`, source branch, target branch, and action `open upstream PR` | BLOCKED |
+| Human authorization | Explicit current-turn approval naming `lioensky/VCPToolBox`, source branch, target branch, and action `open upstream PR` | DEFERRED_BY_USER |
 | Fresh upstream base | `git fetch upstream` and recorded `git rev-parse upstream/main` | PRECHECK_PASS |
 | Candidate branch hygiene | Candidate branch is recreated/rebased from latest `upstream/main`, not from the M2-M8 governance branch | TODO |
 | Scope check | `git diff --name-status upstream/main...<candidate>` contains only allowed Phase 1 generic files | TODO |
@@ -222,11 +224,11 @@ Do not paste this into an upstream PR until a fresh candidate branch has been re
 ```text
 S23 Upstream PR readiness packet: PASS, 3 / 3
 S24 Long-term rebase workflow: PASS, 4 / 4
-S25 Open upstream PR with human approval: BLOCKED, 0 / 3
+S25 Open upstream PR with human approval: DEFERRED_BY_USER, 0 / 3
 M8 current score: 7 / 10
 ```
 
-M8 remains PARTIAL because the upstream PR was not opened and must not be opened automatically.
+M8 remains PARTIAL because the upstream PR was skipped by user decision and must not be opened automatically.
 
 ## 9. Validation For This Document
 
@@ -234,7 +236,7 @@ This M8 step is documentation and read-only Git preflight only:
 
 ```powershell
 git diff --check -- docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_TODO_TRACKER_20260620.md
-rg -n "WORKFLOW_READY_UPSTREAM_PR_BLOCKED_BY_HUMAN_GATE|M8 current score: 7 / 10|The current M2-M8 governance branch is not the upstream PR candidate|Do not open the upstream PR" docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md
+rg -n "WORKFLOW_READY_UPSTREAM_PR_DEFERRED_BY_USER|DEFERRED_BY_USER|M8 current score: 7 / 10|The current M2-M8 governance branch is not the upstream PR candidate|Do not open the upstream PR" docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md
 git status --short
 ```
 
