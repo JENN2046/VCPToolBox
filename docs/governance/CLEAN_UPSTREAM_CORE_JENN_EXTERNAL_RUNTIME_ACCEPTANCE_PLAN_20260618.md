@@ -60,6 +60,7 @@ N/A       不适用
 | A8 | 行为对照 | 每个领域都有旧 fork 对照项和验证方式 | 新 core 干净但无法证明旧功能是否保留 | TODO |
 | A9 | upstream 追踪 | upstream merge 冲突集中在少量 contract/core patch | 冲突仍大量落在 Jenn 插件、Agent、状态、Admin 页面 | TODO |
 | A10 | 回滚 | 每个领域能回退到 core fallback 或禁用外部包 | 迁移后只能依赖大范围 revert | TODO |
+| A11 | 外部插件门禁 | `VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_PLUGIN_DIRS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` 分别覆盖外部根允许、发现、运行时注册 | 只恢复 `VCP_PLUGIN_DIRS`，或把 discovery 成功当成 runtime registration 成功 | TODO |
 
 ## 4. 推荐目录形态
 
@@ -86,7 +87,7 @@ N/A       不适用
 
 | 领域 | Clean Upstream Core 应留下什么 | Jenn External Runtime 应放什么 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
-| Plugin | `VCP_PLUGIN_DIRS` loader、manifest 合并、安全禁用规则 | Jenn 自定义插件目录 | 外部插件可发现；默认 disabled；不覆盖 upstream 同名插件 | TODO |
+| Plugin | `VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_PLUGIN_DIRS` loader、manifest 合并、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` runtime registration gate、安全禁用规则 | Jenn 自定义插件目录 | 外部根需 allowlisted；外部插件可发现；runtime registration 单独 exact-plugin allowlisted；默认 disabled；不覆盖 upstream 同名插件 | TODO |
 | Agent | `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent、AgentOverrides | upstream Agent 不被直接改；override 顺序明确 | TODO |
 | LocalState | `VCP_LOCAL_STATE_DIR` path resolver | `.agent_board`、`MEMORY.md`、摄影数据、私有配置 | 未设置 env 时保持 upstream 行为；设置后读外部状态；不写入 core | TODO |
 | AdminPanel | extension manifest contract、route/api 注册口 | Jenn 页面、API 扩展、菜单配置 | upstream 页面正常；Jenn 页面通过 manifest 注册；build 通过 | TODO |
@@ -166,6 +167,8 @@ deploy
 
 ```text
 VCP_PLUGIN_DIRS
+VCP_PLUGIN_ALLOWED_ROOTS
+VCP_EXTERNAL_PLUGIN_ALLOWLIST
 VCP_AGENT_DIRS
 VCP_AGENT_OVERRIDE_DIRS
 VCP_LOCAL_STATE_DIR
@@ -181,6 +184,9 @@ core diff 很薄
 没有私有路径
 没有 provider/trial 具体数据
 没有高权限默认启用
+外部插件 discovery 与 runtime registration 分开验证
+缺少 `VCP_PLUGIN_ALLOWED_ROOTS` 时必须保持 `external_roots_require_allowlist` 类拒绝语义
+`VCP_EXTERNAL_PLUGIN_ALLOWLIST` 必须保持 exact-plugin scoped，禁止 broad / wildcard / name-only / package-root / discovery-root / LocalState-root allowlist
 ```
 
 ### Phase 2：External Runtime Skeleton
@@ -234,8 +240,10 @@ AIGentOrchestrator external shadow load
 ```text
 从旧 fork copy-first 到 external runtime
 生成 checksum
+`VCP_PLUGIN_ALLOWED_ROOTS` 允许 managed external package root，`VCP_PLUGIN_DIRS` 只指向其下的插件发现根
 clean core 可发现外部插件 manifest；保留 `.disabled` 的目录不得作为 manifest discovery 验收证据
 外部插件通过 manifest / block / allow-policy / 新 loader policy 等可被 discovery 的机制保持默认 disabled
+runtime registration 另由 exact-plugin scoped `VCP_EXTERNAL_PLUGIN_ALLOWLIST` 单独放行；discovery success 不等于 registration success
 不覆盖 upstream 同名插件
 不执行插件
 不写 LocalState
@@ -301,7 +309,8 @@ core fallback 或 rollback 仍可用
 | --- | --- | --- |
 | 来源路径 | 当前厚 fork 的 `Plugin/AIGentOrchestrator/` | TODO |
 | external 目标路径 | `../VCPToolBox-JENN-Extensions/Plugin/AIGentOrchestrator/` | TODO |
-| core contract | `VCP_PLUGIN_DIRS` 外部插件发现能力 | TODO |
+| core contract | `VCP_PLUGIN_ALLOWED_ROOTS` + `VCP_PLUGIN_DIRS` 外部根允许与插件发现能力 | TODO |
+| runtime registration gate | `VCP_EXTERNAL_PLUGIN_ALLOWLIST` 必须 exact-plugin scoped；不得使用 wildcard / name-only / package-root / discovery-root / LocalState-root allowlist | TODO |
 | 默认状态 | disabled / not auto-enabled | TODO |
 | `.disabled` 语义 | `.disabled` 只能作为 fallback / 物理禁用锚点；在现有 loader 中不得作为 discovery 验收证据 | TODO |
 | 可 discovery 禁用证据 | 必须提供 manifest / block / allow-policy 证据，或先实现读取 manifest 后再应用 `.disabled` 的新 loader policy | TODO |
@@ -309,7 +318,9 @@ core fallback 或 rollback 仍可用
 | checksum | 生成 external manifest checksum | TODO |
 | secret 安全 | 不复制 `.env` / `config.env` / token/key | TODO |
 | fallback | core 旧副本或禁用 external dir 可回退 | TODO |
-| validation | manifest discovery targeted test 必须证明 manifest 真的被读取，而不是被 `.disabled` 提前跳过 | TODO |
+| root allowlist validation | targeted test 必须证明缺少 `VCP_PLUGIN_ALLOWED_ROOTS` 时外部根被拒绝，配置后才进入 discovery | TODO |
+| discovery validation | manifest discovery targeted test 必须证明 manifest 真的被读取，而不是被 `.disabled` 提前跳过 | TODO |
+| registration validation | targeted test 必须证明 discovery 与 `VCP_EXTERNAL_PLUGIN_ALLOWLIST` runtime registration 分开生效 | TODO |
 | disabled validation | targeted test 必须证明 external 副本被 discovery 后仍不会自动启用或执行 | TODO |
 | 禁止项 | 不执行插件，不启动服务，不外写 | TODO |
 
@@ -325,6 +336,8 @@ core 写入私有本地路径或具体 trial id
 没有 checksum 就删除旧文件
 没有 parity checklist 就宣称迁移完成
 为了接外部包大改 Plugin.js / server.js / AdminPanel
+只实现 `VCP_PLUGIN_DIRS`，但遗漏 `VCP_PLUGIN_ALLOWED_ROOTS` 或 `VCP_EXTERNAL_PLUGIN_ALLOWLIST`
+把 discovery success 当作 runtime registration success
 external repo writes / remote writes / release / deploy 未授权执行
 ```
 
