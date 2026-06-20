@@ -49,7 +49,8 @@ Observed after read-only fetch on 2026-06-21:
 ```text
 Workspace: A:\AGENTS_OS_Workspace\runtime\VCPToolBox
 Current branch: codex/m2-m7-jenn-external-runtime-roadmap
-Current HEAD: df314cd2bf69bd91290e65127c7a48f1479647f5
+Pre-M0 evidence collection HEAD: df314cd2bf69bd91290e65127c7a48f1479647f5
+M0 closeout commit: 0e813f6de7fcbd470b3954c75664376ffafbc9a1
 
 origin fetch/push: https://github.com/JENN2046/VCPToolBox.git
 upstream fetch/push: https://github.com/lioensky/VCPToolBox.git
@@ -102,11 +103,11 @@ Path-only inventory:
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `origin/main` | 5449 | 1501 | 141 | 12 | 51 | 31 | 114 |
 | `origin/codex/upstream-main-clean-base` | 2954 | 1395 | 115 | 8 | 48 | 28 | 8 |
-| `HEAD` | 5456 | 1501 | 141 | 12 | 51 | 31 | 114 |
+| pre-M0 evidence `HEAD` (`df314cd2`) | 5456 | 1501 | 141 | 12 | 51 | 31 | 114 |
 
 Inventory conclusion:
 
-- `origin/main` / `HEAD` remain Jenn governance and inventory surfaces.
+- `origin/main` / pre-M0 evidence `HEAD` remain Jenn governance and inventory surfaces.
 - `origin/codex/upstream-main-clean-base` remains the Phase 1 clean-base candidate.
 - M2-M8 governance docs and external receipts are not upstream PR candidate content.
 - Old fork paths are reference material only; this M0 closeout does not migrate, copy, checksum, delete, untrack, or stub them.
@@ -155,14 +156,14 @@ Summary:
 | --- | ---: | ---: | --- |
 | `origin/main` | 5449 | 8 | FINDINGS_RECORDED_REFERENCE_ONLY |
 | `origin/codex/upstream-main-clean-base` | 2954 | 28 | FINDINGS_RECORDED_UPSTREAM_INHERITED |
-| `HEAD` | 5456 | 8 | FINDINGS_RECORDED_GOVERNANCE_BRANCH |
+| pre-M0 evidence `HEAD` (`df314cd2`) | 5456 | 8 | FINDINGS_RECORDED_GOVERNANCE_BRANCH |
 | `VCPToolBox-JENN-Extensions` | 29 | 0 | PASS |
 
 Important interpretation:
 
 - A path match is not proof of secret content; no file contents were read.
 - `origin/codex/upstream-main-clean-base` includes upstream-inherited `config.env` paths and image paths. They are recorded as baseline reality, not copied into an external package.
-- `origin/main` / `HEAD` include tracked `.agent_board/**` path names. They remain blocked from automatic copy, checksum, migration, or LocalState handling.
+- `origin/main` / pre-M0 evidence `HEAD` include tracked `.agent_board/**` path names. They remain blocked from automatic copy, checksum, migration, or LocalState handling.
 - `VCPToolBox-JENN-Extensions` path scan is clean for the current reviewed package surface.
 
 Observed high-risk path findings:
@@ -197,7 +198,7 @@ origin/codex/upstream-main-clean-base:
   Plugin/UserAuth/code.bin
   preprocessor_order.json
 
-HEAD:
+pre-M0 evidence HEAD (df314cd2):
   .agent_board/CHECKPOINT.md
   .agent_board/HANDOFF.md
   .agent_board/RUN_STATE.md
@@ -220,7 +221,7 @@ path: A:\AGENTS_OS_Workspace\runtime\VCPToolBox-JENN-Extensions
 repo exists: yes
 branch: main
 status: clean and synced to origin/main
-HEAD: bb1e35a0ccc8b4bc4e77bae30330b9a85b23a9fb
+external package HEAD: bb1e35a0ccc8b4bc4e77bae30330b9a85b23a9fb
 origin: https://github.com/JENN2046/VCPToolBox-JENN-Extensions
 candidate path count: 29
 high-risk path count: 0
@@ -249,7 +250,7 @@ Acceptance mapping:
 | fetch after upstream commit recorded | `upstream/main = f8d4547998ba2767d86ce6bb04e728388bd07c3b` | PASS |
 | clean-core creation record | `origin/codex/upstream-main-clean-base = 86c69e8d`, parents `f901f1a9` and `a4225aca` | PASS |
 | old fork inventory | `origin/main` path-only inventory recorded | PASS |
-| secret-risk scan evidence | path-only scan recorded for old fork, clean-base, HEAD, and external package | PASS_WITH_FINDINGS |
+| secret-risk scan evidence | path-only scan recorded for old fork, clean-base, pre-M0 evidence HEAD, and external package | PASS_WITH_FINDINGS |
 | LocalState protection | existence only; no enumeration | PASS |
 | `.agent_board/**` protection | path findings recorded; no content read/copy/checksum/migration | PASS |
 
