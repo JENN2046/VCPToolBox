@@ -9,8 +9,8 @@ Last updated: 2026-06-20
 状态来源：
 
 - 计划文档：`docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_ACCEPTANCE_PLAN_20260618.md`
-- 当前 Jenn fork 内部 review PR：`JENN2046/VCPToolBox#272`
-- Clean core review base：`codex/upstream-main-clean-base`
+- 当前 Jenn fork 内部 review PR：`JENN2046/VCPToolBox#272`（已合并）
+- Clean core review base：`codex/upstream-main-clean-base`，merge commit `86c69e8d`
 - Phase 1 实现分支：`codex/phase1-clean-core-plugin-contract`
 
 ## 1. 如何更新这份进度表
@@ -46,7 +46,7 @@ Last updated: 2026-06-20
 | 完成 | ID | 权重 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
 | [ ] | M0 | 6 | 基线、分支、inventory、扫描、tracker 建立 | PARTIAL | Clean base branch 和 tracker 已存在；还需要补齐 upstream remote 记录、clean-core 创建记录、旧 fork inventory、secret-risk scan 的明确证据。 |
-| [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 内部 review 已在 head `5030dee3` 得出 ready 结论；6-test 复跑：`63 pass / 0 fail`；无阻塞发现。 |
+| [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 已合并到 Jenn clean base；merge commit `86c69e8d`；final head `a4225aca`；review threads 全部 resolved；6-test 复跑：`65 pass / 0 fail`。 |
 | [ ] | M2 | 12 | External Runtime / LocalState skeleton | PARTIAL | S6 任务书已写；S7 完整 denylist、S8 LocalState gate、S9 checksum 规则仍待完成。 |
 | [ ] | M3 | 12 | `JennAIGentOrchestrator` copy-first 试点 | TODO | 需要 copy-first package、secret-risk scan、manifest identity、checksum。 |
 | [ ] | M4 | 10 | Shadow validation 和 rollback 演练 | TODO | 需要 discovery、disabled、exact allowlist、rollback proof。 |
@@ -59,7 +59,7 @@ Last updated: 2026-06-20
 
 ```text
 M0 部分基线分：3 / 6
-M1 已完成：12 / 12
+M1 已完成并内部合并：12 / 12
 M2 sprint 部分分：3 / 12
 全局总分：18 / 100
 ```
@@ -70,11 +70,11 @@ M2 sprint 部分分：3 / 12
 
 | 完成 | ID | 父项 | 权重 | 任务 | Status | 证据 |
 | --- | --- | --- | ---: | --- | --- | --- |
-| [x] | S1 | M1 | 3 | 建立 Jenn fork 内部 clean-base PR 流程 | PASS | PR #272 base `codex/upstream-main-clean-base`；upstream PR #365 已关闭。 |
+| [x] | S1 | M1 | 3 | 建立 Jenn fork 内部 clean-base PR 流程 | PASS | PR #272 base `codex/upstream-main-clean-base`；PR #272 已合并为 `86c69e8d`；upstream PR #365 已关闭。 |
 | [x] | S2 | M1 | 4 | 实现 Phase 1 plugin contract | PASS | `Plugin.js` + 4 个 contract modules。 |
-| [x] | S3 | M1 | 2 | 用 targeted tests 覆盖 allowlist / registration / env sandbox | PASS | 6-test run：`63 pass / 0 fail`。 |
+| [x] | S3 | M1 | 2 | 用 targeted tests 覆盖 allowlist / registration / env sandbox | PASS | final 6-test run：`65 pass / 0 fail`。 |
 | [x] | S4 | M1 | 1 | 在 PR body 记录 Phase 1 验收状态 | PASS | PR #272 body 已更新 PASS / PARTIAL / DEFERRED matrix。 |
-| [x] | S5 | M1 | 2 | 关闭 PR #272 内部 review，并决定 ready / continue | PASS | 结论：ready；无阻塞发现；PR #272 head `5030dee3`；6-test 复跑：`63 pass / 0 fail`。 |
+| [x] | S5 | M1 | 2 | 关闭 PR #272 内部 review，并决定 ready / continue | PASS | 结论：ready 后已内部合并；PR #272 final head `a4225aca`；merge commit `86c69e8d`；3 个 P2 threads resolved；6-test 复跑：`65 pass / 0 fail`。 |
 | [x] | S6 | M2 | 3 | 写 External Runtime skeleton 任务书 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S6_EXTERNAL_RUNTIME_SKELETON_TASKBOOK_20260620.md`；docs-only，没有 clean core runtime 改动。 |
 | [ ] | S7 | M2 | 3 | 落地完整 denylist / `.gitignore` baseline | TODO | 必须复用现有治理 denylist。 |
 | [ ] | S8 | M2 | 3 | 定义 LocalState skeleton 和 `.agent_board/**` 人工 gate | TODO | `.agent_board/**` 默认排除。 |
@@ -114,8 +114,8 @@ M2 只有在 External Runtime 和 LocalState skeleton 都具备 denylist 与 che
 
 | Gate | 必需证据 | Status |
 | --- | --- | --- |
-| Jenn 内部 review 完成 | PR #272 有明确 ready / continue 决策 | PASS |
-| Phase 1 validation 稳定 | 在目标 review head 上通过 syntax checks 和 6-test command | PASS |
+| Jenn 内部 review 完成 | PR #272 有明确 ready / continue 决策，且已合并到 Jenn clean base | PASS |
+| Phase 1 validation 稳定 | 在 final head `a4225aca` 上通过 syntax checks 和 6-test command：`65 pass / 0 fail` | PASS |
 | Phase 边界清楚 | Phase 2 copy-first/checksum/denylist 不混进 PR #272 | PASS |
 | 没有 secret/runtime 文件 | diff 不包含 env、config、state、cache、log、image、auth material | PASS for PR #272 |
 | Upstream 目标决策 | 只有内部验收完成后，才打开新的 upstream PR | TODO |
@@ -124,7 +124,7 @@ M2 只有在 External Runtime 和 LocalState skeleton 都具备 denylist 与 che
 
 当前 Phase 1 工作的回滚方式：
 
-- 如果内部 review 找到阻塞项，关闭 PR #272 或把它保持为 draft。
+- 如果后续需要回滚 Phase 1，revert merge commit `86c69e8d` 或回退 Jenn clean base。
 - 通过不设置 `VCP_PLUGIN_DIRS`、`VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` 来禁用 external runtime。
 - PR #272 不会删除 core fallback。
 
