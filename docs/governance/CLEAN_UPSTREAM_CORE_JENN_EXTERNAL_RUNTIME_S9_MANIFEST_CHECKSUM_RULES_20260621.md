@@ -147,9 +147,9 @@ These are command shapes for a later copy-first task. S9 does not run them.
 ```powershell
 $root = Resolve-Path '%WORKSPACE_PARENT%/VCPToolBox-JENN-Extensions'
 $manifest = Join-Path $root 'manifests/MANIFEST.sha256'
-$files = git -C $root ls-files -co --exclude-standard |
-  Where-Object { $_ -ne 'manifests/MANIFEST.sha256' } |
-  Sort-Object
+$files = [string[]]@(git -C $root ls-files -co --exclude-standard |
+  Where-Object { $_ -ne 'manifests/MANIFEST.sha256' })
+[Array]::Sort($files, [StringComparer]::Ordinal)
 
 $lines = foreach ($rel in $files) {
   $native = $rel -replace '/', [IO.Path]::DirectorySeparatorChar
