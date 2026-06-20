@@ -17,7 +17,8 @@ Jenn External Runtime
   承载 Jenn 插件、Agent、AdminPanel 扩展、AI Image adapter、摄影工作流
 
 Jenn LocalState
-  承载私有记忆、.agent_board、本地项目数据、真实配置与运行状态
+  承载经人工 gate 批准的私有记忆、本地项目数据、真实配置与运行状态
+  默认不自动迁移 .agent_board/**
 
 Current Jenn Fork
   作为只读 inventory / parity reference
@@ -62,6 +63,7 @@ N/A       不适用
 | A10 | 回滚 | 每个领域能回退到 core fallback 或禁用外部包 | 迁移后只能依赖大范围 revert | TODO |
 | A11 | 外部插件门禁 | `VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_PLUGIN_DIRS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` 分别覆盖外部根允许、发现、运行时注册 | 只恢复 `VCP_PLUGIN_DIRS`，或把 discovery 成功当成 runtime registration 成功 | TODO |
 | A12 | denylist 复用 | External Runtime / LocalState 骨架必须复用现有完整敏感与运行态 denylist，并记录来源 | 只使用少量 `.env` / key / db ignore 规则，导致 auth、state、log、output、sqlite sidecar 进入外部包 | TODO |
+| A13 | agent board 保护 | `.agent_board/**` 默认 blocked，不进入自动 LocalState copy-first、checksum 或迁移包 | 未经单独人工 gate 复制 `.agent_board/**` 或把它纳入 external checksum | TODO |
 
 ## 4. 推荐目录形态
 
@@ -76,7 +78,8 @@ N/A       不适用
   Jenn 插件、Agent、AdminPanel 扩展、AI Image adapter、摄影工作流
 
 %WORKSPACE_PARENT%/VCPToolBox-JENN-LocalState
-  私有记忆、.agent_board、本地状态、私有配置、项目数据
+  经人工 gate 批准的私有记忆、本地状态、私有配置、项目数据
+  .agent_board/** 默认排除，另走单独人工 gate
 
 %WORKSPACE_PARENT%/VCPToolBox
   当前厚 fork，只读参考源与行为对照来源
@@ -90,7 +93,7 @@ N/A       不适用
 | --- | --- | --- | --- | --- |
 | Plugin | `VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_PLUGIN_DIRS` loader、manifest 合并、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` runtime registration gate、安全禁用规则 | Jenn 自定义插件目录 | 外部根需 allowlisted；外部插件可发现；runtime registration 单独 exact-plugin allowlisted；默认 disabled；不覆盖 upstream 同名插件 | TODO |
 | Agent | `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent、AgentOverrides | upstream Agent 不被直接改；override 顺序明确 | TODO |
-| LocalState | `VCP_LOCAL_STATE_DIR` path resolver | `.agent_board`、`MEMORY.md`、摄影数据、私有配置 | 未设置 env 时保持 upstream 行为；设置后读外部状态；不写入 core | TODO |
+| LocalState | `VCP_LOCAL_STATE_DIR` path resolver | 经人工 gate 批准的 `MEMORY.md`、摄影数据、私有配置；`.agent_board/**` 默认排除 | 未设置 env 时保持 upstream 行为；设置后读外部状态；不写入 core；`.agent_board/**` 不自动复制或校验 | TODO |
 | AdminPanel | extension manifest contract、route/api 注册口 | Jenn 页面、API 扩展、菜单配置 | upstream 页面正常；Jenn 页面通过 manifest 注册；build 通过 | TODO |
 | AI Image | 通用 adapter contract、默认关闭 gating | Jenn fixture、binding、trial data、provider-specific adapter | core 不含具体 Jenn trial 常量；route/server 只依赖通用接口 | TODO |
 | Codex/Memory | 通用桥接接口或无 core 改动 | CodexMemoryBridge、Jenn memory 工具 | 不读取真实记忆内容做测试；只验证路径/manifest | TODO |
@@ -111,6 +114,7 @@ core contract 文件：
 是否 copy-first：
 denylist / ignore source：
 copy exclusions：
+protected exclusions：
 checksum：
 默认启用状态：
 旧行为对照：
@@ -209,6 +213,8 @@ Phase 2 不得只使用少量 env/key/db ignore 规则。骨架 `.gitignore` 必
 AGENTS.override.md sensitive paths
 scripts/aigentquality-server-smoke-s2-preplan.js sensitive pathspecs
 scripts/aigentquality-server-smoke-s2-guarded-plan.js sensitive pathspecs
+scripts/p3-external-ecosystem-inventory.js protected_agent_board_never_move_automatically rule
+docs/governance/P3E_EXTERNAL_ECOSYSTEM_TAXONOMY_RULES_SPEC_20260610.md blocked/protected-agent-board rule
 ```
 
 最低 `.gitignore` 基线：
@@ -234,7 +240,8 @@ config.env.local
 *.db-wal
 *.log
 node_modules/
-dist/
+AdminPanel-Vue/dist/
+AdminPanel-Vue/dist/**
 .cache/
 .cache/**
 cache/
@@ -253,6 +260,8 @@ DebugLog/
 DebugLog/**
 image/
 image/**
+.agent_board/
+.agent_board/**
 Plugin/UserAuth/code.bin
 Plugin/**/.cache
 Plugin/**/.cache/**
@@ -280,6 +289,15 @@ Plugin/**/*.db-shm
 Plugin/**/*.db-wal
 ```
 
+`dist` 规则：
+
+```text
+不要使用 blanket `dist/` 或 `**/dist/` ignore。
+只排除明确的前端构建产物路径，例如 `AdminPanel-Vue/dist/**`。
+`Plugin/**/dist/**` 默认视为可能的运行源码，必须 copy-first 保留，除非插件级 manifest / task book 明确声明它是可丢弃构建产物。
+已知例子：`Plugin/DailyHot/daily-hot.js` 运行时读取 `Plugin/DailyHot/dist/routes/**`。
+```
+
 copy-first 与 checksum 顺序：
 
 ```text
@@ -287,6 +305,8 @@ copy-first 与 checksum 顺序：
 2. 再对复制结果做 secret-risk paths only 扫描。
 3. 只有扫描通过后才生成 MANIFEST.sha256。
 4. checksum 不得包含被 denylist 排除的 auth / state / cache / log / output / image / sqlite sidecar 文件。
+5. checksum 不得包含 `.agent_board/**`，除非存在单独人工 gate 明确授权。
+6. checksum 必须包含插件声明为运行必需的 `Plugin/**/dist/**` 内容。
 ```
 
 ### Phase 3：第一个试点
@@ -407,6 +427,8 @@ core 写入私有本地路径或具体 trial id
 真实 secret 被复制、打印或提交
 没有 checksum 就删除旧文件
 没有复用完整 denylist 就 copy-first 或生成 checksum
+未经单独人工 gate 自动复制或 checksum `.agent_board/**`
+blanket 排除 `dist/` 导致插件运行源码缺失
 没有 parity checklist 就宣称迁移完成
 为了接外部包大改 Plugin.js / server.js / AdminPanel
 只实现 `VCP_PLUGIN_DIRS`，但遗漏 `VCP_PLUGIN_ALLOWED_ROOTS` 或 `VCP_EXTERNAL_PLUGIN_ALLOWLIST`
