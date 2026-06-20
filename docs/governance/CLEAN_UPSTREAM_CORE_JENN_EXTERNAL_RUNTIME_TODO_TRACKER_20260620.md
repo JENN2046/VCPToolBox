@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO Tracker
 
-Progress: [##--------] 15% (15 / 100)
+Progress: [##--------] 18% (18 / 100)
 
 Last updated: 2026-06-20
 
-Current milestone: M2 - External Runtime / LocalState skeleton task book
+Current milestone: M2 - Full denylist / LocalState / checksum gates
 
 Status source:
 
@@ -47,7 +47,7 @@ Hard boundaries:
 | --- | --- | ---: | --- | --- | --- |
 | [ ] | M0 | 6 | Baseline, branch, inventory, scan, and tracker setup | PARTIAL | Clean base branch and tracker exist; upstream remote record, clean-core creation record, old-fork inventory, and secret-risk scan still need explicit evidence. |
 | [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 internal review concluded ready at head `5030dee3`; 6-test rerun: `63 pass / 0 fail`; no blocking findings. |
-| [ ] | M2 | 12 | External Runtime / LocalState skeleton | TODO | Needs external skeleton task book, full denylist, LocalState gate, checksum rules. |
+| [ ] | M2 | 12 | External Runtime / LocalState skeleton | PARTIAL | S6 task book written; S7 full denylist, S8 LocalState gate, and S9 checksum rules still pending. |
 | [ ] | M3 | 12 | `JennAIGentOrchestrator` copy-first pilot | TODO | Needs copy-first package, secret-risk scan, manifest identity, checksum. |
 | [ ] | M4 | 10 | Shadow validation and rollback drill | TODO | Needs discovery, disabled, exact allowlist, rollback proof. |
 | [ ] | M5 | 14 | Agent / LocalState / AdminPanel contracts | TODO | Needs `VCP_AGENT_DIRS`, `VCP_LOCAL_STATE_DIR`, Admin extension contract. |
@@ -60,7 +60,8 @@ Current score:
 ```text
 M0 partial setup credit: 3 / 6
 M1 completed: 12 / 12
-Global total: 15 / 100
+M2 partial sprint credit: 3 / 12
+Global total: 18 / 100
 ```
 
 ## 3. Current Sprint Checklist
@@ -74,7 +75,7 @@ Current sprint only expands M1 and M2 startup work. Later milestones remain inte
 | [x] | S3 | M1 | 2 | Cover allowlist / registration / env sandbox with targeted tests | PASS | 6-test run: `63 pass / 0 fail`. |
 | [x] | S4 | M1 | 1 | Record Phase 1 acceptance status in PR body | PASS | PR #272 body updated with PASS / PARTIAL / DEFERRED matrix. |
 | [x] | S5 | M1 | 2 | Close PR #272 internal review and decide ready / continue | PASS | Decision: ready; no blocking findings; PR #272 head `5030dee3`; 6-test rerun: `63 pass / 0 fail`. |
-| [ ] | S6 | M2 | 3 | Write External Runtime skeleton task book | TODO | Must not change clean core. |
+| [x] | S6 | M2 | 3 | Write External Runtime skeleton task book | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S6_EXTERNAL_RUNTIME_SKELETON_TASKBOOK_20260620.md`; docs-only, no clean core runtime change. |
 | [ ] | S7 | M2 | 3 | Land full denylist / `.gitignore` baseline | TODO | Must reuse existing governance denylist. |
 | [ ] | S8 | M2 | 3 | Define LocalState skeleton and `.agent_board/**` human gate | TODO | `.agent_board/**` remains excluded by default. |
 | [ ] | S9 | M2 | 3 | Define manifests / checksum rules | TODO | MANIFEST.sha256 generation rules required before copy-first closeout. |
