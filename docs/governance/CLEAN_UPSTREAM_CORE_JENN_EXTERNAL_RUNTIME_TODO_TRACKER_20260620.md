@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO Tracker
 
-Progress: [#---------] 13% (13 / 100)
+Progress: [##--------] 15% (15 / 100)
 
 Last updated: 2026-06-20
 
-Current milestone: M1 - Phase 1 clean core plugin contract internal review
+Current milestone: M2 - External Runtime / LocalState skeleton task book
 
 Status source:
 
@@ -46,7 +46,7 @@ Hard boundaries:
 | Done | ID | Weight | Milestone | Status | Evidence / Next Gate |
 | --- | --- | ---: | --- | --- | --- |
 | [ ] | M0 | 6 | Baseline, branch, inventory, scan, and tracker setup | PARTIAL | Clean base branch and tracker exist; upstream remote record, clean-core creation record, old-fork inventory, and secret-risk scan still need explicit evidence. |
-| [ ] | M1 | 12 | Clean Core Phase 1 plugin contract | PARTIAL | PR #272 head `5030dee3`; S1-S4 complete, S5 pending. |
+| [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 internal review concluded ready at head `5030dee3`; 6-test rerun: `63 pass / 0 fail`; no blocking findings. |
 | [ ] | M2 | 12 | External Runtime / LocalState skeleton | TODO | Needs external skeleton task book, full denylist, LocalState gate, checksum rules. |
 | [ ] | M3 | 12 | `JennAIGentOrchestrator` copy-first pilot | TODO | Needs copy-first package, secret-risk scan, manifest identity, checksum. |
 | [ ] | M4 | 10 | Shadow validation and rollback drill | TODO | Needs discovery, disabled, exact allowlist, rollback proof. |
@@ -59,8 +59,8 @@ Current score:
 
 ```text
 M0 partial setup credit: 3 / 6
-M1 partial sprint credit: 10 / 12
-Global total: 13 / 100
+M1 completed: 12 / 12
+Global total: 15 / 100
 ```
 
 ## 3. Current Sprint Checklist
@@ -73,7 +73,7 @@ Current sprint only expands M1 and M2 startup work. Later milestones remain inte
 | [x] | S2 | M1 | 4 | Implement Phase 1 plugin contract | PASS | `Plugin.js` + 4 contract modules. |
 | [x] | S3 | M1 | 2 | Cover allowlist / registration / env sandbox with targeted tests | PASS | 6-test run: `63 pass / 0 fail`. |
 | [x] | S4 | M1 | 1 | Record Phase 1 acceptance status in PR body | PASS | PR #272 body updated with PASS / PARTIAL / DEFERRED matrix. |
-| [ ] | S5 | M1 | 2 | Close PR #272 internal review and decide ready / continue | TODO | Needs review conclusion. |
+| [x] | S5 | M1 | 2 | Close PR #272 internal review and decide ready / continue | PASS | Decision: ready; no blocking findings; PR #272 head `5030dee3`; 6-test rerun: `63 pass / 0 fail`. |
 | [ ] | S6 | M2 | 3 | Write External Runtime skeleton task book | TODO | Must not change clean core. |
 | [ ] | S7 | M2 | 3 | Land full denylist / `.gitignore` baseline | TODO | Must reuse existing governance denylist. |
 | [ ] | S8 | M2 | 3 | Define LocalState skeleton and `.agent_board/**` human gate | TODO | `.agent_board/**` remains excluded by default. |
@@ -83,7 +83,7 @@ M1 completion rule:
 
 ```text
 S1-S5 all PASS => M1 becomes PASS and counts 12 / 12.
-Current M1 progress: S1+S2+S3+S4 = 10 / 12.
+Current M1 progress: S1+S2+S3+S4+S5 = 12 / 12.
 ```
 
 M2 start rule:
@@ -113,8 +113,8 @@ Before opening a new upstream PR to `lioensky/VCPToolBox`, the following must be
 
 | Gate | Required Evidence | Status |
 | --- | --- | --- |
-| Jenn internal review complete | PR #272 has explicit ready / continue decision | TODO |
-| Phase 1 validation stable | Syntax checks and 6-test command pass on the intended review head | PARTIAL |
+| Jenn internal review complete | PR #272 has explicit ready / continue decision | PASS |
+| Phase 1 validation stable | Syntax checks and 6-test command pass on the intended review head | PASS |
 | Phase boundary clear | Phase 2 copy-first/checksum/denylist remain out of PR #272 | PASS |
 | No secret/runtime files | Diff contains no env, config, state, cache, log, image, or auth material | PASS for PR #272 |
 | Upstream target decision | New upstream PR is opened only after internal acceptance | TODO |
