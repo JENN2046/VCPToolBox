@@ -292,6 +292,8 @@ Plugin/**/logs
 Plugin/**/logs/**
 Plugin/**/secrets
 Plugin/**/secrets/**
+Plugin/**/*secret*
+Plugin/**/*token*
 Plugin/**/output
 Plugin/**/output/**
 Plugin/**/outputs
