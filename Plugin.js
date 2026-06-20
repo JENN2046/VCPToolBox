@@ -420,12 +420,20 @@ class PluginManager extends EventEmitter {
             return false;
         }
         const protocol = manifest?.communication?.protocol;
-        return protocol === 'direct' && typeof manifest.entryPoint?.script === 'string' && manifest.entryPoint.script.trim();
+        return protocol === 'direct';
+    }
+
+    _hasDirectScriptEntryPoint(manifest) {
+        return typeof manifest?.entryPoint?.script === 'string' && Boolean(manifest.entryPoint.script.trim());
     }
 
     _getExternalDirectRuntimeBlockReason(manifest) {
         if (manifest?.requiresAdmin === true) {
             return 'external_direct_requires_admin_denied';
+        }
+
+        if (!this._hasDirectScriptEntryPoint(manifest)) {
+            return 'external_direct_script_entrypoint_required';
         }
 
         if (manifest?.pluginType === 'hybridservice') {

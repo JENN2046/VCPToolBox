@@ -104,6 +104,49 @@ test('external direct/hybrid with requiresAdmin stays denied', async () => {
     });
 });
 
+test('external direct hybrid and preprocessor manifests without scripts are denied', async () => {
+    await withPluginManagerState(async ({ warnings }) => {
+        const cases = [
+            {
+                name: 'ExternalDirectCommandOnlyHybridFixture',
+                pluginType: 'hybridservice'
+            },
+            {
+                name: 'ExternalDirectCommandOnlyPreprocessorFixture',
+                pluginType: 'messagePreprocessor'
+            }
+        ];
+        const roots = [];
+
+        try {
+            for (const fixture of cases) {
+                const root = makeTempDir();
+                roots.push(root);
+                const manifest = makeExternalManifest(root, {
+                    name: fixture.name,
+                    pluginType: fixture.pluginType,
+                    entryPoint: { command: 'node direct-fixture.js' },
+                    communication: { protocol: 'direct', timeout: 1000 }
+                });
+                process.env.VCP_EXTERNAL_PLUGIN_ALLOWLIST = `${manifest.name}@${manifest.pluginRoot}`;
+
+                const registered = await pluginManager._registerLocalPlugin(manifest, new Map(), []);
+
+                assert.equal(registered, false);
+                assert.equal(pluginManager.plugins.has(manifest.name), false);
+                assert.equal(pluginManager.serviceModules.has(manifest.name), false);
+                assert.equal(pluginManager.messagePreprocessors.has(manifest.name), false);
+            }
+
+            assert.match(warnings.join('\n'), /external_direct_script_entrypoint_required/);
+        } finally {
+            for (const root of roots) {
+                fs.rmSync(root, { recursive: true, force: true });
+            }
+        }
+    });
+});
+
 test('denied external direct plugin is not required, initialized, or routed', async () => {
     await withPluginManagerState(async () => {
         const root = makeTempDir();
