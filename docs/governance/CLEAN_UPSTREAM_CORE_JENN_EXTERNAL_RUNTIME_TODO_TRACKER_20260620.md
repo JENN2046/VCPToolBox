@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##--------] 24% (24 / 100)
+Progress: [###-------] 27% (27 / 100)
 
 Last updated: 2026-06-21
 
-当前里程碑：M2 - 完整 denylist / LocalState / checksum 基础门禁
+当前里程碑：M3 - `JennAIGentOrchestrator` copy-first 试点
 
 状态来源：
 
@@ -47,7 +47,7 @@ Last updated: 2026-06-21
 | --- | --- | ---: | --- | --- | --- |
 | [ ] | M0 | 6 | 基线、分支、inventory、扫描、tracker 建立 | PARTIAL | Clean base branch 和 tracker 已存在；还需要补齐 upstream remote 记录、clean-core 创建记录、旧 fork inventory、secret-risk scan 的明确证据。 |
 | [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 已合并到 Jenn clean base；merge commit `86c69e8d`；final head `a4225aca`；review threads 全部 resolved；6-test 复跑：`65 pass / 0 fail`。 |
-| [ ] | M2 | 12 | External Runtime / LocalState skeleton | PARTIAL | S6 任务书、S7 denylist / `.gitignore` baseline、S8 LocalState / `.agent_board/**` gate 已写；S9 checksum 规则仍待完成。 |
+| [x] | M2 | 12 | External Runtime / LocalState skeleton | PASS | S6 任务书、S7 denylist / `.gitignore` baseline、S8 LocalState / `.agent_board/**` gate、S9 manifest / checksum rules 已写；M3 copy-first 仍需单独执行。 |
 | [ ] | M3 | 12 | `JennAIGentOrchestrator` copy-first 试点 | TODO | 需要 copy-first package、secret-risk scan、manifest identity、checksum。 |
 | [ ] | M4 | 10 | Shadow validation 和 rollback 演练 | TODO | 需要 discovery、disabled、exact allowlist、rollback proof。 |
 | [ ] | M5 | 14 | Agent / LocalState / AdminPanel contracts | TODO | 需要 `VCP_AGENT_DIRS`、`VCP_LOCAL_STATE_DIR`、Admin extension contract。 |
@@ -60,8 +60,8 @@ Last updated: 2026-06-21
 ```text
 M0 部分基线分：3 / 6
 M1 已完成并内部合并：12 / 12
-M2 sprint 部分分：9 / 12
-全局总分：24 / 100
+M2 已完成：12 / 12
+全局总分：27 / 100
 ```
 
 ## 3. 当前 Sprint 清单
@@ -78,7 +78,7 @@ M2 sprint 部分分：9 / 12
 | [x] | S6 | M2 | 3 | 写 External Runtime skeleton 任务书 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S6_EXTERNAL_RUNTIME_SKELETON_TASKBOOK_20260620.md`；docs-only，没有 clean core runtime 改动。 |
 | [x] | S7 | M2 | 3 | 落地完整 denylist / `.gitignore` baseline | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S7_DENYLIST_GITIGNORE_BASELINE_20260621.md`；复用 AGENTS sensitive paths、S2 harness sensitive pathspecs、P3E taxonomy；保留 `Plugin/**/dist/**`，默认排除 `.agent_board/**`。 |
 | [x] | S8 | M2 | 3 | 定义 LocalState skeleton 和 `.agent_board/**` 人工 gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S8_LOCALSTATE_AGENT_BOARD_GATE_20260621.md`；LocalState private-by-default；`.agent_board/**` 有单独 gate，默认 blocked，不能自动 copy/checksum/migrate。 |
-| [ ] | S9 | M2 | 3 | 定义 manifests / checksum 规则 | TODO | copy-first closeout 前必须有 MANIFEST.sha256 规则。 |
+| [x] | S9 | M2 | 3 | 定义 manifests / checksum 规则 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S9_MANIFEST_CHECKSUM_RULES_20260621.md`；先 denylist / paths-only secret-risk scan，再生成 `MANIFEST.sha256`；checksum 不等于 runtime registration proof。 |
 
 M1 完成规则：
 
@@ -92,6 +92,7 @@ M2 起步规则：
 ```text
 copy-first 迁移开始前，S6-S9 必须先被规划并验收。
 M2 只有在 External Runtime 和 LocalState skeleton 都具备 denylist 与 checksum 规则后，才能变成 PASS。
+当前 M2 进度：S6+S7+S8+S9 = 12 / 12。
 ```
 
 ## 4. 后续领域展开
