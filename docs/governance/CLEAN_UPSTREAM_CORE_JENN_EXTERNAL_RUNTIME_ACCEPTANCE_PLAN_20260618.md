@@ -4,6 +4,10 @@
 
 状态：PLAN_ONLY
 
+TODO tracker：`docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_TODO_TRACKER_20260620.md`
+
+进度状态以 TODO tracker 为准；本计划文档中的状态列保留原始验收表口径，作为验收定义而不是当前进度源。
+
 ## 0. 目的
 
 本计划用于评估并约束一条新的 Jenn 外置化路线：
