@@ -228,6 +228,13 @@ config.env
 config.env.local
 **/config.env
 **/config.env.local
+ModelRedirect.json
+agent_map.json
+preprocessor_order.json
+tag-processor-config.env
+SemanticModelRouter.local.json
+sarprompt.json
+ip_blacklist.json
 *.key
 *.pem
 *.p12
@@ -248,6 +255,12 @@ cache/
 cache/**
 state/
 state/**
+tmp/
+tmp/**
+VCPTimedContacts/
+VCPTimedContacts/**
+VCPTimedResults/
+VCPTimedResults/**
 output/
 output/**
 outputs/
@@ -262,7 +275,11 @@ image/
 image/**
 .agent_board/
 .agent_board/**
+VectorStore/
+VectorStore/**
 Plugin/UserAuth/code.bin
+Plugin/EmojiListGenerator/generated_lists
+Plugin/EmojiListGenerator/generated_lists/**
 Plugin/**/.cache
 Plugin/**/.cache/**
 Plugin/**/.cache*
@@ -287,6 +304,13 @@ Plugin/**/*.sqlite3
 Plugin/**/*.db
 Plugin/**/*.db-shm
 Plugin/**/*.db-wal
+Plugin/OneRing/data
+Plugin/OneRing/data/**
+Plugin/ProjectAnalyst/database
+Plugin/ProjectAnalyst/database/**
+ToolConfigs/dynamic_tool_catalog.json
+ToolConfigs/dynamic_tool_categories.json
+ToolConfigs/dynamic_tool_*.json
 ```
 
 `dist` 规则：
@@ -314,7 +338,7 @@ copy-first 与 checksum 顺序：
 推荐试点：
 
 ```text
-AIGentOrchestrator external shadow load
+JennAIGentOrchestrator external shadow load
 ```
 
 原因：
@@ -324,6 +348,7 @@ AIGentOrchestrator external shadow load
 与原外置化计划高度相关
 可通过可被 discovery 的禁用机制保持默认 disabled
 可保留 core fallback
+避免与 core fallback `AIGentOrchestrator` 复用同一 manifest identity
 不必先触碰 AdminPanel build 或 LocalState 私有数据
 ```
 
@@ -336,6 +361,8 @@ AIGentOrchestrator external shadow load
 clean core 可发现外部插件 manifest；保留 `.disabled` 的目录不得作为 manifest discovery 验收证据
 外部插件通过 manifest / block / allow-policy / 新 loader policy 等可被 discovery 的机制保持默认 disabled
 runtime registration 另由 exact-plugin scoped `VCP_EXTERNAL_PLUGIN_ALLOWLIST` 单独放行；discovery success 不等于 registration success
+external manifest identity 必须是 `JennAIGentOrchestrator`，目标目录必须是 `../VCPToolBox-JENN-Extensions/Plugin/JennAIGentOrchestrator/`
+`Plugin/AIGentOrchestrator/` 只能作为来源参考或 core fallback，不能作为外部 registration 目标
 不覆盖 upstream 同名插件
 不执行插件
 不写 LocalState
@@ -395,14 +422,15 @@ core fallback 或 rollback 仍可用
 将 Jenn 业务逻辑重新写回 clean core
 ```
 
-## 8. 第一试点验收表：AIGentOrchestrator
+## 8. 第一试点验收表：JennAIGentOrchestrator
 
 | 项目 | 目标 | 状态 |
 | --- | --- | --- |
-| 来源路径 | 当前厚 fork 的 `Plugin/AIGentOrchestrator/` | TODO |
-| external 目标路径 | `../VCPToolBox-JENN-Extensions/Plugin/AIGentOrchestrator/` | TODO |
+| 来源路径 | 当前厚 fork 的 `Plugin/AIGentOrchestrator/`，仅作为 copy/reference/fallback source | TODO |
+| external 目标路径 | `../VCPToolBox-JENN-Extensions/Plugin/JennAIGentOrchestrator/` | TODO |
+| external manifest identity | `JennAIGentOrchestrator`；不得复用 core fallback 的 `AIGentOrchestrator` manifest name | TODO |
 | core contract | `VCP_PLUGIN_ALLOWED_ROOTS` + `VCP_PLUGIN_DIRS` 外部根允许与插件发现能力 | TODO |
-| runtime registration gate | `VCP_EXTERNAL_PLUGIN_ALLOWLIST` 必须 exact-plugin scoped；不得使用 wildcard / name-only / package-root / discovery-root / LocalState-root allowlist | TODO |
+| runtime registration gate | `VCP_EXTERNAL_PLUGIN_ALLOWLIST` 必须 exact-plugin scoped，例如 `JennAIGentOrchestrator@<external-target-path>`；不得使用 wildcard / name-only / package-root / discovery-root / LocalState-root allowlist | TODO |
 | 默认状态 | disabled / not auto-enabled | TODO |
 | `.disabled` 语义 | `.disabled` 只能作为 fallback / 物理禁用锚点；在现有 loader 中不得作为 discovery 验收证据 | TODO |
 | 可 discovery 禁用证据 | 必须提供 manifest / block / allow-policy 证据，或先实现读取 manifest 后再应用 `.disabled` 的新 loader policy | TODO |
@@ -412,7 +440,7 @@ core fallback 或 rollback 仍可用
 | fallback | core 旧副本或禁用 external dir 可回退 | TODO |
 | root allowlist validation | targeted test 必须证明缺少 `VCP_PLUGIN_ALLOWED_ROOTS` 时外部根被拒绝，配置后才进入 discovery | TODO |
 | discovery validation | manifest discovery targeted test 必须证明 manifest 真的被读取，而不是被 `.disabled` 提前跳过 | TODO |
-| registration validation | targeted test 必须证明 discovery 与 `VCP_EXTERNAL_PLUGIN_ALLOWLIST` runtime registration 分开生效 | TODO |
+| registration validation | targeted test 必须证明 discovery 与 `VCP_EXTERNAL_PLUGIN_ALLOWLIST` runtime registration 分开生效，且不是 `duplicateOfBuiltIn` / duplicate copy-first 证据 | TODO |
 | disabled validation | targeted test 必须证明 external 副本被 discovery 后仍不会自动启用或执行 | TODO |
 | 禁止项 | 不执行插件，不启动服务，不外写 | TODO |
 
@@ -429,6 +457,7 @@ core 写入私有本地路径或具体 trial id
 没有复用完整 denylist 就 copy-first 或生成 checksum
 未经单独人工 gate 自动复制或 checksum `.agent_board/**`
 blanket 排除 `dist/` 导致插件运行源码缺失
+按 `Plugin/AIGentOrchestrator/` 同名外部目标执行并声称 registration validation 通过
 没有 parity checklist 就宣称迁移完成
 为了接外部包大改 Plugin.js / server.js / AdminPanel
 只实现 `VCP_PLUGIN_DIRS`，但遗漏 `VCP_PLUGIN_ALLOWED_ROOTS` 或 `VCP_EXTERNAL_PLUGIN_ALLOWLIST`
@@ -444,7 +473,7 @@ external repo writes / remote writes / release / deploy 未授权执行
 Clean upstream core 作为新战略主线
 当前厚 fork 作为只读参考源
 94D 作为临时桥接证据保留，但不继续把 core 内整理当作最终外置化
-第一个试点选择 AIGentOrchestrator external shadow load
+第一个试点选择 JennAIGentOrchestrator external shadow load
 ```
 
 下一步不是执行迁移，而是先做只读基线确认和第一试点任务书。
