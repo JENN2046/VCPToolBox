@@ -224,7 +224,7 @@ AIGentOrchestrator external shadow load
 ```text
 最能验证插件外置机制
 与原外置化计划高度相关
-可保持默认 disabled
+可通过可被 discovery 的禁用机制保持默认 disabled
 可保留 core fallback
 不必先触碰 AdminPanel build 或 LocalState 私有数据
 ```
@@ -234,8 +234,8 @@ AIGentOrchestrator external shadow load
 ```text
 从旧 fork copy-first 到 external runtime
 生成 checksum
-clean core 可发现外部插件 manifest
-外部插件默认 disabled
+clean core 可发现外部插件 manifest；保留 `.disabled` 的目录不得作为 manifest discovery 验收证据
+外部插件通过 manifest / block / allow-policy / 新 loader policy 等可被 discovery 的机制保持默认 disabled
 不覆盖 upstream 同名插件
 不执行插件
 不写 LocalState
@@ -303,13 +303,14 @@ core fallback 或 rollback 仍可用
 | external 目标路径 | `../VCPToolBox-JENN-Extensions/Plugin/AIGentOrchestrator/` | TODO |
 | core contract | `VCP_PLUGIN_DIRS` 外部插件发现能力 | TODO |
 | 默认状态 | disabled / not auto-enabled | TODO |
-| `.disabled` 语义 | copy-first 必须保留 `.disabled`，或在 external manifest / loader policy 中提供等价禁用证据 | TODO |
+| `.disabled` 语义 | `.disabled` 只能作为 fallback / 物理禁用锚点；在现有 loader 中不得作为 discovery 验收证据 | TODO |
+| 可 discovery 禁用证据 | 必须提供 manifest / block / allow-policy 证据，或先实现读取 manifest 后再应用 `.disabled` 的新 loader policy | TODO |
 | copy-first | 先复制，不删除旧副本 | TODO |
 | checksum | 生成 external manifest checksum | TODO |
 | secret 安全 | 不复制 `.env` / `config.env` / token/key | TODO |
 | fallback | core 旧副本或禁用 external dir 可回退 | TODO |
-| validation | manifest discovery targeted test | TODO |
-| disabled validation | targeted test 必须证明 external 副本被发现后仍不会自动启用或执行 | TODO |
+| validation | manifest discovery targeted test 必须证明 manifest 真的被读取，而不是被 `.disabled` 提前跳过 | TODO |
+| disabled validation | targeted test 必须证明 external 副本被 discovery 后仍不会自动启用或执行 | TODO |
 | 禁止项 | 不执行插件，不启动服务，不外写 | TODO |
 
 ## 9. 红线
