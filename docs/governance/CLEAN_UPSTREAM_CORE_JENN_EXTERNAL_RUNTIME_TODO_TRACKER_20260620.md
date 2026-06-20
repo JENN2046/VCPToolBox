@@ -1,134 +1,134 @@
-# Clean Core + Jenn External Runtime TODO Tracker
+# Clean Core + Jenn External Runtime TODO 进度表
 
 Progress: [##--------] 18% (18 / 100)
 
 Last updated: 2026-06-20
 
-Current milestone: M2 - Full denylist / LocalState / checksum gates
+当前里程碑：M2 - 完整 denylist / LocalState / checksum 基础门禁
 
-Status source:
+状态来源：
 
-- Plan: `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_ACCEPTANCE_PLAN_20260618.md`
-- Current internal review PR: `JENN2046/VCPToolBox#272`
-- Clean core review base: `codex/upstream-main-clean-base`
-- Phase 1 implementation branch: `codex/phase1-clean-core-plugin-contract`
+- 计划文档：`docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_ACCEPTANCE_PLAN_20260618.md`
+- 当前 Jenn fork 内部 review PR：`JENN2046/VCPToolBox#272`
+- Clean core review base：`codex/upstream-main-clean-base`
+- Phase 1 实现分支：`codex/phase1-clean-core-plugin-contract`
 
-## 1. How To Update This Tracker
+## 1. 如何更新这份进度表
 
-This file is the single progress source for the Clean Upstream Core + Jenn External Runtime route.
+这份文件是 Clean Upstream Core + Jenn External Runtime 路线的当前进度源。
 
-Update rules:
+更新规则：
 
-1. Check off completed tasks by changing `[ ]` to `[x]`.
-2. Change `Status` to `PASS` only after evidence exists.
-3. Record the shortest useful evidence: PR, commit, test command, checksum, or review decision.
-4. Recalculate the top progress line after every completed step.
-5. Update `Last updated` to the current date.
+1. 完成任务后，把 `[ ]` 改成 `[x]`。
+2. 只有已经有证据时，才把 `Status` 改成 `PASS`。
+3. 证据尽量短：PR、commit、测试命令、checksum、review 结论即可。
+4. 每完成一步，都重新计算顶部 `Progress`。
+5. 每次更新进度，都同步更新 `Last updated`。
 
-Progress rules:
+进度计算规则：
 
-- Global total is 100 points.
-- Completed milestones count their full weight.
-- In-progress milestones may count partial credit only when `Current score` explicitly records the credited evidence; sprint subpoints are the preferred mechanism.
-- `DEFERRED` does not count as completed progress.
-- Do not count a task complete just because code was written; validation or review evidence is required.
+- 全局总分是 100 分。
+- 完整完成的 milestone 计入全部权重。
+- 进行中的 milestone 只有在 `当前计分` 明确记录证据时，才可以计入部分分；优先用 sprint 小项计分。
+- `DEFERRED` 不算完成进度。
+- 不能因为“代码写了”就标完成；必须有验证或 review 证据。
 
-Hard boundaries:
+硬边界：
 
-- Do not mark Phase 2 copy-first, checksum, denylist, or LocalState work as completed by PR #272.
-- Do not enter stub / untrack / remove before copy-first, checksum, shadow validation, rollback, and human approval.
-- Do not automatically migrate or checksum `.agent_board/**`.
-- Do not write Jenn business logic back into clean core.
-- Do not treat discovery success as runtime registration success.
+- 不要把 Phase 2 copy-first、checksum、denylist、LocalState 工作误标成 PR #272 已完成。
+- copy-first、checksum、shadow validation、rollback、人类确认完成前，不进入 stub / untrack / remove。
+- 不要自动迁移或 checksum `.agent_board/**`。
+- 不要把 Jenn 业务逻辑写回 clean core。
+- 不要把 discovery 成功当成 runtime registration 成功。
 
-## 2. Global Milestone Roadmap
+## 2. 全局里程碑路线图
 
-| Done | ID | Weight | Milestone | Status | Evidence / Next Gate |
+| 完成 | ID | 权重 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
-| [ ] | M0 | 6 | Baseline, branch, inventory, scan, and tracker setup | PARTIAL | Clean base branch and tracker exist; upstream remote record, clean-core creation record, old-fork inventory, and secret-risk scan still need explicit evidence. |
-| [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 internal review concluded ready at head `5030dee3`; 6-test rerun: `63 pass / 0 fail`; no blocking findings. |
-| [ ] | M2 | 12 | External Runtime / LocalState skeleton | PARTIAL | S6 task book written; S7 full denylist, S8 LocalState gate, and S9 checksum rules still pending. |
-| [ ] | M3 | 12 | `JennAIGentOrchestrator` copy-first pilot | TODO | Needs copy-first package, secret-risk scan, manifest identity, checksum. |
-| [ ] | M4 | 10 | Shadow validation and rollback drill | TODO | Needs discovery, disabled, exact allowlist, rollback proof. |
-| [ ] | M5 | 14 | Agent / LocalState / AdminPanel contracts | TODO | Needs `VCP_AGENT_DIRS`, `VCP_LOCAL_STATE_DIR`, Admin extension contract. |
-| [ ] | M6 | 14 | AI Image / Codex-Memory / PhotoStudio externalization | TODO | Needs adapter boundaries and no private state in clean core. |
-| [ ] | M7 | 10 | Stub / untrack / remove decision | TODO | Requires copy-first, checksum, validation, rollback, and human approval. |
-| [ ] | M8 | 10 | Upstream PR and long-term rebase workflow | TODO | Open upstream PR only after Jenn fork internal acceptance. |
+| [ ] | M0 | 6 | 基线、分支、inventory、扫描、tracker 建立 | PARTIAL | Clean base branch 和 tracker 已存在；还需要补齐 upstream remote 记录、clean-core 创建记录、旧 fork inventory、secret-risk scan 的明确证据。 |
+| [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 内部 review 已在 head `5030dee3` 得出 ready 结论；6-test 复跑：`63 pass / 0 fail`；无阻塞发现。 |
+| [ ] | M2 | 12 | External Runtime / LocalState skeleton | PARTIAL | S6 任务书已写；S7 完整 denylist、S8 LocalState gate、S9 checksum 规则仍待完成。 |
+| [ ] | M3 | 12 | `JennAIGentOrchestrator` copy-first 试点 | TODO | 需要 copy-first package、secret-risk scan、manifest identity、checksum。 |
+| [ ] | M4 | 10 | Shadow validation 和 rollback 演练 | TODO | 需要 discovery、disabled、exact allowlist、rollback proof。 |
+| [ ] | M5 | 14 | Agent / LocalState / AdminPanel contracts | TODO | 需要 `VCP_AGENT_DIRS`、`VCP_LOCAL_STATE_DIR`、Admin extension contract。 |
+| [ ] | M6 | 14 | AI Image / Codex-Memory / PhotoStudio 外置化 | TODO | 需要 adapter 边界，并证明 clean core 不含 private state。 |
+| [ ] | M7 | 10 | Stub / untrack / remove 决策 | TODO | 必须先完成 copy-first、checksum、validation、rollback 和人工确认。 |
+| [ ] | M8 | 10 | Upstream PR 和长期 rebase workflow | TODO | 只有 Jenn fork 内部验收完成后，才打开 upstream PR。 |
 
-Current score:
+当前计分：
 
 ```text
-M0 partial setup credit: 3 / 6
-M1 completed: 12 / 12
-M2 partial sprint credit: 3 / 12
-Global total: 18 / 100
+M0 部分基线分：3 / 6
+M1 已完成：12 / 12
+M2 sprint 部分分：3 / 12
+全局总分：18 / 100
 ```
 
-## 3. Current Sprint Checklist
+## 3. 当前 Sprint 清单
 
-Current sprint only expands M1 and M2 startup work. Later milestones remain intentionally unexpanded until their task books are written.
+当前 sprint 只展开 M1 和 M2 起步任务。后续 milestone 等任务书写好后再展开，不提前摊开。
 
-| Done | ID | Parent | Weight | Task | Status | Evidence |
+| 完成 | ID | 父项 | 权重 | 任务 | Status | 证据 |
 | --- | --- | --- | ---: | --- | --- | --- |
-| [x] | S1 | M1 | 3 | Establish Jenn fork internal clean-base PR flow | PASS | PR #272 base `codex/upstream-main-clean-base`; upstream PR #365 closed. |
-| [x] | S2 | M1 | 4 | Implement Phase 1 plugin contract | PASS | `Plugin.js` + 4 contract modules. |
-| [x] | S3 | M1 | 2 | Cover allowlist / registration / env sandbox with targeted tests | PASS | 6-test run: `63 pass / 0 fail`. |
-| [x] | S4 | M1 | 1 | Record Phase 1 acceptance status in PR body | PASS | PR #272 body updated with PASS / PARTIAL / DEFERRED matrix. |
-| [x] | S5 | M1 | 2 | Close PR #272 internal review and decide ready / continue | PASS | Decision: ready; no blocking findings; PR #272 head `5030dee3`; 6-test rerun: `63 pass / 0 fail`. |
-| [x] | S6 | M2 | 3 | Write External Runtime skeleton task book | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S6_EXTERNAL_RUNTIME_SKELETON_TASKBOOK_20260620.md`; docs-only, no clean core runtime change. |
-| [ ] | S7 | M2 | 3 | Land full denylist / `.gitignore` baseline | TODO | Must reuse existing governance denylist. |
-| [ ] | S8 | M2 | 3 | Define LocalState skeleton and `.agent_board/**` human gate | TODO | `.agent_board/**` remains excluded by default. |
-| [ ] | S9 | M2 | 3 | Define manifests / checksum rules | TODO | MANIFEST.sha256 generation rules required before copy-first closeout. |
+| [x] | S1 | M1 | 3 | 建立 Jenn fork 内部 clean-base PR 流程 | PASS | PR #272 base `codex/upstream-main-clean-base`；upstream PR #365 已关闭。 |
+| [x] | S2 | M1 | 4 | 实现 Phase 1 plugin contract | PASS | `Plugin.js` + 4 个 contract modules。 |
+| [x] | S3 | M1 | 2 | 用 targeted tests 覆盖 allowlist / registration / env sandbox | PASS | 6-test run：`63 pass / 0 fail`。 |
+| [x] | S4 | M1 | 1 | 在 PR body 记录 Phase 1 验收状态 | PASS | PR #272 body 已更新 PASS / PARTIAL / DEFERRED matrix。 |
+| [x] | S5 | M1 | 2 | 关闭 PR #272 内部 review，并决定 ready / continue | PASS | 结论：ready；无阻塞发现；PR #272 head `5030dee3`；6-test 复跑：`63 pass / 0 fail`。 |
+| [x] | S6 | M2 | 3 | 写 External Runtime skeleton 任务书 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S6_EXTERNAL_RUNTIME_SKELETON_TASKBOOK_20260620.md`；docs-only，没有 clean core runtime 改动。 |
+| [ ] | S7 | M2 | 3 | 落地完整 denylist / `.gitignore` baseline | TODO | 必须复用现有治理 denylist。 |
+| [ ] | S8 | M2 | 3 | 定义 LocalState skeleton 和 `.agent_board/**` 人工 gate | TODO | `.agent_board/**` 默认排除。 |
+| [ ] | S9 | M2 | 3 | 定义 manifests / checksum 规则 | TODO | copy-first closeout 前必须有 MANIFEST.sha256 规则。 |
 
-M1 completion rule:
-
-```text
-S1-S5 all PASS => M1 becomes PASS and counts 12 / 12.
-Current M1 progress: S1+S2+S3+S4+S5 = 12 / 12.
-```
-
-M2 start rule:
+M1 完成规则：
 
 ```text
-S6-S9 must be planned and accepted before copy-first migration begins.
-M2 does not become PASS until External Runtime and LocalState skeletons both exist with denylist and checksum rules.
+S1-S5 全部 PASS => M1 才变成 PASS，并计入 12 / 12。
+当前 M1 进度：S1+S2+S3+S4+S5 = 12 / 12。
 ```
 
-## 4. Deferred Domain Expansion
+M2 起步规则：
 
-These domains are part of the full route but are not current-sprint implementation work.
+```text
+copy-first 迁移开始前，S6-S9 必须先被规划并验收。
+M2 只有在 External Runtime 和 LocalState skeleton 都具备 denylist 与 checksum 规则后，才能变成 PASS。
+```
 
-| Domain | Future Contract | External Runtime / State Target | First Required Task |
+## 4. 后续领域展开
+
+这些领域属于完整路线，但不是当前 sprint 的实现工作。
+
+| 领域 | 未来 contract | External Runtime / State 目标 | 第一件必须做的事 |
 | --- | --- | --- | --- |
-| Agent | `VCP_AGENT_DIRS`, `VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent and AgentOverrides | Write Agent externalization task book. |
-| LocalState | `VCP_LOCAL_STATE_DIR` | Approved private memory, project data, local config | Define default exclusions and `.agent_board/**` human gate. |
-| AdminPanel | Admin extension manifest / route registration | Jenn pages, APIs, menu entries | Design extension manifest and build validation. |
-| AI Image | Generic adapter contract, default-off gates | Jenn fixtures, bindings, provider-specific adapters | Define adapter interface without trial/provider constants in core. |
-| Codex/Memory | Generic bridge interface or no core change | CodexMemoryBridge and Jenn memory tools | Define manifest-only validation without reading private memory. |
-| PhotoStudio | Generic plugin loading ability | PhotoStudio plugins, data, task templates | Define no-auto-write and data exclusion rules. |
-| Governance Docs | Minimal clean-core acceptance notes | Detailed migration ledger and checksums | Decide which evidence lives outside clean core. |
+| Agent | `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | 写 Agent externalization 任务书。 |
+| LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
+| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | 设计 extension manifest 和 build validation。 |
+| AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | 定义 adapter interface，不把 trial/provider 常量写进 core。 |
+| Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | 定义 manifest-only validation，不能读取私有 memory。 |
+| PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | 定义 no-auto-write 和 data exclusion rules。 |
+| Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
 
-## 5. Acceptance Gates Before Upstream PR
+## 5. 打开 Upstream PR 前的验收门
 
-Before opening a new upstream PR to `lioensky/VCPToolBox`, the following must be true:
+打开新的 `lioensky/VCPToolBox` upstream PR 前，必须满足：
 
-| Gate | Required Evidence | Status |
+| Gate | 必需证据 | Status |
 | --- | --- | --- |
-| Jenn internal review complete | PR #272 has explicit ready / continue decision | PASS |
-| Phase 1 validation stable | Syntax checks and 6-test command pass on the intended review head | PASS |
-| Phase boundary clear | Phase 2 copy-first/checksum/denylist remain out of PR #272 | PASS |
-| No secret/runtime files | Diff contains no env, config, state, cache, log, image, or auth material | PASS for PR #272 |
-| Upstream target decision | New upstream PR is opened only after internal acceptance | TODO |
+| Jenn 内部 review 完成 | PR #272 有明确 ready / continue 决策 | PASS |
+| Phase 1 validation 稳定 | 在目标 review head 上通过 syntax checks 和 6-test command | PASS |
+| Phase 边界清楚 | Phase 2 copy-first/checksum/denylist 不混进 PR #272 | PASS |
+| 没有 secret/runtime 文件 | diff 不包含 env、config、state、cache、log、image、auth material | PASS for PR #272 |
+| Upstream 目标决策 | 只有内部验收完成后，才打开新的 upstream PR | TODO |
 
-## 6. Rollback Notes
+## 6. 回滚说明
 
-For current Phase 1 work:
+当前 Phase 1 工作的回滚方式：
 
-- Close or keep PR #272 as draft if internal review finds a blocker.
-- Disable external runtime by omitting `VCP_PLUGIN_DIRS`, `VCP_PLUGIN_ALLOWED_ROOTS`, or `VCP_EXTERNAL_PLUGIN_ALLOWLIST`.
-- Core fallback is not removed by PR #272.
+- 如果内部 review 找到阻塞项，关闭 PR #272 或把它保持为 draft。
+- 通过不设置 `VCP_PLUGIN_DIRS`、`VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` 来禁用 external runtime。
+- PR #272 不会删除 core fallback。
 
-For future Phase 2+ work:
+未来 Phase 2+ 工作的回滚原则：
 
-- Do not delete or untrack core copies until copy-first, checksum, shadow validation, and rollback drill are complete.
-- Every migrated domain must record rollback in its task book before implementation starts.
+- copy-first、checksum、shadow validation、rollback drill 完成前，不要删除或 untrack core 副本。
+- 每个迁移领域都必须先在任务书中写明 rollback，再开始实现。
