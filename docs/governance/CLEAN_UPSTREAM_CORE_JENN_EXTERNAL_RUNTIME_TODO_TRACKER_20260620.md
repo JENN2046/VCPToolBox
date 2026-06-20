@@ -1,8 +1,8 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##--------] 18% (18 / 100)
+Progress: [##--------] 21% (21 / 100)
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
 当前里程碑：M2 - 完整 denylist / LocalState / checksum 基础门禁
 
@@ -47,7 +47,7 @@ Last updated: 2026-06-20
 | --- | --- | ---: | --- | --- | --- |
 | [ ] | M0 | 6 | 基线、分支、inventory、扫描、tracker 建立 | PARTIAL | Clean base branch 和 tracker 已存在；还需要补齐 upstream remote 记录、clean-core 创建记录、旧 fork inventory、secret-risk scan 的明确证据。 |
 | [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 已合并到 Jenn clean base；merge commit `86c69e8d`；final head `a4225aca`；review threads 全部 resolved；6-test 复跑：`65 pass / 0 fail`。 |
-| [ ] | M2 | 12 | External Runtime / LocalState skeleton | PARTIAL | S6 任务书已写；S7 完整 denylist、S8 LocalState gate、S9 checksum 规则仍待完成。 |
+| [ ] | M2 | 12 | External Runtime / LocalState skeleton | PARTIAL | S6 任务书和 S7 denylist / `.gitignore` baseline 已写；S8 LocalState gate、S9 checksum 规则仍待完成。 |
 | [ ] | M3 | 12 | `JennAIGentOrchestrator` copy-first 试点 | TODO | 需要 copy-first package、secret-risk scan、manifest identity、checksum。 |
 | [ ] | M4 | 10 | Shadow validation 和 rollback 演练 | TODO | 需要 discovery、disabled、exact allowlist、rollback proof。 |
 | [ ] | M5 | 14 | Agent / LocalState / AdminPanel contracts | TODO | 需要 `VCP_AGENT_DIRS`、`VCP_LOCAL_STATE_DIR`、Admin extension contract。 |
@@ -60,8 +60,8 @@ Last updated: 2026-06-20
 ```text
 M0 部分基线分：3 / 6
 M1 已完成并内部合并：12 / 12
-M2 sprint 部分分：3 / 12
-全局总分：18 / 100
+M2 sprint 部分分：6 / 12
+全局总分：21 / 100
 ```
 
 ## 3. 当前 Sprint 清单
@@ -76,7 +76,7 @@ M2 sprint 部分分：3 / 12
 | [x] | S4 | M1 | 1 | 在 PR body 记录 Phase 1 验收状态 | PASS | PR #272 body 已更新 PASS / PARTIAL / DEFERRED matrix。 |
 | [x] | S5 | M1 | 2 | 关闭 PR #272 内部 review，并决定 ready / continue | PASS | 结论：ready 后已内部合并；PR #272 final head `a4225aca`；merge commit `86c69e8d`；3 个 P2 threads resolved；6-test 复跑：`65 pass / 0 fail`。 |
 | [x] | S6 | M2 | 3 | 写 External Runtime skeleton 任务书 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S6_EXTERNAL_RUNTIME_SKELETON_TASKBOOK_20260620.md`；docs-only，没有 clean core runtime 改动。 |
-| [ ] | S7 | M2 | 3 | 落地完整 denylist / `.gitignore` baseline | TODO | 必须复用现有治理 denylist。 |
+| [x] | S7 | M2 | 3 | 落地完整 denylist / `.gitignore` baseline | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_S7_DENYLIST_GITIGNORE_BASELINE_20260621.md`；复用 AGENTS sensitive paths、S2 harness sensitive pathspecs、P3E taxonomy；保留 `Plugin/**/dist/**`，默认排除 `.agent_board/**`。 |
 | [ ] | S8 | M2 | 3 | 定义 LocalState skeleton 和 `.agent_board/**` 人工 gate | TODO | `.agent_board/**` 默认排除。 |
 | [ ] | S9 | M2 | 3 | 定义 manifests / checksum 规则 | TODO | copy-first closeout 前必须有 MANIFEST.sha256 规则。 |
 
