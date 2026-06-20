@@ -26,6 +26,7 @@ function makeBaseEnv(overrides = {}) {
         SystemRoot: 'C:\\Windows',
         windir: 'C:\\Windows',
         ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+        PATHEXT: '.COM;.EXE;.BAT;.CMD',
         NO_COLOR: '1',
         CI: 'true',
         AdminPassword: 'admin-secret',
@@ -110,7 +111,9 @@ async function withPluginManagerState(run) {
         OPENAI_API_KEY: process.env.OPENAI_API_KEY,
         GITHUB_TOKEN: process.env.GITHUB_TOKEN,
         Key: process.env.Key,
+        DATABASE_URL: process.env.DATABASE_URL,
         PLUGIN_CALLBACK_SECRET: process.env.PLUGIN_CALLBACK_SECRET,
+        PATHEXT: process.env.PATHEXT,
         PORT: process.env.PORT
     };
 
@@ -120,7 +123,9 @@ async function withPluginManagerState(run) {
     process.env.OPENAI_API_KEY = 'openai-secret';
     process.env.GITHUB_TOKEN = 'github-secret';
     process.env.Key = 'global-key';
+    process.env.DATABASE_URL = 'postgres://host-secret';
     process.env.PLUGIN_CALLBACK_SECRET = 'callback-secret';
+    process.env.PATHEXT = '.COM;.EXE;.BAT;.CMD';
     process.env.PORT = '5890';
 
     try {
@@ -151,6 +156,7 @@ test('runtime env sandbox preserves operational keys and removes base secrets', 
     assert.equal(env.SystemRoot, 'C:\\Windows');
     assert.equal(env.windir, 'C:\\Windows');
     assert.equal(env.ComSpec, 'C:\\Windows\\System32\\cmd.exe');
+    assert.equal(env.PATHEXT, '.COM;.EXE;.BAT;.CMD');
     assert.equal(env.NO_COLOR, '1');
     assert.equal(env.CI, 'true');
 
@@ -229,6 +235,35 @@ test('external stdio plugin spawn receives sanitized env', async () => {
         assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'GITHUB_TOKEN'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'Key'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'SECRET_TOKEN'), false);
+    });
+});
+
+test('external plugin config schema does not inherit global env fallback values', async () => {
+    await withPluginManagerState(async () => {
+        const pluginName = 'ExternalNoGlobalConfigFallbackFixture';
+        const plugin = makeExternalPlugin(pluginName, {
+            configSchema: {
+                SAFE_SETTING: 'string',
+                DATABASE_URL: 'string'
+            },
+            pluginSpecificEnvConfig: {
+                SAFE_SETTING: 'enabled'
+            }
+        });
+        let spawnCall = null;
+
+        pluginManager.plugins.set(pluginName, plugin);
+        pluginManager._spawnPluginProcess = (command, args, options) => {
+            spawnCall = { command, args, options };
+            return makeFakeChild('{"status":"success","result":"ok"}\n');
+        };
+
+        const result = await pluginManager.executePlugin(pluginName, '{}');
+
+        assert.equal(result.status, 'success');
+        assert.ok(spawnCall);
+        assert.equal(spawnCall.options.env.SAFE_SETTING, 'enabled');
+        assert.equal(Object.prototype.hasOwnProperty.call(spawnCall.options.env, 'DATABASE_URL'), false);
     });
 });
 

@@ -137,6 +137,7 @@ class PluginManager extends EventEmitter {
         const config = {};
         const globalEnv = process.env;
         const pluginSpecificEnv = pluginManifest.pluginSpecificEnvConfig || {};
+        const allowGlobalEnvFallback = !this._isExternalPluginManifest(pluginManifest);
 
         if (pluginManifest.configSchema) {
             for (const key in pluginManifest.configSchema) {
@@ -149,7 +150,7 @@ class PluginManager extends EventEmitter {
 
                 if (pluginSpecificEnv.hasOwnProperty(key)) {
                     rawValue = pluginSpecificEnv[key];
-                } else if (globalEnv.hasOwnProperty(key)) {
+                } else if (allowGlobalEnvFallback && globalEnv.hasOwnProperty(key)) {
                     rawValue = globalEnv[key];
                 } else {
                     continue;
@@ -171,7 +172,7 @@ class PluginManager extends EventEmitter {
 
         if (pluginSpecificEnv.hasOwnProperty('DebugMode')) {
             config.DebugMode = String(pluginSpecificEnv.DebugMode).toLowerCase() === 'true';
-        } else if (globalEnv.hasOwnProperty('DebugMode')) {
+        } else if (allowGlobalEnvFallback && globalEnv.hasOwnProperty('DebugMode')) {
             config.DebugMode = String(globalEnv.DebugMode).toLowerCase() === 'true';
         } else if (!config.hasOwnProperty('DebugMode')) {
             config.DebugMode = false;

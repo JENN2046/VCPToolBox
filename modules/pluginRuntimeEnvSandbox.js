@@ -11,6 +11,7 @@ const DEFAULT_EXTERNAL_RUNTIME_ENV_KEYS = new Set([
     'SystemRoot',
     'windir',
     'ComSpec',
+    'PATHEXT',
     'NO_COLOR',
     'CI'
 ]);
