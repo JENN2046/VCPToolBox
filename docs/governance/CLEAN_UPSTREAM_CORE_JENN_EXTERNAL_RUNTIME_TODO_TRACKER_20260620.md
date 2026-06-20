@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [#########-] 94% (94 / 100)
+Progress: [##########] 97% (97 / 100)
 
 Last updated: 2026-06-21
 
-当前里程碑：M8 - Upstream PR 和长期 rebase workflow
+当前里程碑：Jenn fork 内长期维护收口（M0 PASS；M8/S25 deferred）
 
 状态来源：
 
@@ -45,9 +45,9 @@ Last updated: 2026-06-21
 
 | 完成 | ID | 权重 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
-| [ ] | M0 | 6 | 基线、分支、inventory、扫描、tracker 建立 | PARTIAL | Clean base branch 和 tracker 已存在；还需要补齐 upstream remote 记录、clean-core 创建记录、旧 fork inventory、secret-risk scan 的明确证据。 |
+| [x] | M0 | 6 | 基线、分支、inventory、扫描、tracker 建立 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M0_BASELINE_INVENTORY_SECRET_RISK_EVIDENCE_20260621.md`；upstream/origin refs、clean-core 创建记录、旧 fork inventory、paths-only secret-risk scan 已补齐；LocalState 仅存在性记录，不枚举。 |
 | [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 已合并到 Jenn clean base；merge commit `86c69e8d`；final head `a4225aca`；review threads 全部 resolved；6-test 复跑：`65 pass / 0 fail`。 |
-| [x] | M2 | 12 | External Runtime / LocalState skeleton | PASS | S6 任务书、S7 denylist / `.gitignore` baseline、S8 LocalState / `.agent_board/**` gate、S9 manifest / checksum rules 已写；M3 copy-first 已单独完成，M8 仍待展开。 |
+| [x] | M2 | 12 | External Runtime / LocalState skeleton | PASS | S6 任务书、S7 denylist / `.gitignore` baseline、S8 LocalState / `.agent_board/**` gate、S9 manifest / checksum rules 已写；M3 copy-first 已单独完成，M8 workflow 已展开且 S25 deferred。 |
 | [x] | M3 | 12 | `JennAIGentOrchestrator` copy-first 试点 | PASS | External package commit `b4f250e`；receipt `receipts/M3_JENN_AIGENT_ORCHESTRATOR_COPY_FIRST_RECEIPT_20260621.md`；paths-only scan clean；`MANIFEST_VERIFY_PASS count=4`；manifest identity `JennAIGentOrchestrator`。 |
 | [x] | M4 | 10 | Shadow validation 和 rollback 演练 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M4_SHADOW_VALIDATION_ROLLBACK_RECEIPT_20260621.md`；external discovery / registration gate tests `14+6+5 pass`；Jenn no-provider shadow harness PASS；rollback overlay PASS。 |
 | [x] | M5 | 14 | Agent / LocalState / AdminPanel contracts | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M5_AGENT_LOCALSTATE_ADMIN_CONTRACTS_20260621.md`；定义 `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS`、`VCP_LOCAL_STATE_DIR`、`VCP_ADMIN_EXTENSION_DIRS`；docs-only。 |
@@ -58,7 +58,7 @@ Last updated: 2026-06-21
 当前计分：
 
 ```text
-M0 部分基线分：3 / 6
+M0 已完成：6 / 6
 M1 已完成并内部合并：12 / 12
 M2 已完成：12 / 12
 M3 已完成：12 / 12
@@ -67,7 +67,7 @@ M5 已完成：14 / 14
 M6 已完成：14 / 14
 M7 决策完成：10 / 10
 M8 部分完成：7 / 10
-全局总分：94 / 100
+全局总分：97 / 100
 ```
 
 ## 3. 当前 Sprint 清单
@@ -101,6 +101,9 @@ M8 部分完成：7 / 10
 | [x] | S23 | M8 | 3 | 准备 upstream PR readiness packet | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md`；明确 upstream candidate 只能来自 `origin/codex/upstream-main-clean-base` / Phase 1 generic contract，不使用 M2-M8 governance branch 直接开 PR。 |
 | [x] | S24 | M8 | 4 | 定义长期 rebase workflow 和 conflict budget | PASS | `upstream/main` 已 fetch 到 `f8d45479`；merge-base `f901f1a9`；read-only preflight：upstream changed files `12`、clean-base changed files `11`、intersection `0`、merge-tree conflict markers none observed。 |
 | [ ] | S25 | M8 | 3 | 人工授权后打开 upstream PR | DEFERRED | 用户决定先跳过打开 `lioensky/VCPToolBox` upstream PR；若未来恢复，需要当前轮明确授权目标仓库、source branch、target branch 和 action `open upstream PR`。 |
+| [x] | S26 | M0 | 1 | 补齐 upstream/origin remote 与 clean-core 创建记录 | PASS | `upstream/main = f8d45479`；`origin/codex/upstream-main-clean-base = 86c69e8d`；merge parents `f901f1a9` + `a4225aca`；记录在 M0 evidence。 |
+| [x] | S27 | M0 | 1 | 补齐旧 Jenn fork path-only inventory | PASS | `origin/main = e5874076`；tracked paths `5449`；Plugin paths `1501`；plugin manifests `141`；Agent txt `12`；Admin views `51`；Admin routes `31`；tests `114`。 |
+| [x] | S28 | M0 | 1 | 补齐 paths-only secret-risk scan 证据 | PASS | `origin/main` high-risk path count `8`；clean-base count `28`；HEAD count `8`；external package count `0`；LocalState exists but enumeration skipped private-by-default。 |
 
 M1 完成规则：
 
