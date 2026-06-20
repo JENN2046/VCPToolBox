@@ -61,6 +61,7 @@ N/A       不适用
 | A9 | upstream 追踪 | upstream merge 冲突集中在少量 contract/core patch | 冲突仍大量落在 Jenn 插件、Agent、状态、Admin 页面 | TODO |
 | A10 | 回滚 | 每个领域能回退到 core fallback 或禁用外部包 | 迁移后只能依赖大范围 revert | TODO |
 | A11 | 外部插件门禁 | `VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_PLUGIN_DIRS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` 分别覆盖外部根允许、发现、运行时注册 | 只恢复 `VCP_PLUGIN_DIRS`，或把 discovery 成功当成 runtime registration 成功 | TODO |
+| A12 | denylist 复用 | External Runtime / LocalState 骨架必须复用现有完整敏感与运行态 denylist，并记录来源 | 只使用少量 `.env` / key / db ignore 规则，导致 auth、state、log、output、sqlite sidecar 进入外部包 | TODO |
 
 ## 4. 推荐目录形态
 
@@ -108,6 +109,8 @@ source manifest：
 新 external 目标路径：
 core contract 文件：
 是否 copy-first：
+denylist / ignore source：
+copy exclusions：
 checksum：
 默认启用状态：
 旧行为对照：
@@ -195,26 +198,95 @@ core diff 很薄
 
 ```text
 建立 Jenn Extensions / Jenn LocalState 骨架
-写入 .gitignore
+写入 .gitignore，并复用现有完整敏感与运行态 denylist
 建立 manifests/ 与 checksum 规则
 选择第一个 shadow 试点
 ```
 
-推荐 `.gitignore` 基线：
+Phase 2 不得只使用少量 env/key/db ignore 规则。骨架 `.gitignore` 必须复用当前项目治理与 harness 的完整 denylist，例如：
+
+```text
+AGENTS.override.md sensitive paths
+scripts/aigentquality-server-smoke-s2-preplan.js sensitive pathspecs
+scripts/aigentquality-server-smoke-s2-guarded-plan.js sensitive pathspecs
+```
+
+最低 `.gitignore` 基线：
 
 ```gitignore
 .env
 .env.*
+**/.env
+**/.env.*
 config.env
+config.env.local
 **/config.env
+**/config.env.local
 *.key
 *.pem
 *.p12
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
 *.db
+*.db-shm
+*.db-wal
+*.log
 node_modules/
 dist/
 .cache/
+.cache/**
+cache/
+cache/**
+state/
+state/**
+output/
+output/**
+outputs/
+outputs/**
+logs/
+logs/**
+secrets/
+secrets/**
+DebugLog/
+DebugLog/**
+image/
+image/**
+Plugin/UserAuth/code.bin
+Plugin/**/.cache
+Plugin/**/.cache/**
+Plugin/**/.cache*
+Plugin/**/.cache*/**
+Plugin/**/cache
+Plugin/**/cache/**
+Plugin/**/state
+Plugin/**/state/**
+Plugin/**/logs
+Plugin/**/logs/**
+Plugin/**/secrets
+Plugin/**/secrets/**
+Plugin/**/output
+Plugin/**/output/**
+Plugin/**/outputs
+Plugin/**/outputs/**
+Plugin/**/*.log
+Plugin/**/*.sqlite
+Plugin/**/*.sqlite-shm
+Plugin/**/*.sqlite-wal
+Plugin/**/*.sqlite3
+Plugin/**/*.db
+Plugin/**/*.db-shm
+Plugin/**/*.db-wal
+```
+
+copy-first 与 checksum 顺序：
+
+```text
+1. 先应用 denylist / ignore 规则复制外部包。
+2. 再对复制结果做 secret-risk paths only 扫描。
+3. 只有扫描通过后才生成 MANIFEST.sha256。
+4. checksum 不得包含被 denylist 排除的 auth / state / cache / log / output / image / sqlite sidecar 文件。
 ```
 
 ### Phase 3：第一个试点
@@ -334,6 +406,7 @@ core 写入私有本地路径或具体 trial id
 外部高权限插件默认自动启用
 真实 secret 被复制、打印或提交
 没有 checksum 就删除旧文件
+没有复用完整 denylist 就 copy-first 或生成 checksum
 没有 parity checklist 就宣称迁移完成
 为了接外部包大改 Plugin.js / server.js / AdminPanel
 只实现 `VCP_PLUGIN_DIRS`，但遗漏 `VCP_PLUGIN_ALLOWED_ROOTS` 或 `VCP_EXTERNAL_PLUGIN_ALLOWLIST`
