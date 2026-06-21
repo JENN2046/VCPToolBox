@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [#########-] 89% (26.7 / 30 global milestone units)
+Progress: [#########-] 92% (27.7 / 30 global milestone units)
 
 Last updated: 2026-06-21
 
-当前里程碑：Jenn fork 内长期维护收口（M26 PhotoStudio externalization taskbook pass；next M27 governance migration ledger finalization；M8/S25 deferred；future domains queued）
+当前里程碑：Jenn fork 内长期维护收口（M27 governance migration ledger finalization pass；next M28 upstream PR decision remains deferred unless explicitly authorized；M8/S25 deferred）
 
 状态来源：
 
@@ -20,7 +20,7 @@ Last updated: 2026-06-21
 当前采用双层结构：
 
 - 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M29。
-- 短期执行记录：实际 sprint ledger，记录 S1-S47 已完成工作和 S48-S50 计划/延期项。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 已完成工作和 S49-S50 计划/延期项。
 
 更新规则：
 
@@ -90,7 +90,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 | [x] | M24 | 0 | AI Image no-provider shadow validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M24_AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_RECEIPT_20260621.md`；temp fixture manifest schema PASS；fixture risk `0`；checksum `6b1263812aebf1042752b0c09ca1f53032fd620647f41b19a49d4391bf87a05e`；provider/image/output/bridge/LocalState counters all `0`；rollback removed temp fixture。 |
 | [x] | M25 | 0 | Codex/Memory external bridge planning | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md`；taskbook-only；定义 `VCP_CODEX_MEMORY_BRIDGE_DIRS`、manifest schema、source/private lane split、candidate gate、no-live-write validation；未读取 private memory，未写 bridge。 |
 | [x] | M26 | 0 | PhotoStudio externalization planning | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md`；taskbook-only；定义 `VCP_PHOTOSTUDIO_PACKAGE_DIRS`、source/private lane split、candidate gate、no-auto-write validation；未读取/复制项目数据，未外部写。 |
-| [ ] | M27 | 0 | Governance migration ledger finalization | TODO | 汇总 M0-M26 receipts、checksums、deferred items、rollback map；不改变 runtime。 |
+| [x] | M27 | 0 | Governance migration ledger finalization | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`；汇总 M0-M26 evidence、checksums、deferred/open risks、rollback map；docs-only，不改变 runtime。 |
 | [ ] | M28 | 0 | Upstream PR decision revisit | DEFERRED | 仅在用户当前轮明确授权时恢复；目标 repo、source branch、target branch、action 必须具体；否则继续 deferred。 |
 | [ ] | M29 | 0 | Jenn fork maintenance route final closeout | TODO | 所有 active domain gates PASS 或明确 DEFERRED/BLOCK 后执行；产出最终状态、风险、未做项、下一周期建议。 |
 
@@ -99,9 +99,9 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 ```text
 M0-M7 PASS：8.0 / 8 units
 M8 PARTIAL：0.7 / 1 unit（S23+S24 = 7 / 10；S25 upstream PR 仍 DEFERRED）
-M9-M26 PASS：18.0 / 18 units
-M27-M29 TODO / DEFERRED：0 / 3 units
-Global Progress：26.7 / 30 = 89.0%，显示为 89%
+M9-M27 PASS：19.0 / 19 units
+M28-M29 TODO / DEFERRED：0 / 2 units
+Global Progress：27.7 / 30 = 92.3%，四舍五入显示为 92%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -157,7 +157,7 @@ Global Progress：26.7 / 30 = 89.0%，显示为 89%
 | [x] | S45 | AI Image / M24 | 0 | AI Image no-provider shadow validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M24_AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_RECEIPT_20260621.md`；harness `AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_PASS`；fixture risk `0`；provider/image/output/bridge/LocalState counters `0`；不生成真实图片。 |
 | [x] | S46 | Codex/Memory / M25 | 0 | Codex/Memory external bridge taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md`；manifest/path-only/no-live-write plan；不读取 private memory；不 bridge 外写。 |
 | [x] | S47 | PhotoStudio / M26 | 0 | PhotoStudio externalization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md`；data exclusion、copy-first gates、no-auto-write plan；不读取项目私有数据。 |
-| [ ] | S48 | Governance / M27 | 0 | Migration ledger finalization | TODO | 汇总 receipts、checksums、deferred/BLOCK、rollback map。 |
+| [x] | S48 | Governance / M27 | 0 | Migration ledger finalization | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`；evidence index、checksums、deferred/BLOCK、rollback map；docs-only。 |
 | [ ] | S49 | Upstream / M28 | 0 | Upstream PR decision revisit | DEFERRED | 需要用户当前轮明确授权，否则保持 deferred。 |
 | [ ] | S50 | Closeout / M29 | 0 | Jenn fork maintenance final closeout | TODO | 总结所有 active/deferred/block 状态，给下一周期路线。 |
 
@@ -228,7 +228,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | AI Image 分域验收 | M23-M24 / S44-S45 | generic adapter taskbook、provider-off fixture、no-provider shadow validation | M23-M24 PASS；no-provider only；不写 token，不发 provider call，不生成真实图片。 |
 | Codex/Memory 分域验收 | M25 / S46 | bridge taskbook、manifest/path-only scan、no-live-write validation design | M25 PASS；不读取 private memory，不 bridge 外写。 |
 | PhotoStudio 分域验收 | M26 / S47 | taskbook、data exclusion、copy-first gates、no-auto-write rules | M26 PASS；项目数据留 LocalState/private。 |
-| Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | TODO；docs-only。 |
+| Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | M27 PASS；docs-only。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | TODO；完成前不得声称全路线收口。 |
 
 ## 5. 详细执行待办（Planned Backlog）
@@ -288,7 +288,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | Q6 | M24/S45 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M24_AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_RECEIPT_20260621.md`。 |
 | Q7 | M25/S46 | PASS | Codex/Memory | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md`。 |
 | Q8 | M26/S47 | PASS | PhotoStudio | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md`。 |
-| Q9 | M27/S48 | TODO | Governance | migration ledger finalization。 |
+| Q9 | M27/S48 | PASS | Governance | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`。 |
 | Q10 | M28/S49 | DEFERRED | Upstream PR | 仅用户当前轮明确授权才恢复。 |
 | Q11 | M29/S50 | TODO | Closeout | Jenn fork maintenance route final closeout。 |
 
@@ -329,10 +329,10 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | M26-02 | PASS | 写 PhotoStudio externalization taskbook | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md` | 不复制项目数据 |
 | M26-03 | PASS | 定义 plugins/templates source path-only candidate gate | M26 source/private lane split + candidate gate matrix | 不把 LocalState data 当 package content |
 | M26-04 | PASS | 更新 tracker S47 | M26/S47 PASS；M27 remains TODO | 不启用 no-auto-write 之外的写入 |
-| M27-01 | TODO | 收集 M0-M26 receipts / commits / checksum evidence | evidence index | 不补造 PASS |
-| M27-02 | TODO | 核对 deferred/BLOCK/open risks 与 rollback map | ledger matrix | 不改变 runtime |
-| M27-03 | TODO | 写 migration ledger finalization doc | M27 ledger path | 不开 upstream PR |
-| M27-04 | TODO | 更新 tracker S48 | tracker diff | 不声称 deferred 已完成 |
+| M27-01 | PASS | 收集 M0-M26 receipts / commits / checksum evidence | M27 evidence index | 不补造 PASS |
+| M27-02 | PASS | 核对 deferred/BLOCK/open risks 与 rollback map | M27 deferred/open risk ledger + rollback map | 不改变 runtime |
+| M27-03 | PASS | 写 migration ledger finalization doc | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md` | 不开 upstream PR |
+| M27-04 | PASS | 更新 tracker S48 | M27/S48 PASS；M28 remains DEFERRED | 不声称 deferred 已完成 |
 | M28-01 | DEFERRED | 保持 upstream PR decision deferred，除非用户当前轮明确授权 | deferred note | 不自动打开 upstream PR |
 | M28-02 | TODO | 若授权恢复，先做 target repo/source branch/base branch/action preflight | preflight packet | 不隐含 remote write |
 | M28-03 | TODO | 若授权明确，再准备/open PR 并记录 rollback/close path | PR URL 或 skipped reason | 不混入 Jenn runtime overlay |
