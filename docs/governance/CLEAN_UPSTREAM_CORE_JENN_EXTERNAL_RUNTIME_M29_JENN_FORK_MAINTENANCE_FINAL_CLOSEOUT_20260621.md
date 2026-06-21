@@ -38,6 +38,8 @@ Therefore the route is not 100% complete globally. It is closed as a Jenn fork m
 
 This closeout is not an upstream-ready declaration. Upstream PR opening remains blocked until the whole local plan is implemented in the Jenn fork/local route and has stable-operation evidence.
 
+Post-closeout note: M30 defines that local stability window as a 7-day / 3-cycle gate, but M30 does not execute or pass the window.
+
 ## 2. Final Progress Accounting
 
 ```text
@@ -114,7 +116,7 @@ No remote rollback is required because M29 opens no PR, performs no deployment, 
 Recommended next cycle options:
 
 1. Continue local implementation toward the full plan, choosing one deferred domain for a real package gate: AdminPanel persistent package, AI Image provider adapter package, Codex/Memory no-live-write fixture, or PhotoStudio source package.
-2. Establish stable-operation evidence for the implemented local route using agreed repeatable validation before reconsidering upstream PR.
+2. Execute the M30 7-day / 3-cycle stable-operation window after deferred domains are completed or explicitly out-of-scope.
 3. Keep core fallback until a future reviewed removal package proves parity and rollback.
 4. Preserve LocalState/private and `.agent_board/**` as blocked/private-by-default.
 5. Reopen the upstream PR gate only after local completion and stability evidence exist, with exact repo/branch/action authorization.

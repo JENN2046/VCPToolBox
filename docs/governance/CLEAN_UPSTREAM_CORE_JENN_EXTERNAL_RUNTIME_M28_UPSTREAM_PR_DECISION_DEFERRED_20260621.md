@@ -10,6 +10,7 @@ Related evidence:
 
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`
+- `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M30_LOCAL_IMPLEMENTATION_STABILITY_WINDOW_TASKBOOK_20260621.md`
 
 ## 1. Decision
 
@@ -47,7 +48,7 @@ Full local implementation + stable-operation PR gate passed: no
 To resume M8/S25 or M28, the following must happen in order:
 
 1. The whole local plan intended for upstream consideration is implemented in the Jenn fork/local route, not only documented as taskbooks.
-2. Stable-operation evidence exists for the implemented route, using an agreed validation window or equivalent repeatable validation evidence.
+2. Stable-operation evidence exists for the implemented route, using the M30 7-day / 3-cycle local validation window or a stricter reviewed replacement.
 3. Any deferred local domains are either completed or explicitly declared out-of-scope for the upstream payload.
 4. After those gates pass, a future current-turn authorization must explicitly state:
 
@@ -69,6 +70,7 @@ Ambiguous continuation phrases such as `继续`, `自动推进`, `来吧`, or `g
 - M28 remains DEFERRED and counts `0` global milestone units.
 - M29 may still perform Jenn fork maintenance closeout because active Jenn fork maintenance domains M9-M27 are PASS and M28 is explicitly deferred.
 - M29 closeout is not proof that the whole plan is locally implemented or stably operating.
+- M30 defines the local acceptance window, but does not execute or pass that window.
 
 ## 5. Rollback
 
