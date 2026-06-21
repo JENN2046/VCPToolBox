@@ -15,6 +15,7 @@ Related evidence:
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M33_CODEX_MEMORY_NO_LIVE_WRITE_PACKAGE_GATE_RECEIPT_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M34_PHOTOSTUDIO_SOURCE_PACKAGE_GATE_RECEIPT_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M35_AGGREGATE_FULL_LOCAL_MATRIX_REVIEW_20260621.md`
+- `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M36_STABLE_OPERATION_WINDOW_ENTRY_20260621.md`
 
 ## 1. Objective
 
@@ -93,6 +94,7 @@ EXPLICITLY_OUT_OF_SCOPE
 | Codex/Memory | PACKAGE_GATE_PASS_NO_LIVE_WRITE_RUNTIME_DEFERRED | M33 persistent bridge package gate PASS; no-live-write validation passed; runtime bridge registration, live memory writes, private memory reads, and bridge external writes remain deferred. |
 | PhotoStudio | PACKAGE_GATE_PASS_NO_AUTO_WRITE_RUNTIME_DEFERRED | M34 persistent source package gate PASS; project data, LocalState/private data, external sync/publish/write, provider calls, bridge calls, and runtime registration remain deferred. |
 | Aggregate full-local matrix | MATRIX_REVIEW_PASS_STABILITY_DEFERRED | M35 re-ran M31-M34 package gates and confirmed package layer consistency; runtime gates and stable-operation window remain deferred. |
+| Stable-operation window entry | ENTRY_DEFINED_WINDOW_NOT_STARTED | M36 defines future cycle receipt shape, evidence requirements, reset conditions, and stop boundaries; 7-day clock not started. |
 | Core fallback removal | DEFERRED | Not required for local stability; remains future proposal only. |
 | Upstream PR | DEFERRED | Cannot resume until full-local implementation and stable-operation evidence both pass. |
 
@@ -161,7 +163,7 @@ Recommended local progression order:
 3. Codex/Memory no-live-write fixture/package gate. Completed by M33.
 4. PhotoStudio source/package gate excluding project data. Completed by M34.
 5. Aggregate full-local matrix review. Completed by M35.
-6. 7-day stable-operation window execution.
+6. 7-day stable-operation window execution. Entry defined by M36; opening cycle not started.
 
 This order is a default. It may be changed by `PLAN_CHANGE` if the reason, risk, and validation impact are recorded before execution.
 
