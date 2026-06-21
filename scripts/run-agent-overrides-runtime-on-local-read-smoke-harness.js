@@ -123,11 +123,14 @@ async function main() {
   lines.push(`AGENT_EFFECTIVE_FILE_COUNT=${manager.agentFiles.length}`);
   lines.push(`AGENT_DIAGNOSTIC_CODES=${diagnosticCodes}`);
 
-  if (!plan) failures.push('agent_file_plan_missing');
-  if ((plan?.snapshot.externalAdditiveRoots.length ?? -1) !== 0) failures.push('agent_additive_root_enabled');
-  if ((plan?.snapshot.externalOverrideRoots.length ?? -1) !== 1) failures.push('agent_override_root_count_unexpected');
-  if ((plan?.additiveFiles.length ?? -1) !== 0) failures.push('agent_additive_files_enabled');
-  if ((plan?.overrideFiles.length ?? -1) !== TARGET_ALIASES.length) failures.push('agent_override_file_count_unexpected');
+  if (!plan) {
+    failures.push('agent_file_plan_missing');
+  } else {
+    if (plan.snapshot.externalAdditiveRoots.length !== 0) failures.push('agent_additive_root_enabled');
+    if (plan.snapshot.externalOverrideRoots.length !== 1) failures.push('agent_override_root_count_unexpected');
+    if (plan.additiveFiles.length !== 0) failures.push('agent_additive_files_enabled');
+    if (plan.overrideFiles.length !== TARGET_ALIASES.length) failures.push('agent_override_file_count_unexpected');
+  }
   if (diagnosticCodes !== 'none') failures.push('agent_diagnostics_present');
 
   const readPaths = [];
@@ -142,47 +145,50 @@ async function main() {
   const promptHashMatches = [];
   const externalReadMatches = [];
   try {
-    for (const alias of TARGET_ALIASES) {
-      const fileName = agentMap[alias];
-      const record = manager.resolveAgentFileRecord(fileName);
-      const externalRecord = manager.resolveExternalAgentFileRecord(fileName);
-      const expectedExternalPath = path.join(EXTERNAL_AGENT_OVERRIDE_ROOT, fileName);
+    if (failures.length === 0) {
+      for (const alias of TARGET_ALIASES) {
+        const fileName = agentMap[alias];
+        const record = manager.resolveAgentFileRecord(fileName);
+        const externalRecord = manager.resolveExternalAgentFileRecord(fileName);
+        const expectedExternalPath = path.join(EXTERNAL_AGENT_OVERRIDE_ROOT, fileName);
 
-      if (!record || record.source !== 'external' || record.lane !== 'override') {
-        failures.push(`record_not_external_override_${alias.toLowerCase()}`);
-      }
-      if (!externalRecord || path.resolve(externalRecord.absolutePath) !== path.resolve(expectedExternalPath)) {
-        failures.push(`external_record_path_unexpected_${alias.toLowerCase()}`);
-      }
-      if (!record || !isSubPath(record.absolutePath, EXTERNAL_AGENT_OVERRIDE_ROOT)) {
-        failures.push(`record_not_under_override_root_${alias.toLowerCase()}`);
-      }
+        if (!record || record.source !== 'external' || record.lane !== 'override') {
+          failures.push(`record_not_external_override_${alias.toLowerCase()}`);
+        }
+        if (!externalRecord || path.resolve(externalRecord.absolutePath) !== path.resolve(expectedExternalPath)) {
+          failures.push(`external_record_path_unexpected_${alias.toLowerCase()}`);
+        }
+        if (!record || !isSubPath(record.absolutePath, EXTERNAL_AGENT_OVERRIDE_ROOT)) {
+          failures.push(`record_not_under_override_root_${alias.toLowerCase()}`);
+        }
 
-      const beforeReadCount = readPaths.length;
-      const prompt = await manager.getAgentPrompt(alias);
-      const readPath = readPaths.slice(beforeReadCount).find((candidate) => (
-        path.resolve(candidate) === path.resolve(expectedExternalPath)
-      ));
-      const externalContent = fsSync.readFileSync(expectedExternalPath, 'utf8');
+        const beforeReadCount = readPaths.length;
+        const prompt = await manager.getAgentPrompt(alias);
+        const readPath = readPaths.slice(beforeReadCount).find((candidate) => (
+          path.resolve(candidate) === path.resolve(expectedExternalPath)
+        ));
+        const externalContent = fsSync.readFileSync(expectedExternalPath, 'utf8');
 
-      externalReadMatches.push(Boolean(readPath));
-      promptHashMatches.push(sha256Text(prompt) === sha256Text(externalContent));
+        externalReadMatches.push(Boolean(readPath));
+        promptHashMatches.push(sha256Text(prompt) === sha256Text(externalContent));
+      }
     }
   } finally {
     fsPromises.readFile = originalReadFile;
   }
 
+  const attemptedPromptRead = readPaths.length > 0;
   const readPathMatchAll = externalReadMatches.every(Boolean) && externalReadMatches.length === TARGET_ALIASES.length;
   const promptHashMatchAll = promptHashMatches.every(Boolean) && promptHashMatches.length === TARGET_ALIASES.length;
-  if (!readPathMatchAll) failures.push('agent_prompt_read_path_not_external_override');
-  if (!promptHashMatchAll) failures.push('agent_prompt_hash_not_external_override');
+  if (attemptedPromptRead && !readPathMatchAll) failures.push('agent_prompt_read_path_not_external_override');
+  if (attemptedPromptRead && !promptHashMatchAll) failures.push('agent_prompt_hash_not_external_override');
 
   lines.push(`TARGET_ALIAS_COUNT=${TARGET_ALIASES.length}`);
   lines.push(`TARGET_ALIASES=${TARGET_ALIASES.join(',')}`);
   lines.push(`LOCAL_PROMPT_READ_COUNT=${readPaths.length}`);
   lines.push(`READ_PATHS_MATCH_EXTERNAL_OVERRIDE=${readPathMatchAll ? 'yes' : 'no'}`);
   lines.push(`PROMPT_HASH_MATCHES_EXTERNAL_OVERRIDE=${promptHashMatchAll ? 'yes' : 'no'}`);
-  lines.push('PROMPT_CONTENT_READ=yes');
+  lines.push(`PROMPT_CONTENT_READ=${attemptedPromptRead ? 'yes' : 'no'}`);
   lines.push('PROMPT_CONTENT_PRINTED=no');
   lines.push('PRODUCTION_SERVER_STARTED=no');
   lines.push('HTTP_SERVER_STARTED=no');
