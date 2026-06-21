@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [########--] 82% (24.7 / 30 global milestone units)
+Progress: [#########-] 86% (25.7 / 30 global milestone units)
 
 Last updated: 2026-06-21
 
-当前里程碑：Jenn fork 内长期维护收口（M24 AI Image no-provider shadow validation pass；next M25 Codex/Memory external bridge planning；M8/S25 deferred；future domains queued）
+当前里程碑：Jenn fork 内长期维护收口（M25 Codex/Memory external bridge taskbook pass；next M26 PhotoStudio externalization planning；M8/S25 deferred；future domains queued）
 
 状态来源：
 
@@ -20,7 +20,7 @@ Last updated: 2026-06-21
 当前采用双层结构：
 
 - 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M29。
-- 短期执行记录：实际 sprint ledger，记录 S1-S45 已完成工作和 S46-S50 计划/延期项。
+- 短期执行记录：实际 sprint ledger，记录 S1-S46 已完成工作和 S47-S50 计划/延期项。
 
 更新规则：
 
@@ -88,7 +88,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 | [x] | M22 | 0 | AdminPanel extension build / shadow validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M22_ADMINPANEL_EXTENSION_SHADOW_VALIDATION_RECEIPT_20260621.md`；temp fixture manifest schema PASS；fixture risk `0`；checksum `f1b192f988e38430a71683cd0f37878e9ca078f23806e38bf77fcce75168c007`；rollback removed temp fixture；未注册真实 Admin route，未运行 AdminPanel build。 |
 | [x] | M23 | 0 | AI Image adapter externalization planning | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M23_AI_IMAGE_ADAPTER_EXTERNALIZATION_TASKBOOK_20260621.md`；taskbook-only；定义 `VCP_AI_IMAGE_ADAPTER_DIRS`、manifest schema、source/private lane split、candidate gate、M24 no-provider shadow validation；未调用 provider、未生成图片。 |
 | [x] | M24 | 0 | AI Image no-provider shadow validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M24_AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_RECEIPT_20260621.md`；temp fixture manifest schema PASS；fixture risk `0`；checksum `6b1263812aebf1042752b0c09ca1f53032fd620647f41b19a49d4391bf87a05e`；provider/image/output/bridge/LocalState counters all `0`；rollback removed temp fixture。 |
-| [ ] | M25 | 0 | Codex/Memory external bridge planning | TODO | manifest/path-only；不读取 private memory；不写 bridge 外部状态；定义 no-live-write validation。 |
+| [x] | M25 | 0 | Codex/Memory external bridge planning | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md`；taskbook-only；定义 `VCP_CODEX_MEMORY_BRIDGE_DIRS`、manifest schema、source/private lane split、candidate gate、no-live-write validation；未读取 private memory，未写 bridge。 |
 | [ ] | M26 | 0 | PhotoStudio externalization planning | TODO | taskbook-only；摄影项目数据留 LocalState/private；插件/模板 copy-first 前先做 denylist、source gate、rollback。 |
 | [ ] | M27 | 0 | Governance migration ledger finalization | TODO | 汇总 M0-M26 receipts、checksums、deferred items、rollback map；不改变 runtime。 |
 | [ ] | M28 | 0 | Upstream PR decision revisit | DEFERRED | 仅在用户当前轮明确授权时恢复；目标 repo、source branch、target branch、action 必须具体；否则继续 deferred。 |
@@ -99,9 +99,9 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 ```text
 M0-M7 PASS：8.0 / 8 units
 M8 PARTIAL：0.7 / 1 unit（S23+S24 = 7 / 10；S25 upstream PR 仍 DEFERRED）
-M9-M24 PASS：16.0 / 16 units
-M25-M29 TODO / DEFERRED：0 / 5 units
-Global Progress：24.7 / 30 = 82.3%，四舍五入显示为 82%
+M9-M25 PASS：17.0 / 17 units
+M26-M29 TODO / DEFERRED：0 / 4 units
+Global Progress：25.7 / 30 = 85.7%，四舍五入显示为 86%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -155,7 +155,7 @@ Global Progress：24.7 / 30 = 82.3%，四舍五入显示为 82%
 | [x] | S43 | AdminPanel / M22 | 0 | AdminPanel extension build shadow validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M22_ADMINPANEL_EXTENSION_SHADOW_VALIDATION_RECEIPT_20260621.md`；harness `ADMIN_EXTENSION_MANIFEST_SHADOW_VALIDATION_PASS`；fixture risk `0`；checksum entries `4`；rollback removed temp fixture；不 production deploy、不注册真实 route。 |
 | [x] | S44 | AI Image / M23 | 0 | AI Image adapter taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M23_AI_IMAGE_ADAPTER_EXTERNALIZATION_TASKBOOK_20260621.md`；generic adapter、provider-off、fixture boundary、candidate gate；不 provider call、不生成图片。 |
 | [x] | S45 | AI Image / M24 | 0 | AI Image no-provider shadow validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M24_AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_RECEIPT_20260621.md`；harness `AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_PASS`；fixture risk `0`；provider/image/output/bridge/LocalState counters `0`；不生成真实图片。 |
-| [ ] | S46 | Codex/Memory / M25 | 0 | Codex/Memory external bridge taskbook | TODO | manifest/path-only；不读取 private memory；不 bridge 外写。 |
+| [x] | S46 | Codex/Memory / M25 | 0 | Codex/Memory external bridge taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md`；manifest/path-only/no-live-write plan；不读取 private memory；不 bridge 外写。 |
 | [ ] | S47 | PhotoStudio / M26 | 0 | PhotoStudio externalization taskbook | TODO | data exclusion、copy-first gates、no-auto-write；不读取项目私有数据。 |
 | [ ] | S48 | Governance / M27 | 0 | Migration ledger finalization | TODO | 汇总 receipts、checksums、deferred/BLOCK、rollback map。 |
 | [ ] | S49 | Upstream / M28 | 0 | Upstream PR decision revisit | DEFERRED | 需要用户当前轮明确授权，否则保持 deferred。 |
@@ -202,7 +202,7 @@ Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，L
 M19-M29 完成规则：
 
 ```text
-M19/M21/M23：LocalState、AdminPanel、AI Image taskbooks PASS；M25/M26 仍需先做 taskbook / gate / rollback 规划，不直接 copy-first 或 runtime wiring。
+M19/M21/M23/M25：LocalState、AdminPanel、AI Image、Codex/Memory taskbooks PASS；M26 仍需先做 taskbook / gate / rollback 规划，不直接 copy-first 或 runtime wiring。
 M20/M22/M24：LocalState skeleton / paths-only gate、AdminPanel fixture shadow validation、AI Image no-provider shadow validation PASS；仍保持 default-off / no-live-write。
 M27：只汇总 migration ledger、receipts、checksums、deferred/BLOCK、rollback map，不改变 runtime。
 M28：upstream PR decision revisit 默认 DEFERRED；没有用户当前轮明确授权，不打开 PR。
@@ -226,7 +226,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | M19-M20 PASS；existing root handled by PLAN_CHANGE；private content not read。 |
 | AdminPanel 分域验收 | M21-M22 / S42-S43 | extension manifest taskbook、fixture/build shadow、default-off route/API gate | M21-M22 PASS；临时 fixture validation only；不注册真实 route，不 production deploy。 |
 | AI Image 分域验收 | M23-M24 / S44-S45 | generic adapter taskbook、provider-off fixture、no-provider shadow validation | M23-M24 PASS；no-provider only；不写 token，不发 provider call，不生成真实图片。 |
-| Codex/Memory 分域验收 | M25 / S46 | bridge taskbook、manifest/path-only scan、no-live-write validation design | TODO；不读取 private memory，不 bridge 外写。 |
+| Codex/Memory 分域验收 | M25 / S46 | bridge taskbook、manifest/path-only scan、no-live-write validation design | M25 PASS；不读取 private memory，不 bridge 外写。 |
 | PhotoStudio 分域验收 | M26 / S47 | taskbook、data exclusion、copy-first gates、no-auto-write rules | TODO；项目数据留 LocalState/private。 |
 | Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | TODO；docs-only。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | TODO；完成前不得声称全路线收口。 |
@@ -286,7 +286,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | Q4 | M22/S43 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M22_ADMINPANEL_EXTENSION_SHADOW_VALIDATION_RECEIPT_20260621.md`。 |
 | Q5 | M23/S44 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M23_AI_IMAGE_ADAPTER_EXTERNALIZATION_TASKBOOK_20260621.md`。 |
 | Q6 | M24/S45 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M24_AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_RECEIPT_20260621.md`。 |
-| Q7 | M25/S46 | TODO | Codex/Memory | 写 bridge taskbook；manifest/path-only。 |
+| Q7 | M25/S46 | PASS | Codex/Memory | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md`。 |
 | Q8 | M26/S47 | TODO | PhotoStudio | 写 taskbook；data exclusion / no-auto-write。 |
 | Q9 | M27/S48 | TODO | Governance | migration ledger finalization。 |
 | Q10 | M28/S49 | DEFERRED | Upstream PR | 仅用户当前轮明确授权才恢复。 |
@@ -321,10 +321,10 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | M24-02 | PASS | 运行 no-provider shadow validation | `AI_IMAGE_NO_PROVIDER_SHADOW_VALIDATION_PASS`；provider/image/output/bridge/LocalState counters `0` | 不 live external write |
 | M24-03 | PASS | paths-only scan、manifest checksum、rollback receipt | risk `0`；checksum `6b1263812aebf1042752b0c09ca1f53032fd620647f41b19a49d4391bf87a05e`；`ROLLBACK_TEMP_FIXTURE_REMOVED=yes`；M24 receipt | 不把 mock 通过当 provider 通过 |
 | M24-04 | PASS | 更新 tracker S45 | M24/S45 PASS；M25 remains TODO | 不启用 runtime |
-| M25-01 | TODO | 复读 M6 Codex/Memory boundary | source doc list | 不读取 private memory |
-| M25-02 | TODO | 写 bridge taskbook、manifest/path-only contract | M25 taskbook path | 不 bridge 外写 |
-| M25-03 | TODO | 定义 no-live-write validation、rollback、deferred matrix | validation matrix | 不同步外部状态 |
-| M25-04 | TODO | 更新 tracker S46 | tracker diff | 不启用 runtime |
+| M25-01 | PASS | 复读 M6 Codex/Memory boundary | M25 source observations | 不读取 private memory |
+| M25-02 | PASS | 写 bridge taskbook、manifest/path-only contract | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md` | 不 bridge 外写 |
+| M25-03 | PASS | 定义 no-live-write validation、rollback、deferred matrix | M25 no-live-write validation plan / stop conditions | 不同步外部状态 |
+| M25-04 | PASS | 更新 tracker S46 | M25/S46 PASS；M26 remains TODO | 不启用 runtime |
 | M26-01 | TODO | 复读 M6 PhotoStudio boundary | source doc list | 不读取摄影项目私有数据 |
 | M26-02 | TODO | 写 PhotoStudio externalization taskbook | M26 taskbook path | 不复制项目数据 |
 | M26-03 | TODO | 定义 plugins/templates source path-only candidate gate | candidate matrix | 不把 LocalState data 当 package content |
