@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [#######---] 69% (20.7 / 30 global milestone units)
+Progress: [#######---] 72% (21.7 / 30 global milestone units)
 
 Last updated: 2026-06-21
 
-当前里程碑：Jenn fork 内长期维护收口（M20 LocalState skeleton / paths-only gate pass；next M21 AdminPanel extension manifest route planning；M8/S25 deferred；future domains queued）
+当前里程碑：Jenn fork 内长期维护收口（M21 AdminPanel extension manifest taskbook pass；next M22 AdminPanel extension build / shadow validation；M8/S25 deferred；future domains queued）
 
 状态来源：
 
@@ -20,7 +20,7 @@ Last updated: 2026-06-21
 当前采用双层结构：
 
 - 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M29。
-- 短期执行记录：实际 sprint ledger，记录 S1-S41 已完成工作和 S42-S50 计划/延期项。
+- 短期执行记录：实际 sprint ledger，记录 S1-S42 已完成工作和 S43-S50 计划/延期项。
 
 更新规则：
 
@@ -84,7 +84,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 | [x] | M18 | 0 | Agent domain final closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M18_AGENT_DOMAIN_FINAL_CLOSEOUT_DECISION_20260621.md`；决策：keep core Agent fallback + external Agent package in parallel；core fallback removal 仅 future proposal；不 delete/untrack/stub；下一领域 M19 LocalState planning。 |
 | [x] | M19 | 0 | LocalState private-by-default route planning | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M19_LOCALSTATE_PRIVATE_ROUTE_TASKBOOK_20260621.md`；taskbook-only；定义 M20 skeleton scope、deny-all `.gitignore`、`.agent_board/**` gate matrix、stop conditions、receipt template；未读取/复制真实 LocalState。 |
 | [x] | M20 | 0 | LocalState skeleton / paths-only gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M20_LOCALSTATE_SKELETON_PATHS_ONLY_RECEIPT_20260621.md`；PLAN_CHANGE：root 已存在，只补齐缺失 deny-all `.gitignore`；skeleton risk `0`、`.agent_board` path count `0`；不读取 private lanes。 |
-| [ ] | M21 | 0 | AdminPanel extension manifest route planning | TODO | taskbook-only；定义 extension manifest、route/menu/API registration、build validation 和 default-off gate；不运行 production build / deploy。 |
+| [x] | M21 | 0 | AdminPanel extension manifest route planning | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M21_ADMINPANEL_EXTENSION_MANIFEST_TASKBOOK_20260621.md`；taskbook-only；定义 `VCP_ADMIN_EXTENSION_DIRS`、manifest schema、default-off registration、M22 fixture/shadow validation、rollback；未改 AdminPanel runtime。 |
 | [ ] | M22 | 0 | AdminPanel extension build / shadow validation | TODO | 只在 reviewed package / fixture 中验证 build 和 route manifest；不注册真实 Admin route，除非另有 gate。 |
 | [ ] | M23 | 0 | AI Image adapter externalization planning | TODO | taskbook-only；定义 generic adapter、provider-off、Jenn fixture separation；不写 provider token，不发真实 provider call。 |
 | [ ] | M24 | 0 | AI Image no-provider shadow validation | TODO | 使用 fixture / mock / no-provider harness；验证 adapter default-off 和 rollback；不生成真实图片，不调用 provider。 |
@@ -99,9 +99,9 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 ```text
 M0-M7 PASS：8.0 / 8 units
 M8 PARTIAL：0.7 / 1 unit（S23+S24 = 7 / 10；S25 upstream PR 仍 DEFERRED）
-M9-M20 PASS：12.0 / 12 units
-M21-M29 TODO / DEFERRED：0 / 9 units
-Global Progress：20.7 / 30 = 69.0%，显示为 69%
+M9-M21 PASS：13.0 / 13 units
+M22-M29 TODO / DEFERRED：0 / 8 units
+Global Progress：21.7 / 30 = 72.3%，四舍五入显示为 72%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -151,7 +151,7 @@ Global Progress：20.7 / 30 = 69.0%，显示为 69%
 | [x] | S39 | Agent / M18 | 0 | Agent domain final closeout decision packet | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M18_AGENT_DOMAIN_FINAL_CLOSEOUT_DECISION_20260621.md`；Agent 领域 closeout：keep core fallback；future stub/untrack proposal only；下一领域 M19；不执行 delete/untrack/stub。 |
 | [x] | S40 | LocalState / M19 | 0 | LocalState route planning taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M19_LOCALSTATE_PRIVATE_ROUTE_TASKBOOK_20260621.md`；M20 skeleton / paths-only gate defined；`.agent_board/**` remains blocked；不读取 LocalState 内容。 |
 | [x] | S41 | LocalState / M20 | 0 | LocalState skeleton / paths-only receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M20_LOCALSTATE_SKELETON_PATHS_ONLY_RECEIPT_20260621.md`；existing root plan-change；created `.gitignore` only；approved skeleton paths `3/3`；risk `0`；private content read `no`。 |
-| [ ] | S42 | AdminPanel / M21 | 0 | AdminPanel extension manifest taskbook | TODO | 定义 manifest、route/menu/API contract、build validation、rollback；不注册真实 route。 |
+| [x] | S42 | AdminPanel / M21 | 0 | AdminPanel extension manifest taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M21_ADMINPANEL_EXTENSION_MANIFEST_TASKBOOK_20260621.md`；manifest schema + default-off gate + M22 fixture validation plan；不注册真实 route。 |
 | [ ] | S43 | AdminPanel / M22 | 0 | AdminPanel extension build shadow validation | TODO | fixture / reviewed package build only；不 production deploy。 |
 | [ ] | S44 | AI Image / M23 | 0 | AI Image adapter taskbook | TODO | generic adapter、provider-off、fixture boundary；不 provider call。 |
 | [ ] | S45 | AI Image / M24 | 0 | AI Image no-provider shadow validation | TODO | mock/fixture harness；不生成真实图片。 |
@@ -202,7 +202,7 @@ Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，L
 M19-M29 完成规则：
 
 ```text
-M19：LocalState private route taskbook PASS；M21/M23/M25/M26 仍需先做 taskbook / gate / rollback 规划，不直接 copy-first 或 runtime wiring。
+M19/M21：LocalState 和 AdminPanel taskbooks PASS；M23/M25/M26 仍需先做 taskbook / gate / rollback 规划，不直接 copy-first 或 runtime wiring。
 M20：LocalState skeleton / paths-only gate PASS；M22/M24 必须在对应 taskbook PASS 后才能进入 skeleton / fixture / shadow validation；仍保持 default-off / no-live-write。
 M27：只汇总 migration ledger、receipts、checksums、deferred/BLOCK、rollback map，不改变 runtime。
 M28：upstream PR decision revisit 默认 DEFERRED；没有用户当前轮明确授权，不打开 PR。
@@ -224,7 +224,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | Upstream tracking / PR gate | M8 / S23-S25；M28 / S49 | readiness packet、rebase workflow、人工授权后才 open upstream PR | PARTIAL / DEFERRED；当前跳过 upstream PR。 |
 | Agent 分域验收 | M9-M18 / S29-S39 | taskbook、source scan、candidate gate、copy-first、shadow、resolver、default-off wiring、env-on rollback、final decision | M9-M18 PASS；Agent domain closed for current route。 |
 | LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | M19-M20 PASS；existing root handled by PLAN_CHANGE；private content not read。 |
-| AdminPanel 分域验收 | M21-M22 / S42-S43 | extension manifest taskbook、fixture/build shadow、default-off route/API gate | TODO；不注册真实 route，不 production deploy。 |
+| AdminPanel 分域验收 | M21-M22 / S42-S43 | extension manifest taskbook、fixture/build shadow、default-off route/API gate | M21 PASS；M22 TODO；不注册真实 route，不 production deploy。 |
 | AI Image 分域验收 | M23-M24 / S44-S45 | generic adapter taskbook、provider-off fixture、no-provider shadow validation | TODO；不写 token，不发 provider call，不生成真实图片。 |
 | Codex/Memory 分域验收 | M25 / S46 | bridge taskbook、manifest/path-only scan、no-live-write validation design | TODO；不读取 private memory，不 bridge 外写。 |
 | PhotoStudio 分域验收 | M26 / S47 | taskbook、data exclusion、copy-first gates、no-auto-write rules | TODO；项目数据留 LocalState/private。 |
@@ -282,7 +282,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | --- | --- | --- | --- | --- |
 | Q1 | M19/S40 | PASS | LocalState | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M19_LOCALSTATE_PRIVATE_ROUTE_TASKBOOK_20260621.md`。 |
 | Q2 | M20/S41 | PASS | LocalState | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M20_LOCALSTATE_SKELETON_PATHS_ONLY_RECEIPT_20260621.md`。 |
-| Q3 | M21/S42 | TODO | AdminPanel | 写 extension manifest taskbook。 |
+| Q3 | M21/S42 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M21_ADMINPANEL_EXTENSION_MANIFEST_TASKBOOK_20260621.md`。 |
 | Q4 | M22/S43 | TODO | AdminPanel | build shadow validation，不注册真实 route。 |
 | Q5 | M23/S44 | TODO | AI Image | 写 adapter externalization taskbook。 |
 | Q6 | M24/S45 | TODO | AI Image | no-provider shadow validation。 |
@@ -305,10 +305,10 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | M20-02 | PASS | 如 M19 允许，创建 reviewed LocalState skeleton / README / denylist receipt | PLAN_CHANGE：root existed；created missing `.gitignore`; README paths already existed and were not overwritten | 不复制真实状态、配置、日志、数据库 |
 | M20-03 | PASS | 对 skeleton 目标做 paths-only secret-risk scan | skeleton risk `0`; `.agent_board` path count `0`; private top-level presence noted only | 不 checksum `.agent_board/**` |
 | M20-04 | PASS | 写 M20 receipt 并更新 tracker S41 | M20 receipt + tracker update | 不启用 runtime |
-| M21-01 | TODO | 复读 M5 AdminPanel contract 和现有 AdminPanel route/menu/API 结构 | source doc list | 不修改 AdminPanel runtime |
-| M21-02 | TODO | 写 AdminPanel extension manifest taskbook | M21 taskbook path | 不注册真实 route |
-| M21-03 | TODO | 定义 fixture build、route/menu/API shadow validation、rollback | validation matrix | 不 production build/deploy |
-| M21-04 | TODO | 更新 tracker：M21/S42 PASS 或 BLOCK | tracker diff | 不把 M22 标 PASS |
+| M21-01 | PASS | 复读 M5 AdminPanel contract 和现有 AdminPanel route/menu/API 结构 | M21 source observations | 不修改 AdminPanel runtime |
+| M21-02 | PASS | 写 AdminPanel extension manifest taskbook | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M21_ADMINPANEL_EXTENSION_MANIFEST_TASKBOOK_20260621.md` | 不注册真实 route |
+| M21-03 | PASS | 定义 fixture build、route/menu/API shadow validation、rollback | M21 M22 fixture / shadow validation plan | 不 production build/deploy |
+| M21-04 | PASS | 更新 tracker：M21/S42 PASS 或 BLOCK | M21/S42 PASS；M22 remains TODO | 不把 M22 标 PASS |
 | M22-01 | TODO | 确认 M21 PASS 并创建 reviewed AdminPanel extension fixture/skeleton | fixture receipt | 不写真实 Admin route |
 | M22-02 | TODO | 执行 fixture/build shadow validation | build/shadow PASS | 不部署、不启用生产 flag |
 | M22-03 | TODO | 执行 rollback drill 并写 M22 receipt | rollback PASS + receipt | 不删除 core AdminPanel fallback |
