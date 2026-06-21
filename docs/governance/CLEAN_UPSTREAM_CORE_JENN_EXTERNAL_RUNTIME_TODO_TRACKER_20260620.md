@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 96% (33.7 / 35 global milestone units)
+Progress: [##########] 96% (34.7 / 36 global milestone units)
 
 Last updated: 2026-06-21
 
-当前里程碑：PhotoStudio source package gate（M34 PASS；external PhotoStudioPackages skeleton validated; runtime/project-data writes still deferred）
+当前里程碑：Aggregate full-local matrix review（M35 PASS；M31-M34 package layer revalidated; stable-operation window still deferred）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-21
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M34。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S55 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M35。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S56 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-21
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M34 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M34 合计 35 units。
+- 全局 Progress 覆盖 M0-M35 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M35 合计 36 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -46,6 +46,7 @@ Last updated: 2026-06-21
 - M32 只完成 AI Image persistent provider-adapter package gate；不代表 provider runtime、真实图片生成、adapter registration、stable-operation window 或 upstream-ready。
 - M33 只完成 Codex/Memory persistent no-live-write package gate；不代表 live memory write、private memory recall、bridge runtime registration、stable-operation window 或 upstream-ready。
 - M34 只完成 PhotoStudio persistent source package gate；不代表 runtime package registration、真实项目数据读写、external sync/publish/write、stable-operation window 或 upstream-ready。
+- M35 只完成 M31-M34 aggregate full-local matrix review；不代表 runtime gates、7-day stable-operation window、full-local/stability gate 或 upstream-ready。
 
 计划变更规则：
 
@@ -65,7 +66,7 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M34 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M35 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -104,6 +105,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M34 是当前 Jenn fork 长期维护
 | [x] | M32 | 0 | AI Image provider-adapter package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M32_AI_IMAGE_PROVIDER_ADAPTER_PACKAGE_GATE_RECEIPT_20260621.md`；external commit `5edb89051291137859100cfc915349b9921f84cd`；`AIImageAdapters/JennImageProviderAdapter` persistent skeleton；target risk `0`；checksum manifest `9067d97dadf3c7a83138c90ac487ac0e2615b64c4a74de927b2d4a3670c548a7`；provider/runtime registration still off。 |
 | [x] | M33 | 0 | Codex/Memory no-live-write package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M33_CODEX_MEMORY_NO_LIVE_WRITE_PACKAGE_GATE_RECEIPT_20260621.md`；external commit `320cf17ec3204179a150161fa87429e1fef29cab`；`MemoryBridges/JennCodexMemoryBridge` persistent skeleton；target risk `0`；checksum manifest `2cff44db435e9458781d41e5260f1e73f246505fb118fabc7badec6f13dabaf2`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration still off。 |
 | [x] | M34 | 0 | PhotoStudio source package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M34_PHOTOSTUDIO_SOURCE_PACKAGE_GATE_RECEIPT_20260621.md`；external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；`PhotoStudioPackages/JennPhotoStudioPackage` persistent skeleton；target risk `0`；checksum manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration still off。 |
+| [x] | M35 | 0 | Aggregate full-local matrix review | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M35_AGGREGATE_FULL_LOCAL_MATRIX_REVIEW_20260621.md`；M31-M34 harnesses re-run PASS；current aggregate checksum manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd`；package layer consistent；runtime gates and 7-day stability window still deferred。 |
 
 全局进度明细：
 
@@ -118,7 +120,8 @@ M31 PASS：1.0 / 1 unit
 M32 PASS：1.0 / 1 unit
 M33 PASS：1.0 / 1 unit
 M34 PASS：1.0 / 1 unit
-Global Progress：33.7 / 35 = 96.3%，四舍五入显示为 96%
+M35 PASS：1.0 / 1 unit
+Global Progress：34.7 / 36 = 96.4%，四舍五入显示为 96%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -182,6 +185,7 @@ Global Progress：33.7 / 35 = 96.3%，四舍五入显示为 96%
 | [x] | S53 | AI Image / M32 | 0 | AI Image provider-adapter package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M32_AI_IMAGE_PROVIDER_ADAPTER_PACKAGE_GATE_RECEIPT_20260621.md`；external package commit `5edb89051291137859100cfc915349b9921f84cd`；`AI_IMAGE_PROVIDER_ADAPTER_PACKAGE_GATE_PASS`；provider/image/output/bridge/LocalState counters all `0`；不启用 runtime。 |
 | [x] | S54 | Codex/Memory / M33 | 0 | Codex/Memory no-live-write package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M33_CODEX_MEMORY_NO_LIVE_WRITE_PACKAGE_GATE_RECEIPT_20260621.md`；external package commit `320cf17ec3204179a150161fa87429e1fef29cab`；`CODEX_MEMORY_NO_LIVE_WRITE_PACKAGE_GATE_PASS`；bridge/private-memory/LocalState/external/provider counters all `0`；不启用 runtime。 |
 | [x] | S55 | PhotoStudio / M34 | 0 | PhotoStudio source package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M34_PHOTOSTUDIO_SOURCE_PACKAGE_GATE_RECEIPT_20260621.md`；external package commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；`PHOTOSTUDIO_SOURCE_PACKAGE_GATE_PASS`；project-data/external/provider/bridge/LocalState counters all `0`；不启用 runtime。 |
+| [x] | S56 | Matrix / M35 | 0 | Aggregate full-local matrix review | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M35_AGGREGATE_FULL_LOCAL_MATRIX_REVIEW_20260621.md`；M31-M34 harnesses re-run PASS；package layer consistent；runtime/stability still deferred。 |
 
 原始验收拆分说明：
 
@@ -221,7 +225,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M34 完成规则：
+M19-M35 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -234,6 +238,7 @@ M31：AdminPanel persistent package gate PASS；仅创建/验证 external AdminE
 M32：AI Image provider-adapter package gate PASS；仅创建/验证 external AIImageAdapters skeleton，不启用 provider/runtime，不生成真实图片。
 M33：Codex/Memory no-live-write package gate PASS；仅创建/验证 external MemoryBridges skeleton，不启用 runtime bridge，不读取真实 memory，不执行 live write。
 M34：PhotoStudio source package gate PASS；仅创建/验证 external PhotoStudioPackages skeleton，不启用 runtime，不读取/写入真实项目数据，不执行 external sync/publish/write。
+M35：aggregate full-local matrix review PASS；复跑 M31-M34 package harnesses 并确认 package layer consistent；不启动 7-day stability window，不把 runtime gates 当 PASS。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -262,6 +267,7 @@ M34：PhotoStudio source package gate PASS；仅创建/验证 external PhotoStud
 | AI Image persistent package | M32 / S53 | persistent external AIImageAdapters skeleton、manifest/checksum、paths-only scan、no-provider validation | M32 PASS；provider runtime, image generation, and adapter registration remain deferred。 |
 | Codex/Memory persistent package | M33 / S54 | persistent external MemoryBridges skeleton、manifest/checksum、paths-only scan、no-live-write validation | M33 PASS；runtime bridge registration, live writes, and private memory reads remain deferred。 |
 | PhotoStudio persistent package | M34 / S55 | persistent external PhotoStudioPackages skeleton、manifest/checksum、paths-only scan、no-auto-write validation | M34 PASS；runtime package registration, real data roots, and external sync/publish/write remain deferred。 |
+| Aggregate full-local matrix review | M35 / S56 | re-run M31-M34 harnesses、核对 current aggregate checksum、列出 runtime/stability deferred items | M35 PASS；package layer consistent；full-local/stability gate still not passed。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -328,8 +334,9 @@ M34：PhotoStudio source package gate PASS；仅创建/验证 external PhotoStud
 | Q14 | M32/S53 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M32_AI_IMAGE_PROVIDER_ADAPTER_PACKAGE_GATE_RECEIPT_20260621.md`；persistent provider-adapter package gate complete；provider/runtime registration deferred。 |
 | Q15 | M33/S54 | PASS | Codex/Memory | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M33_CODEX_MEMORY_NO_LIVE_WRITE_PACKAGE_GATE_RECEIPT_20260621.md`；persistent no-live-write package gate complete；runtime bridge registration deferred。 |
 | Q16 | M34/S55 | PASS | PhotoStudio | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M34_PHOTOSTUDIO_SOURCE_PACKAGE_GATE_RECEIPT_20260621.md`；persistent source package gate complete；runtime package registration deferred。 |
+| Q17 | M35/S56 | PASS | Matrix | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M35_AGGREGATE_FULL_LOCAL_MATRIX_REVIEW_20260621.md`；package layer review complete；7-day stability window remains next/deferred。 |
 
-### 5.5 M19-M34 Specific Step Plan
+### 5.5 M19-M35 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -396,6 +403,10 @@ M34：PhotoStudio source package gate PASS；仅创建/验证 external PhotoStud
 | M34-02 | PASS | 创建 persistent `PhotoStudioPackages/JennPhotoStudioPackage` skeleton | external commit `3a63904e753aa8b8869f588fc0b8fc862354e123` | 不启用 PhotoStudio runtime package registration |
 | M34-03 | PASS | 重新生成 source/package checksum 并运行 no-auto-write persistent package harness | `PHOTOSTUDIO_SOURCE_PACKAGE_GATE_PASS`; checksum manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd`; project-data/external/provider/bridge/LocalState counters `0` | 不读取/写入真实项目数据、不 external sync/publish/write |
 | M34-04 | PASS | 写 M34 external/core receipts 并更新 tracker | M34 receipt + S55 PASS | 不把 package gate 当 runtime/stability proof |
+| M35-01 | PASS | 确认 core/external worktree clean，读取 M30/M31-M34 evidence | core HEAD `501f7a80fe8d43133eea68a2dd4b5d85d79056c9`; external HEAD `3a63904e753aa8b8869f588fc0b8fc862354e123` | 不启用 runtime、不修改 external package |
+| M35-02 | PASS | 复跑 M31-M34 package harnesses | `ADMINPANEL_PERSISTENT_PACKAGE_GATE_PASS`; `AI_IMAGE_PROVIDER_ADAPTER_PACKAGE_GATE_PASS`; `CODEX_MEMORY_NO_LIVE_WRITE_PACKAGE_GATE_PASS`; `PHOTOSTUDIO_SOURCE_PACKAGE_GATE_PASS` | 不把 discovery/checksum 当 runtime/stability proof |
+| M35-03 | PASS | 写 aggregate full-local matrix review | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M35_AGGREGATE_FULL_LOCAL_MATRIX_REVIEW_20260621.md` | 不把 deferred runtime gates 隐去 |
+| M35-04 | PASS | 更新 tracker/M30：M35/S56 PASS，stable window next/deferred | Progress `34.7 / 36`; 7-day stability window remains next/deferred | 不打开 upstream PR |
 
 ## 6. 领域路线概览
 
@@ -410,7 +421,7 @@ M34：PhotoStudio source package gate PASS；仅创建/验证 external PhotoStud
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；runtime bridge registration、live writes、private memory reads 仍 deferred。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；runtime package registration、真实数据根、external sync/publish/write 仍 deferred。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + stable-operation window | 7-day / 3-cycle local validation receipts | M30 只定义窗口；执行窗口必须在 deferred domains 完成或明确 out-of-scope 后另写 receipt。 |
+| Local Stability | Full-local implementation matrix + stable-operation window | 7-day / 3-cycle local validation receipts | M35 aggregate matrix review PASS；7-day / 3-cycle stable-operation window not started。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
@@ -434,6 +445,7 @@ M34：PhotoStudio source package gate PASS；仅创建/验证 external PhotoStud
 | AI Image provider-adapter package gate | M32 receipt + external commit `5edb89051291137859100cfc915349b9921f84cd`；package risk `0`；provider/image/output/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
+| Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
 | 全计划本地实现 | 所有拟纳入 upstream 的本地计划项必须有实现、receipt、validation、rollback evidence；deferred 项必须明确 out-of-scope | DEFERRED |
 | 稳定运转证据 | 需要约定稳定运行窗口或等价验证证据；不能只用 taskbook、fixture shadow 或 discovery success 代替 runtime stability | DEFERRED |
 | Upstream 目标决策 | M8 workflow / rebase gate ready；latest upstream/main `f8d45479`；按用户决定先跳过打开 upstream PR，直到 full-local/stability gate PASS | DEFERRED |
