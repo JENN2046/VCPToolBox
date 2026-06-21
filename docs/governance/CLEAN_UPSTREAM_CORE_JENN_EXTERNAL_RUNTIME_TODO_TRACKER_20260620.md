@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (71.7 / 73 global milestone units; scope expanded by M72 PASS)
+Progress: [##########] 98% (72.7 / 74 global milestone units; scope expanded by M73 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Next runtime lane decision（M72 PASS；M73 AI Image no-provider runtime taskbook selected）
+当前里程碑：AI Image no-provider runtime registration taskbook（M73 PASS；M74 gate defined）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M72。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S93 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M73。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S94 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M72 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M72 合计 73 units。
+- 全局 Progress 覆盖 M0-M73 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M73 合计 74 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -84,6 +84,7 @@ Last updated: 2026-06-22
 - M70 完成 AdminPanel artifact lane closeout decision；AdminPanel lane 在当前 Jenn fork local route 中收口；生产部署、upstream PR、dynamic external Vue runtime、external AdminPanel write surfaces、core fallback removal 仍 deferred。
 - M71 完成 aggregate Jenn fork local route review；把 AgentOverrides、AdminPanel closeout、AI Image、Codex/Memory、PhotoStudio、LocalState/private、upstream PR 放入同一张核对表；只做 docs-only review，不改 env、不启动 runtime、不读取 private、不打开 upstream PR。
 - M72 完成 next runtime lane decision；不继续全部 deferred，选择只给 AI Image 写未来窄 taskbook：`M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK`；M72 本身不写 taskbook、不启 runtime、不改 env、不调用 provider。
+- M73 完成 AI Image no-provider runtime registration taskbook；定义未来 M74 default-off manifest/metadata registry gate；M73 本身不改 runtime、不写 env、不改 external package、不调用 provider、不生成图片。
 
 计划变更规则：
 
@@ -103,7 +104,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M72 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M73 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -180,6 +181,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M72 是当前 Jenn fork 长期维护
 | [x] | M70 | 0 | AdminPanel artifact lane closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M70_ADMINPANEL_ARTIFACT_LANE_CLOSEOUT_DECISION_20260622.md`；AdminPanel artifact lane closed for current route；production deploy/upstream PR/dynamic external Vue/write surfaces remain deferred。 |
 | [x] | M71 | 0 | Aggregate Jenn fork local route review | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M71_AGGREGATE_JENN_FORK_LOCAL_ROUTE_REVIEW_20260622.md`；AgentOverrides override-only runtime-on、AdminPanel artifact lane closeout、AI Image/Codex-Memory/PhotoStudio package-layer runtime-deferred、LocalState/private BLOCK、upstream PR DEFERRED 已放入同一张核对表；docs-only review。 |
 | [x] | M72 | 0 | Next runtime lane decision or deferred closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M72_NEXT_RUNTIME_LANE_DECISION_OR_DEFERRED_DOMAIN_CLOSEOUT_20260622.md`；decision = `WRITE_ONE_NARROW_TASKBOOK`；selected next taskbook `M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK`；Codex/Memory、PhotoStudio、LocalState/private、upstream PR remain deferred/BLOCK。 |
+| [x] | M73 | 0 | AI Image no-provider runtime registration taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK_20260622.md`；taskbook-only；defines future M74 default-off manifest/metadata registry gate；no runtime/env/external package/provider/image/private/upstream action。 |
 
 全局进度明细：
 
@@ -232,7 +234,8 @@ M69 PASS：1.0 / 1 unit（AdminPanel post-dist static smoke；temp screenshots c
 M70 PASS：1.0 / 1 unit（AdminPanel artifact lane closeout decision）
 M71 PASS：1.0 / 1 unit（aggregate Jenn fork local route review；docs-only）
 M72 PASS：1.0 / 1 unit（next runtime lane decision；M73 AI Image no-provider taskbook selected）
-Global Progress：71.7 / 73 = 98.22%，顶部显示为 98%
+M73 PASS：1.0 / 1 unit（AI Image no-provider runtime registration taskbook；docs-only）
+Global Progress：72.7 / 74 = 98.24%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -334,6 +337,7 @@ Global Progress：71.7 / 73 = 98.22%，顶部显示为 98%
 | [x] | S91 | AdminPanel / M70 | 0 | AdminPanel artifact lane closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M70_ADMINPANEL_ARTIFACT_LANE_CLOSEOUT_DECISION_20260622.md`；lane closed for current route；deferred boundaries recorded。 |
 | [x] | S92 | Aggregate / M71 | 0 | Jenn fork local route review | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M71_AGGREGATE_JENN_FORK_LOCAL_ROUTE_REVIEW_20260622.md`；AgentOverrides + AdminPanel closeout + deferred AI Image/Codex-Memory/PhotoStudio/runtime lanes reviewed in one matrix；no env/runtime/private/upstream action。 |
 | [x] | S93 | Decision / M72 | 0 | Next runtime lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M72_NEXT_RUNTIME_LANE_DECISION_OR_DEFERRED_DOMAIN_CLOSEOUT_20260622.md`；selected `M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK`; M72 itself docs-only, no taskbook/runtime/env/provider/private/upstream action。 |
+| [x] | S94 | AI Image / M73 | 0 | AI Image no-provider runtime registration taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK_20260622.md`；defines M74 default-off manifest/metadata registry gate; no runtime/env/provider/image/private/external package change。 |
 
 原始验收拆分说明：
 
@@ -373,7 +377,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M72 完成规则：
+M19-M73 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -424,6 +428,7 @@ M69：AdminPanel post-dist static smoke PASS；读取 M68 committed normal dist 
 M70：AdminPanel artifact lane closeout decision PASS；AdminPanel lane 在当前 route 中 closed；生产部署、upstream PR、dynamic external Vue runtime、external write surfaces、core fallback removal 仍 deferred。
 M71：aggregate Jenn fork local route review PASS；AgentOverrides、AdminPanel closeout、AI Image、Codex/Memory、PhotoStudio、LocalState/private、upstream PR 已在同一张 review matrix 中核对；docs-only，不修改 env、不启动 runtime、不读取 private、不打开 upstream PR。
 M72：next runtime lane decision PASS；选择未来只写 AI Image no-provider runtime registration taskbook；M72 本身不写 taskbook、不启 runtime、不改 env、不调用 provider。
+M73：AI Image no-provider runtime registration taskbook PASS；定义 M74 default-off manifest/metadata registry gate；M73 taskbook-only，不实现、不启 runtime、不写 env。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -490,6 +495,7 @@ M72：next runtime lane decision PASS；选择未来只写 AI Image no-provider 
 | AdminPanel artifact lane closeout | M70 / S91 | close AdminPanel artifact lane for current Jenn fork local route and record deferred boundaries | PASS；production deploy/upstream PR/dynamic external Vue/write surfaces deferred。 |
 | Aggregate Jenn fork local route review | M71 / S92 | review AgentOverrides + AdminPanel closeout + AI Image/Codex-Memory/PhotoStudio deferred runtime lanes in one matrix | PASS；docs-only aggregate review；LocalState/private remains BLOCK；upstream PR remains DEFERRED。 |
 | Next runtime lane decision | M72 / S93 | decide whether to keep all deferred lanes paused or select one narrow future taskbook | PASS；selected M73 AI Image no-provider runtime registration taskbook；other deferred/BLOCK lanes unchanged。 |
+| AI Image no-provider runtime registration taskbook | M73 / S94 | define future default-off AI Image adapter registry/manifest loader gate | PASS；taskbook-only；M74 allowed files, env contract, zero-counter validation, rollback, stop conditions defined。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -594,8 +600,9 @@ M72：next runtime lane decision PASS；选择未来只写 AI Image no-provider 
 | Q52 | M70/S91 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M70_ADMINPANEL_ARTIFACT_LANE_CLOSEOUT_DECISION_20260622.md`；AdminPanel artifact lane closed for current route；remaining deferred boundaries recorded。 |
 | Q53 | M71/S92 | PASS | Aggregate | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M71_AGGREGATE_JENN_FORK_LOCAL_ROUTE_REVIEW_20260622.md`；AgentOverrides override-only runtime-on + AdminPanel artifact closeout + deferred runtime lanes reviewed together；no env/runtime/private/upstream action。 |
 | Q54 | M72/S93 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M72_NEXT_RUNTIME_LANE_DECISION_OR_DEFERRED_DOMAIN_CLOSEOUT_20260622.md`；decision `WRITE_ONE_NARROW_TASKBOOK`; selected `M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK`; M72 did not write taskbook or enable runtime。 |
+| Q55 | M73/S94 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK_20260622.md`；taskbook-only；future M74 default-off manifest/metadata registry gate defined；M73 did not modify runtime/env/external package/provider/image/private。 |
 
-### 5.5 M19-M72 Specific Step Plan
+### 5.5 M19-M73 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -824,6 +831,10 @@ M72：next runtime lane decision PASS；选择未来只写 AI Image no-provider 
 | M72-02 | PASS | 比较“全部继续 deferred”与“只选一个窄 taskbook” | M72 decision options table | 不打开 upstream PR，不把 taskbook 选择当 runtime 授权 |
 | M72-03 | PASS | 选择 AI Image no-provider runtime registration taskbook 作为 M73 候选 | `M72_SELECTED_NEXT_TASKBOOK=M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK` | 不写 M73 taskbook、不启 runtime、不写 env、不调用 provider |
 | M72-04 | PASS | 更新 tracker：M72/S93/Q54 PASS | Progress `71.7 / 73` | 不修改 env、dist、runtime、LocalState/private、upstream |
+| M73-01 | PASS | 读取 M72/M32/M23/M24 证据并复审当前 AI Image 可复用资产 | external package + no-provider harness + focused tests reviewed; no blockers | 不把旧分支大 diff 或 AdminPanel dist 当来源 |
+| M73-02 | PASS | 写 AI Image no-provider runtime registration taskbook | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M73_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_TASKBOOK_20260622.md` | 不实现 registry、不修改 runtime、不改 external package |
+| M73-03 | PASS | 定义 M74 default-off manifest/metadata registry allowed files、env contract、validation、rollback、stop conditions | M73 sections 5-12 | 不写真实 `config.env`，不启 `ENABLE_AI_IMAGE_REAL_EXECUTION` |
+| M73-04 | PASS | 更新 tracker：M73/S94/Q55 PASS | Progress `72.7 / 74` | 不调用 provider、不生成图片、不读取 LocalState/private |
 
 ## 6. 领域路线概览
 
@@ -834,11 +845,11 @@ M72：next runtime lane decision PASS；选择未来只写 AI Image no-provider 
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；current AdminPanel lane closed。 |
-| AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、adapter registration deferred；M72 selects future M73 no-provider runtime registration taskbook, but M72 itself does not write taskbook or enable runtime。 |
+| AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、adapter registration deferred；M72 selects future M73 no-provider runtime registration taskbook；M73 taskbook PASS defines M74 default-off manifest/metadata registry gate without runtime/env/provider/image/private changes。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
