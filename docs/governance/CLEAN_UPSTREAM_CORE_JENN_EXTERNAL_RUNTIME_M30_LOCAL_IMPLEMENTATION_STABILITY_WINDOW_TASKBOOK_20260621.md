@@ -13,6 +13,7 @@ Related evidence:
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M31_ADMINPANEL_PERSISTENT_PACKAGE_GATE_RECEIPT_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M32_AI_IMAGE_PROVIDER_ADAPTER_PACKAGE_GATE_RECEIPT_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M33_CODEX_MEMORY_NO_LIVE_WRITE_PACKAGE_GATE_RECEIPT_20260621.md`
+- `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M34_PHOTOSTUDIO_SOURCE_PACKAGE_GATE_RECEIPT_20260621.md`
 
 ## 1. Objective
 
@@ -89,7 +90,7 @@ EXPLICITLY_OUT_OF_SCOPE
 | AdminPanel | PACKAGE_GATE_PASS_RUNTIME_DEFERRED | M31 persistent external package gate PASS; runtime registration, AdminPanel production build, and deployment remain deferred. |
 | AI Image | PACKAGE_GATE_PASS_PROVIDER_RUNTIME_DEFERRED | M32 persistent provider-adapter package gate PASS; provider runtime, real image generation, and adapter registration remain deferred unless separately authorized. |
 | Codex/Memory | PACKAGE_GATE_PASS_NO_LIVE_WRITE_RUNTIME_DEFERRED | M33 persistent bridge package gate PASS; no-live-write validation passed; runtime bridge registration, live memory writes, private memory reads, and bridge external writes remain deferred. |
-| PhotoStudio | PARTIAL | Source/package gate can cover code/templates only; project data remains LocalState/private and excluded. |
+| PhotoStudio | PACKAGE_GATE_PASS_NO_AUTO_WRITE_RUNTIME_DEFERRED | M34 persistent source package gate PASS; project data, LocalState/private data, external sync/publish/write, provider calls, bridge calls, and runtime registration remain deferred. |
 | Core fallback removal | DEFERRED | Not required for local stability; remains future proposal only. |
 | Upstream PR | DEFERRED | Cannot resume until full-local implementation and stable-operation evidence both pass. |
 
@@ -156,7 +157,7 @@ Recommended local progression order:
 1. AdminPanel persistent package gate without route registration or production build. Completed by M31.
 2. AI Image provider-adapter package structure with no-provider validation. Completed by M32.
 3. Codex/Memory no-live-write fixture/package gate. Completed by M33.
-4. PhotoStudio source/package gate excluding project data.
+4. PhotoStudio source/package gate excluding project data. Completed by M34.
 5. Aggregate full-local matrix review.
 6. 7-day stable-operation window execution.
 
