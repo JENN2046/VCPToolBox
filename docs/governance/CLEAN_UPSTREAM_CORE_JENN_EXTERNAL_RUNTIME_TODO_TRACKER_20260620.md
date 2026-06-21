@@ -1,6 +1,6 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 97% (97 / 100)
+Progress: [######----] 56% (16.7 / 30 global milestone units)
 
 Last updated: 2026-06-21
 
@@ -33,12 +33,12 @@ Last updated: 2026-06-21
 
 进度计算规则：
 
-- 全局总分是 100 分。
-- 当前 100 分计分只覆盖原始 acceptance plan 的 M0-M8。
-- M9-M29 是 Jenn fork 内长期维护 overlay，默认 `0` 权重，按 gate 状态追踪，不改变顶部 `97 / 100`。
-- 完整完成的 milestone 计入全部权重。
-- 进行中的 milestone 只有在 `当前计分` 明确记录证据时，才可以计入部分分；优先用 sprint 小项计分。
-- `DEFERRED` 不算完成进度。
+- 全局 Progress 覆盖 M0-M29 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M29 合计 30 units。
+- `PASS` 计 1 unit。
+- `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
+- `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
+- 表格中的 `原始分` 只保留原 acceptance plan / sprint 拆分背景，不再作为顶部 Progress 的第二套口径。
 - 不能因为“代码写了”就标完成；必须有验证或 review 证据。
 
 计划变更规则：
@@ -59,9 +59,9 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 计分路线；M9-M29 是当前 Jenn fork 长期维护收口路线。后者是正式路线段，但不计入原始 100 分，避免把后续扩展误算成 upstream PR 或原 Phase 1 完成项。
+M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护收口路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
-| 完成 | ID | 权重 | 里程碑 | Status | 证据 / 下一道门 |
+| 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
 | [x] | M0 | 6 | 基线、分支、inventory、扫描、tracker 建立 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M0_BASELINE_INVENTORY_SECRET_RISK_EVIDENCE_20260621.md`；upstream/origin refs、clean-core 创建记录、旧 fork inventory、paths-only secret-risk scan 已补齐；LocalState 仅存在性记录，不枚举。 |
 | [x] | M1 | 12 | Clean Core Phase 1 plugin contract | PASS | PR #272 已合并到 Jenn clean base；merge commit `86c69e8d`；final head `a4225aca`；review threads 全部 resolved；6-test 复跑：`65 pass / 0 fail`。 |
@@ -94,29 +94,21 @@ M0-M8 是原始 acceptance plan 计分路线；M9-M29 是当前 Jenn fork 长期
 | [ ] | M28 | 0 | Upstream PR decision revisit | DEFERRED | 仅在用户当前轮明确授权时恢复；目标 repo、source branch、target branch、action 必须具体；否则继续 deferred。 |
 | [ ] | M29 | 0 | Jenn fork maintenance route final closeout | TODO | 所有 active domain gates PASS 或明确 DEFERRED/BLOCK 后执行；产出最终状态、风险、未做项、下一周期建议。 |
 
-当前计分：
+全局进度明细：
 
 ```text
-M0 已完成：6 / 6
-M1 已完成并内部合并：12 / 12
-M2 已完成：12 / 12
-M3 已完成：12 / 12
-M4 已完成：10 / 10
-M5 已完成：14 / 14
-M6 已完成：14 / 14
-M7 决策完成：10 / 10
-M8 部分完成：7 / 10
-M9-M16 已完成但不计入原始 100 分：0 / 0
-M17-M18 待完成但不计入原始 100 分：0 / 0
-M19-M29 待规划/待执行但不计入原始 100 分：0 / 0
-全局总分：97 / 100
+M0-M7 PASS：8.0 / 8 units
+M8 PARTIAL：0.7 / 1 unit（S23+S24 = 7 / 10；S25 upstream PR 仍 DEFERRED）
+M9-M16 PASS：8.0 / 8 units
+M17-M29 TODO / DEFERRED：0 / 13 units
+Global Progress：16.7 / 30 = 55.7%，四舍五入显示为 56%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
 
 当前 sprint ledger 记录实际执行顺序。M8 upstream PR 仍按用户决定 deferred，不自动打开 upstream PR。Agent 外置路线已提升为 M9-M18 正式路线段，短期记录继续使用 S 编号。
 
-| 完成 | ID | 父项 | 权重 | 任务 | Status | 证据 |
+| 完成 | ID | 父项 | 原始分 | 任务 | Status | 证据 |
 | --- | --- | --- | ---: | --- | --- | --- |
 | [x] | S1 | M1 | 3 | 建立 Jenn fork 内部 clean-base PR 流程 | PASS | PR #272 base `codex/upstream-main-clean-base`；PR #272 已合并为 `86c69e8d`；upstream PR #365 已关闭。 |
 | [x] | S2 | M1 | 4 | 实现 Phase 1 plugin contract | PASS | `Plugin.js` + 4 个 contract modules。 |
@@ -168,6 +160,10 @@ M19-M29 待规划/待执行但不计入原始 100 分：0 / 0
 | [ ] | S48 | Governance / M27 | 0 | Migration ledger finalization | TODO | 汇总 receipts、checksums、deferred/BLOCK、rollback map。 |
 | [ ] | S49 | Upstream / M28 | 0 | Upstream PR decision revisit | DEFERRED | 需要用户当前轮明确授权，否则保持 deferred。 |
 | [ ] | S50 | Closeout / M29 | 0 | Jenn fork maintenance final closeout | TODO | 总结所有 active/deferred/block 状态，给下一周期路线。 |
+
+原始验收拆分说明：
+
+以下 M0-M8 原始分只用于解释历史 acceptance plan 和 PASS 证据，不再形成第二套 Progress。
 
 M1 完成规则：
 
@@ -343,7 +339,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | M28-03 | TODO | 若授权明确，再准备/open PR 并记录 rollback/close path | PR URL 或 skipped reason | 不混入 Jenn runtime overlay |
 | M29-01 | TODO | 审计所有 active/deferred/BLOCK 状态 | final status matrix | 不隐藏风险 |
 | M29-02 | TODO | 写最终风险、rollback、未做项、下一周期建议 | M29 closeout doc | 不自动执行 stub/untrack/remove |
-| M29-03 | TODO | 更新 tracker S50 和顶部 current milestone | tracker diff | 不改变原始 97/100 计分，除非 M8 恢复并完成 |
+| M29-03 | TODO | 更新 tracker S50 和顶部 current milestone | tracker diff | 不改变全局 milestone 口径；M8 恢复并完成时只把 M8 从 0.7 unit 更新为 1 unit |
 
 ## 6. 领域路线概览
 
