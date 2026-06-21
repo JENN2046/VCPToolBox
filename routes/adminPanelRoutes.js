@@ -2,6 +2,7 @@ const express = require("express");
 const fs = require("fs").promises;
 const path = require("path");
 const { buildAndMountAdminExtensionRoutes } = require("../modules/adminExtensionRuntimeMount");
+const { buildAndMountAiImageAdapterDiagnosticRoute } = require("../modules/aiImageAdapterDiagnosticRuntimeMount");
 
 function isTruthyFlag(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
@@ -136,6 +137,33 @@ module.exports = function (
       diagnostics: [{
         level: "warn",
         code: "admin_extension_runtime_mount_failed",
+        errorCode: error.code || "UNKNOWN"
+      }]
+    };
+  }
+
+  try {
+    const aiImageAdapterDiagnosticRuntimeSummary = buildAndMountAiImageAdapterDiagnosticRoute(adminApiRouter, {
+      projectRoot: projectBasePath
+    });
+    adminApiRouter.aiImageAdapterDiagnosticRuntimeSummary = {
+      routeEnabled: aiImageAdapterDiagnosticRuntimeSummary.routeEnabled,
+      realExecutionEnabled: aiImageAdapterDiagnosticRuntimeSummary.realExecutionEnabled,
+      attemptedRouteCount: aiImageAdapterDiagnosticRuntimeSummary.attemptedRouteCount,
+      mountedRouteCount: aiImageAdapterDiagnosticRuntimeSummary.mountedRouteCount,
+      mountedRoutes: aiImageAdapterDiagnosticRuntimeSummary.mountedRoutes,
+      diagnostics: aiImageAdapterDiagnosticRuntimeSummary.diagnostics
+    };
+  } catch (error) {
+    adminApiRouter.aiImageAdapterDiagnosticRuntimeSummary = {
+      routeEnabled: false,
+      realExecutionEnabled: false,
+      attemptedRouteCount: 0,
+      mountedRouteCount: 0,
+      mountedRoutes: [],
+      diagnostics: [{
+        level: "warn",
+        code: "ai_image_adapter_diagnostic_runtime_mount_failed",
         errorCode: error.code || "UNKNOWN"
       }]
     };
