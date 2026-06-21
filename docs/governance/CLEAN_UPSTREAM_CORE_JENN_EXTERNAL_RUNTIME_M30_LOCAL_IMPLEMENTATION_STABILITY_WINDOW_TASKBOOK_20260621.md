@@ -11,6 +11,7 @@ Related evidence:
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M31_ADMINPANEL_PERSISTENT_PACKAGE_GATE_RECEIPT_20260621.md`
+- `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M32_AI_IMAGE_PROVIDER_ADAPTER_PACKAGE_GATE_RECEIPT_20260621.md`
 
 ## 1. Objective
 
@@ -85,7 +86,7 @@ EXPLICITLY_OUT_OF_SCOPE
 | Agent external runtime | PASS for current local route | Keep core fallback; any future core fallback removal remains out-of-scope unless separately reviewed. |
 | LocalState | PASS for private-by-default skeleton | Private/operator content remains excluded; `.agent_board/**` remains blocked unless a separate human gate exists. |
 | AdminPanel | PACKAGE_GATE_PASS_RUNTIME_DEFERRED | M31 persistent external package gate PASS; runtime registration, AdminPanel production build, and deployment remain deferred. |
-| AI Image | PARTIAL | Provider-specific package can only use reviewed package content and no-provider/local fixture validation unless a provider gate is explicitly authorized. |
+| AI Image | PACKAGE_GATE_PASS_PROVIDER_RUNTIME_DEFERRED | M32 persistent provider-adapter package gate PASS; provider runtime, real image generation, and adapter registration remain deferred unless separately authorized. |
 | Codex/Memory | PARTIAL | Bridge package must prove no-live-write behavior; no private memory read or bridge external write. |
 | PhotoStudio | PARTIAL | Source/package gate can cover code/templates only; project data remains LocalState/private and excluded. |
 | Core fallback removal | DEFERRED | Not required for local stability; remains future proposal only. |
@@ -152,7 +153,7 @@ runtime remains default-off unless a separate explicit local env-on gate exists
 Recommended local progression order:
 
 1. AdminPanel persistent package gate without route registration or production build. Completed by M31.
-2. AI Image provider-adapter package structure with no-provider validation.
+2. AI Image provider-adapter package structure with no-provider validation. Completed by M32.
 3. Codex/Memory no-live-write fixture/package gate.
 4. PhotoStudio source/package gate excluding project data.
 5. Aggregate full-local matrix review.
