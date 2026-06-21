@@ -15,6 +15,7 @@ const VCP_AGENT_OVERRIDE_DIRS_ENV = 'VCP_AGENT_OVERRIDE_DIRS';
 const VCP_AGENT_ALLOWED_ROOTS_ENV = 'VCP_AGENT_ALLOWED_ROOTS';
 
 const AGENT_FILE_EXTENSIONS = new Set(['.txt', '.md']);
+const AGENT_METADATA_FILE_NAMES = new Set(['README.AGENTS_OS.md']);
 const BLOCKED_ROOT_SEGMENTS = new Set([
     '.git',
     '.agent_board',
@@ -139,6 +140,10 @@ function scanAgentFilesFromRoot(rootInfo, diagnostics = []) {
             }
 
             if (!entry.isFile()) {
+                continue;
+            }
+
+            if (AGENT_METADATA_FILE_NAMES.has(entry.name)) {
                 continue;
             }
 

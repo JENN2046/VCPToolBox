@@ -15,12 +15,18 @@ module.exports = function(options) {
     const _agentScanReady = (async () => {
         try {
             agentManager.setAgentDir(AGENT_FILES_DIR);
+            agentManager.setEnvironment(process.env);
             agentManager.debugMode = !!DEBUG_MODE;
             await agentManager.scanAgentFiles();
         } catch (err) {
             console.error('[routes/admin/agents] Failed to initialize agentManager scan:', err.message);
         }
     })();
+
+    function resolveCoreAgentFilePath(decodedFileName) {
+        const normalizedFileName = decodedFileName.replace(/\//g, path.sep);
+        return path.join(AGENT_FILES_DIR, normalizedFileName);
+    }
 
     // GET agent map
     router.get('/agents/map', async (req, res) => {
@@ -91,10 +97,20 @@ module.exports = function(options) {
             if (!decodedFileName.toLowerCase().endsWith('.txt') && !decodedFileName.toLowerCase().endsWith('.md')) {
                 return res.status(400).json({ error: 'Invalid file name.' });
             }
-            const filePath = path.join(AGENT_FILES_DIR, decodedFileName.replace(/\//g, path.sep));
+            await _agentScanReady;
+            await agentManager.ensureAgentFilePlan();
+            const resolvedRecord = agentManager.resolveAgentFileRecord(decodedFileName);
+            const filePath = resolvedRecord
+                ? resolvedRecord.absolutePath
+                : resolveCoreAgentFilePath(decodedFileName);
             await fs.access(filePath);
             const content = await fs.readFile(filePath, 'utf-8');
-            res.json({ content });
+            res.json({
+                content,
+                source: resolvedRecord?.source || 'core',
+                lane: resolvedRecord?.lane || 'core',
+                external: resolvedRecord?.source === 'external'
+            });
         } catch (error) {
             if (error.code === 'ENOENT') res.status(404).json({ error: 'Agent file not found.' });
             else res.status(500).json({ error: 'Failed to read agent file', details: error.message });
@@ -110,7 +126,17 @@ module.exports = function(options) {
                 return res.status(400).json({ error: 'Invalid file name.' });
             }
             if (typeof content !== 'string') return res.status(400).json({ error: 'Invalid request body.' });
-            const filePath = path.join(AGENT_FILES_DIR, decodedFileName.replace(/\//g, path.sep));
+            await _agentScanReady;
+            await agentManager.ensureAgentFilePlan();
+            const externalRecord = agentManager.resolveExternalAgentFileRecord(decodedFileName);
+            if (externalRecord) {
+                return res.status(403).json({
+                    error: 'External Agent files are read-only from this route.',
+                    source: externalRecord.source,
+                    lane: externalRecord.lane
+                });
+            }
+            const filePath = resolveCoreAgentFilePath(decodedFileName);
             await fs.mkdir(path.dirname(filePath), { recursive: true });
             await fs.writeFile(filePath, content, 'utf-8');
             res.json({ message: `Agent file '${decodedFileName}' saved successfully.` });

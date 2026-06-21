@@ -198,6 +198,35 @@ test('duplicate additive Agent ids are blocked unless they use override lane', (
     }
 });
 
+test('Agent package metadata README files are not treated as Agent ids', () => {
+    const projectRoot = makeTempDir();
+    const coreRoot = path.join(projectRoot, 'Agent');
+    const externalPackage = path.join(projectRoot, '..', 'VCPToolBox-JENN-Extensions');
+    const additiveRoot = path.join(externalPackage, 'Agent');
+    writeAgent(coreRoot, 'Nova.txt', 'core nova');
+    writeAgent(additiveRoot, 'Muse.txt', 'external muse');
+    writeAgent(additiveRoot, 'README.AGENTS_OS.md', 'metadata only');
+
+    try {
+        const resolver = createAgentRootResolver({
+            projectRoot,
+            coreAgentRoot: coreRoot,
+            env: {
+                VCP_AGENT_ALLOWED_ROOTS: externalPackage,
+                VCP_AGENT_DIRS: additiveRoot
+            }
+        });
+        const plan = resolver.getAgentFilePlanSync();
+
+        assert.equal(effectiveById(plan, 'Muse').effectiveSource, 'external-additive');
+        assert.equal(effectiveById(plan, 'README.AGENTS_OS'), undefined);
+        assert.equal(plan.additiveFiles.some(file => file.relativePath === 'README.AGENTS_OS.md'), false);
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+        fs.rmSync(externalPackage, { recursive: true, force: true });
+    }
+});
+
 test('Agent ids are derived from normalized relative paths', () => {
     assert.equal(getAgentIdFromRelativePath('Nova.txt'), 'Nova');
     assert.equal(getAgentIdFromRelativePath('Team/Muse.md'), 'Team/Muse');

@@ -3,17 +3,31 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 const chokidar = require('chokidar');
+const {
+    createAgentRootResolver,
+    getAgentIdFromRelativePath,
+    VCP_AGENT_DIRS_ENV,
+    VCP_AGENT_OVERRIDE_DIRS_ENV
+} = require('./agentRootResolver');
 
 const MAP_FILE = path.join(__dirname, '..', 'agent_map.json');
 
 class AgentManager {
-    constructor(defaultAgentDir = null) {
+    constructor(defaultAgentDir = null, options = {}) {
         this.agentDir = defaultAgentDir;
+        this.projectRoot = options.projectRoot || path.join(__dirname, '..');
+        this.env = options.env || process.env;
         this.agentMap = new Map();
         this.promptCache = new Map();
         this.debugMode = false;
         this.agentFiles = []; // 存储所有可用的Agent文件
         this.folderStructure = {}; // 存储文件夹结构
+        this.agentFilePlan = null;
+        this.agentFileRecordsById = new Map();
+        this.agentFileRecordsByPath = new Map();
+        this.externalAgentFileRecordsById = new Map();
+        this.externalAgentFileRecordsByPath = new Map();
+        this.agentDiagnostics = [];
     }
 
     /**
@@ -137,9 +151,41 @@ class AgentManager {
         try {
             this.agentFiles = [];
             this.folderStructure = {};
+            this.agentFilePlan = null;
+            this.agentFileRecordsById.clear();
+            this.agentFileRecordsByPath.clear();
+            this.externalAgentFileRecordsById.clear();
+            this.externalAgentFileRecordsByPath.clear();
+            this.agentDiagnostics = [];
             
             // 确保Agent目录存在
             await fs.mkdir(this.agentDir, { recursive: true });
+
+            if (this.hasExternalAgentRuntimeEnv()) {
+                const resolver = this.createAgentRootResolver();
+                const plan = resolver.getAgentFilePlanSync();
+                this.agentFilePlan = plan;
+                this.agentDiagnostics = plan.diagnostics;
+
+                for (const record of [...plan.additiveFiles, ...plan.overrideFiles]) {
+                    this.rememberExternalAgentFileRecord(record);
+                }
+
+                for (const record of plan.effectiveAgents) {
+                    this.agentFiles.push(record.relativePath);
+                    this.rememberAgentFileRecord(record);
+                    this.addToFolderStructure(record.relativePath, 'file', record.relativePath, record);
+                }
+
+                if (this.debugMode) {
+                    console.log(`[AgentManager] Found ${this.agentFiles.length} effective agent files via Agent root resolver.`);
+                    if (this.agentDiagnostics.length > 0) {
+                        console.log(`[AgentManager] Agent root diagnostics:`, JSON.stringify(this.agentDiagnostics, null, 2));
+                    }
+                }
+
+                return;
+            }
             
             // 递归扫描目录
             await this.scanDirectory(this.agentDir, '');
@@ -178,7 +224,8 @@ class AgentManager {
                         if (stats.isFile() && (entry.name.toLowerCase().endsWith('.txt') || entry.name.toLowerCase().endsWith('.md'))) {
                             // 添加到文件列表
                             this.agentFiles.push(entryRelativePath);
-                            
+                            this.rememberAgentFileRecord(this.createCoreAgentFileRecord(entryRelativePath, fullPath));
+
                             // 添加到文件夹结构
                             this.addToFolderStructure(entryRelativePath, 'file', entryRelativePath);
                             
@@ -204,7 +251,8 @@ class AgentManager {
                 } else if (entry.isFile() && (entry.name.toLowerCase().endsWith('.txt') || entry.name.toLowerCase().endsWith('.md'))) {
                     // 添加到文件列表
                     this.agentFiles.push(entryRelativePath);
-                    
+                    this.rememberAgentFileRecord(this.createCoreAgentFileRecord(entryRelativePath, entryPath));
+
                     // 添加到文件夹结构
                     this.addToFolderStructure(entryRelativePath, 'file', entryRelativePath);
                 }
@@ -220,8 +268,8 @@ class AgentManager {
      * @param {string} type - 类型 ('folder' 或 'file')
      * @param {string} filePath - 文件完整路径（仅当type为file时使用）
      */
-    addToFolderStructure(relativePath, type, filePath = null) {
-        const parts = relativePath.split(path.sep);
+    addToFolderStructure(relativePath, type, filePath = null, metadata = null) {
+        const parts = relativePath.split(/[\\/]/);
         let current = this.folderStructure;
         
         // 遍历路径的每个部分
@@ -236,6 +284,12 @@ class AgentManager {
                         type: 'file',
                         path: filePath
                     };
+                    if (metadata) {
+                        current[part].source = metadata.source;
+                        current[part].lane = metadata.lane;
+                        current[part].rootId = metadata.rootId;
+                        current[part].external = metadata.source === 'external';
+                    }
                 } else {
                     // 如果是文件夹或路径中间部分，创建文件夹对象
                     current[part] = {
@@ -260,7 +314,8 @@ class AgentManager {
         await this.scanAgentFiles();
         return {
             files: this.agentFiles,
-            folderStructure: this.folderStructure
+            folderStructure: this.folderStructure,
+            diagnostics: this.agentDiagnostics
         };
     }
 
@@ -285,7 +340,11 @@ class AgentManager {
         try {
             // 处理路径分隔符，确保跨平台兼容性
             const normalizedFilename = filename.replace(/\//g, path.sep);
-            let filePath = path.join(this.agentDir, normalizedFilename);
+            await this.ensureAgentFilePlan();
+            const resolvedRecord = this.resolveAgentFileRecord(filename);
+            let filePath = resolvedRecord
+                ? resolvedRecord.absolutePath
+                : path.join(this.agentDir, normalizedFilename);
             
             // 检查是否是符号链接，如果是则解析真实路径
             try {
@@ -332,8 +391,87 @@ class AgentManager {
             throw new Error('[AgentManager] agentDirPath must be a non-empty string');
         }
         this.agentDir = agentDirPath;
+        this.agentFilePlan = null;
+        this.agentFileRecordsById.clear();
+        this.agentFileRecordsByPath.clear();
+        this.externalAgentFileRecordsById.clear();
+        this.externalAgentFileRecordsByPath.clear();
+        this.agentDiagnostics = [];
+    }
+
+    setEnvironment(env) {
+        this.env = env || process.env;
+        this.agentFilePlan = null;
+        this.agentFileRecordsById.clear();
+        this.agentFileRecordsByPath.clear();
+        this.externalAgentFileRecordsById.clear();
+        this.externalAgentFileRecordsByPath.clear();
+        this.agentDiagnostics = [];
+    }
+
+    createAgentRootResolver() {
+        return createAgentRootResolver({
+            projectRoot: this.projectRoot,
+            env: this.env,
+            coreAgentRoot: this.agentDir
+        });
+    }
+
+    hasExternalAgentRuntimeEnv() {
+        return [
+            VCP_AGENT_DIRS_ENV,
+            VCP_AGENT_OVERRIDE_DIRS_ENV
+        ].some(envName => typeof this.env[envName] === 'string' && this.env[envName].trim() !== '');
+    }
+
+    createCoreAgentFileRecord(relativePath, absolutePath) {
+        const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+        return {
+            id: getAgentIdFromRelativePath(normalizedRelativePath),
+            relativePath: normalizedRelativePath,
+            absolutePath,
+            rootId: 'core:agent',
+            source: 'core',
+            lane: 'core',
+            effectiveSource: 'core'
+        };
+    }
+
+    rememberAgentFileRecord(record) {
+        if (!record) return;
+        this.agentFileRecordsById.set(record.id, record);
+        this.agentFileRecordsByPath.set(record.relativePath.replace(/\\/g, '/'), record);
+    }
+
+    rememberExternalAgentFileRecord(record) {
+        if (!record || record.source !== 'external') return;
+        this.externalAgentFileRecordsById.set(record.id, record);
+        this.externalAgentFileRecordsByPath.set(record.relativePath.replace(/\\/g, '/'), record);
+    }
+
+    async ensureAgentFilePlan() {
+        if (this.hasExternalAgentRuntimeEnv() && !this.agentFilePlan) {
+            await this.scanAgentFiles();
+        }
+    }
+
+    resolveAgentFileRecord(fileName) {
+        const normalized = fileName.replace(/\\/g, '/');
+        const id = getAgentIdFromRelativePath(normalized);
+        return this.agentFileRecordsByPath.get(normalized)
+            || this.agentFileRecordsById.get(id)
+            || null;
+    }
+
+    resolveExternalAgentFileRecord(fileName) {
+        const normalized = fileName.replace(/\\/g, '/');
+        const id = getAgentIdFromRelativePath(normalized);
+        return this.externalAgentFileRecordsByPath.get(normalized)
+            || this.externalAgentFileRecordsById.get(id)
+            || null;
     }
 }
 
 const agentManager = new AgentManager(path.join(__dirname, '..', 'Agent'));
 module.exports = agentManager;
+module.exports.AgentManager = AgentManager;
