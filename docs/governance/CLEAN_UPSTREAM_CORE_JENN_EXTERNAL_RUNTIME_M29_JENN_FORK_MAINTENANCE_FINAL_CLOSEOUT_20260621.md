@@ -36,6 +36,8 @@ M28/S49: DEFERRED
 
 Therefore the route is not 100% complete globally. It is closed as a Jenn fork maintenance route with upstream PR explicitly deferred.
 
+This closeout is not an upstream-ready declaration. Upstream PR opening remains blocked until the whole local plan is implemented in the Jenn fork/local route and has stable-operation evidence.
+
 ## 2. Final Progress Accounting
 
 ```text
@@ -47,7 +49,7 @@ M29 PASS: 1.0 / 1 unit
 Global Progress: 28.7 / 30 = 95.7%, displayed as 96%
 ```
 
-M8 can only move from `0.7` to `1.0` if the upstream PR gate is explicitly reopened and completed.
+M8 can only move from `0.7` to `1.0` if the full-local-implementation + stable-operation gate passes and the upstream PR gate is explicitly reopened and completed.
 M28 remains `0` while upstream PR creation is deferred.
 
 ## 3. What Was Completed
@@ -86,7 +88,7 @@ Production deployment/service startup executed: no
 
 | Item | Status | Next allowed action |
 | --- | --- | --- |
-| Upstream PR | DEFERRED | only resume with explicit current-turn authorization naming target repo, source branch, base branch, and action |
+| Upstream PR | DEFERRED | only resume after full local implementation + stable-operation evidence, then explicit current-turn authorization naming target repo, source branch, base branch, and action |
 | Core fallback removal | DEFERRED | future proposal only; no delete/untrack/stub without explicit authorization |
 | Real runtime env activation | DEFERRED | explicit env/config change gate required |
 | AdminPanel persistent package | DEFERRED | future reviewed package gate required |
@@ -111,10 +113,11 @@ No remote rollback is required because M29 opens no PR, performs no deployment, 
 
 Recommended next cycle options:
 
-1. Decide whether to reopen the upstream PR gate, with exact repo/branch/action authorization.
-2. Choose one deferred domain for a real package gate: AdminPanel persistent package, AI Image provider adapter package, Codex/Memory no-live-write fixture, or PhotoStudio source package.
+1. Continue local implementation toward the full plan, choosing one deferred domain for a real package gate: AdminPanel persistent package, AI Image provider adapter package, Codex/Memory no-live-write fixture, or PhotoStudio source package.
+2. Establish stable-operation evidence for the implemented local route using agreed repeatable validation before reconsidering upstream PR.
 3. Keep core fallback until a future reviewed removal package proves parity and rollback.
 4. Preserve LocalState/private and `.agent_board/**` as blocked/private-by-default.
+5. Reopen the upstream PR gate only after local completion and stability evidence exist, with exact repo/branch/action authorization.
 
 ## 8. Safety Confirmations
 
@@ -122,6 +125,7 @@ Recommended next cycle options:
 Runtime code modified by M29: no
 Remote upstream PR opened: no
 Remote upstream branch pushed: no
+Full local implementation + stable-operation PR gate passed: no
 Delete/untrack/stub executed: no
 Real env/secret/auth material modified: no
 Provider call executed: no
@@ -134,4 +138,4 @@ Production deploy/service startup executed: no
 
 ## 9. Acceptance
 
-M29 is PASS because all active Jenn fork maintenance domains are either PASS or explicitly deferred by policy/user decision, final risks are documented, rollback paths are indexed, and no hard boundary was crossed.
+M29 is PASS because all active Jenn fork maintenance domains in the current authorized scope are either PASS or explicitly deferred by policy/user decision, final risks are documented, rollback paths are indexed, and no hard boundary was crossed. It does not mark the full local implementation or stable-operation upstream PR gate as complete.

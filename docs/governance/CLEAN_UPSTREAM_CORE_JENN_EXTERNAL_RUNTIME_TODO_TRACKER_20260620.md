@@ -4,7 +4,7 @@ Progress: [##########] 96% (28.7 / 30 global milestone units)
 
 Last updated: 2026-06-21
 
-当前里程碑：Jenn fork 内长期维护收口（M29 final closeout PASS；Jenn fork maintenance route closed with M8/S25 and M28 upstream PR gates deferred）
+当前里程碑：Jenn fork 内长期维护收口（M29 final closeout PASS；Jenn fork maintenance route closed；M8/S25 and M28 upstream PR gates deferred behind full local implementation + stable-operation evidence）
 
 状态来源：
 
@@ -40,6 +40,7 @@ Last updated: 2026-06-21
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
 - 表格中的 `原始分` 只保留原 acceptance plan / sprint 拆分背景，不再作为顶部 Progress 的第二套口径。
 - 不能因为“代码写了”就标完成；必须有验证或 review 证据。
+- Upstream PR gate 已收紧：只有整个计划在 Jenn fork/local 路线中完成本地实现，并产生稳定运转证据后，才允许重新考虑 M8/S25 或 M28；当前轮或未来轮的泛化 `自动推进` / `继续` 不足以恢复 upstream PR。
 
 计划变更规则：
 
@@ -71,7 +72,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 | [x] | M5 | 14 | Agent / LocalState / AdminPanel contracts | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M5_AGENT_LOCALSTATE_ADMIN_CONTRACTS_20260621.md`；定义 `VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS`、`VCP_LOCAL_STATE_DIR`、`VCP_ADMIN_EXTENSION_DIRS`；docs-only。 |
 | [x] | M6 | 14 | AI Image / Codex-Memory / PhotoStudio 外置化 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M6_AI_IMAGE_MEMORY_PHOTOSTUDIO_CONTRACTS_20260621.md`；定义 adapter / memory / PhotoStudio 外置边界；clean core 不放 private state；docs-only。 |
 | [x] | M7 | 10 | Stub / untrack / remove 决策 | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M7_STUB_UNTRACK_REMOVE_DECISION_20260621.md`；决策完成：keep core fallback，不执行 delete/untrack/stub，不改 dispatch，不开 upstream PR。 |
-| [ ] | M8 | 10 | Upstream PR 和长期 rebase workflow | PARTIAL | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md`；workflow / rebase gate ready；upstream/main `f8d45479` 预检无重叠文件；按用户决定先跳过打开 upstream PR。 |
+| [ ] | M8 | 10 | Upstream PR 和长期 rebase workflow | PARTIAL | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M8_UPSTREAM_PR_REBASE_WORKFLOW_20260621.md`；workflow / rebase gate ready；upstream/main `f8d45479` 预检无重叠文件；按用户决定先跳过打开 upstream PR；恢复条件已收紧为全计划本地实现 + 稳定运转证据 + 当前轮明确 upstream PR 授权。 |
 | [x] | M9 | 0 | Agent externalization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M9_AGENT_EXTERNALIZATION_TASKBOOK_20260621.md`；taskbook-only；定义 additive / override lane；不复制、不启用 runtime。 |
 | [x] | M10 | 0 | Agent source scan + external skeleton | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M10_AGENT_COPY_FIRST_GATE_SKELETON_RECEIPT_20260621.md`；external commit `109d65e`；source candidates `9` risk `0`；target skeleton risk `0`；`MANIFEST_VERIFY_PASS count=6`。 |
 | [x] | M11 | 0 | Agent reviewed candidate content gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M11_AGENT_CANDIDATE_CONTENT_GATE_RECEIPT_20260621.md`；7 additive + 2 override；`ALLOW_COPY=9`、`BLOCK=0`。 |
@@ -290,7 +291,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | Q7 | M25/S46 | PASS | Codex/Memory | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M25_CODEX_MEMORY_EXTERNAL_BRIDGE_TASKBOOK_20260621.md`。 |
 | Q8 | M26/S47 | PASS | PhotoStudio | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md`。 |
 | Q9 | M27/S48 | PASS | Governance | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`。 |
-| Q10 | M28/S49 | DEFERRED | Upstream PR | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；仅用户当前轮明确授权才恢复。 |
+| Q10 | M28/S49 | DEFERRED | Upstream PR | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；仅在全计划本地实现、稳定运转证据齐备、且用户当前轮明确 upstream PR 授权后才恢复。 |
 | Q11 | M29/S50 | PASS | Closeout | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`。 |
 
 ### 5.5 M19-M29 Specific Step Plan
@@ -334,9 +335,9 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | M27-02 | PASS | 核对 deferred/BLOCK/open risks 与 rollback map | M27 deferred/open risk ledger + rollback map | 不改变 runtime |
 | M27-03 | PASS | 写 migration ledger finalization doc | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md` | 不开 upstream PR |
 | M27-04 | PASS | 更新 tracker S48 | M27/S48 PASS；M28 remains DEFERRED | 不声称 deferred 已完成 |
-| M28-01 | DEFERRED | 保持 upstream PR decision deferred，除非用户当前轮明确授权 | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md` | 不自动打开 upstream PR |
-| M28-02 | DEFERRED | 若授权恢复，先做 target repo/source branch/base branch/action preflight | not run; no current-turn upstream PR authorization | 不隐含 remote write |
-| M28-03 | DEFERRED | 若授权明确，再准备/open PR 并记录 rollback/close path | skipped; upstream PR not opened | 不混入 Jenn runtime overlay |
+| M28-01 | DEFERRED | 保持 upstream PR decision deferred；当前全计划本地实现 + 稳定运转 gate 未完成 | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md` | 不自动打开 upstream PR |
+| M28-02 | DEFERRED | 若未来本地实现与稳定证据都 PASS，再做 target repo/source branch/base branch/action preflight | not run; no full-local-implementation/stable-operation PR gate evidence | 不把 M29 维护收口当成稳定运行证明 |
+| M28-03 | DEFERRED | 只有 full-local/stability gate 与当前轮明确授权同时满足，才准备/open PR 并记录 rollback/close path | skipped; upstream PR not opened | 不混入 Jenn runtime overlay |
 | M29-01 | PASS | 审计所有 active/deferred/BLOCK 状态 | M29 final status matrix | 不隐藏风险 |
 | M29-02 | PASS | 写最终风险、rollback、未做项、下一周期建议 | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md` | 不自动执行 stub/untrack/remove |
 | M29-03 | PASS | 更新 tracker S50 和顶部 current milestone | M29/S50 PASS；Progress `28.7 / 30`；M8/M28 upstream deferred remains non-counting | 不改变全局 milestone 口径；M8 恢复并完成时只把 M8 从 0.7 unit 更新为 1 unit |
@@ -359,13 +360,21 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 
 打开新的 `lioensky/VCPToolBox` upstream PR 前，必须满足：
 
+2026-06-21 gate update:
+
+- upstream PR 只有在整个计划已经在 Jenn fork/local 路线实现，并且稳定运转后才有意义开启。
+- M29 Jenn fork maintenance closeout 是维护路线收口，不等于完整本地实现，也不等于稳定运转证明。
+- 因此 M8/S25 与 M28 仍保持 DEFERRED；明确授权只有在 full-local-implementation + stable-operation gate PASS 后才可作为开 PR 的最后一步授权。
+
 | Gate | 必需证据 | Status |
 | --- | --- | --- |
 | Jenn 内部 review 完成 | PR #272 有明确 ready / continue 决策，且已合并到 Jenn clean base | PASS |
 | Phase 1 validation 稳定 | 在 final head `a4225aca` 上通过 syntax checks 和 6-test command：`65 pass / 0 fail` | PASS |
 | Phase 边界清楚 | Phase 2 copy-first/checksum/denylist 不混进 PR #272 | PASS |
 | 没有 secret/runtime 文件 | diff 不包含 env、config、state、cache、log、image、auth material | PASS for PR #272 |
-| Upstream 目标决策 | M8 workflow / rebase gate ready；latest upstream/main `f8d45479`；按用户决定先跳过打开 upstream PR | DEFERRED |
+| 全计划本地实现 | 所有拟纳入 upstream 的本地计划项必须有实现、receipt、validation、rollback evidence；deferred 项必须明确 out-of-scope | DEFERRED |
+| 稳定运转证据 | 需要约定稳定运行窗口或等价验证证据；不能只用 taskbook、fixture shadow 或 discovery success 代替 runtime stability | DEFERRED |
+| Upstream 目标决策 | M8 workflow / rebase gate ready；latest upstream/main `f8d45479`；按用户决定先跳过打开 upstream PR，直到 full-local/stability gate PASS | DEFERRED |
 
 ## 8. 回滚说明
 
