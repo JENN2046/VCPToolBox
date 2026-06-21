@@ -2,7 +2,7 @@
 
 Date: 2026-06-21
 
-Status: PASS_AGENT_OVERRIDE_ONLY_UNLOCK_DECISION
+Status: PASS_AGENT_OVERRIDE_ONLY_UNLOCK_DECISION_AND_POST_APPLY_VALIDATION
 
 Parent tracker: `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_TODO_TRACKER_20260620.md`
 
@@ -15,6 +15,13 @@ Related evidence:
 ## 1. Gate Scope
 
 M40 defines the smallest safe real-config unlock decision after M39 blocked on runtime-off real config.
+
+Post-apply update:
+
+```text
+M41 later applied the selected two-key config candidate.
+M40 harness now supports post-apply validation and passed after M41.
+```
 
 This is a decision and dry-run gate only:
 
@@ -60,7 +67,7 @@ This is still inside the Agent lane, but it is the minimum viable sub-lane. The 
 
 ## 3. Future Config Candidate
 
-M40 does not apply this change. If a later turn explicitly authorizes editing real `config.env`, the minimum Agent-only candidate is:
+At initial decision time, M40 did not apply this change. M41 later applied the same minimum Agent-only candidate after explicit authorization:
 
 ```text
 VCP_AGENT_ALLOWED_ROOTS=<external package root>
@@ -153,7 +160,15 @@ real config.env edited: no
 M39 changed to PASS: no
 ```
 
-M39 remains BLOCK until a separate explicit real `config.env` edit is authorized and then revalidated.
+At M40 decision time, M39 remained BLOCK until a separate explicit real `config.env` edit was authorized and then revalidated.
+
+Post-apply validation:
+
+```text
+M41 explicitly authorized and applied the two-key candidate.
+M39 passed after rerun.
+M40 passed in post-apply-validation mode.
+```
 
 ## 6. Rollback
 

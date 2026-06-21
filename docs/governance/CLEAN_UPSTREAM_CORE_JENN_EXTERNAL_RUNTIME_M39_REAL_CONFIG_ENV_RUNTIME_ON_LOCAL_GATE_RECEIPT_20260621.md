@@ -2,7 +2,7 @@
 
 Date: 2026-06-21
 
-Status: BLOCK_REAL_CONFIG_ENV_RUNTIME_LANES_UNSET
+Status: PASS_AFTER_M41_AGENTOVERRIDES_REAL_CONFIG_APPLY
 
 Parent tracker: `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_TODO_TRACKER_20260620.md`
 
@@ -10,6 +10,15 @@ Related evidence:
 
 - `scripts/run-real-config-env-runtime-on-local-gate-harness.js`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M38_ACCELERATED_LOCAL_STABILITY_CLOSEOUT_RECEIPT_20260621.md`
+- `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M41_AGENTOVERRIDES_REAL_CONFIG_APPLY_RECEIPT_20260621.md`
+
+Current status:
+
+```text
+Initial M39 run: BLOCK because real config kept all implemented runtime lanes off.
+M41 rerun: PASS after explicit authorization to write only VCP_AGENT_ALLOWED_ROOTS and VCP_AGENT_OVERRIDE_DIRS.
+VCP_AGENT_DIRS remains unset.
+```
 
 ## 1. Gate Scope
 
@@ -97,7 +106,7 @@ REAL_CONFIG_ENV_RUNTIME_ON_LOCAL_GATE_BLOCK
 BLOCK_REASONS=no_implemented_runtime_lane_enabled_by_real_config_env
 ```
 
-## 3. Decision
+## 3. Initial Decision
 
 ```text
 M39 result: BLOCK
@@ -109,11 +118,23 @@ config.env modified: no
 
 This BLOCK means the code/package layer is ready enough to test a real-env runtime-on gate, but the actual real env currently keeps all implemented runtime lanes off.
 
+## 3.1 M41 Rerun Decision
+
+After explicit authorization, M41 wrote only the two selected AgentOverrides keys to real `config.env` and reran this gate.
+
+```text
+M39 rerun result: PASS
+runtime-on lane: AgentOverrides only
+VCP_AGENT_DIRS set: no
+provider/bridge/LocalState/private enabled: no
+config.env values exposed: no
+```
+
 ## 4. Unblock Conditions
 
-M39 can be retried only after a separate explicit decision about real `config.env` runtime-on configuration.
+M39 was retried by M41 after a separate explicit decision about real `config.env` runtime-on configuration.
 
-Minimum future options:
+Historical options before M41:
 
 ```text
 Option A: user manually edits config.env, then rerun M39 harness

@@ -199,6 +199,12 @@ function evaluateAgentCandidate(candidateEnv) {
   };
 }
 
+function isExpectedPostApplyAgentConfig(env) {
+  return isSet(env, 'VCP_AGENT_ALLOWED_ROOTS')
+    && !isSet(env, 'VCP_AGENT_DIRS')
+    && isSet(env, 'VCP_AGENT_OVERRIDE_DIRS');
+}
+
 function main() {
   const snapshot = readConfigEnvSnapshot();
   const realEnv = snapshot.env;
@@ -223,8 +229,13 @@ function main() {
   lines.push(`REAL_ENV_AGENT_KEYS_SET_COUNT=${realAgentKeysSetCount}`);
   lines.push(`REAL_ENV_NON_AGENT_RUNTIME_KEYS_SET_COUNT=${realNonAgentKeysSetCount}`);
 
-  if (realAgentKeysSetCount > 0) {
-    failures.push('real_agent_runtime_keys_already_set');
+  const postApplyMode = isExpectedPostApplyAgentConfig(realEnv);
+  const preApplyMode = realAgentKeysSetCount === 0;
+  lines.push(`GATE_MODE=${postApplyMode ? 'post-apply-validation' : 'pre-apply-decision'}`);
+  lines.push(`REAL_ENV_AGENT_ADDITIVE_ENABLED=${isSet(realEnv, 'VCP_AGENT_DIRS') ? 'yes' : 'no'}`);
+  lines.push(`REAL_ENV_AGENT_OVERRIDE_ENABLED=${isSet(realEnv, 'VCP_AGENT_OVERRIDE_DIRS') ? 'yes' : 'no'}`);
+  if (!preApplyMode && !postApplyMode) {
+    failures.push('real_agent_runtime_keys_not_expected_override_only_shape');
   }
   if (realNonAgentKeysSetCount > 0) {
     failures.push('real_non_agent_runtime_keys_set');
@@ -235,11 +246,13 @@ function main() {
     }
   }
 
-  const candidateEnv = {
-    ...realEnv,
-    VCP_AGENT_ALLOWED_ROOTS: EXTERNAL_ROOT,
-    VCP_AGENT_OVERRIDE_DIRS: EXTERNAL_AGENT_OVERRIDE_ROOT
-  };
+  const candidateEnv = postApplyMode
+    ? { ...realEnv }
+    : {
+        ...realEnv,
+        VCP_AGENT_ALLOWED_ROOTS: EXTERNAL_ROOT,
+        VCP_AGENT_OVERRIDE_DIRS: EXTERNAL_AGENT_OVERRIDE_ROOT
+      };
 
   const candidateAgentKeysSetCount = countSetKeys(candidateEnv, AGENT_ENV_KEYS);
   const candidateNonAgentKeysSetCount = countSetKeys(candidateEnv, NON_AGENT_RUNTIME_ENV_KEYS);
