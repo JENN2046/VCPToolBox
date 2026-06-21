@@ -4,7 +4,7 @@ Progress: [##########] 97% (97 / 100)
 
 Last updated: 2026-06-21
 
-当前里程碑：Jenn fork 内长期维护收口（M16 AgentManager default-off runtime wiring pass；next M17 env-on shadow / rollback drill；M8/S25 deferred）
+当前里程碑：Jenn fork 内长期维护收口（M16 AgentManager default-off runtime wiring pass；next M17 env-on shadow / rollback drill；M8/S25 deferred；future domains queued）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-21
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M18。
-- 短期执行记录：实际 sprint ledger，记录 S1-S37 已完成工作和 S38+ 下一步。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M29。
+- 短期执行记录：实际 sprint ledger，记录 S1-S37 已完成工作和 S38-S50 计划/延期项。
 
 更新规则：
 
@@ -29,16 +29,25 @@ Last updated: 2026-06-21
 3. 证据尽量短：PR、commit、测试命令、checksum、review 结论即可。
 4. 每完成一步，都重新计算顶部 `Progress`。
 5. 每次更新进度，都同步更新 `Last updated`。
+6. 新工作开始前，必须先在本 tracker 的长期路线或详细待办里有对应 TODO；若现实变化导致计划调整，先补 `PLAN_CHANGE` 说明再执行。
 
 进度计算规则：
 
 - 全局总分是 100 分。
 - 当前 100 分计分只覆盖原始 acceptance plan 的 M0-M8。
-- M9-M18 是 Jenn fork 内长期维护 overlay，默认 `0` 权重，按 gate 状态追踪，不改变顶部 `97 / 100`。
+- M9-M29 是 Jenn fork 内长期维护 overlay，默认 `0` 权重，按 gate 状态追踪，不改变顶部 `97 / 100`。
 - 完整完成的 milestone 计入全部权重。
 - 进行中的 milestone 只有在 `当前计分` 明确记录证据时，才可以计入部分分；优先用 sprint 小项计分。
 - `DEFERRED` 不算完成进度。
 - 不能因为“代码写了”就标完成；必须有验证或 review 证据。
+
+计划变更规则：
+
+- 允许计划按现实修改，但修改必须留痕：原因、影响范围、旧计划、新计划、安全边界、是否影响计分。
+- 不能用事后补 TODO 的方式把越界操作伪装成计划内；先补计划，再执行。
+- 紧急窄修可以同 commit 追加计划变更说明，但必须说明为什么不能先停下来规划。
+- 每个新领域必须先有 taskbook / gate / rollback，再进入 copy-first 或 runtime wiring。
+- `PASS` 只能来自证据；推测、愿望、发现文件存在，都不是 PASS。
 
 硬边界：
 
@@ -50,7 +59,7 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 计分路线；M9-M18 是当前 Jenn fork 长期维护收口路线。后者是正式路线段，但不计入原始 100 分，避免把后续扩展误算成 upstream PR 或原 Phase 1 完成项。
+M0-M8 是原始 acceptance plan 计分路线；M9-M29 是当前 Jenn fork 长期维护收口路线。后者是正式路线段，但不计入原始 100 分，避免把后续扩展误算成 upstream PR 或原 Phase 1 完成项。
 
 | 完成 | ID | 权重 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -73,6 +82,17 @@ M0-M8 是原始 acceptance plan 计分路线；M9-M18 是当前 Jenn fork 长期
 | [x] | M16 | 0 | AgentManager runtime wiring default-off | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M16_AGENT_MANAGER_RUNTIME_WIRING_DEFAULT_OFF_RECEIPT_20260621.md`；`AgentManager` 接入 resolver 但仅 env-on 触发；Admin route external read-only/write-block；tests `14 pass / 0 fail`；真实 env 未设置。 |
 | [ ] | M17 | 0 | Agent env-on shadow / rollback drill | TODO | 下一步；只允许 temp env / fixture 或明确受控 external package shadow，不改真实 `.env`，不读 LocalState / `.agent_board/**`，不 provider/bridge/live write；完成后写 M17 receipt。 |
 | [ ] | M18 | 0 | Agent domain final closeout decision | TODO | M17 PASS 后执行；产出 Agent 领域完结决策包：keep core fallback / future stub-untrack proposal / no-op 关闭；不自动 delete/untrack/stub；定义后续领域切换条件。 |
+| [ ] | M19 | 0 | LocalState private-by-default route planning | TODO | 对照 S8 gate；只做 taskbook、path policy、人工 gate、receipt 模板；不读取或复制真实 private/operator data；`.agent_board/**` 仍 blocked。 |
+| [ ] | M20 | 0 | LocalState skeleton / paths-only gate | TODO | 若执行，只创建 reviewed skeleton / README / denylist receipt；只做 paths-only，不迁移 LocalState 内容，不 checksum `.agent_board/**`。 |
+| [ ] | M21 | 0 | AdminPanel extension manifest route planning | TODO | taskbook-only；定义 extension manifest、route/menu/API registration、build validation 和 default-off gate；不运行 production build / deploy。 |
+| [ ] | M22 | 0 | AdminPanel extension build / shadow validation | TODO | 只在 reviewed package / fixture 中验证 build 和 route manifest；不注册真实 Admin route，除非另有 gate。 |
+| [ ] | M23 | 0 | AI Image adapter externalization planning | TODO | taskbook-only；定义 generic adapter、provider-off、Jenn fixture separation；不写 provider token，不发真实 provider call。 |
+| [ ] | M24 | 0 | AI Image no-provider shadow validation | TODO | 使用 fixture / mock / no-provider harness；验证 adapter default-off 和 rollback；不生成真实图片，不调用 provider。 |
+| [ ] | M25 | 0 | Codex/Memory external bridge planning | TODO | manifest/path-only；不读取 private memory；不写 bridge 外部状态；定义 no-live-write validation。 |
+| [ ] | M26 | 0 | PhotoStudio externalization planning | TODO | taskbook-only；摄影项目数据留 LocalState/private；插件/模板 copy-first 前先做 denylist、source gate、rollback。 |
+| [ ] | M27 | 0 | Governance migration ledger finalization | TODO | 汇总 M0-M26 receipts、checksums、deferred items、rollback map；不改变 runtime。 |
+| [ ] | M28 | 0 | Upstream PR decision revisit | DEFERRED | 仅在用户当前轮明确授权时恢复；目标 repo、source branch、target branch、action 必须具体；否则继续 deferred。 |
+| [ ] | M29 | 0 | Jenn fork maintenance route final closeout | TODO | 所有 active domain gates PASS 或明确 DEFERRED/BLOCK 后执行；产出最终状态、风险、未做项、下一周期建议。 |
 
 当前计分：
 
@@ -88,6 +108,7 @@ M7 决策完成：10 / 10
 M8 部分完成：7 / 10
 M9-M16 已完成但不计入原始 100 分：0 / 0
 M17-M18 待完成但不计入原始 100 分：0 / 0
+M19-M29 待规划/待执行但不计入原始 100 分：0 / 0
 全局总分：97 / 100
 ```
 
@@ -136,6 +157,17 @@ M17-M18 待完成但不计入原始 100 分：0 / 0
 | [x] | S37 | Agent | 0 | AgentManager runtime wiring default-off patch | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M16_AGENT_MANAGER_RUNTIME_WIRING_DEFAULT_OFF_RECEIPT_20260621.md`；`modules/agentManager.js` 接入 pure resolver 但仅在 `VCP_AGENT_DIRS` / `VCP_AGENT_OVERRIDE_DIRS` 设置时触发；Admin route external read-only/write-block；`node --test tests/agent-external-root-resolver.test.js tests/agent-manager-external-runtime.test.js tests/dotenvPatch.test.js`：`14 pass / 0 fail`；未设置真实 env。 |
 | [ ] | S38 | Agent / M17 | 0 | Agent env-on shadow / rollback drill | TODO | 用 temp env / fixture 执行；验证 env-on additive / override / rollback by unsetting env；不得改真实 `.env`，不得读 LocalState / `.agent_board/**`，不得 provider/bridge/live write。 |
 | [ ] | S39 | Agent / M18 | 0 | Agent domain final closeout decision packet | TODO | M17 PASS 后执行；定义 Agent 领域是否 keep core fallback、是否另开 future stub/untrack proposal、何时切换下一个领域；不执行 delete/untrack/stub。 |
+| [ ] | S40 | LocalState / M19 | 0 | LocalState route planning taskbook | TODO | 对照 S8；写 taskbook、gate matrix、stop conditions；不读取 LocalState 内容。 |
+| [ ] | S41 | LocalState / M20 | 0 | LocalState skeleton / paths-only receipt | TODO | 只创建 reviewed skeleton 和 receipt；不复制 private/operator data；`.agent_board/**` 不 checksum。 |
+| [ ] | S42 | AdminPanel / M21 | 0 | AdminPanel extension manifest taskbook | TODO | 定义 manifest、route/menu/API contract、build validation、rollback；不注册真实 route。 |
+| [ ] | S43 | AdminPanel / M22 | 0 | AdminPanel extension build shadow validation | TODO | fixture / reviewed package build only；不 production deploy。 |
+| [ ] | S44 | AI Image / M23 | 0 | AI Image adapter taskbook | TODO | generic adapter、provider-off、fixture boundary；不 provider call。 |
+| [ ] | S45 | AI Image / M24 | 0 | AI Image no-provider shadow validation | TODO | mock/fixture harness；不生成真实图片。 |
+| [ ] | S46 | Codex/Memory / M25 | 0 | Codex/Memory external bridge taskbook | TODO | manifest/path-only；不读取 private memory；不 bridge 外写。 |
+| [ ] | S47 | PhotoStudio / M26 | 0 | PhotoStudio externalization taskbook | TODO | data exclusion、copy-first gates、no-auto-write；不读取项目私有数据。 |
+| [ ] | S48 | Governance / M27 | 0 | Migration ledger finalization | TODO | 汇总 receipts、checksums、deferred/BLOCK、rollback map。 |
+| [ ] | S49 | Upstream / M28 | 0 | Upstream PR decision revisit | DEFERRED | 需要用户当前轮明确授权，否则保持 deferred。 |
+| [ ] | S50 | Closeout / M29 | 0 | Jenn fork maintenance final closeout | TODO | 总结所有 active/deferred/block 状态，给下一周期路线。 |
 
 M1 完成规则：
 
@@ -172,7 +204,148 @@ M18：只做决策包和完成定义，不自动 delete/untrack/stub core Agent 
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留或另有明确人工批准的后续 proposal。
 ```
 
-## 4. 领域路线概览
+M19-M29 完成规则：
+
+```text
+M19/M21/M23/M25/M26：均先做 taskbook / gate / rollback 规划，不直接 copy-first 或 runtime wiring。
+M20/M22/M24：必须在对应 taskbook PASS 后才能进入 skeleton / fixture / shadow validation；仍保持 default-off / no-live-write。
+M27：只汇总 migration ledger、receipts、checksums、deferred/BLOCK、rollback map，不改变 runtime。
+M28：upstream PR decision revisit 默认 DEFERRED；没有用户当前轮明确授权，不打开 PR。
+M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fork maintenance final closeout。
+```
+
+## 4. Acceptance Plan 对照矩阵
+
+本节把 `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_ACCEPTANCE_PLAN_20260618.md` 的 Phase / 分域验收表映射到 tracker。后续执行必须先落到这里或详细待办里；若现实变化，按计划变更规则写 `PLAN_CHANGE` 后再执行。
+
+| 原计划来源 | Tracker 路线 | 必须执行的步骤入口 | 当前状态 |
+| --- | --- | --- | --- |
+| Phase 0：只读基线确认 | M0 / S26-S28 | remote/ref 记录、clean-core 创建记录、旧 fork path-only inventory、secret-risk paths-only scan | PASS；后续 baseline 变更必须新建 `PLAN_CHANGE`。 |
+| Phase 1：Clean Core Contract Skeleton | M1 / S1-S5 | plugin external contract、allowlist/registration/env sandbox tests、内部 PR review/merge evidence | PASS；PR #272 已合并 Jenn clean base。 |
+| Phase 2：External Runtime Skeleton | M2 / S6-S9 | skeleton taskbook、完整 denylist、LocalState / `.agent_board/**` gate、manifest/checksum rules | PASS；LocalState 真实领域继续走 M19-M20。 |
+| Phase 3：第一个试点 `JennAIGentOrchestrator` | M3 / S10-S12 | copy-first、source/target paths-only scan、checksum、receipt、core fallback 保留 | PASS；不等于所有领域都已外置。 |
+| Phase 4：Shadow Validation | M4 / S13-S15；Agent overlay M13/M17 | discovery/registration gate、no-provider shadow、rollback drill；Agent env-on drill 另走 M17 | Base PASS；Agent env-on M17 TODO。 |
+| Phase 5：Stub / Untrack / Remove Decision | M7 / S22；Agent overlay M18 | 决策包、rollback map、人工 gate；只做决策，不执行删除/取消跟踪/stub | M7 PASS；Agent closeout M18 TODO。 |
+| Upstream tracking / PR gate | M8 / S23-S25；M28 / S49 | readiness packet、rebase workflow、人工授权后才 open upstream PR | PARTIAL / DEFERRED；当前跳过 upstream PR。 |
+| Agent 分域验收 | M9-M18 / S29-S39 | taskbook、source scan、candidate gate、copy-first、shadow、resolver、default-off wiring、env-on rollback、final decision | M9-M16 PASS；M17-M18 TODO。 |
+| LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | TODO；不读取/复制真实 private/operator data。 |
+| AdminPanel 分域验收 | M21-M22 / S42-S43 | extension manifest taskbook、fixture/build shadow、default-off route/API gate | TODO；不注册真实 route，不 production deploy。 |
+| AI Image 分域验收 | M23-M24 / S44-S45 | generic adapter taskbook、provider-off fixture、no-provider shadow validation | TODO；不写 token，不发 provider call，不生成真实图片。 |
+| Codex/Memory 分域验收 | M25 / S46 | bridge taskbook、manifest/path-only scan、no-live-write validation design | TODO；不读取 private memory，不 bridge 外写。 |
+| PhotoStudio 分域验收 | M26 / S47 | taskbook、data exclusion、copy-first gates、no-auto-write rules | TODO；项目数据留 LocalState/private。 |
+| Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | TODO；docs-only。 |
+| Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | TODO；完成前不得声称全路线收口。 |
+
+## 5. 详细执行待办（Planned Backlog）
+
+本节是“未来每一步”的计划源。执行时优先从这里取下一项；如果现实变化，先按计划变更规则修改本节，再执行。
+
+### 5.1 M17 Agent Env-On Shadow / Rollback Drill
+
+| 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
+| --- | --- | --- | --- | --- |
+| M17-01 | TODO | 读 M16 receipt、确认 worktree clean、确认真实 `VCP_AGENT_*` 未设置 | status + env-unset evidence | 不改 `.env` |
+| M17-02 | TODO | 创建 temp fixture external Agent / AgentOverrides 包 | temp path receipt | 不复制 LocalState / `.agent_board/**` |
+| M17-03 | TODO | 用临时 env 跑 AgentManager env-on additive + override shadow | targeted test / harness PASS | 不启动生产服务 |
+| M17-04 | TODO | 验证 Admin Agent route external read-only / write-block | route test PASS | 不写 external package |
+| M17-05 | TODO | rollback drill：unset 临时 env 后恢复 core-only behavior | rollback PASS | 不 delete/untrack/stub core Agent |
+| M17-06 | TODO | 复跑 package checksum / path-risk shadow harness | `MANIFEST_VERIFY_PASS` + risk `0` | 不把 discovery 当 registration proof |
+| M17-07 | TODO | 写 M17 receipt | receipt path + evidence | 不漏未验证项 |
+| M17-08 | TODO | 更新 tracker：M17/S38 PASS 或 BLOCK | tracker diff | 不改 M18 为 PASS |
+
+### 5.2 M18 Agent Domain Final Closeout Decision
+
+| 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
+| --- | --- | --- | --- | --- |
+| M18-01 | TODO | 审计 M9-M17 receipts 是否齐全 | receipt list | 不补假证据 |
+| M18-02 | TODO | 决策 Agent 领域状态：keep core fallback / future proposal / no-op close | M18 decision doc | 不执行 delete/untrack/stub |
+| M18-03 | TODO | 列出 deferred 项：真实 env 激活、external watcher、AdminPanel external write、core fallback removal | deferred matrix | 不把 deferred 当 PASS |
+| M18-04 | TODO | 写 Agent rollback map | rollback section | 不删除 LocalState / `.agent_board/**` |
+| M18-05 | TODO | 更新 tracker：M18/S39 PASS 或 BLOCK，标记 Agent 领域 closeout | tracker diff | 不切换下个领域前隐去风险 |
+| M18-06 | TODO | 选择下一领域或暂停：LocalState / AdminPanel / AI Image / Memory / PhotoStudio / Upstream | next-domain note | 不自动开 upstream PR |
+
+### 5.3 Future Domain 通用执行模板
+
+每个后续领域（LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio）必须按以下顺序推进；若某步不适用，必须在 receipt 中写 `SKIPPED` 和原因。
+
+| 顺序 | Status | 通用动作 | 必需证据 | 禁止事项 |
+| ---: | --- | --- | --- | --- |
+| D-01 | TODO | 写领域 taskbook | taskbook path | 不直接实现 |
+| D-02 | TODO | source path-only inventory | path count + risk count | 不读取 secret/private content |
+| D-03 | TODO | reviewed candidate content gate | ALLOW / REVIEW / BLOCK matrix | 不复制未 review 内容 |
+| D-04 | TODO | external target skeleton | skeleton commit / receipt | 不放 runtime private data |
+| D-05 | TODO | copy-first reviewed content | copy list | 不删除 core fallback |
+| D-06 | TODO | target paths-only secret-risk scan | target risk `0` | 不读/复制 `.agent_board/**` |
+| D-07 | TODO | manifest checksum regenerate + verify | `MANIFEST_VERIFY_PASS` | checksum 不等于 runtime proof |
+| D-08 | TODO | no-provider / no-live-write shadow validation | targeted PASS | 不 provider / bridge / live write |
+| D-09 | TODO | rollback drill | rollback PASS | 不用 destructive shortcut |
+| D-10 | TODO | final decision packet | keep/defer/block decision | 不自动 stub/untrack/remove |
+
+### 5.4 Future Domain Queue
+
+| 队列 | 对应 M/S | Status | 领域 | 下一步 |
+| --- | --- | --- | --- | --- |
+| Q1 | M19/S40 | TODO | LocalState | 写 private-by-default route planning taskbook。 |
+| Q2 | M20/S41 | TODO | LocalState | 创建 skeleton / paths-only receipt；不复制真实状态。 |
+| Q3 | M21/S42 | TODO | AdminPanel | 写 extension manifest taskbook。 |
+| Q4 | M22/S43 | TODO | AdminPanel | build shadow validation，不注册真实 route。 |
+| Q5 | M23/S44 | TODO | AI Image | 写 adapter externalization taskbook。 |
+| Q6 | M24/S45 | TODO | AI Image | no-provider shadow validation。 |
+| Q7 | M25/S46 | TODO | Codex/Memory | 写 bridge taskbook；manifest/path-only。 |
+| Q8 | M26/S47 | TODO | PhotoStudio | 写 taskbook；data exclusion / no-auto-write。 |
+| Q9 | M27/S48 | TODO | Governance | migration ledger finalization。 |
+| Q10 | M28/S49 | DEFERRED | Upstream PR | 仅用户当前轮明确授权才恢复。 |
+| Q11 | M29/S50 | TODO | Closeout | Jenn fork maintenance route final closeout。 |
+
+### 5.5 M19-M29 Specific Step Plan
+
+| 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
+| --- | --- | --- | --- | --- |
+| M19-01 | TODO | 复读 S8 gate、M5 LocalState contract、S7 denylist | source doc list | 不读取 LocalState 内容 |
+| M19-02 | TODO | 写 LocalState private-by-default route planning taskbook | M19 taskbook path | 不创建真实 LocalState 数据目录 |
+| M19-03 | TODO | 定义 `.agent_board/**` 单独人工 gate、确认主体、证据、允许/禁止范围 | gate matrix | 不自动 copy/checksum/migrate `.agent_board/**` |
+| M19-04 | TODO | 定义 LocalState rollback、stop conditions、paths-only validation | rollback section | 不读取 secret/env/auth content |
+| M19-05 | TODO | 更新 tracker：M19/S40 PASS 或 BLOCK | tracker diff | 不把 M20 标 PASS |
+| M20-01 | TODO | 确认 M19 PASS、worktree clean、真实 private/env 未被读取 | preflight evidence | 不枚举 private/operator data |
+| M20-02 | TODO | 如 M19 允许，创建 reviewed LocalState skeleton / README / denylist receipt | skeleton receipt | 不复制真实状态、配置、日志、数据库 |
+| M20-03 | TODO | 对 skeleton 目标做 paths-only secret-risk scan | target risk `0` | 不 checksum `.agent_board/**` |
+| M20-04 | TODO | 写 M20 receipt 并更新 tracker S41 | receipt + tracker diff | 不启用 runtime |
+| M21-01 | TODO | 复读 M5 AdminPanel contract 和现有 AdminPanel route/menu/API 结构 | source doc list | 不修改 AdminPanel runtime |
+| M21-02 | TODO | 写 AdminPanel extension manifest taskbook | M21 taskbook path | 不注册真实 route |
+| M21-03 | TODO | 定义 fixture build、route/menu/API shadow validation、rollback | validation matrix | 不 production build/deploy |
+| M21-04 | TODO | 更新 tracker：M21/S42 PASS 或 BLOCK | tracker diff | 不把 M22 标 PASS |
+| M22-01 | TODO | 确认 M21 PASS 并创建 reviewed AdminPanel extension fixture/skeleton | fixture receipt | 不写真实 Admin route |
+| M22-02 | TODO | 执行 fixture/build shadow validation | build/shadow PASS | 不部署、不启用生产 flag |
+| M22-03 | TODO | 执行 rollback drill 并写 M22 receipt | rollback PASS + receipt | 不删除 core AdminPanel fallback |
+| M22-04 | TODO | 更新 tracker S43 | tracker diff | 不声称 production ready |
+| M23-01 | TODO | 复读 M6 AI Image boundary 和 provider-off 红线 | source doc list | 不读取 token/.env |
+| M23-02 | TODO | 写 generic adapter externalization taskbook | M23 taskbook path | 不写 Jenn trial/provider 常量进 core |
+| M23-03 | TODO | 定义 fixture/mock/no-provider validation 与 rollback | validation matrix | 不 provider call、不生成真实图片 |
+| M23-04 | TODO | 更新 tracker：M23/S44 PASS 或 BLOCK | tracker diff | 不把 M24 标 PASS |
+| M24-01 | TODO | 确认 M23 PASS 并创建 reviewed fixture/mock adapter skeleton | fixture receipt | 不写 provider secret |
+| M24-02 | TODO | 运行 no-provider shadow validation | no-provider PASS | 不 live external write |
+| M24-03 | TODO | paths-only scan、manifest checksum、rollback receipt | risk `0` + checksum + rollback | 不把 mock 通过当 provider 通过 |
+| M24-04 | TODO | 更新 tracker S45 | tracker diff | 不启用 runtime |
+| M25-01 | TODO | 复读 M6 Codex/Memory boundary | source doc list | 不读取 private memory |
+| M25-02 | TODO | 写 bridge taskbook、manifest/path-only contract | M25 taskbook path | 不 bridge 外写 |
+| M25-03 | TODO | 定义 no-live-write validation、rollback、deferred matrix | validation matrix | 不同步外部状态 |
+| M25-04 | TODO | 更新 tracker S46 | tracker diff | 不启用 runtime |
+| M26-01 | TODO | 复读 M6 PhotoStudio boundary | source doc list | 不读取摄影项目私有数据 |
+| M26-02 | TODO | 写 PhotoStudio externalization taskbook | M26 taskbook path | 不复制项目数据 |
+| M26-03 | TODO | 定义 plugins/templates source path-only candidate gate | candidate matrix | 不把 LocalState data 当 package content |
+| M26-04 | TODO | 更新 tracker S47 | tracker diff | 不启用 no-auto-write 之外的写入 |
+| M27-01 | TODO | 收集 M0-M26 receipts / commits / checksum evidence | evidence index | 不补造 PASS |
+| M27-02 | TODO | 核对 deferred/BLOCK/open risks 与 rollback map | ledger matrix | 不改变 runtime |
+| M27-03 | TODO | 写 migration ledger finalization doc | M27 ledger path | 不开 upstream PR |
+| M27-04 | TODO | 更新 tracker S48 | tracker diff | 不声称 deferred 已完成 |
+| M28-01 | DEFERRED | 保持 upstream PR decision deferred，除非用户当前轮明确授权 | deferred note | 不自动打开 upstream PR |
+| M28-02 | TODO | 若授权恢复，先做 target repo/source branch/base branch/action preflight | preflight packet | 不隐含 remote write |
+| M28-03 | TODO | 若授权明确，再准备/open PR 并记录 rollback/close path | PR URL 或 skipped reason | 不混入 Jenn runtime overlay |
+| M29-01 | TODO | 审计所有 active/deferred/BLOCK 状态 | final status matrix | 不隐藏风险 |
+| M29-02 | TODO | 写最终风险、rollback、未做项、下一周期建议 | M29 closeout doc | 不自动执行 stub/untrack/remove |
+| M29-03 | TODO | 更新 tracker S50 和顶部 current milestone | tracker diff | 不改变原始 97/100 计分，除非 M8 恢复并完成 |
+
+## 6. 领域路线概览
 
 这些领域属于完整路线。Agent 已从“后续领域”提升为当前正式路线；其他领域仍保持待展开状态。
 
@@ -186,7 +359,7 @@ Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，L
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | 定义 no-auto-write 和 data exclusion rules。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
 
-## 5. 打开 Upstream PR 前的验收门
+## 7. 打开 Upstream PR 前的验收门
 
 打开新的 `lioensky/VCPToolBox` upstream PR 前，必须满足：
 
@@ -198,7 +371,7 @@ Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，L
 | 没有 secret/runtime 文件 | diff 不包含 env、config、state、cache、log、image、auth material | PASS for PR #272 |
 | Upstream 目标决策 | M8 workflow / rebase gate ready；latest upstream/main `f8d45479`；按用户决定先跳过打开 upstream PR | DEFERRED |
 
-## 6. 回滚说明
+## 8. 回滚说明
 
 当前 Phase 1 工作的回滚方式：
 
