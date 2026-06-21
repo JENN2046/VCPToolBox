@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (82.7 / 84 global milestone units; scope expanded by M83 PASS)
+Progress: [##########] 98% (83.7 / 85 global milestone units; scope expanded by M84 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：AI Image diagnostic persistent-enable vs closeout decision（M83 PASS；M84 aggregate runtime lane decision recommended）
+当前里程碑：Aggregate runtime lane closeout / next deferred domain decision（M84 PASS；M85 final closeout receipt recommended）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M83。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S104 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M84。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S105 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M83 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M83 合计 84 units。
+- 全局 Progress 覆盖 M0-M84 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M84 合计 85 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -95,6 +95,7 @@ Last updated: 2026-06-22
 - M81 完成 AI Image diagnostic route real-config unlock decision；选择未来 M82 三键 diagnostic metadata apply/rollback drill 候选；M81 不写真实 `config.env`，不启 provider/runtime/image。
 - M82 完成 AI Image diagnostic real-config apply/rollback drill；授权后短暂写真实 `config.env` 三键，route `200`，rollback 后三键 `0`、route `404`、hash restored；最终不保留 AI Image diagnostic runtime-on。
 - M83 完成 AI Image diagnostic persistent-enable vs closeout decision；决策当前路线收口，不持久启用三键；M82 final state 保持，真实 `config.env` 不改。
+- M84 完成 aggregate runtime lane closeout / next deferred domain decision；决策当前 Jenn fork 本地 runtime route 整体收口，不自动打开 Codex/Memory 或 PhotoStudio runtime taskbook；下一步 M85 final closeout receipt。
 
 计划变更规则：
 
@@ -114,7 +115,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M83 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M84 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -202,6 +203,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M83 是当前 Jenn fork 长期维护
 | [x] | M81 | 0 | AI Image diagnostic route real-config unlock decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M81_AI_IMAGE_DIAGNOSTIC_ROUTE_REAL_CONFIG_UNLOCK_DECISION_20260622.md`；decision `SELECT_M82_AI_IMAGE_DIAGNOSTIC_METADATA_REAL_CONFIG_APPLY_ROLLBACK_DRILL`; real config write now `no`; provider/image/bridge/LocalState/upstream remain closed。 |
 | [x] | M82 | 0 | AI Image diagnostic real-config apply/rollback drill | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M82_AI_IMAGE_DIAGNOSTIC_REAL_CONFIG_APPLY_ROLLBACK_DRILL_RECEIPT_20260622.md`；authorized transient real `config.env` three-key write; after apply route `200`; unauthorized `403`; real execution `409`; rollback route `404`; final hash restored; final state `OPTION_B_REMOVED_AFTER_ROLLBACK`。 |
 | [x] | M83 | 0 | AI Image diagnostic persistent-enable vs closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M83_AI_IMAGE_DIAGNOSTIC_PERSISTENT_ENABLE_CLOSEOUT_DECISION_20260622.md`；decision `CLOSE_AI_IMAGE_DIAGNOSTIC_LANE_AT_REAL_CONFIG_ROLLBACK_PROOF`; persistent enable now `no`; real config write now `no`; M82 final state kept。 |
+| [x] | M84 | 0 | Aggregate runtime lane closeout / next deferred domain decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M84_AGGREGATE_RUNTIME_LANE_CLOSEOUT_DECISION_20260622.md`；decision `CLOSE_CURRENT_JENN_FORK_LOCAL_RUNTIME_ROUTE`; Codex/Memory taskbook now `no`; PhotoStudio taskbook now `no`; next `M85` final closeout receipt。 |
 
 全局进度明细：
 
@@ -265,7 +267,8 @@ M80 PASS：1.0 / 1 unit（AI Image diagnostic route production-router integratio
 M81 PASS：1.0 / 1 unit（AI Image diagnostic route real-config unlock decision；M82 apply/rollback selected, no config write）
 M82 PASS：1.0 / 1 unit（AI Image diagnostic real-config apply/rollback drill；final config restored and keys removed）
 M83 PASS：1.0 / 1 unit（AI Image diagnostic persistent-enable vs closeout decision；close current diagnostic lane, no persistent enable）
-Global Progress：82.7 / 84 = 98.45%，顶部显示为 98%
+M84 PASS：1.0 / 1 unit（aggregate runtime lane closeout decision；close current local route, no new Codex/Memory or PhotoStudio taskbook）
+Global Progress：83.7 / 85 = 98.47%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -378,6 +381,7 @@ Global Progress：82.7 / 84 = 98.45%，顶部显示为 98%
 | [x] | S102 | AI Image / M81 | 0 | AI Image diagnostic route real-config unlock decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M81_AI_IMAGE_DIAGNOSTIC_ROUTE_REAL_CONFIG_UNLOCK_DECISION_20260622.md`；selected future M82 diagnostic metadata three-key apply/rollback drill；M81 did not write real `config.env`。 |
 | [x] | S103 | AI Image / M82 | 0 | AI Image diagnostic real-config apply/rollback drill | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M82_AI_IMAGE_DIAGNOSTIC_REAL_CONFIG_APPLY_ROLLBACK_DRILL_RECEIPT_20260622.md`；transient real config three-key write PASS；route `200`; rollback route `404`; final hash restored; final three key line counts `0/0/0`。 |
 | [x] | S104 | AI Image / M83 | 0 | AI Image diagnostic persistent-enable vs closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M83_AI_IMAGE_DIAGNOSTIC_PERSISTENT_ENABLE_CLOSEOUT_DECISION_20260622.md`；selected closeout at M82 rollback proof；persistent enable now `no`; no real config write。 |
+| [x] | S105 | Aggregate / M84 | 0 | Aggregate runtime lane closeout / next deferred domain decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M84_AGGREGATE_RUNTIME_LANE_CLOSEOUT_DECISION_20260622.md`；selected current local runtime route closeout；Codex/Memory and PhotoStudio runtime taskbooks not opened。 |
 
 原始验收拆分说明：
 
@@ -417,7 +421,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M83 完成规则：
+M19-M84 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -479,6 +483,7 @@ M80：AI Image diagnostic route production-router integration gate PASS；`route
 M81：AI Image diagnostic route real-config unlock decision PASS；选择未来 M82 三键 diagnostic metadata real-config apply/rollback drill；M81 不写真实 `config.env`，provider/runtime/image/bridge/LocalState 仍关闭。
 M82：AI Image diagnostic real-config apply/rollback drill PASS；真实 `config.env` transient 三键写入后 route `200`，rollback 后 route `404`，final hash restored；最终不保留 AI Image diagnostic runtime-on。
 M83：AI Image diagnostic persistent-enable vs closeout decision PASS；选择 current route closeout，不持久启用三键；真实 `config.env` 不改，M82 final state 保持。
+M84：Aggregate runtime lane closeout / next deferred domain decision PASS；选择 current Jenn fork local runtime route closeout；Codex/Memory 和 PhotoStudio runtime taskbooks 不自动打开，留 future explicit gate。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -501,6 +506,7 @@ M83：AI Image diagnostic persistent-enable vs closeout decision PASS；选择 c
 | Codex/Memory 分域验收 | M25 / S46；M33 / S54 | bridge taskbook、manifest/path-only scan、no-live-write validation design、persistent bridge package gate | M25 PASS；M33 persistent package PASS；不读取 private memory，不 bridge 外写，不启用 runtime。 |
 | PhotoStudio 分域验收 | M26 / S47；M34 / S55 | taskbook、data exclusion、copy-first gates、no-auto-write rules、persistent source package gate | M26 PASS；M34 persistent package PASS；项目数据留 LocalState/private，不启用 runtime。 |
 | Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | M27 PASS；docs-only。 |
+| Aggregate runtime route decision | M84 / S105 | compare overall closeout vs Codex/Memory narrow taskbook vs PhotoStudio narrow taskbook | PASS；selected current local runtime route closeout；Codex/Memory and PhotoStudio runtime taskbooks remain future explicit gates。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -556,6 +562,7 @@ M83：AI Image diagnostic persistent-enable vs closeout decision PASS；选择 c
 | AI Image diagnostic route real-config unlock decision | M81 / S102 | decide whether to stop at default-off integration or select future diagnostic metadata real-config apply/rollback drill | PASS；selected M82 three-key diagnostic metadata apply/rollback drill；M81 decision-only；real `config.env` unchanged。 |
 | AI Image diagnostic real-config apply/rollback drill | M82 / S103 | transiently write exactly three real diagnostic metadata keys, prove route-on behavior, then rollback and restore final hash | PASS；after apply route `200`; unauthorized `403`; real execution `409`; rollback route `404`; final key counts `0/0/0`; final hash restored。 |
 | AI Image diagnostic persistent-enable vs closeout decision | M83 / S104 | decide whether to persistently enable diagnostic metadata route or close the current lane at rollback proof | PASS；selected closeout at M82 rollback proof；persistent enable now `no`; real config write now `no`; future persistent enable requires separate gate。 |
+| Aggregate runtime lane closeout / next deferred domain decision | M84 / S105 | decide whether to close current local runtime route or open Codex/Memory / PhotoStudio narrow taskbook | PASS；selected close current Jenn fork local runtime route；no Codex/Memory or PhotoStudio taskbook opened now。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -671,8 +678,9 @@ M83：AI Image diagnostic persistent-enable vs closeout decision PASS；选择 c
 | Q63 | M81/S102 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M81_AI_IMAGE_DIAGNOSTIC_ROUTE_REAL_CONFIG_UNLOCK_DECISION_20260622.md`；selected M82 diagnostic metadata real-config apply/rollback drill; M81 decision-only; no real config write/provider/image/private/upstream action。 |
 | Q64 | M82/S103 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M82_AI_IMAGE_DIAGNOSTIC_REAL_CONFIG_APPLY_ROLLBACK_DRILL_RECEIPT_20260622.md`；real config transient three-key write PASS; final state `OPTION_B_REMOVED_AFTER_ROLLBACK`; no provider/image/private/upstream action。 |
 | Q65 | M83/S104 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M83_AI_IMAGE_DIAGNOSTIC_PERSISTENT_ENABLE_CLOSEOUT_DECISION_20260622.md`；selected closeout/no persistent enable; M82 final state kept; no real config write/provider/image/private/upstream action。 |
+| Q66 | M84/S105 | PASS | Aggregate | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M84_AGGREGATE_RUNTIME_LANE_CLOSEOUT_DECISION_20260622.md`；selected current local runtime route closeout; Codex/Memory and PhotoStudio runtime taskbooks remain deferred/future explicit gates。 |
 
-### 5.5 M19-M83 Specific Step Plan
+### 5.5 M19-M84 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -948,6 +956,10 @@ M83：AI Image diagnostic persistent-enable vs closeout decision PASS；选择 c
 | M83-02 | PASS | 比较 persistent-enable now、closeout at rollback proof、return to matrix 三种选项 | M83 decision options table | 不再次写真实 `config.env` |
 | M83-03 | PASS | 选择 closeout at M82 rollback proof | `M83_DECISION=CLOSE_AI_IMAGE_DIAGNOSTIC_LANE_AT_REAL_CONFIG_ROLLBACK_PROOF` | 不持久启用 diagnostic route |
 | M83-04 | PASS | 写 M83 decision doc 并更新 tracker：M83/S104/Q65 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M83_AI_IMAGE_DIAGNOSTIC_PERSISTENT_ENABLE_CLOSEOUT_DECISION_20260622.md`; Progress `82.7 / 84` | 不提交 `config.env`、不打开 upstream PR |
+| M84-01 | PASS | 复核 M83、M33、M34、tracker 与真实 `config.env` key presence | Codex/Memory and PhotoStudio real config keys line counts `0` | 不读取 private memory 或 PhotoStudio project data |
+| M84-02 | PASS | 比较 overall closeout、Codex/Memory taskbook、PhotoStudio taskbook、no decision 四种选项 | M84 decision options table | 不打开 runtime taskbook implementation |
+| M84-03 | PASS | 选择 current Jenn fork local runtime route closeout | `M84_DECISION=CLOSE_CURRENT_JENN_FORK_LOCAL_RUNTIME_ROUTE` | 不启 live memory write、不启 PhotoStudio external write |
+| M84-04 | PASS | 写 M84 decision doc 并更新 tracker：M84/S105/Q66 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M84_AGGREGATE_RUNTIME_LANE_CLOSEOUT_DECISION_20260622.md`; Progress `83.7 / 85` | 不提交 `config.env`、不打开 upstream PR |
 
 ## 6. 领域路线概览
 
@@ -959,10 +971,10 @@ M83：AI Image diagnostic persistent-enable vs closeout decision PASS；选择 c
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；current AdminPanel lane closed。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、executable adapter registration deferred；M72 selected M73 taskbook；M73 taskbook PASS；M74 metadata-only registry PASS with scoped metadata `1`、executable `0`、provider/image/output/bridge/LocalState `0`；M75 selected M76；M76 taskbook PASS；M77 test-only diagnostic route factory PASS；M78 selected M79；M79 taskbook PASS；M80 default-off production-router integration PASS；M81 selected M82 real-config apply/rollback decision candidate；M82 transient real config three-key apply PASS and rollback final hash restored；M83 selected current-lane closeout/no persistent enable；最终仍未保留真实 AI Image env、不启 provider、不生成图片、不注册 executable adapter runtime。 |
-| Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred。 |
-| PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred。 |
+| Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
+| PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
@@ -992,6 +1004,7 @@ M83：AI Image diagnostic persistent-enable vs closeout decision PASS；选择 c
 | AI Image real-config unlock decision gate | M81 decision；future M82 diagnostic metadata three-key apply/rollback drill selected; M81 does not write real `config.env` | PASS_DECISION_ONLY；real config write still deferred pending explicit authorization |
 | AI Image real-config apply/rollback drill | M82 receipt；authorized transient three-key real `config.env` write; after apply route `200`; unauthorized `403`; real execution `409`; metadata `1`; executable/provider/image/bridge/LocalState `0`; rollback route `404`; final hash restored | PASS_ROLLBACK_PROOF；final config does not retain AI Image diagnostic keys |
 | AI Image diagnostic closeout decision | M83 decision；selected closeout at M82 rollback proof; persistent enable now `no`; real config write now `no`; M82 final state kept | PASS_DECISION_ONLY；future persistent enable requires separate authorization |
+| Aggregate runtime lane closeout decision | M84 decision；selected current Jenn fork local runtime route closeout; Codex/Memory and PhotoStudio runtime taskbooks remain deferred; next M85 final closeout receipt | PASS_DECISION_ONLY；no new runtime lane opened |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
