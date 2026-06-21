@@ -25,6 +25,7 @@ export type AppRouteId =
   | "channel-hub-manager"
   | "ai-image-agents"
   | "codex-imagegen-relay"
+  | "jenn-admin-status"
   | "oauth-auth-center"
   | "codex-memory-monitor"
   | "toolbox-manager"
@@ -384,6 +385,16 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     path: "/codex-imagegen-relay",
     title: "Codex 生图中继",
     icon: "image_search",
+    requiresAuth: true,
+    navGroup: "toolsPlugins",
+    showInSidebar: true,
+  },
+  {
+    id: "jenn-admin-status",
+    routeName: "JennAdminStatusView",
+    path: "/jenn-admin-status",
+    title: "Jenn Admin Status",
+    icon: "monitor_heart",
     requiresAuth: true,
     navGroup: "toolsPlugins",
     showInSidebar: true,

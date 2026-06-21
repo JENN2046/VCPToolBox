@@ -15,6 +15,7 @@ export const APP_ROUTE_COMPONENTS = {
   "channel-hub-manager": () => import("@/views/ChannelHubManager.vue"),
   "ai-image-agents": () => import("@/views/AiImageAgents.vue"),
   "codex-imagegen-relay": () => import("@/views/CodexImagegenRelay.vue"),
+  "jenn-admin-status": () => import("@/views/JennAdminStatusView.vue"),
   "oauth-auth-center": () => import("@/views/OAuthAuthCenter.vue"),
   "codex-memory-monitor": () => import("@/views/CodexMemoryMonitor.vue"),
   "toolbox-manager": () => import("@/views/ToolboxManager.vue"),
