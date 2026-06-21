@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (58.7 / 60 global milestone units; scope expanded by M59 PASS)
+Progress: [##########] 98% (59.7 / 61 global milestone units; scope expanded by M60 PASS)
 
 Last updated: 2026-06-21
 
-当前里程碑：AdminPanel frontend route/nav static implementation（M59 PASS）
+当前里程碑：AdminPanel build/dist decision taskbook（M60 PASS；docs-only）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-21
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M59。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S80 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M60。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S81 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-21
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M59 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M59 合计 60 units。
+- 全局 Progress 覆盖 M0-M60 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M60 合计 61 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -71,6 +71,7 @@ Last updated: 2026-06-21
 - M57 完成 AdminPanel production-server smoke；经当前轮明确授权，短时启动 `node server.js` 子进程，GET `/admin_api/jenn-admin-status/status` 返回 `200`，写方法 `404`，随后按 PID 清理并确认端口释放；仍不启用 frontend route/nav。
 - M58 完成 AdminPanel frontend route/nav taskbook；定义可显示内容、metadata 来源、允许前端文件、禁止 build/dist、动态 external Vue import blocked 和 M59 静态实现门；不改前端源码。
 - M59 完成 AdminPanel frontend route/nav static implementation；按 M58 只改静态 manifest/component map/view，未跑 build、未碰 `dist`、未启用动态 external Vue import；targeted ESLint 与 `vue-tsc --noEmit` PASS，全量 lint 仍被既有 typography baseline 阻挡。
+- M60 完成 AdminPanel build/dist decision taskbook；决策当前不 run build、不改 `AdminPanel-Vue/dist/**`，下一安全门为 M61 no-build route/source validation；build/dist 需要未来单独授权和 artifact policy。
 
 计划变更规则：
 
@@ -90,7 +91,7 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M59 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M60 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -154,6 +155,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M59 是当前 Jenn fork 长期维护
 | [x] | M57 | 0 | AdminPanel production-server smoke | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M57_ADMINPANEL_PRODUCTION_SERVER_SMOKE_RECEIPT_20260621.md`；authorized short `node server.js` child-process smoke；GET `200` for `jenn.admin.status/read-only`; write methods `404`; PID cleanup PASS；frontend implementation still deferred。 |
 | [x] | M58 | 0 | AdminPanel frontend route/nav taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M58_ADMINPANEL_FRONTEND_ROUTE_NAV_TASKBOOK_20260621.md`；docs-only；defines display boundary, metadata source, allowed frontend files, M59 static route/nav implementation gate; no frontend source/build/dist change。 |
 | [x] | M59 | 0 | AdminPanel frontend route/nav static implementation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M59_ADMINPANEL_FRONTEND_ROUTE_NAV_STATIC_IMPLEMENTATION_RECEIPT_20260621.md`；static `jenn-admin-status` route/nav/view implemented; targeted ESLint + `vue-tsc --noEmit` PASS；no build/dist/dynamic external import。 |
+| [x] | M60 | 0 | AdminPanel build/dist decision taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M60_ADMINPANEL_BUILD_DIST_DECISION_TASKBOOK_20260621.md`；docs-only decision：no build/no dist now; M61 no-build route/source validation next; build/dist requires separate authorization and artifact policy。 |
 
 全局进度明细：
 
@@ -193,7 +195,8 @@ M56 PASS：1.0 / 1 unit（AdminPanel production-server smoke taskbook；docs-onl
 M57 PASS：1.0 / 1 unit（AdminPanel production-server smoke；short child-process runtime proof）
 M58 PASS：1.0 / 1 unit（AdminPanel frontend route/nav taskbook；docs-only）
 M59 PASS：1.0 / 1 unit（AdminPanel frontend route/nav static implementation；no build/dist）
-Global Progress：58.7 / 60 = 97.83%，顶部显示为 98%
+M60 PASS：1.0 / 1 unit（AdminPanel build/dist decision taskbook；docs-only）
+Global Progress：59.7 / 61 = 97.87%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -282,6 +285,7 @@ Global Progress：58.7 / 60 = 97.83%，顶部显示为 98%
 | [x] | S78 | AdminPanel / M57 | 0 | AdminPanel production-server smoke | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M57_ADMINPANEL_PRODUCTION_SERVER_SMOKE_RECEIPT_20260621.md`；authorized short production-server child process；GET `200`; write methods `404`; PID cleanup PASS；frontend implementation still deferred。 |
 | [x] | S79 | AdminPanel / M58 | 0 | AdminPanel frontend route/nav taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M58_ADMINPANEL_FRONTEND_ROUTE_NAV_TASKBOOK_20260621.md`；docs-only；metadata/display/allowed-file/build-dist gates defined；future M59 static implementation gate selected。 |
 | [x] | S80 | AdminPanel / M59 | 0 | AdminPanel frontend route/nav static implementation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M59_ADMINPANEL_FRONTEND_ROUTE_NAV_STATIC_IMPLEMENTATION_RECEIPT_20260621.md`；`jenn-admin-status` static route/nav/view added; targeted ESLint + `vue-tsc --noEmit` PASS；full lint blocked by existing typography baseline。 |
+| [x] | S81 | AdminPanel / M60 | 0 | AdminPanel build/dist decision taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M60_ADMINPANEL_BUILD_DIST_DECISION_TASKBOOK_20260621.md`；docs-only；no build/no dist now；M61 no-build validation next；future build gate requires explicit artifact policy。 |
 
 原始验收拆分说明：
 
@@ -321,7 +325,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M59 完成规则：
+M19-M60 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -359,6 +363,7 @@ M56：AdminPanel production-server smoke taskbook PASS；定义 M57 actual smoke
 M57：AdminPanel production-server smoke PASS；经当前轮明确授权短时启动 `node server.js` 子进程，验证 production server 上 backend read-only Admin extension route GET `200`、写方法 `404`，随后只清理本轮 PID；frontend route/nav 仍未启用。
 M58：AdminPanel frontend route/nav taskbook PASS；定义 future M59 静态 reviewed copy 前端入口门禁；metadata 来源为 external Admin extension manifest；动态 external Vue import、build/dist、frontend source edit 在 M58 均未执行。
 M59：AdminPanel frontend route/nav static implementation PASS；新增静态 `jenn-admin-status` route/nav/view；不跑 build、不碰 `dist`、不启用动态 external Vue import；targeted ESLint 与 `vue-tsc --noEmit` PASS；全量 lint 仍受既有 typography baseline 阻挡。
+M60：AdminPanel build/dist decision taskbook PASS；决策当前不 build、不改 `AdminPanel-Vue/dist/**`；选择 M61 no-build route/source validation 作为下一安全门；任何 build/dist 仍需未来单独授权和 artifact policy。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -376,7 +381,7 @@ M59：AdminPanel frontend route/nav static implementation PASS；新增静态 `j
 | Upstream tracking / PR gate | M8 / S23-S25；M28 / S49；M30 / S51；M38 / S59 | readiness packet、rebase workflow、local closeout evidence、人工授权后才 open upstream PR | PARTIAL / DEFERRED / LOCAL_CLOSEOUT_PASS；当前仍跳过 upstream PR。 |
 | Agent 分域验收 | M9-M18 / S29-S39 | taskbook、source scan、candidate gate、copy-first、shadow、resolver、default-off wiring、env-on rollback、final decision | M9-M18 PASS；Agent domain closed for current route。 |
 | LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | M19-M20 PASS；existing root handled by PLAN_CHANGE；private content not read。 |
-| AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52；M47-M59 / S68-S80 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off backend registry、shadow/rollback、production-router backend integration、real-config unlock/apply drill、production smoke/frontend decision, production smoke taskbook, production-server smoke, frontend route/nav taskbook, static frontend implementation | M21-M22 PASS；M31 persistent package PASS；M47-M59 backend route + real-config + production-server smoke + static frontend route/nav PASS；build/dist release gate still deferred。 |
+| AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52；M47-M60 / S68-S81 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off backend registry、shadow/rollback、production-router backend integration、real-config unlock/apply drill、production smoke/frontend decision, production smoke taskbook, production-server smoke, frontend route/nav taskbook, static frontend implementation, build/dist decision | M21-M22 PASS；M31 persistent package PASS；M47-M60 backend route + real-config + production-server smoke + static frontend route/nav + build/dist decision PASS；actual build/dist release gate still deferred。 |
 | AI Image 分域验收 | M23-M24 / S44-S45；M32 / S53 | generic adapter taskbook、provider-off fixture、no-provider shadow validation、persistent provider-adapter package gate | M23-M24 PASS；M32 persistent package PASS；no-provider only；不写 token，不发 provider call，不生成真实图片，不注册 runtime。 |
 | Codex/Memory 分域验收 | M25 / S46；M33 / S54 | bridge taskbook、manifest/path-only scan、no-live-write validation design、persistent bridge package gate | M25 PASS；M33 persistent package PASS；不读取 private memory，不 bridge 外写，不启用 runtime。 |
 | PhotoStudio 分域验收 | M26 / S47；M34 / S55 | taskbook、data exclusion、copy-first gates、no-auto-write rules、persistent source package gate | M26 PASS；M34 persistent package PASS；项目数据留 LocalState/private，不启用 runtime。 |
@@ -412,6 +417,7 @@ M59：AdminPanel frontend route/nav static implementation PASS；新增静态 `j
 | AdminPanel production-server smoke | M57 / S78 | short authorized `node server.js` child-process smoke with PID cleanup and redacted auth/log handling | PASS；GET `200`; write methods `404`; process cleanup PASS；frontend route/nav remains deferred。 |
 | AdminPanel frontend route/nav taskbook | M58 / S79 | define display boundary, metadata source, allowed frontend file scope, no-build/no-dist rules, and M59 implementation gate | PASS；taskbook-only；frontend source/build/dist unchanged。 |
 | AdminPanel frontend route/nav static implementation | M59 / S80 | add static route manifest entry, static component map entry, and reviewed read-only status view | PASS；targeted ESLint + `vue-tsc --noEmit` PASS；no build/dist/dynamic external import。 |
+| AdminPanel build/dist decision taskbook | M60 / S81 | decide build/dist policy, visual smoke boundary, and next no-build validation gate | PASS；docs-only；no build/dist/dev/preview run。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -503,9 +509,10 @@ M59：AdminPanel frontend route/nav static implementation PASS；新增静态 `j
 | Q39 | M57/S78 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M57_ADMINPANEL_PRODUCTION_SERVER_SMOKE_RECEIPT_20260621.md`；actual production-server smoke PASS after explicit authorization；GET `200`; write methods `404`; PID cleanup PASS。 |
 | Q40 | M58/S79 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M58_ADMINPANEL_FRONTEND_ROUTE_NAV_TASKBOOK_20260621.md`；frontend route/nav taskbook PASS；metadata/display/allowed-file/no-build gates defined；no frontend source/build/dist change。 |
 | Q41 | M59/S80 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M59_ADMINPANEL_FRONTEND_ROUTE_NAV_STATIC_IMPLEMENTATION_RECEIPT_20260621.md`；static route/nav/view implemented; targeted checks PASS；no build/dist/dynamic external import。 |
-| Q42 | M60/S81 | TODO | AdminPanel | AdminPanel build/dist decision taskbook；must decide whether to run build, how to treat `AdminPanel-Vue/dist/**`, and whether visual/browser smoke is needed before any build or dist commit。 |
+| Q42 | M60/S81 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M60_ADMINPANEL_BUILD_DIST_DECISION_TASKBOOK_20260621.md`；decision taskbook PASS；no build/no dist now；M61 no-build route/source validation next。 |
+| Q43 | M61/S82 | TODO | AdminPanel | AdminPanel no-build route/source validation receipt；rerun source route/nav, targeted ESLint, `vue-tsc --noEmit`, M53 redacted gate; no build/dev/preview/dist。 |
 
-### 5.5 M19-M60 Specific Step Plan
+### 5.5 M19-M61 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -690,8 +697,11 @@ M59：AdminPanel frontend route/nav static implementation PASS；新增静态 `j
 | M59-01 | PASS | 实现静态 reviewed route/nav 前端入口 | `manifest.ts`、`components.ts`、`JennAdminStatusView.vue` | 只限 M58 allowed files；不 build/dist |
 | M59-02 | PASS | 验证 route/nav manifest、component map、view 页面和 no-secret display boundary | targeted ESLint PASS；`vue-tsc --noEmit` PASS；secret-risk grep clean | 不启用动态 external Vue import |
 | M59-03 | PASS | 写 M59 receipt 并更新 tracker | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M59_ADMINPANEL_FRONTEND_ROUTE_NAV_STATIC_IMPLEMENTATION_RECEIPT_20260621.md`；Progress `58.7 / 60` | 不提交 dist/runtime ignored paths |
-| M60-01 | TODO | 写 AdminPanel build/dist decision taskbook | future M60 taskbook | 不直接 run build/dev/preview |
-| M60-02 | TODO | 决定是否需要 browser visual smoke、build artifact policy、dist commit policy | future M60 decision | 不 blanket ignore `dist/` |
+| M60-01 | PASS | 写 AdminPanel build/dist decision taskbook | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M60_ADMINPANEL_BUILD_DIST_DECISION_TASKBOOK_20260621.md` | 不直接 run build/dev/preview |
+| M60-02 | PASS | 决定是否需要 browser visual smoke、build artifact policy、dist commit policy | M60 decision：no build/no dist now；future build gate requires separate authorization | 不 blanket ignore `dist/` |
+| M60-03 | PASS | 选择下一安全门 M61 no-build route/source validation | M60 section 8 | 不把 source validation 当 build proof |
+| M61-01 | TODO | 执行 no-build route/source validation receipt | future M61 receipt | 不 run build/dev/preview |
+| M61-02 | TODO | 复跑 targeted ESLint、`vue-tsc --noEmit`、M53 redacted gate 并记录 dist untouched | future M61 validation | 不修改 `dist` 或真实 config |
 
 ## 6. 领域路线概览
 
@@ -701,12 +711,12 @@ M59：AdminPanel frontend route/nav static implementation PASS；新增静态 `j
 | --- | --- | --- | --- |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
-| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision remains TODO。 |
+| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation remains TODO。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、adapter registration deferred。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
