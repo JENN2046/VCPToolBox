@@ -2,7 +2,7 @@
 
 Date: 2026-06-21
 
-Status: PASS_OPENING_CYCLE_WINDOW_STARTED_STABILITY_NOT_PASSED
+Status: PASS_OPENING_CYCLE_RETAINED_AS_OPTIONAL_SOAK_EVIDENCE
 
 Parent tracker: `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_TODO_TRACKER_20260620.md`
 
@@ -11,20 +11,30 @@ Related taskbooks / receipts:
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M30_LOCAL_IMPLEMENTATION_STABILITY_WINDOW_TASKBOOK_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M35_AGGREGATE_FULL_LOCAL_MATRIX_REVIEW_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M36_STABLE_OPERATION_WINDOW_ENTRY_20260621.md`
+- `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M38_ACCELERATED_LOCAL_STABILITY_CLOSEOUT_RECEIPT_20260621.md`
 
 ## 1. Window Start
 
 ```text
 WINDOW_START=yes
-cycle position: opening
+cycle position: opening calendar-soak evidence
 cycle number: 1 / 3
 cycle timestamp: 2026-06-21T15:15:51+08:00
-minimum final-cycle date: 2026-06-28 local date
+minimum final-cycle date if calendar soak is resumed: 2026-06-28 local date
 opening cycle result: PASS
 mid-window cycle result: pending
 final-window cycle result: pending
-full-local/stability gate passed: no
+accelerated local closeout gate passed by M38: yes
+calendar soak passed: no
 upstream PR opened: no
+```
+
+Post-M38 policy note:
+
+```text
+M37 remains valid as opening validation evidence.
+M37 no longer creates a mandatory calendar wait for Jenn fork local closeout.
+The pending mid/final cycles are deferred optional upstream-readiness soak evidence.
 ```
 
 ## 2. Baseline Refs
@@ -126,7 +136,7 @@ Because this is the opening cycle, future changes after this receipt must be eva
 
 M37 proves:
 
-- the 7-day stable-operation window has formally started;
+- an opening calendar-soak validation receipt was recorded;
 - opening cycle validation passed at the recorded timestamp;
 - M31-M34 package gate harnesses still pass against the current external package HEAD;
 - reviewed package checksum verification still matches the current aggregate manifest;
@@ -139,22 +149,22 @@ M37 does not prove:
 mid-window cycle passed: no
 final-window cycle passed: no
 7-day minimum duration satisfied: no
-full-local/stability gate passed: no
+calendar soak passed: no
 upstream PR readiness: no
 ```
 
 ## 8. Next Cycle
 
-The next cycle is the mid-window cycle.
+The calendar-soak mid-window cycle is optional and deferred after M38.
 
-Recommended timing:
+If a later upstream-readiness decision requires calendar soak evidence, recommended timing remains:
 
 ```text
 earliest mid-window local date: 2026-06-24
 final-window local date must be no earlier than: 2026-06-28
 ```
 
-The mid-window cycle must be recorded in a separate future receipt and must re-check the reset conditions before it can pass.
+The mid-window cycle must be recorded in a separate future receipt and must re-check the reset conditions before it can pass. It is not required for the accelerated local closeout gate.
 
 ## 9. Rollback
 
@@ -164,4 +174,4 @@ Rollback M37 by reverting:
 core governance commit that records this opening cycle and tracker update
 ```
 
-If the opening cycle receipt is reverted or contradicted by later evidence, the stable-operation window must be treated as not started until a new opening cycle receipt is created.
+If the opening cycle receipt is reverted or contradicted by later evidence, the optional calendar soak must be treated as not started until a new opening cycle receipt is created.

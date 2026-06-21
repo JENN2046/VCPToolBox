@@ -17,17 +17,22 @@ Related evidence:
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M35_AGGREGATE_FULL_LOCAL_MATRIX_REVIEW_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M36_STABLE_OPERATION_WINDOW_ENTRY_20260621.md`
 - `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M37_STABLE_OPERATION_WINDOW_CYCLE_1_OPENING_RECEIPT_20260621.md`
+- `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M38_ACCELERATED_LOCAL_STABILITY_CLOSEOUT_RECEIPT_20260621.md`
 
 ## 1. Objective
 
-Define the local acceptance window that must pass before any future upstream PR can be reconsidered.
+Define the local acceptance gates for Jenn fork maintenance:
 
-This taskbook does not execute the window. It defines the gate.
+- an accelerated local stability closeout gate for finishing the current local externalization plan without calendar waiting;
+- a deferred 7-day / 3-cycle calendar soak that may be used later as upstream-readiness evidence.
+
+This taskbook defines the gates. M38 executes the accelerated local closeout gate.
 
 M30 PASS means:
 
 ```text
-local full-implementation and stability window is defined
+local full-implementation and accelerated stability closeout gate is defined
+future upstream-readiness calendar soak is defined separately
 ```
 
 M30 PASS does not mean:
@@ -37,6 +42,7 @@ whole local plan implemented: no
 stable operation proven: no
 upstream PR ready: no
 runtime enabled: no
+7-day calendar soak passed: no
 ```
 
 ## 2. Non-Goals
@@ -94,15 +100,44 @@ EXPLICITLY_OUT_OF_SCOPE
 | AI Image | PACKAGE_GATE_PASS_PROVIDER_RUNTIME_DEFERRED | M32 persistent provider-adapter package gate PASS; provider runtime, real image generation, and adapter registration remain deferred unless separately authorized. |
 | Codex/Memory | PACKAGE_GATE_PASS_NO_LIVE_WRITE_RUNTIME_DEFERRED | M33 persistent bridge package gate PASS; no-live-write validation passed; runtime bridge registration, live memory writes, private memory reads, and bridge external writes remain deferred. |
 | PhotoStudio | PACKAGE_GATE_PASS_NO_AUTO_WRITE_RUNTIME_DEFERRED | M34 persistent source package gate PASS; project data, LocalState/private data, external sync/publish/write, provider calls, bridge calls, and runtime registration remain deferred. |
-| Aggregate full-local matrix | MATRIX_REVIEW_PASS_STABILITY_DEFERRED | M35 re-ran M31-M34 package gates and confirmed package layer consistency; runtime gates and stable-operation window remain deferred. |
-| Stable-operation window entry | ENTRY_DEFINED_WINDOW_STARTED | M36 defines future cycle receipt shape, evidence requirements, reset conditions, and stop boundaries; M37 opening cycle started the 7-day clock. |
-| Stable-operation cycle 1 | OPENING_CYCLE_PASS_WINDOW_RUNNING | M37 opening cycle PASS; cycle 2 and cycle 3 still pending; full-local/stability gate not passed. |
+| Aggregate full-local matrix | MATRIX_REVIEW_PASS_CLOSEOUT_READY | M35 re-ran M31-M34 package gates and confirmed package layer consistency; runtime gates remain deferred; accelerated local closeout is the next local blocker. |
+| Accelerated local stability closeout | PASS | M38 records the plan change, runs two same-day revalidation rounds after M37, confirms checksum/env/no-live-write/runtime-off boundaries, and closes the local package-layer plan. |
+| Calendar soak for upstream readiness | DEFERRED_OPTIONAL | M36/M37 7-day / 3-cycle calendar evidence is retained as future upstream-readiness soak only; it no longer blocks local Jenn fork closeout. |
 | Core fallback removal | DEFERRED | Not required for local stability; remains future proposal only. |
-| Upstream PR | DEFERRED | Cannot resume until full-local implementation and stable-operation evidence both pass. |
+| Upstream PR | DEFERRED | Still not opened; may be reconsidered only after a separate current-turn upstream decision and any then-required readiness soak. |
 
-## 5. Stable Operation Window
+## 5. Local Stability Closeout And Deferred Calendar Soak
 
-The upstream-ready local stability window is:
+The current local plan uses two separate gates.
+
+### 5.1 Accelerated Local Stability Closeout
+
+The accelerated local closeout gate is the blocker for finishing the current Jenn fork local externalization route.
+
+It can pass on the same local date when all of the following are true:
+
+```text
+core worktree clean before validation
+external package worktree clean before validation
+M31-M34 package gate harnesses pass in at least two fresh revalidation rounds
+aggregate checksum remains unchanged
+target risk counts remain 0
+runtime registration refs remain 0
+provider/bridge/live-write/project-data/LocalState counters remain 0
+env/package switches are checked by presence only
+real .env/secrets/auth/tokens/credentials are not read or modified
+LocalState/private/operator data and .agent_board/** are not read/copied/checksummed/migrated
+runtime remains default-off
+upstream PR remains unopened
+```
+
+M38 is the receipt that executes this gate.
+
+The accelerated closeout proves the current package-layer local implementation is coherent and repeatably validated. It does not prove production uptime, live provider behavior, runtime-on behavior, or upstream PR readiness.
+
+### 5.2 Deferred Calendar Soak
+
+The 7-day / 3-cycle calendar soak is retained only as future upstream-readiness evidence:
 
 ```text
 minimum duration: 7 calendar days
@@ -111,9 +146,9 @@ cycle spacing: separate local sessions on separate days
 required cycle positions: opening cycle, mid-window cycle, final-window cycle
 ```
 
-The window can open only after every in-scope domain is `IMPLEMENTED_AND_VALIDATED` or `EXPLICITLY_OUT_OF_SCOPE`.
+The calendar soak is optional until a future upstream-readiness decision makes it required again. It must not block the current Jenn fork local closeout.
 
-Each validation cycle must record:
+Each future calendar cycle must record:
 
 1. Current branch and clean worktree status before validation.
 2. Current commit refs for core repo and external package repo, when applicable.
@@ -125,25 +160,27 @@ Each validation cycle must record:
 8. Rollback evidence for the most recently changed domain and global env-off fallback.
 9. Known failures, skipped checks, and whether the window must reset.
 
-Discovery success alone cannot satisfy stable operation. A package being found is not proof that runtime registration, default-off behavior, rollback, or no-live-write behavior is correct.
+Discovery success alone cannot satisfy either gate. A package being found is not proof that runtime registration, default-off behavior, rollback, or no-live-write behavior is correct.
 
-## 6. Window Reset Rules
+## 6. Reset Rules
 
-The 7-day window resets if any of the following occur:
+The accelerated closeout must be marked BLOCK or reset if any of the following occur before its receipt is committed:
 
 - a validation cycle fails for runtime behavior, checksum integrity, secret-risk scan, rollback, no-live-write, or no-provider safety
-- a new in-scope external package or runtime wiring change lands after the opening cycle
+- a new in-scope external package or runtime wiring change lands after the validation baseline
 - any real `.env`, secret, auth material, token, or credential is modified
 - a provider call, bridge live write, production deployment, or upstream remote write happens
 - LocalState/private/operator data is read or copied outside an explicit approved gate
 - `.agent_board/**` is read, copied, checksummed, or migrated without its separate human gate
 - a deferred domain is silently treated as implemented without receipt evidence
 
+If a future 7-day calendar soak is used, the same events reset that soak window.
+
 Documentation-only typo fixes do not reset the window if they do not change scope, validation evidence, runtime behavior, package content, checksums, or rollback guarantees.
 
 ## 7. Deferred Domain Progression Rule
 
-Deferred domains may be advanced locally before the final 7-day window, but each domain must pass a domain-level mini-gate before the next domain starts:
+Deferred domains may be advanced locally before any optional calendar soak, but each domain must pass a domain-level mini-gate before the next domain starts:
 
 ```text
 taskbook or existing taskbook reviewed
@@ -165,13 +202,20 @@ Recommended local progression order:
 3. Codex/Memory no-live-write fixture/package gate. Completed by M33.
 4. PhotoStudio source/package gate excluding project data. Completed by M34.
 5. Aggregate full-local matrix review. Completed by M35.
-6. 7-day stable-operation window execution. Entry defined by M36; opening cycle started by M37; mid/final cycles pending.
+6. Accelerated local stability closeout. Completed by M38.
+7. Optional 7-day upstream-readiness soak. Defined by M36 and opened by M37, but deferred unless a later upstream decision requires it.
 
 This order is a default. It may be changed by `PLAN_CHANGE` if the reason, risk, and validation impact are recorded before execution.
 
-## 8. Required Future Receipt
+## 8. Required Receipts
 
-When the window is executed, write a receipt with this shape:
+The accelerated local closeout receipt uses this shape:
+
+```text
+docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M38_ACCELERATED_LOCAL_STABILITY_CLOSEOUT_RECEIPT_YYYYMMDD.md
+```
+
+Any future calendar soak receipt uses this shape:
 
 ```text
 docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M##_LOCAL_STABILITY_WINDOW_RECEIPT_YYYYMMDD.md
@@ -228,6 +272,6 @@ Deployment executed: no
 
 ## 12. Acceptance
 
-M30 is PASS when this taskbook is committed and the tracker records that the full-local-implementation and stable-operation gate is defined.
+M30 is PASS when this taskbook is committed and the tracker records that the full-local-implementation and local stability gates are defined.
 
-The full-local/stability gate itself remains NOT PASSED until a future receipt proves the implemented route survived the 7-day validation window.
+The accelerated local closeout gate is passed by M38. The optional 7-day calendar soak remains NOT PASSED and does not block local Jenn fork closeout unless a future upstream-readiness decision explicitly reinstates it.
