@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (64.7 / 66 global milestone units; scope expanded by M65 PASS)
+Progress: [##########] 98% (65.7 / 67 global milestone units; scope expanded by M66 PASS)
 
 Last updated: 2026-06-21
 
-当前里程碑：AdminPanel browser visual smoke taskbook（M65 PASS；docs-only）
+当前里程碑：AdminPanel browser visual smoke（M66 PASS；temp output/screenshots cleaned）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-21
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M65。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S86 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M66。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S87 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-21
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M65 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M65 合计 66 units。
+- 全局 Progress 覆盖 M0-M66 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M66 合计 67 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -77,6 +77,7 @@ Last updated: 2026-06-21
 - M63 完成 AdminPanel temp outDir dry-build authorization taskbook；定义未来 exact Vite temp outDir command、`.tmp` 输出目录、cleanup target、no-dist proof 和 stop boundary；实际 build/cleanup 未执行，仍需未来当前轮明确授权。
 - M64 完成 AdminPanel temp outDir dry build；经当前轮明确授权运行 Vite 到 workspace `.tmp`，产物 `255` files / `12179826` bytes，随后精确清理 temp run dir；`AdminPanel-Vue/dist/**` tracked hash unchanged；M64 evidence fix 补充 case-insensitive/bracket-pattern path-risk scan 规则与当前 auth-surface false-positive 记录，不重跑 build。
 - M65 完成 AdminPanel browser visual smoke taskbook；选择 M66 future visual smoke execution gate，先于 normal dist artifact gate；本身不启动 server/browser、不 build、不截图、不改 dist。
+- M66 完成 AdminPanel browser visual smoke；经当前轮明确授权使用 temp build + 本地只读静态 server + Puppeteer/Chromium；desktop/mobile route/text/icon/nonblank checks PASS；`/admin_api/*` 被本地 fixture 拦截，未调用真实后端；screenshots/temp output cleaned；`AdminPanel-Vue/dist/**` tracked hash unchanged；normal dist artifact gate 仍 deferred。
 
 计划变更规则：
 
@@ -96,7 +97,7 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M65 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M66 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -166,6 +167,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M65 是当前 Jenn fork 长期维护
 | [x] | M63 | 0 | AdminPanel temp outDir dry-build authorization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M63_ADMINPANEL_TEMP_OUTDIR_DRY_BUILD_AUTHORIZATION_TASKBOOK_20260621.md`；docs-only；exact future Vite temp outDir command, cleanup target, no-dist proof, and stop boundary defined; build not executed。 |
 | [x] | M64 | 0 | AdminPanel temp outDir dry build | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M64_ADMINPANEL_TEMP_OUTDIR_DRY_BUILD_RECEIPT_20260621.md`；authorized Vite temp outDir build PASS；temp dist `255` files / `12179826` bytes；`AdminPanel-Vue/dist` hash unchanged；temp output cleaned；evidence fix documents corrected case-insensitive/bracket-pattern path scan and current auth-surface false positives。 |
 | [x] | M65 | 0 | AdminPanel browser visual smoke taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M65_ADMINPANEL_BROWSER_VISUAL_SMOKE_TASKBOOK_20260621.md`；docs-only；selects M66 browser visual smoke before normal dist artifact gate; no server/browser/build/screenshots/dist change。 |
+| [x] | M66 | 0 | AdminPanel browser visual smoke | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M66_ADMINPANEL_BROWSER_VISUAL_SMOKE_RECEIPT_20260621.md`；authorized temp build + local static server + Puppeteer/Chromium desktop/mobile smoke PASS；screenshots/temp output cleaned；`AdminPanel-Vue/dist` hash unchanged；normal dist artifact gate still deferred。 |
 
 全局进度明细：
 
@@ -211,7 +213,8 @@ M62 PASS：1.0 / 1 unit（AdminPanel build/lint path decision taskbook；docs-on
 M63 PASS：1.0 / 1 unit（AdminPanel temp outDir dry-build authorization taskbook；docs-only）
 M64 PASS：1.0 / 1 unit（AdminPanel temp outDir dry build；temp output cleaned）
 M65 PASS：1.0 / 1 unit（AdminPanel browser visual smoke taskbook；docs-only）
-Global Progress：64.7 / 66 = 98.03%，顶部显示为 98%
+M66 PASS：1.0 / 1 unit（AdminPanel browser visual smoke；temp build/static server/screenshots cleaned）
+Global Progress：65.7 / 67 = 98.06%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -305,7 +308,8 @@ Global Progress：64.7 / 66 = 98.03%，顶部显示为 98%
 | [x] | S83 | AdminPanel / M62 | 0 | AdminPanel build/lint path decision taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M62_ADMINPANEL_BUILD_LINT_PATH_DECISION_TASKBOOK_20260621.md`；docs-only；M63 temp outDir dry-build authorization taskbook next；actual build/broad lint cleanup blocked pending authorization。 |
 | [x] | S84 | AdminPanel / M63 | 0 | AdminPanel temp outDir dry-build authorization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M63_ADMINPANEL_TEMP_OUTDIR_DRY_BUILD_AUTHORIZATION_TASKBOOK_20260621.md`；docs-only；future exact Vite temp outDir command, cleanup target, no-dist proof, and stop conditions defined；actual build not executed。 |
 | [x] | S85 | AdminPanel / M64 | 0 | AdminPanel temp outDir dry build | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M64_ADMINPANEL_TEMP_OUTDIR_DRY_BUILD_RECEIPT_20260621.md`；authorized Vite temp outDir build PASS；`AdminPanel-Vue/dist` unchanged；temp run dir cleaned。 |
-| [x] | S86 | AdminPanel / M65 | 0 | AdminPanel browser visual smoke taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M65_ADMINPANEL_BROWSER_VISUAL_SMOKE_TASKBOOK_20260621.md`；docs-only；M66 visual smoke execution gate defined；normal dist artifact gate remains deferred。 |
+| [x] | S86 | AdminPanel / M65 | 0 | AdminPanel browser visual smoke taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M65_ADMINPANEL_BROWSER_VISUAL_SMOKE_TASKBOOK_20260621.md`；docs-only；M66 visual smoke execution gate defined and later completed；normal dist artifact gate remains deferred。 |
+| [x] | S87 | AdminPanel / M66 | 0 | AdminPanel browser visual smoke | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M66_ADMINPANEL_BROWSER_VISUAL_SMOKE_RECEIPT_20260621.md`；temp build + local static server + Puppeteer desktop/mobile smoke PASS；screenshots/temp output cleaned；`AdminPanel-Vue/dist` unchanged。 |
 
 原始验收拆分说明：
 
@@ -345,7 +349,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M62 完成规则：
+M19-M66 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -389,6 +393,7 @@ M62：AdminPanel build/lint path decision taskbook PASS；选择 M63 temp outDir
 M63：AdminPanel temp outDir dry-build authorization taskbook PASS；定义未来 exact Vite command、`.tmp` output path、cleanup target、no-dist proof、authorization wording 和 stop conditions；实际 build 与 cleanup 未执行。
 M64：AdminPanel temp outDir dry build PASS；经明确授权运行 Vite temp outDir build，`TEMP_DIST_FILE_COUNT=255`，raw path-risk hits `4` reviewed false-positive，anchored private-root scan clean，temp output cleaned，`AdminPanel-Vue/dist` hash unchanged；evidence fix 补充 case-insensitive/bracket-pattern path-risk scan 要求，当前 frontend path-only scan `9` 个 auth-surface false positives。
 M65：AdminPanel browser visual smoke taskbook PASS；选择 M66 使用临时 build + 本地只读静态 server + browser screenshots/DOM anchors，先于 normal dist artifact gate；M65 本身不启动 server/browser、不 build、不截图。
+M66：AdminPanel browser visual smoke PASS；经明确授权使用 temp build + local static server + Puppeteer/Chromium，desktop/mobile route/text/icon/nonblank checks PASS；`/admin_api/*` 仅本地 fixture 拦截，真实后端未调用；screenshots/temp output cleaned；`AdminPanel-Vue/dist` hash unchanged；normal dist artifact gate 仍 deferred。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -406,7 +411,7 @@ M65：AdminPanel browser visual smoke taskbook PASS；选择 M66 使用临时 bu
 | Upstream tracking / PR gate | M8 / S23-S25；M28 / S49；M30 / S51；M38 / S59 | readiness packet、rebase workflow、local closeout evidence、人工授权后才 open upstream PR | PARTIAL / DEFERRED / LOCAL_CLOSEOUT_PASS；当前仍跳过 upstream PR。 |
 | Agent 分域验收 | M9-M18 / S29-S39 | taskbook、source scan、candidate gate、copy-first、shadow、resolver、default-off wiring、env-on rollback、final decision | M9-M18 PASS；Agent domain closed for current route。 |
 | LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | M19-M20 PASS；existing root handled by PLAN_CHANGE；private content not read。 |
-| AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52；M47-M65 / S68-S86 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off backend registry、shadow/rollback、production-router backend integration、real-config unlock/apply drill、production smoke/frontend decision, production smoke taskbook, production-server smoke, frontend route/nav taskbook, static frontend implementation, build/dist decision, no-build route/source validation, build/lint path decision, temp outDir dry-build authorization taskbook, temp outDir dry build, browser visual smoke taskbook | M21-M22 PASS；M31 persistent package PASS；M47-M65 backend route + real-config + production-server smoke + static frontend route/nav + no-build validation + build/lint path decision + temp outDir dry build + visual smoke taskbook PASS；browser visual smoke execution and normal `AdminPanel-Vue/dist/**` release artifact build still deferred。 |
+| AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52；M47-M66 / S68-S87 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off backend registry、shadow/rollback、production-router backend integration、real-config unlock/apply drill、production smoke/frontend decision, production smoke taskbook, production-server smoke, frontend route/nav taskbook, static frontend implementation, build/dist decision, no-build route/source validation, build/lint path decision, temp outDir dry-build authorization taskbook, temp outDir dry build, browser visual smoke taskbook, browser visual smoke execution | M21-M22 PASS；M31 persistent package PASS；M47-M66 backend route + real-config + production-server smoke + static frontend route/nav + no-build validation + build/lint path decision + temp outDir dry build + visual smoke PASS；normal `AdminPanel-Vue/dist/**` release artifact build still deferred。 |
 | AI Image 分域验收 | M23-M24 / S44-S45；M32 / S53 | generic adapter taskbook、provider-off fixture、no-provider shadow validation、persistent provider-adapter package gate | M23-M24 PASS；M32 persistent package PASS；no-provider only；不写 token，不发 provider call，不生成真实图片，不注册 runtime。 |
 | Codex/Memory 分域验收 | M25 / S46；M33 / S54 | bridge taskbook、manifest/path-only scan、no-live-write validation design、persistent bridge package gate | M25 PASS；M33 persistent package PASS；不读取 private memory，不 bridge 外写，不启用 runtime。 |
 | PhotoStudio 分域验收 | M26 / S47；M34 / S55 | taskbook、data exclusion、copy-first gates、no-auto-write rules、persistent source package gate | M26 PASS；M34 persistent package PASS；项目数据留 LocalState/private，不启用 runtime。 |
@@ -447,7 +452,8 @@ M65：AdminPanel browser visual smoke taskbook PASS；选择 M66 使用临时 bu
 | AdminPanel build/lint path decision taskbook | M62 / S83 | choose next path among typography cleanup, temp outDir dry build, or normal dist build gate | PASS；docs-only；selected M63 taskbook; actual build/broad cleanup blocked before authorization。 |
 | AdminPanel temp outDir dry-build authorization taskbook | M63 / S84 | define future exact temp build command, cleanup target, no-dist proof, and stop conditions | PASS；docs-only；actual build/cleanup blocked pending explicit authorization。 |
 | AdminPanel temp outDir dry build | M64 / S85 | run authorized Vite build to workspace `.tmp`, prove no dist/source/package changes, inspect paths, clean temp output | PASS；temp build exit `0`; `AdminPanel-Vue/dist` aggregate hash unchanged；temp dir cleaned。 |
-| AdminPanel browser visual smoke taskbook | M65 / S86 | define future visual smoke using temp build, local static server, browser screenshot/DOM checks, cleanup | PASS；docs-only；M66 execution requires explicit authorization。 |
+| AdminPanel browser visual smoke taskbook | M65 / S86 | define future visual smoke using temp build, local static server, browser screenshot/DOM checks, cleanup | PASS；docs-only；M66 execution later completed after explicit authorization。 |
+| AdminPanel browser visual smoke | M66 / S87 | run authorized temp build, local static server, browser desktop/mobile DOM+screenshot checks, then cleanup | PASS；Puppeteer/Chromium smoke passed；`/admin_api/*` intercepted locally；temp output/screenshots cleaned；`AdminPanel-Vue/dist` unchanged。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -544,9 +550,10 @@ M65：AdminPanel browser visual smoke taskbook PASS；选择 M66 使用临时 bu
 | Q44 | M62/S83 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M62_ADMINPANEL_BUILD_LINT_PATH_DECISION_TASKBOOK_20260621.md`；build/lint path decision PASS；selected M63 temp outDir dry-build authorization taskbook；no build executed。 |
 | Q45 | M63/S84 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M63_ADMINPANEL_TEMP_OUTDIR_DRY_BUILD_AUTHORIZATION_TASKBOOK_20260621.md`；exact temp output, cleanup target, no-dist proof, authorization wording, and stop conditions defined；no build executed。 |
 | Q46 | M64/S85 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M64_ADMINPANEL_TEMP_OUTDIR_DRY_BUILD_RECEIPT_20260621.md`；authorized temp outDir Vite build PASS；temp output inspected and cleaned；`AdminPanel-Vue/dist` unchanged。 |
-| Q47 | M65/S86 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M65_ADMINPANEL_BROWSER_VISUAL_SMOKE_TASKBOOK_20260621.md`；visual smoke taskbook PASS；M66 actual browser execution requires explicit authorization；normal dist artifact gate remains deferred。 |
+| Q47 | M65/S86 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M65_ADMINPANEL_BROWSER_VISUAL_SMOKE_TASKBOOK_20260621.md`；visual smoke taskbook PASS；M66 actual browser execution later completed by Q48；normal dist artifact gate remains deferred。 |
+| Q48 | M66/S87 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M66_ADMINPANEL_BROWSER_VISUAL_SMOKE_RECEIPT_20260621.md`；authorized browser visual smoke PASS；desktop/mobile route/text/icon/nonblank checks PASS；temp output/screenshots cleaned；normal dist artifact gate remains deferred。 |
 
-### 5.5 M19-M65 Specific Step Plan
+### 5.5 M19-M66 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -749,6 +756,10 @@ M65：AdminPanel browser visual smoke taskbook PASS；选择 M66 使用临时 bu
 | M65-01 | PASS | 写 browser visual smoke taskbook | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M65_ADMINPANEL_BROWSER_VISUAL_SMOKE_TASKBOOK_20260621.md` | 不启动 server/browser |
 | M65-02 | PASS | 定义 M66 target URL、viewports、text anchors、screenshot policy、cleanup policy | M65 sections 3-7 | 不创建 screenshots、不跑 Playwright |
 | M65-03 | PASS | 明确 normal dist artifact gate deferred until after visual smoke decision | M65 decision section | 不修改 `AdminPanel-Vue/dist/**` |
+| M66-01 | PASS | 审查 M65 并窄修 expected visible anchors 到当前源码真实文案 | M65 docs-only wording fix | 不改前端源码、不改 dist |
+| M66-02 | PASS | 当前轮授权后执行 Vite temp outDir build 并运行 corrected path-risk scan | temp dist `255` files / `12179826` bytes；raw auth-surface false positives `2`; private-root risk `0` | 不运行 dev/preview/production server |
+| M66-03 | PASS | 启动本地只读 static server 并用 Puppeteer/Chromium 运行 desktop/mobile visual smoke | route/text/icon/nonblank checks all `yes`; `/admin_api/*` intercepted locally | 不调用真实 backend/provider/bridge |
+| M66-04 | PASS | 关闭 server、清理 screenshots/temp output、证明 no-dist 和 redline clean | `TEMP_RUN_DIR_EXISTS_AFTER_CLEANUP=False`; `DIST_TRACKED_HASH_UNCHANGED=yes`; M53 redline PASS | 不提交 screenshots 或 `.tmp` |
 
 ## 6. 领域路线概览
 
@@ -758,12 +769,12 @@ M65：AdminPanel browser visual smoke taskbook PASS；选择 M66 使用临时 bu
 | --- | --- | --- | --- |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
-| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 actual visual smoke and normal dist artifact build remain deferred。 |
+| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；normal dist artifact build remains deferred。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、adapter registration deferred。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 

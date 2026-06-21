@@ -78,12 +78,12 @@ Expected visible text / UI anchors:
 
 ```text
 Jenn Admin Status
-Reviewed external AdminPanel extension route
+Reviewed AdminPanel extension route, registered as a static frontend entry.
 jenn.admin.status
 /admin_api/jenn-admin-status/status
-Backend readonly route
-Frontend registration
+Backend route
 Runtime mode
+read-only
 ```
 
 Expected icon:
