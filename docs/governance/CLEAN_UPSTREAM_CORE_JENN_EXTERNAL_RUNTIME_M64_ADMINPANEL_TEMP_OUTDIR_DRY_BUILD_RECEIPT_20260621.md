@@ -130,6 +130,68 @@ Anchored private-root path scan pattern:
 (^|[\\/])(config\.env|LocalState|\.agent_board|DebugLog|logs|state|cache|image)([\\/]|$)|secret|token|credential|auth
 ```
 
+## 4.1 Evidence Fix: Case-Insensitive Path-Risk Scan
+
+Status:
+
+```text
+PASS_EVIDENCE_FIX_NO_REBUILD
+```
+
+Review finding:
+
+```text
+The original M64 anchored pattern was case-sensitive.
+AdminPanel contains expected mixed-case auth surface paths such as OAuthAuthCenter.
+The cleaned M64 temp output cannot be rescanned without a new build authorization.
+This evidence fix does not rerun build and does not recreate temp output.
+```
+
+Corrected future/revalidation scan command:
+
+```powershell
+Get-ChildItem -LiteralPath "<TEMP_DIST>" -Recurse -File | Select-Object -ExpandProperty FullName | rg -i "(^|[\\/])(config\.env|LocalState|\.agent_board|DebugLog|logs|state|cache|image)([\\/]|$)|secret|token|credential|auth"
+```
+
+Equivalent bracket-pattern form for shells where `-i` is not acceptable:
+
+```powershell
+Get-ChildItem -LiteralPath "<TEMP_DIST>" -Recurse -File | Select-Object -ExpandProperty FullName | rg "(^|[\\/])([cC][oO][nN][fF][iI][gG]\.[eE][nN][vV]|[lL][oO][cC][aA][lL][sS][tT][aA][tT][eE]|\.[aA][gG][eE][nN][tT]_[bB][oO][aA][rR][dD]|[dD][eE][bB][uU][gG][lL][oO][gG]|[lL][oO][gG][sS]|[sS][tT][aA][tT][eE]|[cC][aA][cC][hH][eE]|[iI][mM][aA][gG][eE])([\\/]|$)|[sS][eE][cC][rR][eE][tT]|[tT][oO][kK][eE][nN]|[cC][rR][eE][dD][eE][nN][tT][iI][aA][lL]|[aA][uU][tT][hH]"
+```
+
+Current path-only comparison scope:
+
+```text
+CURRENT_FRONTEND_PATH_SCAN_SCOPE=AdminPanel-Vue/src + tracked AdminPanel-Vue/dist
+CURRENT_FRONTEND_PATH_SCAN_CASE_INSENSITIVE=yes
+CURRENT_FRONTEND_PATH_SCAN_CI_HIT_COUNT=9
+TEMP_OUTPUT_CASE_INSENSITIVE_RESCAN_RUN=no
+TEMP_OUTPUT_CASE_INSENSITIVE_RESCAN_BLOCKED_REASON=temp output cleaned by M64 cleanup gate
+```
+
+Current path-only false positives / expected auth surface paths:
+
+```text
+AdminPanel-Vue/dist/assets/css/OAuthAuthCenter-DczDJvHr.css
+AdminPanel-Vue/dist/assets/js/OAuthAuthCenter-T8qeDXVu.js
+AdminPanel-Vue/src/api/auth.ts
+AdminPanel-Vue/src/api/oauthAuth.ts
+AdminPanel-Vue/src/platform/auth/session.ts
+AdminPanel-Vue/src/stores/auth.ts
+AdminPanel-Vue/src/types/api.auth.ts
+AdminPanel-Vue/src/utils/auth.ts
+AdminPanel-Vue/src/views/OAuthAuthCenter.vue
+```
+
+Evidence-fix conclusion:
+
+```text
+M64 temp output private-root evidence remains clean for the recorded case-sensitive anchored scan.
+M64 should not be treated as having a completed case-insensitive temp-output rescan because the temp output was already cleaned.
+Future M65/M66 browser visual smoke or any future temp build must use the corrected case-insensitive or bracket-pattern scan before cleanup.
+The current checked-in frontend path-only scan shows expected auth-surface paths only; no secret/token/credential file path was found.
+```
+
 ## 5. No-Dist / No-Source Proof
 
 Post-build checks:
