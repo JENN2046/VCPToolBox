@@ -391,6 +391,7 @@ class AgentManager {
             throw new Error('[AgentManager] agentDirPath must be a non-empty string');
         }
         this.agentDir = agentDirPath;
+        this.promptCache.clear();
         this.agentFilePlan = null;
         this.agentFileRecordsById.clear();
         this.agentFileRecordsByPath.clear();
@@ -401,6 +402,7 @@ class AgentManager {
 
     setEnvironment(env) {
         this.env = env || process.env;
+        this.promptCache.clear();
         this.agentFilePlan = null;
         this.agentFileRecordsById.clear();
         this.agentFileRecordsByPath.clear();

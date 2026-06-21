@@ -128,6 +128,45 @@ test('AgentManager blocks additive duplicate from overriding a core Agent prompt
     }
 });
 
+test('AgentManager rollback to unset external env clears cached external prompts', async () => {
+    const projectRoot = makeTempDir();
+    const coreRoot = path.join(projectRoot, 'Agent');
+    const externalPackage = path.join(projectRoot, '..', 'VCPToolBox-JENN-Extensions');
+    const additiveRoot = path.join(externalPackage, 'Agent');
+    const overrideRoot = path.join(externalPackage, 'AgentOverrides');
+
+    writeAgent(coreRoot, 'Nova.txt', 'core nova');
+    writeAgent(additiveRoot, 'Muse.txt', 'external muse');
+    writeAgent(overrideRoot, 'Nova.txt', 'override nova');
+
+    try {
+        const manager = new AgentManager(coreRoot, {
+            projectRoot,
+            env: {
+                VCP_AGENT_ALLOWED_ROOTS: externalPackage,
+                VCP_AGENT_DIRS: additiveRoot,
+                VCP_AGENT_OVERRIDE_DIRS: overrideRoot
+            }
+        });
+        manager.agentMap.set('Nova', 'Nova.txt');
+        manager.agentMap.set('Muse', 'Muse.txt');
+
+        await manager.scanAgentFiles();
+        assert.equal(await manager.getAgentPrompt('Nova'), 'override nova');
+        assert.equal(await manager.getAgentPrompt('Muse'), 'external muse');
+
+        manager.setEnvironment({});
+        await manager.scanAgentFiles();
+
+        assert.deepEqual(manager.agentFiles, ['Nova.txt']);
+        assert.equal(manager.resolveAgentFileRecord('Muse.txt'), null);
+        assert.equal(await manager.getAgentPrompt('Nova'), 'core nova');
+    } finally {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+        fs.rmSync(externalPackage, { recursive: true, force: true });
+    }
+});
+
 test('Admin Agent route reads external Agents but rejects external writes', async () => {
     const projectRoot = makeTempDir();
     const coreRoot = path.join(projectRoot, 'Agent');
