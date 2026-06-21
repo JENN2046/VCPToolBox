@@ -1,6 +1,7 @@
 const express = require("express");
 const fs = require("fs").promises;
 const path = require("path");
+const { buildAndMountAdminExtensionRoutes } = require("../modules/adminExtensionRuntimeMount");
 
 function isTruthyFlag(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
@@ -111,6 +112,33 @@ module.exports = function (
   mount("/", "codexImagegenRelay"); // Handles /codex-imagegen/*
   if (isTruthyFlag(process.env.VCP_OAUTH_AUTH_CENTER_ENABLED)) {
     mount("/", "oauthAuth"); // Handles /oauth-auth/*
+  }
+
+  try {
+    const adminExtensionRuntimeSummary = buildAndMountAdminExtensionRoutes(adminApiRouter, {
+      projectRoot: projectBasePath
+    });
+    adminApiRouter.adminExtensionRuntimeSummary = {
+      runtimeEnabled: adminExtensionRuntimeSummary.runtimeEnabled,
+      attemptedRouteCount: adminExtensionRuntimeSummary.attemptedRouteCount,
+      mountedRouteCount: adminExtensionRuntimeSummary.mountedRouteCount,
+      mountedRoutes: adminExtensionRuntimeSummary.mountedRoutes,
+      frontendRouteCountIgnored: adminExtensionRuntimeSummary.frontendRouteCountIgnored,
+      diagnostics: adminExtensionRuntimeSummary.diagnostics
+    };
+  } catch (error) {
+    adminApiRouter.adminExtensionRuntimeSummary = {
+      runtimeEnabled: false,
+      attemptedRouteCount: 0,
+      mountedRouteCount: 0,
+      mountedRoutes: [],
+      frontendRouteCountIgnored: 0,
+      diagnostics: [{
+        level: "warn",
+        code: "admin_extension_runtime_mount_failed",
+        errorCode: error.code || "UNKNOWN"
+      }]
+    };
   }
 
   return adminApiRouter;
