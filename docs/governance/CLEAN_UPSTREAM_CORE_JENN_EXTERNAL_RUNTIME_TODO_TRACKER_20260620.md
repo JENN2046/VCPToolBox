@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (75.7 / 77 global milestone units; scope expanded by M76 PASS)
+Progress: [##########] 98% (76.7 / 78 global milestone units; scope expanded by M77 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：AI Image default-off diagnostic route taskbook（M76 PASS；M77 route factory gate recommended）
+当前里程碑：AI Image default-off diagnostic route factory gate（M77 PASS；M78 decision gate recommended）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M76。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S97 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M77。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S98 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M76 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M76 合计 77 units。
+- 全局 Progress 覆盖 M0-M77 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M77 合计 78 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -88,6 +88,7 @@ Last updated: 2026-06-22
 - M74 完成 AI Image default-off adapter metadata registry；scoped env 下只注册只读 metadata，`executableAdapters=0`，provider/image/output/bridge/LocalState counters all `0`；不写真实 env、不接路由、不生成图片。
 - M75 完成 AI Image registry review / closeout decision；决策不在 M74 metadata-only 处立即收口，下一步只写 M76 default-off diagnostic route taskbook；不实现 route、不写真实 env、不启 provider。
 - M76 完成 AI Image default-off diagnostic route taskbook；定义未来 `GET /admin_api/ai-image-adapter-registry/diagnostics`、auth、允许/禁止字段、rollback 和 M77 test-only route factory 停止线；M76 不实现 route、不改 runtime。
+- M77 完成 AI Image default-off diagnostic route factory gate；新增 test-only route factory/tests/harness，默认 off `404`，scoped auth route `200`，provider/image/output/bridge/LocalState counters all `0`；未接 production router。
 
 计划变更规则：
 
@@ -107,7 +108,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M76 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M77 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -188,6 +189,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M76 是当前 Jenn fork 长期维护
 | [x] | M74 | 0 | AI Image default-off adapter metadata registry | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M74_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_RECEIPT_20260622.md`；`modules/aiImageAdapterRegistry.js` metadata-only registry；scoped env metadata count `1`、executable count `0`；provider/image/output/bridge/LocalState counters `0`；no real env/server/provider/image/private/upstream action。 |
 | [x] | M75 | 0 | AI Image registry review / closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M75_AI_IMAGE_REGISTRY_REVIEW_OR_CLOSEOUT_DECISION_20260622.md`；decision `WRITE_M76_DEFAULT_OFF_DIAGNOSTIC_ROUTE_TASKBOOK`; metadata-only closeout now `no`; route implementation now `no`; no real env/provider/image/private/upstream action。 |
 | [x] | M76 | 0 | AI Image default-off diagnostic route taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M76_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_TASKBOOK_20260622.md`；taskbook-only；defines future `GET /admin_api/ai-image-adapter-registry/diagnostics` URL/auth/allowed fields/forbidden fields/rollback/M77 stop line；no route/runtime/env/provider/image/private/upstream action。 |
+| [x] | M77 | 0 | AI Image default-off diagnostic route factory gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M77_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_RECEIPT_20260622.md`；route factory only；default-off `404`、unauthorized `403`、scoped `200`、POST `404`、real execution env `409`；response absolute path/secret field count `0`；no production router/env/provider/image/private/upstream action。 |
 
 全局进度明细：
 
@@ -244,7 +246,8 @@ M73 PASS：1.0 / 1 unit（AI Image no-provider runtime registration taskbook；d
 M74 PASS：1.0 / 1 unit（AI Image default-off adapter metadata registry；metadata-only scoped env proof）
 M75 PASS：1.0 / 1 unit（AI Image registry review / closeout decision；M76 taskbook selected）
 M76 PASS：1.0 / 1 unit（AI Image default-off diagnostic route taskbook；docs-only）
-Global Progress：75.7 / 77 = 98.31%，顶部显示为 98%
+M77 PASS：1.0 / 1 unit（AI Image default-off diagnostic route factory gate；test-only local mount proof）
+Global Progress：76.7 / 78 = 98.33%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -350,6 +353,7 @@ Global Progress：75.7 / 77 = 98.31%，顶部显示为 98%
 | [x] | S95 | AI Image / M74 | 0 | AI Image default-off adapter metadata registry | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M74_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_RECEIPT_20260622.md`；default-off registry implemented；scoped metadata `1`、executable `0`、provider/image/output/bridge/LocalState `0`；real env/provider/server/upstream untouched。 |
 | [x] | S96 | AI Image / M75 | 0 | AI Image registry review / closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M75_AI_IMAGE_REGISTRY_REVIEW_OR_CLOSEOUT_DECISION_20260622.md`；selected M76 default-off diagnostic route taskbook；no route implementation、real env、provider、image output、private read or upstream action。 |
 | [x] | S97 | AI Image / M76 | 0 | AI Image default-off diagnostic route taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M76_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_TASKBOOK_20260622.md`；defines future diagnostic route URL/auth/fields/rollback/M77 test-only stop line；no route implementation or runtime/env/provider/image/private action。 |
+| [x] | S98 | AI Image / M77 | 0 | AI Image default-off diagnostic route factory gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M77_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_RECEIPT_20260622.md`；test-only route factory PASS；default-off/scoped/auth/write-method/real-execution-block checks PASS；no production router/env/provider/image/private action。 |
 
 原始验收拆分说明：
 
@@ -389,7 +393,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M76 完成规则：
+M19-M77 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -444,6 +448,7 @@ M73：AI Image no-provider runtime registration taskbook PASS；定义 M74 defau
 M74：AI Image default-off adapter metadata registry PASS；新增 metadata-only registry/test/harness；scoped env 可发现 reviewed adapter metadata 但 `executableAdapters=0`，provider/image/output/bridge/LocalState counters all `0`；不写真实 env、不接 production route、不调用 provider、不生成图片。
 M75：AI Image registry review / closeout decision PASS；决策不在 metadata-only 处立即收口，下一步只写 M76 default-off diagnostic route taskbook；M75 不实现 route、不写 env、不启 provider、不生成图片。
 M76：AI Image default-off diagnostic route taskbook PASS；定义未来诊断 route 的 URL、auth、metadata 来源、允许/禁止字段、rollback 和 M77 implementation stop line；M76 不实现 route、不改 runtime、不写 env。
+M77：AI Image default-off diagnostic route factory gate PASS；仅新增未挂载的 route factory、focused tests 和 local harness；默认 off `404`、scoped auth `200`、响应无绝对路径/禁用字段；不接 production router、不写 env、不启 provider。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -462,7 +467,7 @@ M76：AI Image default-off diagnostic route taskbook PASS；定义未来诊断 r
 | Agent 分域验收 | M9-M18 / S29-S39 | taskbook、source scan、candidate gate、copy-first、shadow、resolver、default-off wiring、env-on rollback、final decision | M9-M18 PASS；Agent domain closed for current route。 |
 | LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | M19-M20 PASS；existing root handled by PLAN_CHANGE；private content not read。 |
 | AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52；M47-M70 / S68-S91 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off backend registry、shadow/rollback、production-router backend integration、real-config unlock/apply drill、production smoke/frontend decision, production smoke taskbook, production-server smoke, frontend route/nav taskbook, static frontend implementation, build/dist decision, no-build route/source validation, build/lint path decision, temp outDir dry-build authorization taskbook, temp outDir dry build, browser visual smoke taskbook, browser visual smoke execution, normal dist artifact taskbook, normal dist artifact build, post-dist static smoke, artifact lane closeout | M21-M22 PASS；M31 persistent package PASS；M47-M70 backend route + real-config + production-server smoke + static frontend route/nav + no-build validation + build/lint path decision + temp outDir dry build + visual smoke + normal dist artifact build + post-dist smoke PASS；AdminPanel lane closed for current route。 |
-| AI Image 分域验收 | M23-M24 / S44-S45；M32 / S53；M73-M76 / S94-S97 | generic adapter taskbook、provider-off fixture、no-provider shadow validation、persistent provider-adapter package gate、default-off adapter metadata registry、route/closeout decision、diagnostic route taskbook | M23-M24 PASS；M32 persistent package PASS；M73 taskbook PASS；M74 metadata-only registry PASS；M75 selected M76；M76 taskbook-only PASS；no-provider only；不写 token，不发 provider call，不生成真实图片，不注册 executable runtime。 |
+| AI Image 分域验收 | M23-M24 / S44-S45；M32 / S53；M73-M77 / S94-S98 | generic adapter taskbook、provider-off fixture、no-provider shadow validation、persistent provider-adapter package gate、default-off adapter metadata registry、route/closeout decision、diagnostic route taskbook、test-only route factory | M23-M24 PASS；M32 persistent package PASS；M73 taskbook PASS；M74 metadata-only registry PASS；M75 selected M76；M76 taskbook-only PASS；M77 route factory PASS；no-provider only；不写 token，不发 provider call，不生成真实图片，不注册 executable runtime。 |
 | Codex/Memory 分域验收 | M25 / S46；M33 / S54 | bridge taskbook、manifest/path-only scan、no-live-write validation design、persistent bridge package gate | M25 PASS；M33 persistent package PASS；不读取 private memory，不 bridge 外写，不启用 runtime。 |
 | PhotoStudio 分域验收 | M26 / S47；M34 / S55 | taskbook、data exclusion、copy-first gates、no-auto-write rules、persistent source package gate | M26 PASS；M34 persistent package PASS；项目数据留 LocalState/private，不启用 runtime。 |
 | Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | M27 PASS；docs-only。 |
@@ -514,6 +519,7 @@ M76：AI Image default-off diagnostic route taskbook PASS；定义未来诊断 r
 | AI Image default-off adapter metadata registry | M74 / S95 | implement metadata-only manifest registry with scoped env validation and rollback to default-off | PASS；scoped metadata count `1`; executable count `0`; provider/image/output/bridge/LocalState counters `0`; no real env/server/provider/image/private/upstream action。 |
 | AI Image registry review / closeout decision | M75 / S96 | decide whether to close at metadata-only or write a default-off diagnostic route taskbook | PASS；decision `WRITE_M76_DEFAULT_OFF_DIAGNOSTIC_ROUTE_TASKBOOK`; route implementation now `no`; provider/runtime/env/image/private remain closed。 |
 | AI Image default-off diagnostic route taskbook | M76 / S97 | define future diagnostic route URL/auth/allowed fields/forbidden fields/rollback/M77 stop line | PASS；taskbook-only；future M77 limited to test-only route factory；production mount/provider/runtime/env/image/private remain closed。 |
+| AI Image default-off diagnostic route factory | M77 / S98 | implement unmounted route factory, tests, and local harness only | PASS；default-off `404`; scoped `200`; unauthorized `403`; response absolute path/secret count `0`; provider/image/output/bridge/LocalState `0`; production mount deferred。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -622,8 +628,9 @@ M76：AI Image default-off diagnostic route taskbook PASS；定义未来诊断 r
 | Q56 | M74/S95 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M74_AI_IMAGE_NO_PROVIDER_RUNTIME_REGISTRATION_RECEIPT_20260622.md`；metadata-only registry implemented；default-off count `0`; scoped metadata `1`; executable `0`; provider/image/output/bridge/LocalState `0`; real env/server/provider/image/private untouched。 |
 | Q57 | M75/S96 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M75_AI_IMAGE_REGISTRY_REVIEW_OR_CLOSEOUT_DECISION_20260622.md`；decision `WRITE_M76_DEFAULT_OFF_DIAGNOSTIC_ROUTE_TASKBOOK`; M75 decision-only；no route/env/provider/image/private/upstream action。 |
 | Q58 | M76/S97 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M76_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_TASKBOOK_20260622.md`；taskbook-only；future diagnostic route URL/auth/fields/rollback/M77 stop line defined；no route/runtime/env/provider/image/private/upstream action。 |
+| Q59 | M77/S98 | PASS | AI Image | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M77_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_RECEIPT_20260622.md`；test-only route factory PASS；default-off/scoped/auth/write-method/real-execution-block checks PASS；no production router/env/provider/image/private/upstream action。 |
 
-### 5.5 M19-M76 Specific Step Plan
+### 5.5 M19-M77 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -869,6 +876,11 @@ M76：AI Image default-off diagnostic route taskbook PASS；定义未来诊断 r
 | M76-02 | PASS | 定义未来 diagnostic route URL、default-off env、auth 边界和 metadata 来源 | M76 sections 2-5 | 不实现 route、不写真实 env |
 | M76-03 | PASS | 定义允许显示字段、禁止字段、未来 M77 allowed files、validation、rollback、stop conditions | M76 sections 6-11 | 不显示 absolute path、secret、raw binding、prompt/image output、private content |
 | M76-04 | PASS | 写 M76 taskbook 并更新 tracker：M76/S97/Q58 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M76_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_TASKBOOK_20260622.md`; Progress `75.7 / 77` | 不打开 upstream PR、不改 runtime |
+| M77-01 | PASS | 复读 M76 allowed files/stop lines 并确认 worktree clean | M77 receipt sections 1-3 | 不修改 production router、execution route、frontend 或真实 env |
+| M77-02 | PASS | 实现未挂载的 default-off diagnostic route factory | `routes/admin/aiImageAdapterDiagnostics.js` | 不接 `server.js`，不 require/execute adapter entry，不调用 provider |
+| M77-03 | PASS | 新增 focused route tests 和 local harness | `tests/ai-image-adapter-diagnostic-route.test.js`; `scripts/run-ai-image-default-off-diagnostic-route-gate-harness.js` | 不启动 production server，不写 image/output，不读 private |
+| M77-04 | PASS | 运行 M77 validation 与 M74/M32 protective reruns | tests `6 pass / 0 fail`; M77 harness PASS; M74/M32 harness PASS | 不把 route factory success 当 production mount/runtime proof |
+| M77-05 | PASS | 写 M77 receipt 并更新 tracker：M77/S98/Q59 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M77_AI_IMAGE_DEFAULT_OFF_DIAGNOSTIC_ROUTE_RECEIPT_20260622.md`; Progress `76.7 / 78` | 不打开 upstream PR、不写真实 `config.env` |
 
 ## 6. 领域路线概览
 
@@ -879,11 +891,11 @@ M76：AI Image default-off diagnostic route taskbook PASS；定义未来诊断 r
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；current AdminPanel lane closed。 |
-| AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、executable adapter registration deferred；M72 selected M73 taskbook；M73 taskbook PASS；M74 metadata-only registry PASS with scoped metadata `1`、executable `0`、provider/image/output/bridge/LocalState `0`；M75 selected M76；M76 taskbook defines future diagnostic route URL/auth/fields/rollback/M77 stop line；仍不写真实 env、不启 provider、不生成图片。 |
+| AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、executable adapter registration deferred；M72 selected M73 taskbook；M73 taskbook PASS；M74 metadata-only registry PASS with scoped metadata `1`、executable `0`、provider/image/output/bridge/LocalState `0`；M75 selected M76；M76 taskbook PASS；M77 test-only diagnostic route factory PASS；仍不写真实 env、不启 provider、不生成图片、不接 production router。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
@@ -907,6 +919,7 @@ M76：AI Image default-off diagnostic route taskbook PASS；定义未来诊断 r
 | AdminPanel persistent package gate | M31 receipt + external commit `eff66b2979e319494e49bbeec9ccb652afcd57ee`；package risk `0`；runtime registration reference count `0` | PASS |
 | AI Image provider-adapter package gate | M32 receipt + external commit `5edb89051291137859100cfc915349b9921f84cd`；package risk `0`；provider/image/output/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | AI Image metadata-only registry gate | M74 receipt；scoped metadata count `1`；executable adapter count `0`；provider/image/output/bridge/LocalState counters all `0`；real env/server/provider/image/private untouched | PASS；does not prove provider runtime readiness |
+| AI Image diagnostic route factory gate | M77 receipt；default-off `404`、scoped local route `200`、unauthorized `403`、response absolute path/secret field count `0`；provider/image/output/bridge/LocalState counters all `0` | PASS_LOCAL_FACTORY；not production-mounted |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
