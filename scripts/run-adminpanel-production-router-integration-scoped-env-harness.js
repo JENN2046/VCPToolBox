@@ -138,6 +138,21 @@ function clearAdminExtensionProcessEnv() {
   delete process.env.VCP_OAUTH_AUTH_CENTER_ENABLED;
 }
 
+function applyAdminExtensionProcessEnv(env) {
+  for (const key of [
+    VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV,
+    VCP_ADMIN_EXTENSION_DIRS_ENV,
+    VCP_ADMIN_EXTENSION_ALLOWLIST_ENV
+  ]) {
+    if (isSet(env, key)) {
+      process.env[key] = env[key];
+    } else {
+      delete process.env[key];
+    }
+  }
+  delete process.env.VCP_OAUTH_AUTH_CENTER_ENABLED;
+}
+
 function applyScopedProcessEnv() {
   process.env[VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV] = EXTERNAL_ROOT;
   process.env[VCP_ADMIN_EXTENSION_DIRS_ENV] = ADMIN_EXTENSION_ROOT;
@@ -291,18 +306,61 @@ async function main() {
   const coreBefore = snapshotHashes(CORE_HASH_TARGETS);
   const externalPackageFiles = listFiles(ADMIN_EXTENSION_ROOT);
   const externalBefore = snapshotHashes(externalPackageFiles);
+  const realAdminKeysSetCount = [
+    VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV,
+    VCP_ADMIN_EXTENSION_DIRS_ENV,
+    VCP_ADMIN_EXTENSION_ALLOWLIST_ENV
+  ].filter((key) => isSet(configBefore.env, key)).length;
+  const gateMode = realAdminKeysSetCount === 3
+    ? 'post-apply-validation'
+    : 'pre-apply-scoped-validation';
 
   lines.push('M52_ADMINPANEL_PRODUCTION_ROUTER_INTEGRATION_SCOPED_ENV');
   lines.push(`CONFIG_ENV_EXISTS=${configBefore.exists ? 'yes' : 'no'}`);
   lines.push('CONFIG_ENV_VALUES_PRINTED=no');
   lines.push(`CONFIG_ENV_SHA256=${configBefore.hash}`);
+  lines.push(`GATE_MODE=${gateMode}`);
+  lines.push(`REAL_ENV_ADMIN_KEYS_SET_COUNT=${realAdminKeysSetCount}`);
   for (const key of REAL_ENV_KEYS.filter((item) => item !== 'VCP_OAUTH_AUTH_CENTER_ENABLED')) {
     const realConfigSet = isSet(configBefore.env, key);
     const initialProcessEnvSet = isSet(processEnvBefore, key);
     lines.push(`REAL_ENV_${key}_SET=${realConfigSet ? 'yes' : 'no'}`);
     lines.push(`INITIAL_PROCESS_ENV_${key}_SET=${initialProcessEnvSet ? 'yes' : 'no'}`);
-    if (realConfigSet) failures.push(`${key.toLowerCase()}_set_in_real_config`);
     if (initialProcessEnvSet) failures.push(`${key.toLowerCase()}_set_in_initial_process_env`);
+  }
+  if (![0, 3].includes(realAdminKeysSetCount)) {
+    failures.push('real_admin_extension_keys_partial');
+  }
+
+  if (realAdminKeysSetCount === 3) {
+    applyAdminExtensionProcessEnv(configBefore.env);
+    const realConfig = createAdminPanelRouterWithStubs();
+    const realConfigSummary = summarizeRuntime(realConfig.router);
+    const realConfigHttp = await runHttpScenario(realConfig.router);
+    lines.push(`REAL_CONFIG_RUNTIME_ENABLED=${realConfigSummary.runtimeEnabled ? 'yes' : 'no'}`);
+    lines.push(`REAL_CONFIG_ATTEMPTED_ROUTE_COUNT=${realConfigSummary.attemptedRouteCount}`);
+    lines.push(`REAL_CONFIG_MOUNTED_ROUTE_COUNT=${realConfigSummary.mountedRouteCount}`);
+    lines.push(`REAL_CONFIG_FRONTEND_ROUTE_COUNT_IGNORED=${realConfigSummary.frontendRouteCountIgnored}`);
+    lines.push(`REAL_CONFIG_MOUNTED_FULL_PATHS=${realConfigSummary.mountedFullPaths.join(',') || 'none'}`);
+    lines.push(`REAL_CONFIG_GET_STATUS=${realConfigHttp.getStatus}`);
+    lines.push(`REAL_CONFIG_BODY_OK=${realConfigHttp.getBody?.ok === true ? 'yes' : 'no'}`);
+    lines.push(`REAL_CONFIG_BODY_EXTENSION_ID=${realConfigHttp.getBody?.extensionId || 'missing'}`);
+    lines.push(`REAL_CONFIG_BODY_MODE=${realConfigHttp.getBody?.mode || 'missing'}`);
+    lines.push(`REAL_CONFIG_WRITE_METHOD_STATUS_CODES=${realConfigHttp.writeStatuses.join(',')}`);
+    if (!realConfigSummary.runtimeEnabled) failures.push('real_config_runtime_not_enabled');
+    if (realConfigSummary.attemptedRouteCount !== 1) failures.push('real_config_attempted_route_count_unexpected');
+    if (realConfigSummary.mountedRouteCount !== 1) failures.push('real_config_mounted_route_count_unexpected');
+    if (realConfigSummary.frontendRouteCountIgnored !== 1) failures.push('real_config_frontend_route_count_unexpected');
+    if (!realConfigSummary.mountedFullPaths.includes('/admin_api/jenn-admin-status')) failures.push('real_config_mount_path_unexpected');
+    if (realConfigHttp.getStatus !== 200) failures.push('real_config_get_failed');
+    if (realConfigHttp.getBody?.ok !== true) failures.push('real_config_body_not_ok');
+    if (realConfigHttp.getBody?.extensionId !== 'jenn.admin.status') failures.push('real_config_extension_id_unexpected');
+    if (realConfigHttp.getBody?.mode !== 'read-only') failures.push('real_config_mode_unexpected');
+    if (!realConfigHttp.writeStatuses.every((status) => status === 404)) failures.push('real_config_write_method_not_blocked');
+  } else {
+    lines.push('REAL_CONFIG_RUNTIME_ENABLED=no');
+    lines.push('REAL_CONFIG_MOUNTED_ROUTE_COUNT=0');
+    lines.push('REAL_CONFIG_GET_STATUS=not-run');
   }
 
   clearAdminExtensionProcessEnv();

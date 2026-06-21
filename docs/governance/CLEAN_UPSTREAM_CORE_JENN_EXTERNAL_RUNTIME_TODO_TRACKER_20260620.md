@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (52.7 / 54 global milestone units; scope expanded by M53 PASS)
+Progress: [##########] 98% (53.7 / 55 global milestone units; scope expanded by M54 PASS)
 
 Last updated: 2026-06-21
 
-当前里程碑：AdminPanel real-config unlock decision gate（M53 PASS；pre-apply）
+当前里程碑：AdminPanel real-config apply + rollback drill（M54 PASS；backend-readonly）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-21
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M53。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S74 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M54。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S75 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-21
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M53 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M53 合计 54 units。
+- 全局 Progress 覆盖 M0-M54 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M54 合计 55 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -65,6 +65,7 @@ Last updated: 2026-06-21
 - M51 只完成 AdminPanel production-router integration taskbook；定义未来 M52 backend integration gate，不修改 `server.js` / `routes/adminPanelRoutes.js`，不写真实 `config.env`，不启用 frontend runtime。
 - M52 完成 AdminPanel backend production-router integration gate；test-first 接入 `routes/adminPanelRoutes.js`，默认关闭；scoped env harness 证明 `/admin_api/jenn-admin-status/status` GET 可达、写方法 404、rollback 回到 404；不改 `server.js`、不写真实 `config.env`、不启用 frontend runtime。
 - M53 完成 AdminPanel real-config unlock decision gate；选择未来最小候选 `adminpanel-backend-readonly` 三键，但不写真实 `config.env`；frontend runtime、production server smoke、AdminPanel build/dist 仍 deferred。
+- M54 完成 AdminPanel real-config apply + rollback drill；真实 `config.env` 写入三键但不提交；backend-readonly route 在本地 test server GET `200`、写方法 `404`；移除三键 rollback 回到 `404`，恢复后三键 PASS；不启动 production server，不启用 frontend runtime。
 
 计划变更规则：
 
@@ -84,7 +85,7 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M53 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M54 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -142,6 +143,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M53 是当前 Jenn fork 长期维护
 | [x] | M51 | 0 | AdminPanel production-router integration taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M51_ADMINPANEL_PRODUCTION_ROUTER_INTEGRATION_TASKBOOK_20260621.md`；taskbook-only；defined M52 backend integration gate；no `server.js` / `routes/adminPanelRoutes.js` change in M51；no real env/frontend/runtime enablement。 |
 | [x] | M52 | 0 | AdminPanel backend production-router integration gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M52_ADMINPANEL_PRODUCTION_ROUTER_INTEGRATION_RECEIPT_20260621.md`；`modules/adminExtensionRuntimeMount.js` + tests + scoped production-router harness；`routes/adminPanelRoutes.js` default-off integration；GET `200` only under scoped env；rollback `404`; no `server.js` / real env / frontend change。 |
 | [x] | M53 | 0 | AdminPanel real-config unlock decision gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M53_ADMINPANEL_REAL_CONFIG_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`；dry-run selected `adminpanel-backend-readonly` three-key candidate；candidate registers 1 GET route with diagnostics `none`; no real `config.env` edit, no frontend/prod server/build。 |
+| [x] | M54 | 0 | AdminPanel real-config apply + rollback drill | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M54_ADMINPANEL_REAL_CONFIG_APPLY_ROLLBACK_DRILL_RECEIPT_20260621.md`；authorized exact three-key real `config.env` apply；M52/M53 post-apply PASS；M54 rollback remove -> `404`, restore -> `200`; config ignored/not committed；frontend/prod server/build deferred。 |
 
 全局进度明细：
 
@@ -175,7 +177,8 @@ M50 PASS：1.0 / 1 unit（AdminPanel runtime-on local smoke；scoped process.env
 M51 PASS：1.0 / 1 unit（AdminPanel production-router integration taskbook；docs-only）
 M52 PASS：1.0 / 1 unit（AdminPanel backend production-router integration gate；default-off）
 M53 PASS：1.0 / 1 unit（AdminPanel real-config unlock decision gate；pre-apply dry-run）
-Global Progress：52.7 / 54 = 97.59%，顶部显示为 98%
+M54 PASS：1.0 / 1 unit（AdminPanel real-config apply + rollback drill；backend-readonly）
+Global Progress：53.7 / 55 = 97.64%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -258,6 +261,7 @@ Global Progress：52.7 / 54 = 97.59%，顶部显示为 98%
 | [x] | S72 | AdminPanel / M51 | 0 | AdminPanel production-router integration taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M51_ADMINPANEL_PRODUCTION_ROUTER_INTEGRATION_TASKBOOK_20260621.md`；docs-only；future M52 gate defined；production router/env/frontend unchanged。 |
 | [x] | S73 | AdminPanel / M52 | 0 | AdminPanel backend production-router integration gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M52_ADMINPANEL_PRODUCTION_ROUTER_INTEGRATION_RECEIPT_20260621.md`；test-first helper/tests/harness PASS；production router default-off backend mount integrated via `routes/adminPanelRoutes.js`; scoped env GET `200`; rollback `404`; `server.js` / real config / frontend unchanged。 |
 | [x] | S74 | AdminPanel / M53 | 0 | AdminPanel real-config unlock decision gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M53_ADMINPANEL_REAL_CONFIG_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`；pre-apply dry-run PASS；selected backend readonly three-key candidate；no real env edit；frontend/prod server/build deferred。 |
+| [x] | S75 | AdminPanel / M54 | 0 | AdminPanel real-config apply + rollback drill | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M54_ADMINPANEL_REAL_CONFIG_APPLY_ROLLBACK_DRILL_RECEIPT_20260621.md`；real config three-key apply PASS；M48-M53 post-apply compatible validation PASS；rollback remove `404`, restore `200`; config ignored/not committed。 |
 
 原始验收拆分说明：
 
@@ -297,7 +301,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M53 完成规则：
+M19-M54 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -328,7 +332,8 @@ M49：AdminPanel backend registry shadow rollback drill PASS；scoped env off/on
 M50：AdminPanel runtime-on local smoke PASS；临时 scoped process.env 触发本地 `/admin_api` shaped route；恢复 process.env 后回到 default-off；真实 config/env/frontend/production router 全部未启用。
 M51：AdminPanel production-router integration taskbook PASS；只定义未来 M52 backend integration gate；未修改 production router，未写真实 env，frontend route/nav 仍 deferred。
 M52：AdminPanel backend production-router integration gate PASS；`routes/adminPanelRoutes.js` 接入 default-off runtime mount helper；scoped env 触发 reviewed read-only route；rollback/unset 回到 default-off；`server.js`、真实 `config.env`、frontend route/nav 仍未启用。
-M53：AdminPanel real-config unlock decision gate PASS；选择 backend readonly 三键候选；真实 `config.env` 未写；后续 M54 apply gate 必须有当前轮明确授权。
+M53：AdminPanel real-config unlock decision gate PASS；选择 backend readonly 三键候选；真实 `config.env` 未写；M54 later applied it after current-turn authorization。
+M54：AdminPanel real-config apply + rollback drill PASS；真实 `config.env` 写入 backend-readonly 三键，M48-M53 post-apply compatible validation PASS；rollback remove/restore drill PASS；frontend/prod server/build 仍未启用。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -346,7 +351,7 @@ M53：AdminPanel real-config unlock decision gate PASS；选择 backend readonly
 | Upstream tracking / PR gate | M8 / S23-S25；M28 / S49；M30 / S51；M38 / S59 | readiness packet、rebase workflow、local closeout evidence、人工授权后才 open upstream PR | PARTIAL / DEFERRED / LOCAL_CLOSEOUT_PASS；当前仍跳过 upstream PR。 |
 | Agent 分域验收 | M9-M18 / S29-S39 | taskbook、source scan、candidate gate、copy-first、shadow、resolver、default-off wiring、env-on rollback、final decision | M9-M18 PASS；Agent domain closed for current route。 |
 | LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | M19-M20 PASS；existing root handled by PLAN_CHANGE；private content not read。 |
-| AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52；M47-M53 / S68-S74 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off backend registry、shadow/rollback、production-router backend integration、real-config unlock decision | M21-M22 PASS；M31 persistent package PASS；M47-M53 backend route + decision gates PASS；real env apply/frontend/production server still deferred。 |
+| AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52；M47-M54 / S68-S75 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off backend registry、shadow/rollback、production-router backend integration、real-config unlock/apply drill | M21-M22 PASS；M31 persistent package PASS；M47-M54 backend route + real-config gates PASS；frontend/production server still deferred。 |
 | AI Image 分域验收 | M23-M24 / S44-S45；M32 / S53 | generic adapter taskbook、provider-off fixture、no-provider shadow validation、persistent provider-adapter package gate | M23-M24 PASS；M32 persistent package PASS；no-provider only；不写 token，不发 provider call，不生成真实图片，不注册 runtime。 |
 | Codex/Memory 分域验收 | M25 / S46；M33 / S54 | bridge taskbook、manifest/path-only scan、no-live-write validation design、persistent bridge package gate | M25 PASS；M33 persistent package PASS；不读取 private memory，不 bridge 外写，不启用 runtime。 |
 | PhotoStudio 分域验收 | M26 / S47；M34 / S55 | taskbook、data exclusion、copy-first gates、no-auto-write rules、persistent source package gate | M26 PASS；M34 persistent package PASS；项目数据留 LocalState/private，不启用 runtime。 |
@@ -376,6 +381,7 @@ M53：AdminPanel real-config unlock decision gate PASS；选择 backend readonly
 | AdminPanel production-router integration taskbook | M51 / S72 | define future backend production-router integration gate without code changes | PASS；M52 gate defined；`server.js` / `routes/adminPanelRoutes.js` unchanged；frontend deferred。 |
 | AdminPanel backend production-router integration gate | M52 / S73 | test-first default-off backend integration through `routes/adminPanelRoutes.js` with scoped-env harness | PASS；scoped env GET `200`; write methods `404`; rollback `404`; `server.js` / real config / frontend unchanged。 |
 | AdminPanel real-config unlock decision gate | M53 / S74 | select smallest real-config candidate without writing `config.env` | PASS；selected `adminpanel-backend-readonly`; candidate route count `1`; frontend/prod server/build deferred。 |
+| AdminPanel real-config apply + rollback drill | M54 / S75 | apply exact three-key backend-readonly config and validate rollback/restore | PASS；real config route GET `200`; remove keys `404`; restore `200`; frontend/prod server/build deferred。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -460,8 +466,9 @@ M53：AdminPanel real-config unlock decision gate PASS；选择 backend readonly
 | Q32 | M50/S71 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M50_ADMINPANEL_RUNTIME_ON_LOCAL_SMOKE_SCOPED_ENV_RECEIPT_20260621.md`；scoped process.env local smoke PASS；stop before real runtime/env/frontend enablement。 |
 | Q33 | M51/S72 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M51_ADMINPANEL_PRODUCTION_ROUTER_INTEGRATION_TASKBOOK_20260621.md`；production-router integration taskbook ready；M52 implementation gate later completed by Q34。 |
 | Q34 | M52/S73 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M52_ADMINPANEL_PRODUCTION_ROUTER_INTEGRATION_RECEIPT_20260621.md`；backend production-router integration default-off PASS；next decision must choose real config unlock, frontend route/nav taskbook, production smoke, or stop。 |
-| Q35 | M53/S74 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M53_ADMINPANEL_REAL_CONFIG_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`；selected backend readonly real-config candidate；future M54 apply gate requires explicit real `config.env` write authorization。 |
-| Q36 | M54/S75 | TODO | AdminPanel | AdminPanel real-config apply + M52/M53 rerun；must be exact three-key write only after explicit current-turn authorization；frontend/prod server/build remain deferred。 |
+| Q35 | M53/S74 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M53_ADMINPANEL_REAL_CONFIG_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`；selected backend readonly real-config candidate；M54 later applied exact three-key config after explicit authorization。 |
+| Q36 | M54/S75 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M54_ADMINPANEL_REAL_CONFIG_APPLY_ROLLBACK_DRILL_RECEIPT_20260621.md`；exact three-key real config apply PASS；rollback drill PASS；frontend/prod server/build remain deferred。 |
+| Q37 | M55/S76 | TODO | AdminPanel | AdminPanel production-server smoke taskbook or frontend route/nav taskbook decision；must not start production server or enable frontend until a separate taskbook/gate is written。 |
 
 ### 5.5 M19-M54 Specific Step Plan
 
@@ -626,11 +633,12 @@ M53：AdminPanel real-config unlock decision gate PASS；选择 backend readonly
 | M53-02 | PASS | 读取真实 config key presence/hash，并允许既有 AgentOverrides only 状态 | `REAL_ENV_ADMIN_KEYS_SET_COUNT=0`; `REAL_ENV_ALLOWED_AGENT_RUNTIME_KEYS_SET_COUNT=2`; `CONFIG_ENV_HASH_UNCHANGED=yes` | 不把 AgentOverrides 已授权状态误判为污染 |
 | M53-03 | PASS | 评估 AdminPanel backend readonly 三键候选 | candidate route count `1`; mount `/jenn-admin-status`; method `GET`; diagnostics `none` | 不选择 frontend/prod server/build |
 | M53-04 | PASS | 写 M53 receipt 并更新 tracker | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M53_ADMINPANEL_REAL_CONFIG_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`; Progress `52.7 / 54` | 不打开 upstream PR |
-| M54-01 | TODO | 获取当前轮明确授权后，准备 exact three-key real `config.env` apply | future M54 receipt preflight | 未授权前不写真实 `config.env` |
-| M54-02 | TODO | 只写入 `VCP_ADMIN_EXTENSION_ALLOWED_ROOTS` / `VCP_ADMIN_EXTENSION_DIRS` / `VCP_ADMIN_EXTENSION_ALLOWLIST` 三键 | line-count/hash evidence | 不改 Agent/provider/bridge/LocalState/private keys |
-| M54-03 | TODO | rerun M52/M53 post-apply validation | M52 PASS；M53 post-apply PASS | 不启动 production server |
-| M54-04 | TODO | rollback drill：移除三键确认 M52/M53 BLOCK 或 default-off，再恢复三键确认 PASS | rollback receipt | 不触碰 AgentOverrides keys |
-| M54-05 | TODO | 写 M54 receipt 并更新 tracker | future receipt + Progress update | 不启用 frontend runtime，不跑 AdminPanel build |
+| M54-01 | PASS | 获取当前轮明确授权后，准备 exact three-key real `config.env` apply | user authorized; preflight M53 PASS | 未授权前不写真实 `config.env` |
+| M54-02 | PASS | 只写入 `VCP_ADMIN_EXTENSION_ALLOWED_ROOTS` / `VCP_ADMIN_EXTENSION_DIRS` / `VCP_ADMIN_EXTENSION_ALLOWLIST` 三键 | hash `6072970...` -> `908cf54...`; key count `0` -> `3` | 不改 Agent/provider/bridge/LocalState/private keys |
+| M54-03 | PASS | rerun M48-M53 post-apply validation | M48/M49/M50/M52/M53 PASS；tests `8 pass / 0 fail` | 不启动 production server |
+| M54-04 | PASS | rollback drill：移除三键确认 default-off，再恢复三键确认 PASS | remove GET `404`; restore GET `200`; final hash restored `908cf54...` | 不触碰 AgentOverrides keys |
+| M54-05 | PASS | 写 M54 receipt 并更新 tracker | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M54_ADMINPANEL_REAL_CONFIG_APPLY_ROLLBACK_DRILL_RECEIPT_20260621.md`; Progress `53.7 / 55` | 不启用 frontend runtime，不跑 AdminPanel build |
+| M55-01 | TODO | 决定下一 AdminPanel gate：production-server smoke taskbook 或 frontend route/nav taskbook | future M55 taskbook | 不直接启动 production server，不直接启用 frontend |
 
 ## 6. 领域路线概览
 
@@ -640,12 +648,12 @@ M53：AdminPanel real-config unlock decision gate PASS；选择 backend readonly
 | --- | --- | --- | --- |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
-| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；real env apply / frontend runtime route/nav / production server smoke remain deferred。 |
+| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；frontend runtime route/nav / production server smoke remain deferred。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、adapter registration deferred。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 

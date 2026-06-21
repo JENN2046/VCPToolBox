@@ -257,19 +257,25 @@ async function main() {
   const externalPackageFiles = listFiles(ADMIN_EXTENSION_ROOT);
   const externalBefore = snapshotHashes(externalPackageFiles);
   let scopedProcessEnvApplied = false;
+  const realAdminKeysSetCount = REAL_ENV_KEYS.filter((key) => isSet(configBefore.env, key)).length;
+  const gateMode = realAdminKeysSetCount === 3
+    ? 'post-apply-compatible-validation'
+    : 'pre-apply-scoped-validation';
 
   lines.push('M50_ADMINPANEL_RUNTIME_ON_LOCAL_SMOKE_SCOPED_ENV');
   lines.push(`CONFIG_ENV_EXISTS=${configBefore.exists ? 'yes' : 'no'}`);
   lines.push('CONFIG_ENV_VALUES_PRINTED=no');
   lines.push(`CONFIG_ENV_SHA256=${configBefore.hash}`);
+  lines.push(`GATE_MODE=${gateMode}`);
+  lines.push(`REAL_ENV_ADMIN_KEYS_SET_COUNT=${realAdminKeysSetCount}`);
   for (const key of REAL_ENV_KEYS) {
     const realConfigSet = isSet(configBefore.env, key);
     const initialProcessEnvSet = isSet(processEnvBefore, key);
     lines.push(`REAL_ENV_${key}_SET=${realConfigSet ? 'yes' : 'no'}`);
     lines.push(`INITIAL_PROCESS_ENV_${key}_SET=${initialProcessEnvSet ? 'yes' : 'no'}`);
-    if (realConfigSet) failures.push(`${key.toLowerCase()}_set_in_real_config`);
     if (initialProcessEnvSet) failures.push(`${key.toLowerCase()}_set_in_initial_process_env`);
   }
+  if (![0, 3].includes(realAdminKeysSetCount)) failures.push('real_admin_extension_keys_partial');
 
   const defaultOffPlan = buildPlanFromProcessEnv();
   const defaultOffHttp = await runHttpScenario(defaultOffPlan);

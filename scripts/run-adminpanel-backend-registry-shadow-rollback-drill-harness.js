@@ -277,15 +277,21 @@ async function main() {
   const coreBefore = snapshotHashes(CORE_HASH_TARGETS);
   const externalPackageFiles = listFiles(ADMIN_EXTENSION_ROOT);
   const externalBefore = snapshotHashes(externalPackageFiles);
+  const realAdminKeysSetCount = REAL_ENV_KEYS.filter((key) => isSet(configBefore.env, key)).length;
+  const gateMode = realAdminKeysSetCount === 3
+    ? 'post-apply-compatible-validation'
+    : 'pre-apply-shadow-validation';
 
   lines.push('M49_ADMINPANEL_BACKEND_REGISTRY_SHADOW_ROLLBACK_DRILL');
   lines.push(`CONFIG_ENV_EXISTS=${configBefore.exists ? 'yes' : 'no'}`);
   lines.push('CONFIG_ENV_VALUES_PRINTED=no');
   lines.push(`CONFIG_ENV_SHA256=${configBefore.hash}`);
+  lines.push(`GATE_MODE=${gateMode}`);
+  lines.push(`REAL_ENV_ADMIN_KEYS_SET_COUNT=${realAdminKeysSetCount}`);
   for (const key of REAL_ENV_KEYS) {
     lines.push(`REAL_ENV_${key}_SET=${isSet(configBefore.env, key) ? 'yes' : 'no'}`);
-    if (isSet(configBefore.env, key)) failures.push(`${key.toLowerCase()}_set_in_real_config`);
   }
+  if (![0, 3].includes(realAdminKeysSetCount)) failures.push('real_admin_extension_keys_partial');
 
   const scopedEnv = {
     [VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV]: EXTERNAL_ROOT,
