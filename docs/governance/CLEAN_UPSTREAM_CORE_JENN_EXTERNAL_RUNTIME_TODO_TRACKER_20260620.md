@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [#########-] 92% (27.7 / 30 global milestone units)
+Progress: [##########] 96% (28.7 / 30 global milestone units)
 
 Last updated: 2026-06-21
 
-当前里程碑：Jenn fork 内长期维护收口（M28 upstream PR decision recorded as deferred；next M29 Jenn fork maintenance final closeout；M8/S25 deferred）
+当前里程碑：Jenn fork 内长期维护收口（M29 final closeout PASS；Jenn fork maintenance route closed with M8/S25 and M28 upstream PR gates deferred）
 
 状态来源：
 
@@ -20,7 +20,7 @@ Last updated: 2026-06-21
 当前采用双层结构：
 
 - 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M29。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 已完成工作和 S49-S50 计划/延期项。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -92,7 +92,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 | [x] | M26 | 0 | PhotoStudio externalization planning | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md`；taskbook-only；定义 `VCP_PHOTOSTUDIO_PACKAGE_DIRS`、source/private lane split、candidate gate、no-auto-write validation；未读取/复制项目数据，未外部写。 |
 | [x] | M27 | 0 | Governance migration ledger finalization | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`；汇总 M0-M26 evidence、checksums、deferred/open risks、rollback map；docs-only，不改变 runtime。 |
 | [ ] | M28 | 0 | Upstream PR decision revisit | DEFERRED | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；用户已决定先跳过打开 `lioensky/VCPToolBox` upstream PR；没有当前轮明确授权则继续 deferred；不计入 Progress。 |
-| [ ] | M29 | 0 | Jenn fork maintenance route final closeout | TODO | 所有 active domain gates PASS 或明确 DEFERRED/BLOCK 后执行；产出最终状态、风险、未做项、下一周期建议。 |
+| [x] | M29 | 0 | Jenn fork maintenance route final closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`；active Jenn fork maintenance domains PASS；M8/S25 与 M28 upstream PR gates explicitly DEFERRED；全局 Progress 非 100%。 |
 
 全局进度明细：
 
@@ -100,8 +100,9 @@ M0-M8 是原始 acceptance plan 阶段；M9-M29 是当前 Jenn fork 长期维护
 M0-M7 PASS：8.0 / 8 units
 M8 PARTIAL：0.7 / 1 unit（S23+S24 = 7 / 10；S25 upstream PR 仍 DEFERRED）
 M9-M27 PASS：19.0 / 19 units
-M28-M29 TODO / DEFERRED：0 / 2 units
-Global Progress：27.7 / 30 = 92.3%，四舍五入显示为 92%
+M28 DEFERRED：0 / 1 unit
+M29 PASS：1.0 / 1 unit
+Global Progress：28.7 / 30 = 95.7%，四舍五入显示为 96%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -159,7 +160,7 @@ Global Progress：27.7 / 30 = 92.3%，四舍五入显示为 92%
 | [x] | S47 | PhotoStudio / M26 | 0 | PhotoStudio externalization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md`；data exclusion、copy-first gates、no-auto-write plan；不读取项目私有数据。 |
 | [x] | S48 | Governance / M27 | 0 | Migration ledger finalization | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`；evidence index、checksums、deferred/BLOCK、rollback map；docs-only。 |
 | [ ] | S49 | Upstream / M28 | 0 | Upstream PR decision revisit | DEFERRED | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；需要用户当前轮明确授权，否则保持 deferred；本轮未打开 upstream PR。 |
-| [ ] | S50 | Closeout / M29 | 0 | Jenn fork maintenance final closeout | TODO | 总结所有 active/deferred/block 状态，给下一周期路线。 |
+| [x] | S50 | Closeout / M29 | 0 | Jenn fork maintenance final closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`；active/deferred/block 状态、最终风险、rollback、下一周期路线已记录。 |
 
 原始验收拆分说明：
 
@@ -229,7 +230,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | Codex/Memory 分域验收 | M25 / S46 | bridge taskbook、manifest/path-only scan、no-live-write validation design | M25 PASS；不读取 private memory，不 bridge 外写。 |
 | PhotoStudio 分域验收 | M26 / S47 | taskbook、data exclusion、copy-first gates、no-auto-write rules | M26 PASS；项目数据留 LocalState/private。 |
 | Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | M27 PASS；docs-only。 |
-| Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | TODO；完成前不得声称全路线收口。 |
+| Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -290,7 +291,7 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | Q8 | M26/S47 | PASS | PhotoStudio | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M26_PHOTOSTUDIO_EXTERNALIZATION_TASKBOOK_20260621.md`。 |
 | Q9 | M27/S48 | PASS | Governance | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M27_GOVERNANCE_MIGRATION_LEDGER_FINALIZATION_20260621.md`。 |
 | Q10 | M28/S49 | DEFERRED | Upstream PR | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；仅用户当前轮明确授权才恢复。 |
-| Q11 | M29/S50 | TODO | Closeout | Jenn fork maintenance route final closeout。 |
+| Q11 | M29/S50 | PASS | Closeout | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`。 |
 
 ### 5.5 M19-M29 Specific Step Plan
 
@@ -336,9 +337,9 @@ M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fo
 | M28-01 | DEFERRED | 保持 upstream PR decision deferred，除非用户当前轮明确授权 | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md` | 不自动打开 upstream PR |
 | M28-02 | DEFERRED | 若授权恢复，先做 target repo/source branch/base branch/action preflight | not run; no current-turn upstream PR authorization | 不隐含 remote write |
 | M28-03 | DEFERRED | 若授权明确，再准备/open PR 并记录 rollback/close path | skipped; upstream PR not opened | 不混入 Jenn runtime overlay |
-| M29-01 | TODO | 审计所有 active/deferred/BLOCK 状态 | final status matrix | 不隐藏风险 |
-| M29-02 | TODO | 写最终风险、rollback、未做项、下一周期建议 | M29 closeout doc | 不自动执行 stub/untrack/remove |
-| M29-03 | TODO | 更新 tracker S50 和顶部 current milestone | tracker diff | 不改变全局 milestone 口径；M8 恢复并完成时只把 M8 从 0.7 unit 更新为 1 unit |
+| M29-01 | PASS | 审计所有 active/deferred/BLOCK 状态 | M29 final status matrix | 不隐藏风险 |
+| M29-02 | PASS | 写最终风险、rollback、未做项、下一周期建议 | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md` | 不自动执行 stub/untrack/remove |
+| M29-03 | PASS | 更新 tracker S50 和顶部 current milestone | M29/S50 PASS；Progress `28.7 / 30`；M8/M28 upstream deferred remains non-counting | 不改变全局 milestone 口径；M8 恢复并完成时只把 M8 从 0.7 unit 更新为 1 unit |
 
 ## 6. 领域路线概览
 
