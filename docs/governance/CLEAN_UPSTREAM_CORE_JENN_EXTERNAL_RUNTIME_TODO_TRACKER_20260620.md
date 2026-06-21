@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 96% (29.7 / 31 global milestone units)
+Progress: [##########] 96% (30.7 / 32 global milestone units)
 
 Last updated: 2026-06-21
 
-当前里程碑：本地完整实现与稳定运转验收窗口（M30 PASS；window defined；full-local/stability execution still not passed；M8/S25 and M28 upstream PR gates remain deferred）
+当前里程碑：AdminPanel persistent package gate（M31 PASS；external AdminExtensions package skeleton validated; runtime registration still deferred）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-21
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M30。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S51 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M31。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S52 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-21
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M30 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M30 合计 31 units。
+- 全局 Progress 覆盖 M0-M31 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M31 合计 32 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -42,6 +42,7 @@ Last updated: 2026-06-21
 - 不能因为“代码写了”就标完成；必须有验证或 review 证据。
 - Upstream PR gate 已收紧：只有整个计划在 Jenn fork/local 路线中完成本地实现，并产生稳定运转证据后，才允许重新考虑 M8/S25 或 M28；当前轮或未来轮的泛化 `自动推进` / `继续` 不足以恢复 upstream PR。
 - M30 只定义本地完整实现与稳定运转验收窗口；不代表 full-local/stability gate 已执行或通过。
+- M31 只完成 AdminPanel persistent package gate；不代表 AdminPanel runtime registration、production build、deploy、stable-operation window 或 upstream-ready。
 
 计划变更规则：
 
@@ -61,7 +62,7 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M30 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M31 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -96,6 +97,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M30 是当前 Jenn fork 长期维护
 | [ ] | M28 | 0 | Upstream PR decision revisit | DEFERRED | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；用户已决定先跳过打开 `lioensky/VCPToolBox` upstream PR；M30 只定义 full-local/stability window，尚未执行稳定窗口；不计入 Progress。 |
 | [x] | M29 | 0 | Jenn fork maintenance route final closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`；active Jenn fork maintenance domains PASS；M8/S25 与 M28 upstream PR gates explicitly DEFERRED；全局 Progress 非 100%。 |
 | [x] | M30 | 0 | Full local implementation + stable-operation window definition | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M30_LOCAL_IMPLEMENTATION_STABILITY_WINDOW_TASKBOOK_20260621.md`；定义 7-day / 3-cycle local stability window、domain mini-gates、reset rules、receipt template；docs-only，不执行窗口、不启用 runtime。 |
+| [x] | M31 | 0 | AdminPanel persistent package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M31_ADMINPANEL_PERSISTENT_PACKAGE_GATE_RECEIPT_20260621.md`；external commit `eff66b2979e319494e49bbeec9ccb652afcd57ee`；`AdminExtensions/JennAdminStatus` persistent skeleton；target risk `0`；checksum manifest `a2d0afb04ea17416c982f07b2e0f4d920ddd24929bfa406b3864825a58f1d5cf`；runtime registration still off。 |
 
 全局进度明细：
 
@@ -106,7 +108,8 @@ M9-M27 PASS：19.0 / 19 units
 M28 DEFERRED：0 / 1 unit
 M29 PASS：1.0 / 1 unit
 M30 PASS：1.0 / 1 unit
-Global Progress：29.7 / 31 = 95.8%，四舍五入显示为 96%
+M31 PASS：1.0 / 1 unit
+Global Progress：30.7 / 32 = 95.9%，四舍五入显示为 96%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -166,6 +169,7 @@ Global Progress：29.7 / 31 = 95.8%，四舍五入显示为 96%
 | [ ] | S49 | Upstream / M28 | 0 | Upstream PR decision revisit | DEFERRED | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；需要用户当前轮明确授权，否则保持 deferred；本轮未打开 upstream PR。 |
 | [x] | S50 | Closeout / M29 | 0 | Jenn fork maintenance final closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`；active/deferred/block 状态、最终风险、rollback、下一周期路线已记录。 |
 | [x] | S51 | Stability / M30 | 0 | Full local implementation + stable-operation window definition | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M30_LOCAL_IMPLEMENTATION_STABILITY_WINDOW_TASKBOOK_20260621.md`；定义 7 calendar days / 3 validation cycles、domain mini-gates、reset rules、receipt template；不执行窗口、不启用 runtime。 |
+| [x] | S52 | AdminPanel / M31 | 0 | AdminPanel persistent package gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M31_ADMINPANEL_PERSISTENT_PACKAGE_GATE_RECEIPT_20260621.md`；external package commit `eff66b2979e319494e49bbeec9ccb652afcd57ee`；`ADMINPANEL_PERSISTENT_PACKAGE_GATE_PASS`；不注册 route、不跑 AdminPanel build、不启用 runtime。 |
 
 原始验收拆分说明：
 
@@ -205,7 +209,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M30 完成规则：
+M19-M31 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -214,6 +218,7 @@ M27：只汇总 migration ledger、receipts、checksums、deferred/BLOCK、rollb
 M28：upstream PR decision revisit 默认 DEFERRED；没有用户当前轮明确授权，不打开 PR。
 M29：所有 active 领域 PASS 或明确 DEFERRED/BLOCK 后，才能做 Jenn fork maintenance final closeout。
 M30：只定义 full-local implementation + stable-operation window；执行 7-day 稳定窗口和 deferred domain 实现另走后续 receipts。
+M31：AdminPanel persistent package gate PASS；仅创建/验证 external AdminExtensions skeleton，不注册 runtime route，不跑 production build。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -231,13 +236,14 @@ M30：只定义 full-local implementation + stable-operation window；执行 7-d
 | Upstream tracking / PR gate | M8 / S23-S25；M28 / S49；M30 / S51 | readiness packet、rebase workflow、full-local/stability window、人工授权后才 open upstream PR | PARTIAL / DEFERRED / WINDOW_DEFINED；当前跳过 upstream PR。 |
 | Agent 分域验收 | M9-M18 / S29-S39 | taskbook、source scan、candidate gate、copy-first、shadow、resolver、default-off wiring、env-on rollback、final decision | M9-M18 PASS；Agent domain closed for current route。 |
 | LocalState 分域验收 | M19-M20 / S40-S41 | private-by-default taskbook、paths-only skeleton/gate、`.agent_board/**` 单独 gate | M19-M20 PASS；existing root handled by PLAN_CHANGE；private content not read。 |
-| AdminPanel 分域验收 | M21-M22 / S42-S43 | extension manifest taskbook、fixture/build shadow、default-off route/API gate | M21-M22 PASS；临时 fixture validation only；不注册真实 route，不 production deploy。 |
+| AdminPanel 分域验收 | M21-M22 / S42-S43；M31 / S52 | extension manifest taskbook、fixture/build shadow、persistent package gate、default-off route/API gate | M21-M22 PASS；M31 persistent package PASS；不注册真实 route，不 production deploy。 |
 | AI Image 分域验收 | M23-M24 / S44-S45 | generic adapter taskbook、provider-off fixture、no-provider shadow validation | M23-M24 PASS；no-provider only；不写 token，不发 provider call，不生成真实图片。 |
 | Codex/Memory 分域验收 | M25 / S46 | bridge taskbook、manifest/path-only scan、no-live-write validation design | M25 PASS；不读取 private memory，不 bridge 外写。 |
 | PhotoStudio 分域验收 | M26 / S47 | taskbook、data exclusion、copy-first gates、no-auto-write rules | M26 PASS；项目数据留 LocalState/private。 |
 | Governance ledger | M27 / S48 | receipts/checksums/deferred/BLOCK/rollback 总账 | M27 PASS；docs-only。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51 | 定义 full-local implementation、7-day stable-operation window、domain mini-gates、reset rules、receipt template | M30 PASS；window defined only；full-local/stability execution not passed。 |
+| AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -300,8 +306,9 @@ M30：只定义 full-local implementation + stable-operation window；执行 7-d
 | Q10 | M28/S49 | DEFERRED | Upstream PR | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M28_UPSTREAM_PR_DECISION_DEFERRED_20260621.md`；仅在全计划本地实现、稳定运转证据齐备、且用户当前轮明确 upstream PR 授权后才恢复。 |
 | Q11 | M29/S50 | PASS | Closeout | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M29_JENN_FORK_MAINTENANCE_FINAL_CLOSEOUT_20260621.md`。 |
 | Q12 | M30/S51 | PASS | Stability Gate | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M30_LOCAL_IMPLEMENTATION_STABILITY_WINDOW_TASKBOOK_20260621.md`；定义完成，执行未开始。 |
+| Q13 | M31/S52 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M31_ADMINPANEL_PERSISTENT_PACKAGE_GATE_RECEIPT_20260621.md`；persistent package gate complete；runtime registration deferred。 |
 
-### 5.5 M19-M30 Specific Step Plan
+### 5.5 M19-M31 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -352,6 +359,10 @@ M30：只定义 full-local implementation + stable-operation window；执行 7-d
 | M30-02 | PASS | 写 full-local implementation + stable-operation window taskbook | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M30_LOCAL_IMPLEMENTATION_STABILITY_WINDOW_TASKBOOK_20260621.md` | 不执行窗口、不启用 runtime |
 | M30-03 | PASS | 定义 7-day / 3-cycle local window、domain mini-gates、reset rules、receipt template | M30 sections 3-8 | 不用 discovery success 代替 runtime/stability proof |
 | M30-04 | PASS | 更新 tracker：M30/S51 PASS，M8/M28 仍 deferred | Progress `29.7 / 31`；M30 window defined only | 不改变 M28 为 PASS |
+| M31-01 | PASS | 确认 M21/M22/M30 gate 和 external package worktree clean | external base `bc287826d47e89204cba536c75e9374fd6db87ab` | 不读取 LocalState/private/`.agent_board/**` |
+| M31-02 | PASS | 创建 persistent `AdminExtensions/JennAdminStatus` skeleton | external commit `eff66b2979e319494e49bbeec9ccb652afcd57ee` | 不注册 AdminPanel runtime route |
+| M31-03 | PASS | 重新生成 source/package checksum 并运行 persistent package harness | `ADMINPANEL_PERSISTENT_PACKAGE_GATE_PASS`; checksum manifest `a2d0afb04ea17416c982f07b2e0f4d920ddd24929bfa406b3864825a58f1d5cf` | 不跑 AdminPanel build，不修改 `AdminPanel-Vue/dist/**` |
+| M31-04 | PASS | 写 M31 external/core receipts 并更新 tracker | M31 receipt + S52 PASS | 不把 package gate 当 runtime/stability proof |
 
 ## 6. 领域路线概览
 
@@ -361,7 +372,7 @@ M30：只定义 full-local implementation + stable-operation window；执行 7-d
 | --- | --- | --- | --- |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | 正式路线 M9-M18 已 closeout；保留 core fallback，不自动 stub/untrack/remove；真实 `.env` 仍未修改。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
-| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | 设计 extension manifest 和 build validation。 |
+| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；future runtime registration remains separate and default-off。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | 定义 adapter interface，不把 trial/provider 常量写进 core。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | 定义 manifest-only validation，不能读取私有 memory。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | 定义 no-auto-write 和 data exclusion rules。 |
@@ -386,6 +397,7 @@ M30：只定义 full-local implementation + stable-operation window；执行 7-d
 | Phase 边界清楚 | Phase 2 copy-first/checksum/denylist 不混进 PR #272 | PASS |
 | 没有 secret/runtime 文件 | diff 不包含 env、config、state、cache、log、image、auth material | PASS for PR #272 |
 | 验收窗口定义 | M30 taskbook 定义 full-local implementation、7-day / 3-cycle stable-operation window、domain mini-gates、reset rules、receipt template | PASS |
+| AdminPanel persistent package gate | M31 receipt + external commit `eff66b2979e319494e49bbeec9ccb652afcd57ee`；package risk `0`；runtime registration reference count `0` | PASS |
 | 全计划本地实现 | 所有拟纳入 upstream 的本地计划项必须有实现、receipt、validation、rollback evidence；deferred 项必须明确 out-of-scope | DEFERRED |
 | 稳定运转证据 | 需要约定稳定运行窗口或等价验证证据；不能只用 taskbook、fixture shadow 或 discovery success 代替 runtime stability | DEFERRED |
 | Upstream 目标决策 | M8 workflow / rebase gate ready；latest upstream/main `f8d45479`；按用户决定先跳过打开 upstream PR，直到 full-local/stability gate PASS | DEFERRED |
