@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 97% (47.7 / 49 global milestone units; scope expanded by M48 PASS)
+Progress: [##########] 97% (48.7 / 50 global milestone units; scope expanded by M49 PASS)
 
 Last updated: 2026-06-21
 
-当前里程碑：AdminPanel backend default-off registry gate（M48 PASS；scoped local proof）
+当前里程碑：AdminPanel backend registry shadow rollback drill（M49 PASS；scoped env only）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-21
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M48。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S69 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M49。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S70 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-21
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M48 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M48 合计 49 units。
+- 全局 Progress 覆盖 M0-M49 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M49 合计 50 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -60,6 +60,7 @@ Last updated: 2026-06-21
 - M46 只完成 next runtime lane unlock decision gate；结论 `NEXT_AUTO_UNLOCKABLE_LANE=none`，推荐下一步是 M47 AdminPanel runtime registration taskbook；不启用 runtime，不修改真实 `config.env`。
 - M47 只完成 AdminPanel default-off runtime registration taskbook；定义未来 M48 backend read-only registry gate；不写 env、不改 AdminPanel runtime、不启用 runtime。
 - M48 完成 AdminPanel backend default-off registry implementation gate；只在 scoped local test server 验证 read-only GET route；未接入生产 router，未写真实 `config.env`，frontend runtime 仍 deferred。
+- M49 完成 AdminPanel backend registry shadow validation + rollback drill；只用 scoped env 序列验证 off/on/rollback/reapply，未写真实 `config.env`，未接生产 router。
 
 计划变更规则：
 
@@ -79,7 +80,7 @@ Last updated: 2026-06-21
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M48 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M49 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -132,6 +133,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M48 是当前 Jenn fork 长期维护
 | [x] | M46 | 0 | Next runtime lane unlock decision gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M46_NEXT_RUNTIME_LANE_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`；`NEXT_AUTO_UNLOCKABLE_LANE=none`; Agent additive BLOCK due duplicate core ids；AdminPanel/AI Image/Codex-Memory/PhotoStudio DEFERRED；LocalState BLOCK；upstream PR DEFERRED；stop position reached。 |
 | [x] | M47 | 0 | AdminPanel default-off runtime registration taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M47_ADMINPANEL_DEFAULT_OFF_RUNTIME_REGISTRATION_TASKBOOK_20260621.md`；taskbook-only；defines future M48 backend read-only default-off registry gate；frontend runtime registration deferred；no env write, no runtime code change, no AdminPanel build。 |
 | [x] | M48 | 0 | AdminPanel backend default-off registry gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M48_ADMINPANEL_BACKEND_DEFAULT_OFF_REGISTRY_GATE_RECEIPT_20260621.md`；`modules/adminExtensionRegistry.js` + tests + harness；default-off/dirs-only/allowlist-missing no registration；scoped env-on local GET `200`; write methods `404`; rollback `404`; no real env write。 |
+| [x] | M49 | 0 | AdminPanel backend registry shadow rollback drill | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M49_ADMINPANEL_BACKEND_REGISTRY_SHADOW_ROLLBACK_DRILL_RECEIPT_20260621.md`；scoped sequence off -> on -> rollback off -> reapply on -> partial env blocked；snapshot stable；GET `404/200/404/200/404`; no real env write。 |
 
 全局进度明细：
 
@@ -160,7 +162,8 @@ M45 PASS：1.0 / 1 unit（AgentOverrides runtime-on aggregate review）
 M46 PASS：1.0 / 1 unit（next runtime lane unlock decision gate；no auto-unlockable lane）
 M47 PASS：1.0 / 1 unit（AdminPanel default-off runtime registration taskbook；docs-only）
 M48 PASS：1.0 / 1 unit（AdminPanel backend default-off registry gate；scoped local proof）
-Global Progress：47.7 / 49 = 97.35%，顶部显示为 97%
+M49 PASS：1.0 / 1 unit（AdminPanel backend registry shadow rollback drill；scoped env only）
+Global Progress：48.7 / 50 = 97.40%，顶部显示为 97%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -238,6 +241,7 @@ Global Progress：47.7 / 49 = 97.35%，顶部显示为 97%
 | [x] | S67 | Decision / M46 | 0 | Next runtime lane unlock decision gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M46_NEXT_RUNTIME_LANE_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`；no auto-unlockable lane；recommended next safe milestone `M47_ADMINPANEL_RUNTIME_REGISTRATION_TASKBOOK`; stop required before runtime/env enablement。 |
 | [x] | S68 | AdminPanel / M47 | 0 | AdminPanel default-off runtime registration taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M47_ADMINPANEL_DEFAULT_OFF_RUNTIME_REGISTRATION_TASKBOOK_20260621.md`；docs-only；future M48 backend read-only registry gate defined；frontend/runtime/env activation deferred。 |
 | [x] | S69 | AdminPanel / M48 | 0 | AdminPanel backend default-off registry gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M48_ADMINPANEL_BACKEND_DEFAULT_OFF_REGISTRY_GATE_RECEIPT_20260621.md`；registry/test/harness PASS；scoped env only；production router untouched；frontend deferred。 |
+| [x] | S70 | AdminPanel / M49 | 0 | AdminPanel backend registry shadow rollback drill | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M49_ADMINPANEL_BACKEND_REGISTRY_SHADOW_ROLLBACK_DRILL_RECEIPT_20260621.md`；M48 rerun PASS；off/on/rollback/reapply scoped sequence PASS；real config untouched。 |
 
 原始验收拆分说明：
 
@@ -277,7 +281,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M48 完成规则：
+M19-M49 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -304,6 +308,7 @@ M45：AgentOverrides runtime-on aggregate review PASS；fresh rerun M39/M40/M42/
 M46：next runtime lane unlock decision gate PASS；无可自动解锁 lane；M47 AdminPanel runtime registration taskbook 是下一安全候选，但 runtime/env enablement 必须另行决策。
 M47：AdminPanel default-off runtime registration taskbook PASS；只定义未来 backend read-only registry / validation / rollback；不改 runtime、不写 env、不跑 build。
 M48：AdminPanel backend default-off registry gate PASS；纯 resolver/validator/plan + local test-only mount proof；未接入生产 router，不写真实 env，frontend runtime deferred。
+M49：AdminPanel backend registry shadow rollback drill PASS；scoped env off/on/rollback/reapply 和 partial-env blocked 序列稳定；真实 env 未写，production router 未接入。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -346,6 +351,7 @@ M48：AdminPanel backend default-off registry gate PASS；纯 resolver/validator
 | Next runtime lane unlock decision gate | M46 / S67 | evaluate next candidate lanes without enabling runtime or modifying real env | PASS；`NEXT_AUTO_UNLOCKABLE_LANE=none`; stop position reached before M47/default-off runtime design or human env authorization。 |
 | AdminPanel default-off runtime registration taskbook | M47 / S68 | define future default-off backend read-only registry taskbook without runtime/env changes | PASS；M48 design gate defined；frontend runtime route/nav registration remains deferred。 |
 | AdminPanel backend default-off registry gate | M48 / S69 | implement pure backend registry and test-only scoped-env mount proof | PASS；default-off no registration；scoped env-on GET read-only route；rollback `404`；no production registration。 |
+| AdminPanel backend registry shadow rollback drill | M49 / S70 | rerun M48 and validate scoped off/on/rollback/reapply sequence | PASS；snapshot stable；rollback returns GET `404`; reapply returns GET `200`; no real env write。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -426,8 +432,9 @@ M48：AdminPanel backend default-off registry gate PASS；纯 resolver/validator
 | Q28 | M46/S67 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M46_NEXT_RUNTIME_LANE_UNLOCK_DECISION_GATE_RECEIPT_20260621.md`；no env write, no runtime enablement；stop required before next runtime design/env authorization。 |
 | Q29 | M47/S68 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M47_ADMINPANEL_DEFAULT_OFF_RUNTIME_REGISTRATION_TASKBOOK_20260621.md`；taskbook-only；future backend read-only registry gate defined。 |
 | Q30 | M48/S69 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M48_ADMINPANEL_BACKEND_DEFAULT_OFF_REGISTRY_GATE_RECEIPT_20260621.md`；backend default-off registry gate PASS；production runtime/frontend/env activation deferred。 |
+| Q31 | M49/S70 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M49_ADMINPANEL_BACKEND_REGISTRY_SHADOW_ROLLBACK_DRILL_RECEIPT_20260621.md`；scoped rollback drill PASS；M50 scoped runtime-on local smoke is recommended next gate。 |
 
-### 5.5 M19-M48 Specific Step Plan
+### 5.5 M19-M49 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -565,6 +572,11 @@ M48：AdminPanel backend default-off registry gate PASS；纯 resolver/validator
 | M48-03 | PASS | 增加 local test-only backend registry harness | `M48_ADMINPANEL_BACKEND_DEFAULT_OFF_REGISTRY_GATE_PASS`; scoped GET `200`; write methods `404`; rollback `404` | 不启动 production server，不注册 frontend runtime |
 | M48-04 | PASS | 验证 `config.env`、core Admin runtime 文件、external Admin package hash 未改变 | `CONFIG_ENV_FILE_MODIFIED=no`; `CORE_ADMIN_RUNTIME_HASH_UNCHANGED=yes`; `EXTERNAL_ADMIN_PACKAGE_HASH_UNCHANGED=yes` | 不打印 secret/env 值 |
 | M48-05 | PASS | 写 M48 receipt 并更新 tracker | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M48_ADMINPANEL_BACKEND_DEFAULT_OFF_REGISTRY_GATE_RECEIPT_20260621.md`; Progress `47.7 / 49` | 不打开 upstream PR |
+| M49-01 | PASS | 新增 AdminPanel backend registry shadow rollback harness | `scripts/run-adminpanel-backend-registry-shadow-rollback-drill-harness.js` | 不写真实 `config.env` |
+| M49-02 | PASS | rerun M48 backend registry gate | `M48_ADMINPANEL_BACKEND_DEFAULT_OFF_REGISTRY_GATE_PASS` | 不接生产 router |
+| M49-03 | PASS | 执行 scoped env off/on/rollback/reapply/partial-env 序列 | GET status `404/200/404/200/404`; write methods `404,404,404,404` | 不注册 frontend runtime |
+| M49-04 | PASS | 校验 plan snapshot 稳定和 hash 不变 | `OFF_PLAN_SNAPSHOT_STABLE=yes`; `SCOPED_ON_PLAN_SNAPSHOT_STABLE=yes`; `CONFIG_ENV_FILE_MODIFIED=no` | 不打印 secret/env 值 |
+| M49-05 | PASS | 写 M49 receipt 并更新 tracker | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M49_ADMINPANEL_BACKEND_REGISTRY_SHADOW_ROLLBACK_DRILL_RECEIPT_20260621.md`; Progress `48.7 / 50` | 不打开 upstream PR |
 
 ## 6. 领域路线概览
 
@@ -574,12 +586,12 @@ M48：AdminPanel backend default-off registry gate PASS；纯 resolver/validator
 | --- | --- | --- | --- |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
-| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS with scoped local proof；production router integration / real env / frontend runtime route/nav remain deferred。 |
+| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；production router integration / real env / frontend runtime route/nav remain deferred。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、adapter registration deferred。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
