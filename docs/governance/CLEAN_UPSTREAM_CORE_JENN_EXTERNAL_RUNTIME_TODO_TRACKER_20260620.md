@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (126.7 / 129 global milestone units; scope expanded by M128 PASS)
+Progress: [##########] 98% (128.7 / 131 global milestone units; scope expanded by M130 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Deferred runtime/private lanes final gap freeze receipt（M128 PASS；next gate requires operator decision for any high-risk lane）
+当前里程碑：Real runtime/env total decision matrix（M130 PASS；next gate requires operator selection for any runtime/env change）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M128；M96-PRE 是不计分前置子门。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S150 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M130；M96-PRE 是不计分前置子门。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S152 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M128 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M128 合计 129 units。
+- 全局 Progress 覆盖 M0-M130 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M130 合计 131 units。
 - `M96-PRE` 是 M96 前置子门，不计入 global milestone unit；M96 正式完成后顶部 Progress 扩展到 `95.7 / 97`。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
@@ -142,6 +142,8 @@ Last updated: 2026-06-22
 - M126 完成 plugin runtime registration persistent-enable vs closeout decision；选择当前 lane 在 scoped shadow proof 收口，持久启用真实 env/runtime 延后；不写真实 env、不启 plugin runtime。
 - M127 完成 aggregate gap / next-lane decision；选择不自动打开新 runtime/private lane，下一步 M128 deferred runtime/private lanes final gap freeze receipt；不写 env、不启 runtime。
 - M128 完成 deferred runtime/private lanes final gap freeze receipt；冻结当前已实现/已外置/runtime-off/deferred/blocked 状态；不代表 upstream-ready 或新 runtime-on。
+- M129 完成 pushed-state final closeout receipt；确认 core `d671064c` 与 external `ca5c9c4` 均已 push 且 clean/origin-aligned；不启 runtime、不写 env、不打开 upstream PR。
+- M130 完成真实 runtime/env 总决策矩阵；红acted key-count scan 显示当前仅 AgentOverrides 与 AdminPanel backend readonly 为既有授权 on-lanes，其余 runtime/private/provider/bridge/plugin lanes 保持 off/deferred/blocked；不修改真实配置。
 
 计划变更规则：
 
@@ -161,7 +163,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M128 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M130 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -295,6 +297,8 @@ M0-M8 是原始 acceptance plan 阶段；M9-M128 是当前 Jenn fork 长期维�
 | [x] | M126 | 0 | Plugin runtime registration persistent-enable vs closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M126_PLUGIN_RUNTIME_REGISTRATION_PERSISTENT_ENABLE_OR_CLOSEOUT_DECISION_20260622.md`；decision-only; selected closeout at scoped shadow proof; no persistent real-config/runtime enablement。 |
 | [x] | M127 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M127_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；decision-only; selected M128 final gap freeze receipt; no new runtime/private lane opened。 |
 | [x] | M128 | 0 | Deferred runtime/private lanes final gap freeze receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M128_DEFERRED_RUNTIME_PRIVATE_LANES_FINAL_GAP_FREEZE_RECEIPT_20260622.md`；receipt-only; current implemented/package/runtime-off/deferred/blocked lanes frozen; no new runtime/env/upstream action。 |
+| [x] | M129 | 0 | Pushed-state final closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M129_PUSHED_STATE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; core `d671064c` and external `ca5c9c4` origin-aligned; no runtime/env/upstream action。 |
+| [x] | M130 | 0 | Real runtime/env total decision matrix | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M130_REAL_RUNTIME_ENV_TOTAL_DECISION_MATRIX_20260622.md`；decision-only; redacted key counts; keep current real env as-is; no new env/runtime/provider/bridge/private/upstream action。 |
 
 全局进度明细：
 
@@ -404,7 +408,9 @@ M125 PASS：1.0 / 1 unit（plugin runtime registration scoped shadow validation�
 M126 PASS：1.0 / 1 unit（plugin runtime registration persistent-enable vs closeout decision；closeout selected, persistent enable deferred）
 M127 PASS：1.0 / 1 unit（aggregate gap / next-lane decision；no new runtime/private lane selected）
 M128 PASS：1.0 / 1 unit（deferred runtime/private lanes final gap freeze receipt；no new runtime/env/upstream action）
-Global Progress：126.7 / 129 = 98.22%，顶部显示为 98%
+M129 PASS：1.0 / 1 unit（pushed-state final closeout receipt；core/external origin-aligned, no runtime/env/upstream action）
+M130 PASS：1.0 / 1 unit（real runtime/env total decision matrix；current real env kept as-is, no new runtime/env action）
+Global Progress：128.7 / 131 = 98.24%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -563,6 +569,8 @@ Global Progress：126.7 / 129 = 98.22%，顶部显示为 98%
 | [x] | S148 | Plugin / M126 | 0 | Plugin runtime registration persistent-enable vs closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M126_PLUGIN_RUNTIME_REGISTRATION_PERSISTENT_ENABLE_OR_CLOSEOUT_DECISION_20260622.md`；decision-only; closeout selected; persistent real-config/runtime enablement deferred。 |
 | [x] | S149 | Decision / M127 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M127_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；decision-only; no new runtime/private lane selected; M128 final gap freeze receipt recommended。 |
 | [x] | S150 | Freeze / M128 | 0 | Deferred runtime/private lanes final gap freeze receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M128_DEFERRED_RUNTIME_PRIVATE_LANES_FINAL_GAP_FREEZE_RECEIPT_20260622.md`；receipt-only; implemented/package/runtime-off/deferred/blocked lanes frozen; no runtime/env/upstream action。 |
+| [x] | S151 | Closeout / M129 | 0 | Pushed-state final closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M129_PUSHED_STATE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; core `d671064c` and external `ca5c9c4` origin-aligned; no runtime/env/upstream action。 |
+| [x] | S152 | Decision / M130 | 0 | Real runtime/env total decision matrix | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M130_REAL_RUNTIME_ENV_TOTAL_DECISION_MATRIX_20260622.md`；decision-only; redacted key-count scan; keep current real env as-is; no new env/runtime/provider/bridge/private/upstream action。 |
 
 原始验收拆分说明：
 
@@ -602,7 +610,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M128 完成规则：
+M19-M130 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -710,6 +718,8 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 M126：Plugin runtime registration persistent-enable vs closeout decision PASS；选择 closeout at scoped shadow proof；不写真实 env、不启持久 plugin runtime。
 M127：Aggregate gap / next-lane decision PASS；选择不自动打开新 runtime/private lane；M128 final gap freeze receipt next。
 M128：Deferred runtime/private lanes final gap freeze receipt PASS；冻结当前 implemented/package/runtime-off/deferred/blocked 状态；后续高风险 lane 需要 operator 决策。
+M129：Pushed-state final closeout receipt PASS；确认 core/external pushed-state clean and origin-aligned；不启 runtime、不写 env、不打开 upstream PR。
+M130：Real runtime/env total decision matrix PASS；红acted key-count scan 只记录 key presence，不打印 secret values；当前真实 env 保持 as-is，未来 runtime/env 变化需要单独决策。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -778,6 +788,8 @@ M128：Deferred runtime/private lanes final gap freeze receipt PASS；冻结当�
 | Plugin runtime registration persistent-enable vs closeout decision | M126 / S148 | decide whether to persistently enable plugin runtime after scoped shadow proof | PASS；closeout selected; persistent real-config/runtime enablement deferred。 |
 | Aggregate gap / next-lane decision | M127 / S149 | compare remaining deferred runtime/private lanes after plugin lane closeout | PASS；no new runtime/private lane selected; M128 final gap freeze receipt recommended。 |
 | Deferred runtime/private lanes final gap freeze receipt | M128 / S150 | freeze implemented/package/runtime-off/deferred/blocked lane state | PASS；no new runtime/env/upstream action; future high-risk lanes require operator decision。 |
+| Pushed-state final closeout receipt | M129 / S151 | confirm current pushed core/external state after M128 | PASS；core `d671064c` and external `ca5c9c4` origin-aligned; no runtime/env/upstream action。 |
+| Real runtime/env total decision matrix | M130 / S152 | decide current real env on/off/deferred/blocked lanes with redacted key-count evidence | PASS；keep current real env as-is; no new env/runtime/provider/bridge/private/upstream action。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -879,6 +891,8 @@ M128：Deferred runtime/private lanes final gap freeze receipt PASS；冻结当�
 | Plugin runtime registration persistent-enable vs closeout decision | M126 / S148 | close current plugin runtime lane at scoped shadow proof | PASS；Progress `124.7 / 127`。 |
 | Aggregate gap / next-lane decision | M127 / S149 | select no new runtime/private lane and recommend final gap freeze receipt | PASS；Progress `125.7 / 128`。 |
 | Deferred runtime/private lanes final gap freeze receipt | M128 / S150 | freeze final deferred runtime/private lane state | PASS；Progress `126.7 / 129`。 |
+| Pushed-state final closeout receipt | M129 / S151 | verify pushed core/external closeout state | PASS；Progress `127.7 / 130`。 |
+| Real runtime/env total decision matrix | M130 / S152 | record current real env on/off/deferred/blocked decisions | PASS；Progress `128.7 / 131`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -1040,8 +1054,10 @@ M128：Deferred runtime/private lanes final gap freeze receipt PASS；冻结当�
 | Q109 | M126/S148 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M126_PLUGIN_RUNTIME_REGISTRATION_PERSISTENT_ENABLE_OR_CLOSEOUT_DECISION_20260622.md`；decision-only; closeout selected; persistent real-config/runtime enablement deferred。 |
 | Q110 | M127/S149 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M127_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；decision-only; no new runtime/private lane selected; M128 final gap freeze receipt recommended。 |
 | Q111 | M128/S150 | PASS | Freeze | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M128_DEFERRED_RUNTIME_PRIVATE_LANES_FINAL_GAP_FREEZE_RECEIPT_20260622.md`；receipt-only; final gap state frozen; no runtime/env/upstream action。 |
+| Q112 | M129/S151 | PASS | Closeout | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M129_PUSHED_STATE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; core/external origin-aligned; no runtime/env/upstream action。 |
+| Q113 | M130/S152 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M130_REAL_RUNTIME_ENV_TOTAL_DECISION_MATRIX_20260622.md`；decision-only; redacted real env key counts; current env kept as-is; future changes require explicit gate。 |
 
-### 5.5 M19-M128 + M96-PRE Specific Step Plan
+### 5.5 M19-M130 + M96-PRE Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1481,6 +1497,12 @@ M128：Deferred runtime/private lanes final gap freeze receipt PASS；冻结当�
 | M128-01 | PASS | 复核 pushed core/external state | core `2cd3a8a7`; external `ca5c9c4`; both clean before M128 | 不改 package |
 | M128-02 | PASS | 冻结 implemented/package/runtime-off/deferred/blocked lanes | final gap freeze matrix written | 不开新 runtime/private lane |
 | M128-03 | PASS | 写 M128 receipt 并更新 tracker：M128/S150/Q111 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M128_DEFERRED_RUNTIME_PRIVATE_LANES_FINAL_GAP_FREEZE_RECEIPT_20260622.md`; Progress `126.7 / 129` | 不 commit/push、不打开 upstream PR |
+| M129-01 | PASS | 复核 pushed-state closeout 输入 | core `d671064c`; external `ca5c9c4`; both clean/origin-aligned before M129 | 不改 package、不启 runtime |
+| M129-02 | PASS | 写 pushed-state final closeout receipt | core/external final pushed state recorded | 不打开 upstream PR、不写 env |
+| M129-03 | PASS | 更新 tracker：M129/S151/Q112 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M129_PUSHED_STATE_FINAL_CLOSEOUT_RECEIPT_20260622.md`; Progress `127.7 / 130` | 不 commit/push、不改 runtime |
+| M130-01 | PASS | 做 redacted real env key-count scan | exact keys counted; no values printed | 不打印 secret values、不修改 `config.env` |
+| M130-02 | PASS | 写真实 runtime/env 总决策矩阵 | on/off/deferred/blocked lanes classified | 不启新 runtime、不写 env |
+| M130-03 | PASS | 更新 tracker：M130/S152/Q113 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M130_REAL_RUNTIME_ENV_TOTAL_DECISION_MATRIX_20260622.md`; Progress `128.7 / 131` | 不 commit/push、不打开 upstream PR |
 
 ## 6. 领域路线概览
 
@@ -1496,7 +1518,8 @@ M128：Deferred runtime/private lanes final gap freeze receipt PASS；冻结当�
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；M114 plugin reconcile evidence gate PASS；M115 plugin reconcile decision/taskbook PASS；M116 AIGentQuality temp review-copy taskbook PASS；M117 AIGentQuality temp review-copy evidence PASS；M118 AIGentQuality keep decision PASS；M119 plugin reconcile closeout PASS；M120 aggregate next-lane decision PASS；M121 Agent additive resolver policy taskbook PASS；M122 Agent additive resolver policy decision PASS；M123 aggregate next-lane decision PASS；M124 plugin runtime registration default-off taskbook PASS；M125 plugin runtime registration scoped shadow validation PASS；M126 plugin runtime registration closeout decision PASS；M127 aggregate next-lane decision PASS；M128 final gap freeze PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；M114 plugin reconcile evidence gate PASS；M115 plugin reconcile decision/taskbook PASS；M116 AIGentQuality temp review-copy taskbook PASS；M117 AIGentQuality temp review-copy evidence PASS；M118 AIGentQuality keep decision PASS；M119 plugin reconcile closeout PASS；M120 aggregate next-lane decision PASS；M121 Agent additive resolver policy taskbook PASS；M122 Agent additive resolver policy decision PASS；M123 aggregate next-lane decision PASS；M124 plugin runtime registration default-off taskbook PASS；M125 plugin runtime registration scoped shadow validation PASS；M126 plugin runtime registration closeout decision PASS；M127 aggregate next-lane decision PASS；M128 final gap freeze PASS；M129 pushed-state closeout PASS；M130 real runtime/env total decision matrix PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Runtime/env total decision | real `config.env` key-count scan | current on/off/deferred/blocked runtime matrix | M130 PASS；AgentOverrides and AdminPanel backend readonly remain existing-authorized on-lanes；Agent additive, Plugin runtime, AI Image, Codex/Memory, PhotoStudio stay off/deferred；LocalState/private and `.agent_board/**` remain blocked；no env write。 |
 
 | Agent additive M100 blocker | `VCP_AGENT_DIRS` future gate | 7 copied additive Agent files | M100 scoped harness BLOCK：external additive scan `7` but effective external source `0`; effective source remains `core:7` because same-id core fallback is retained；M122 selects core-precedence retained / additive runtime off；do not enable real additive runtime without a new explicit policy implementation gate。 |
 
@@ -1573,7 +1596,9 @@ M128：Deferred runtime/private lanes final gap freeze receipt PASS；冻结当�
 | Plugin runtime registration scoped shadow validation | M125 receipt；process-env only harness; exact Jenn allowlist registered `1`; invalid allowlist, duplicate core-name, direct/hybrid, entrypoint counters all `0`; plugin regression tests `40 pass / 0 fail` | PASS_SCOPED_PROCESS_ENV；no real env/server/provider/bridge/package/private/upstream action |
 | Plugin runtime registration closeout decision | M126 decision；selected closeout at scoped shadow proof; persistent real-config/runtime enablement deferred | PASS_DECISION_ONLY；no real env/runtime/entrypoint/server/package/private/upstream action |
 | Aggregate gap / next-lane decision | M127 decision；selected no new runtime/private lane; M128 final gap freeze receipt recommended | PASS_DECISION_ONLY；no real env/runtime/provider/bridge/private/core-fallback/upstream action |
-| Deferred runtime/private lanes final gap freeze receipt | M128 receipt；implemented/package/runtime-off/deferred/blocked states frozen; core pushed `2cd3a8a7`; external pushed `ca5c9c4` | PASS_RECEIPT_ONLY；no real env/runtime/provider/bridge/private/core-fallback/upstream action |
+| Deferred runtime/private lanes final gap freeze receipt | M128 receipt；implemented/package/runtime-off/deferred/blocked states frozen; pre-M128 core state `2cd3a8a7`; final pushed state superseded by M129 | PASS_RECEIPT_ONLY；no real env/runtime/provider/bridge/private/core-fallback/upstream action |
+| Pushed-state final closeout receipt | M129 receipt；core pushed `d671064c`; external pushed `ca5c9c4`; both origin-aligned and clean before receipt | PASS_RECEIPT_ONLY；no real env/runtime/provider/bridge/private/core-fallback/upstream action |
+| Real runtime/env total decision matrix | M130 matrix；redacted exact-key count scan; current real env kept as-is | PASS_DECISION_ONLY；no secret values printed; no env write; no runtime/provider/bridge/private/upstream action |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
