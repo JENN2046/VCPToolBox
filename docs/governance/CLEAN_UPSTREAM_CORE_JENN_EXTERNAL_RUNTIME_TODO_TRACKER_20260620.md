@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (130.7 / 133 global milestone units; scope expanded by M132 PASS)
+Progress: [##########] 98% (131.7 / 134 global milestone units; scope expanded by M133 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Runtime/env lane selection decision（M132 PASS；selected M133 existing-authorized on-lanes scoped stability sweep taskbook）
+当前里程碑：Existing-authorized on-lanes scoped stability sweep taskbook（M133 PASS；M134 execution remains not run）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M132；M96-PRE 是不计分前置子门。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S154 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M133；M96-PRE 是不计分前置子门。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S155 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M132 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M132 合计 133 units。
+- 全局 Progress 覆盖 M0-M133 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M133 合计 134 units。
 - `M96-PRE` 是 M96 前置子门，不计入 global milestone unit；M96 正式完成后顶部 Progress 扩展到 `95.7 / 97`。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
@@ -146,6 +146,7 @@ Last updated: 2026-06-22
 - M130 完成真实 runtime/env 总决策矩阵；红acted key-count scan 显示当前仅 AgentOverrides 与 AdminPanel backend readonly 为既有授权 on-lanes，其余 runtime/private/provider/bridge/plugin lanes 保持 off/deferred/blocked；不修改真实配置。
 - M131 完成当前全路线 handoff / resume entry；记录下一轮恢复入口、两仓 HEAD、on/off/deferred/blocked lanes、硬停止线和候选下一门；不启 runtime、不写 env、不打开 upstream PR。
 - M132 完成下一步 runtime/env lane selection decision；选择 M133 existing-authorized on-lanes scoped stability sweep taskbook，不打开任何新 runtime/env lane，不写真实配置。
+- M133 完成 existing-authorized on-lanes scoped stability sweep taskbook；定义未来 M134 如何复验 AgentOverrides 与 AdminPanel backend readonly；本轮不执行 harness、不写真实配置。
 
 计划变更规则：
 
@@ -165,7 +166,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M132 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M133 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -303,6 +304,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M132 是当前 Jenn fork 长期维�
 | [x] | M130 | 0 | Real runtime/env total decision matrix | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M130_REAL_RUNTIME_ENV_TOTAL_DECISION_MATRIX_20260622.md`；decision-only; redacted key counts; keep current real env as-is; no new env/runtime/provider/bridge/private/upstream action。 |
 | [x] | M131 | 0 | Current route handoff / resume entry | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M131_CURRENT_ROUTE_HANDOFF_RESUME_ENTRY_20260622.md`；handoff-only; records resume order, repo heads, lane states, stop lines, candidate next gates; no runtime/env/upstream action。 |
 | [x] | M132 | 0 | Runtime/env lane selection decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M132_RUNTIME_ENV_LANE_SELECTION_DECISION_20260622.md`；decision-only; selected M133 existing-authorized on-lanes scoped stability sweep taskbook; no new runtime/env lane opened。 |
+| [x] | M133 | 0 | Existing-authorized on-lanes scoped stability sweep taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M133_EXISTING_AUTHORIZED_ON_LANES_SCOPED_STABILITY_SWEEP_TASKBOOK_20260622.md`；taskbook-only; defines future M134 scoped sweep for AgentOverrides + AdminPanel backend readonly; no harness/env/runtime action。 |
 
 全局进度明细：
 
@@ -416,7 +418,8 @@ M129 PASS：1.0 / 1 unit（pushed-state final closeout receipt；core/external o
 M130 PASS：1.0 / 1 unit（real runtime/env total decision matrix；current real env kept as-is, no new runtime/env action）
 M131 PASS：1.0 / 1 unit（current route handoff / resume entry；resume checklist and stop lines recorded）
 M132 PASS：1.0 / 1 unit（runtime/env lane selection decision；M133 scoped stability taskbook selected, no new runtime/env lane）
-Global Progress：130.7 / 133 = 98.27%，顶部显示为 98%
+M133 PASS：1.0 / 1 unit（existing-authorized on-lanes scoped stability sweep taskbook；M134 execution not run）
+Global Progress：131.7 / 134 = 98.28%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -579,6 +582,7 @@ Global Progress：130.7 / 133 = 98.27%，顶部显示为 98%
 | [x] | S152 | Decision / M130 | 0 | Real runtime/env total decision matrix | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M130_REAL_RUNTIME_ENV_TOTAL_DECISION_MATRIX_20260622.md`；decision-only; redacted key-count scan; keep current real env as-is; no new env/runtime/provider/bridge/private/upstream action。 |
 | [x] | S153 | Handoff / M131 | 0 | Current route handoff / resume entry | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M131_CURRENT_ROUTE_HANDOFF_RESUME_ENTRY_20260622.md`；handoff-only; resume order, repo heads, lane states, stop lines and candidate next gates recorded。 |
 | [x] | S154 | Decision / M132 | 0 | Runtime/env lane selection decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M132_RUNTIME_ENV_LANE_SELECTION_DECISION_20260622.md`；decision-only; selected M133 existing-authorized on-lanes scoped stability sweep taskbook; no new runtime/env lane opened。 |
+| [x] | S155 | Taskbook / M133 | 0 | Existing-authorized on-lanes scoped stability sweep taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M133_EXISTING_AUTHORIZED_ON_LANES_SCOPED_STABILITY_SWEEP_TASKBOOK_20260622.md`；taskbook-only; future M134 allowlist/stop lines/pass-block criteria defined; no harness/env/runtime action。 |
 
 原始验收拆分说明：
 
@@ -618,7 +622,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M132 完成规则：
+M19-M133 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -730,6 +734,7 @@ M129：Pushed-state final closeout receipt PASS；确认 core/external pushed-st
 M130：Real runtime/env total decision matrix PASS；红acted key-count scan 只记录 key presence，不打印 secret values；当前真实 env 保持 as-is，未来 runtime/env 变化需要单独决策。
 M131：Current route handoff / resume entry PASS；记录恢复阅读顺序、两仓 HEAD、当前 lane 状态、硬停止线和候选下一门；handoff-only，不改 runtime/env。
 M132：Runtime/env lane selection decision PASS；选择 M133 existing-authorized on-lanes scoped stability sweep taskbook；不打开新 runtime/env lane。
+M133：Existing-authorized on-lanes scoped stability sweep taskbook PASS；定义未来 M134 执行范围与 stop lines；不执行 harness、不写 env。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -802,6 +807,7 @@ M132：Runtime/env lane selection decision PASS；选择 M133 existing-authorize
 | Real runtime/env total decision matrix | M130 / S152 | decide current real env on/off/deferred/blocked lanes with redacted key-count evidence | PASS；keep current real env as-is; no new env/runtime/provider/bridge/private/upstream action。 |
 | Current route handoff / resume entry | M131 / S153 | create a single resume entry for the whole route | PASS；resume order, repo heads, lane states, stop lines and candidate next gates recorded。 |
 | Runtime/env lane selection decision | M132 / S154 | choose the next low-risk runtime/env gate without enabling anything | PASS；selected M133 existing-authorized on-lanes scoped stability sweep taskbook; no new runtime/env lane opened。 |
+| Existing-authorized on-lanes scoped stability sweep taskbook | M133 / S155 | define a future scoped stability sweep for already authorized on-lanes | PASS；future M134 commands, evidence, pass/block criteria and stop lines defined; no harness run。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -907,6 +913,7 @@ M132：Runtime/env lane selection decision PASS；选择 M133 existing-authorize
 | Real runtime/env total decision matrix | M130 / S152 | record current real env on/off/deferred/blocked decisions | PASS；Progress `128.7 / 131`。 |
 | Current route handoff / resume entry | M131 / S153 | record a resume entry for the full route | PASS；Progress `129.7 / 132`。 |
 | Runtime/env lane selection decision | M132 / S154 | select next low-risk runtime/env gate | PASS；Progress `130.7 / 133`。 |
+| Existing-authorized on-lanes scoped stability sweep taskbook | M133 / S155 | write future M134 scoped sweep taskbook without execution | PASS；Progress `131.7 / 134`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -1072,8 +1079,9 @@ M132：Runtime/env lane selection decision PASS；选择 M133 existing-authorize
 | Q113 | M130/S152 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M130_REAL_RUNTIME_ENV_TOTAL_DECISION_MATRIX_20260622.md`；decision-only; redacted real env key counts; current env kept as-is; future changes require explicit gate。 |
 | Q114 | M131/S153 | PASS | Handoff | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M131_CURRENT_ROUTE_HANDOFF_RESUME_ENTRY_20260622.md`；handoff-only; resume entry and next-gate candidates recorded; no runtime/env/upstream action。 |
 | Q115 | M132/S154 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M132_RUNTIME_ENV_LANE_SELECTION_DECISION_20260622.md`；decision-only; selected M133 scoped stability taskbook for existing authorized on-lanes; no new runtime/env lane opened。 |
+| Q116 | M133/S155 | PASS | Taskbook | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M133_EXISTING_AUTHORIZED_ON_LANES_SCOPED_STABILITY_SWEEP_TASKBOOK_20260622.md`；taskbook-only; M134 allowlist, excluded commands, pass/block criteria and stop lines defined。 |
 
-### 5.5 M19-M132 + M96-PRE Specific Step Plan
+### 5.5 M19-M133 + M96-PRE Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1525,6 +1533,9 @@ M132：Runtime/env lane selection decision PASS；选择 M133 existing-authorize
 | M132-01 | PASS | 复核 M130/M131 候选 runtime/env lane | selected existing-authorized on-lanes stability sweep as lowest-risk next gate | 不打开新 runtime/env lane |
 | M132-02 | PASS | 写 M132 runtime/env lane selection decision | M133 taskbook selected; no env/runtime expansion | 不写真实 env、不执行 harness |
 | M132-03 | PASS | 更新 tracker：M132/S154/Q115 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M132_RUNTIME_ENV_LANE_SELECTION_DECISION_20260622.md`; Progress `130.7 / 133` | 不 commit/push、不打开 upstream PR |
+| M133-01 | PASS | 复核 M132 selected gate 与现有 harness candidates | AgentOverrides and AdminPanel backend readonly only | 不执行 harness |
+| M133-02 | PASS | 写 M133 scoped stability sweep taskbook | M134 allowlist/excluded commands/pass-block criteria/stop lines defined | 不写 env、不启动 production |
+| M133-03 | PASS | 更新 tracker：M133/S155/Q116 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M133_EXISTING_AUTHORIZED_ON_LANES_SCOPED_STABILITY_SWEEP_TASKBOOK_20260622.md`; Progress `131.7 / 134` | 不 commit/push、不打开 upstream PR |
 
 ## 6. 领域路线概览
 
@@ -1540,7 +1551,7 @@ M132：Runtime/env lane selection decision PASS；选择 M133 existing-authorize
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；M114 plugin reconcile evidence gate PASS；M115 plugin reconcile decision/taskbook PASS；M116 AIGentQuality temp review-copy taskbook PASS；M117 AIGentQuality temp review-copy evidence PASS；M118 AIGentQuality keep decision PASS；M119 plugin reconcile closeout PASS；M120 aggregate next-lane decision PASS；M121 Agent additive resolver policy taskbook PASS；M122 Agent additive resolver policy decision PASS；M123 aggregate next-lane decision PASS；M124 plugin runtime registration default-off taskbook PASS；M125 plugin runtime registration scoped shadow validation PASS；M126 plugin runtime registration closeout decision PASS；M127 aggregate next-lane decision PASS；M128 final gap freeze PASS；M129 pushed-state closeout PASS；M130 real runtime/env total decision matrix PASS；M131 current route handoff PASS；M132 runtime/env lane selection PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；M114 plugin reconcile evidence gate PASS；M115 plugin reconcile decision/taskbook PASS；M116 AIGentQuality temp review-copy taskbook PASS；M117 AIGentQuality temp review-copy evidence PASS；M118 AIGentQuality keep decision PASS；M119 plugin reconcile closeout PASS；M120 aggregate next-lane decision PASS；M121 Agent additive resolver policy taskbook PASS；M122 Agent additive resolver policy decision PASS；M123 aggregate next-lane decision PASS；M124 plugin runtime registration default-off taskbook PASS；M125 plugin runtime registration scoped shadow validation PASS；M126 plugin runtime registration closeout decision PASS；M127 aggregate next-lane decision PASS；M128 final gap freeze PASS；M129 pushed-state closeout PASS；M130 real runtime/env total decision matrix PASS；M131 current route handoff PASS；M132 runtime/env lane selection PASS；M133 scoped stability sweep taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 | Runtime/env total decision | real `config.env` key-count scan | current on/off/deferred/blocked runtime matrix | M130 PASS；AgentOverrides and AdminPanel backend readonly remain existing-authorized on-lanes；Agent additive, Plugin runtime, AI Image, Codex/Memory, PhotoStudio stay off/deferred；LocalState/private and `.agent_board/**` remain blocked；no env write。 |
 
 | Agent additive M100 blocker | `VCP_AGENT_DIRS` future gate | 7 copied additive Agent files | M100 scoped harness BLOCK：external additive scan `7` but effective external source `0`; effective source remains `core:7` because same-id core fallback is retained；M122 selects core-precedence retained / additive runtime off；do not enable real additive runtime without a new explicit policy implementation gate。 |
@@ -1623,6 +1634,7 @@ M132：Runtime/env lane selection decision PASS；选择 M133 existing-authorize
 | Real runtime/env total decision matrix | M130 matrix；redacted exact-key count scan; current real env kept as-is | PASS_DECISION_ONLY；no secret values printed; no env write; no runtime/provider/bridge/private/upstream action |
 | Current route handoff / resume entry | M131 handoff；resume order, repo heads, lane states, stop lines, candidate next gates and rollback references recorded | PASS_HANDOFF_ONLY；no env/runtime/provider/bridge/private/external-package/upstream action |
 | Runtime/env lane selection decision | M132 decision；selected M133 existing-authorized on-lanes scoped stability sweep taskbook as next low-risk gate | PASS_DECISION_ONLY；no new env/runtime/provider/bridge/private/external-package/upstream action |
+| Existing-authorized on-lanes scoped stability sweep taskbook | M133 taskbook；future M134 commands, evidence, excluded commands, pass/block criteria, rollback references and stop lines defined | PASS_TASKBOOK_ONLY；no harness/env/runtime/provider/bridge/private/external-package/upstream action |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
