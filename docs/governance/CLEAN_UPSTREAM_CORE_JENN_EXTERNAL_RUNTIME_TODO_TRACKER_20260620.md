@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (109.7 / 112 global milestone units; scope expanded by M111 PASS)
+Progress: [##########] 98% (110.7 / 113 global milestone units; scope expanded by M112 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Pushed-state aggregate closeout receipt（M111 PASS；next recommended gate M112 next unextracted domain decision）
+当前里程碑：Next unextracted domain decision（M112 PASS；next recommended gate M113 plugin existing-external reconcile taskbook）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M111；M96-PRE 是不计分前置子门。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S133 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M112；M96-PRE 是不计分前置子门。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S134 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M111 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M111 合计 112 units。
+- 全局 Progress 覆盖 M0-M112 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M112 合计 113 units。
 - `M96-PRE` 是 M96 前置子门，不计入 global milestone unit；M96 正式完成后顶部 Progress 扩展到 `95.7 / 97`。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
@@ -125,6 +125,7 @@ Last updated: 2026-06-22
 - M109 完成 Agent override lane final closeout receipt；正式关闭当前 `小秋` override lane；remaining six no-copy 与 additive runtime blocker 保持；不改 external package/env/runtime/source。
 - M110 完成 uncommitted work packaging decision；只定义 core repo 与 external package repo 的未来打包/commit split；不 stage、不 commit、不 push。
 - M111 完成 pushed-state aggregate closeout receipt；记录 core commit `34c3b5ff` 与 external commit `ca5c9c4` 已 push 且两仓与 origin 对齐；不打开 upstream PR、不启 runtime、不写 env；下一推荐门 M112 next unextracted domain decision。
+- M112 完成 next unextracted domain decision；选择下一门为 M113 plugin existing-external reconcile taskbook；只处理 `Plugin/AIGentOrchestrator/**` 与 `Plugin/AIGentQuality/**` 的 no-overwrite reconcile 任务书；不复制、不启 runtime、不写 env。
 
 计划变更规则：
 
@@ -144,7 +145,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M111 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M112 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -261,6 +262,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M111 是当前 Jenn fork 长期维�
 | [x] | M109 | 0 | Agent override lane final closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M109_AGENT_OVERRIDE_LANE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; `小秋` retained, six remaining candidates no-copy, additive runtime still blocked; no external package/env/runtime/source action。 |
 | [x] | M110 | 0 | Uncommitted work packaging decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M110_UNCOMMITTED_WORK_PACKAGING_DECISION_20260622.md`；decision-only; proposes future core/external commit split; no staging, commit, push, env, runtime, or PR action。 |
 | [x] | M111 | 0 | Pushed-state aggregate closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M111_PUSHED_STATE_AGGREGATE_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; core `34c3b5ff` and external `ca5c9c4` pushed and origin-aligned; no upstream PR/env/runtime action; next recommended gate M112。 |
+| [x] | M112 | 0 | Next unextracted domain decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M112_NEXT_UNEXTRACTED_DOMAIN_DECISION_20260622.md`；decision-only; selected `M113_PLUGIN_EXISTING_EXTERNAL_RECONCILE_TASKBOOK`; no copy/env/runtime/private/upstream action。 |
 
 全局进度明细：
 
@@ -353,7 +355,8 @@ M108 PASS：1.0 / 1 unit（Agent override aggregate closeout / next-domain decis
 M109 PASS：1.0 / 1 unit（Agent override lane final closeout receipt；current XiaoQiu override lane closed）
 M110 PASS：1.0 / 1 unit（uncommitted work packaging decision；future core/external commit split defined, no staging/commit/push）
 M111 PASS：1.0 / 1 unit（pushed-state aggregate closeout receipt；core/external pushed commits recorded and origin-aligned）
-Global Progress：109.7 / 112 = 97.95%，顶部显示为 98%
+M112 PASS：1.0 / 1 unit（next unextracted domain decision；M113 plugin existing-external reconcile taskbook selected）
+Global Progress：110.7 / 113 = 97.96%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -495,6 +498,7 @@ Global Progress：109.7 / 112 = 97.95%，顶部显示为 98%
 | [x] | S131 | Agent / M109 | 0 | Agent override lane final closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M109_AGENT_OVERRIDE_LANE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; XiaoQiu retained; six remaining candidates no-copy; additive runtime still blocked; no package/env/runtime/source action。 |
 | [x] | S132 | Packaging / M110 | 0 | Uncommitted work packaging decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M110_UNCOMMITTED_WORK_PACKAGING_DECISION_20260622.md`；decision-only; proposes future core/external commit split; no staging/commit/push/PR action。 |
 | [x] | S133 | Closeout / M111 | 0 | Pushed-state aggregate closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M111_PUSHED_STATE_AGGREGATE_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; core/external pushed commits recorded; both worktrees clean and origin-aligned; no upstream PR/env/runtime action。 |
+| [x] | S134 | Decision / M112 | 0 | Next unextracted domain decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M112_NEXT_UNEXTRACTED_DOMAIN_DECISION_20260622.md`；decision-only; selected M113 plugin existing-external reconcile taskbook; no copy/env/runtime/private/upstream action。 |
 
 原始验收拆分说明：
 
@@ -534,7 +538,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M111 完成规则：
+M19-M112 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -625,6 +629,7 @@ M108：Agent override aggregate closeout / next-domain decision PASS；聚合 M1
 M109：Agent override lane final closeout receipt PASS；当前 `小秋` override lane 正式收口；remaining six no-copy 和 additive runtime blocker 保持；不改 external package/env/runtime/source。
 M110：Uncommitted work packaging decision PASS；只定义未来 core/external commit split、allowlist、must-not-include 和 pre-commit validation；不 stage、不 commit、不 push。
 M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本地提交并分别 push 到 Jenn fork / external package origin；两仓 origin-aligned；不打开 upstream PR、不启 runtime、不写 env。
+M112：Next unextracted domain decision PASS；选择 M113 plugin existing-external reconcile taskbook 作为下一低风险门；不复制、不覆盖、不启 runtime、不写 env。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -676,6 +681,7 @@ M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本�
 | Agent override lane final closeout receipt | M109 / S131 | close the current XiaoQiu override lane with rollback and remaining blocker evidence | PASS；current lane closed; remaining six no-copy; additive runtime still blocked。 |
 | Uncommitted work packaging decision | M110 / S132 | decide future commit packaging without staging or remote action | PASS；core/external split documented; no staging/commit/push/PR。 |
 | Pushed-state aggregate closeout receipt | M111 / S133 | record that the M110 split was committed and pushed to Jenn fork origins before choosing the next domain | PASS；core `34c3b5ff` and external `ca5c9c4` origin-aligned; no upstream PR/env/runtime action。 |
+| Next unextracted domain decision | M112 / S134 | compare remaining unresolved lanes and select the next narrow gate | PASS；M113 plugin existing-external reconcile taskbook selected; no copy/env/runtime/private/upstream action。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -760,6 +766,7 @@ M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本�
 | Agent override lane final closeout receipt | M109 / S131 | record final XiaoQiu override retained state, remaining blockers, rollback, and stop line | PASS；Progress `107.7 / 110`。 |
 | Uncommitted work packaging decision | M110 / S132 | decide future core/external commit split without staging, committing, pushing, or opening PR | PASS；Progress `108.7 / 111`。 |
 | Pushed-state aggregate closeout receipt | M111 / S133 | record pushed commits, origin alignment, validation, route decision, and next recommended gate | PASS；Progress `109.7 / 112`。 |
+| Next unextracted domain decision | M112 / S134 | select the next unresolved extraction lane from the gap matrix without implementation | PASS；Progress `110.7 / 113`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -904,8 +911,9 @@ M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本�
 | Q92 | M109/S131 | PASS | Agent | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M109_AGENT_OVERRIDE_LANE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；Agent override lane closed at XiaoQiu retained; six remaining candidates no-copy; additive runtime still blocked。 |
 | Q93 | M110/S132 | PASS | Packaging | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M110_UNCOMMITTED_WORK_PACKAGING_DECISION_20260622.md`；future core/external commit split defined; no staging, commit, push, PR, env, or runtime action。 |
 | Q94 | M111/S133 | PASS | Closeout | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M111_PUSHED_STATE_AGGREGATE_CLOSEOUT_RECEIPT_20260622.md`；core/external pushed-state recorded; both repos origin-aligned; no upstream PR/env/runtime action; next recommended gate M112。 |
+| Q95 | M112/S134 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M112_NEXT_UNEXTRACTED_DOMAIN_DECISION_20260622.md`；selected M113 plugin existing-external reconcile taskbook; no copy/env/runtime/private/upstream action。 |
 
-### 5.5 M19-M111 + M96-PRE Specific Step Plan
+### 5.5 M19-M112 + M96-PRE Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1294,6 +1302,9 @@ M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本�
 | M111-01 | PASS | 核对 core/external pushed-state | core `34c3b5ff`; external `ca5c9c4`; both origin-aligned | 不打开 upstream PR |
 | M111-02 | PASS | 写 pushed-state aggregate closeout receipt | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M111_PUSHED_STATE_AGGREGATE_CLOSEOUT_RECEIPT_20260622.md` | 不写 env、不启 runtime |
 | M111-03 | PASS | 更新 tracker：M111/S133/Q94 PASS | Progress `109.7 / 112`; next recommended gate `M112_NEXT_UNEXTRACTED_DOMAIN_DECISION` | 不自动进入 next-domain implementation |
+| M112-01 | PASS | 复核 M86/M87/M88/M89/M111 剩余 gap | existing external plugin reconcile remains lowest-risk unresolved lane | 不读取 private、不启 runtime |
+| M112-02 | PASS | 比较 Agent additive、AdminPanel dynamic、Codex/Memory、PhotoStudio、LocalState/private、stub/remove、upstream PR 等候选路线 | selected `M113_PLUGIN_EXISTING_EXTERNAL_RECONCILE_TASKBOOK` | 不打开高风险 runtime/private/upstream 门 |
+| M112-03 | PASS | 写 M112 decision 并更新 tracker：M112/S134/Q95 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M112_NEXT_UNEXTRACTED_DOMAIN_DECISION_20260622.md`; Progress `110.7 / 113` | 不复制/覆盖 plugin，不 commit/push |
 
 ## 6. 领域路线概览
 
@@ -1301,6 +1312,7 @@ M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本�
 
 | 领域 | 未来 contract | External Runtime / State 目标 | 第一件必须做的事 |
 | --- | --- | --- | --- |
+| Plugin reconcile | `VCP_PLUGIN_DIRS`、`VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` | Existing external plugin dirs 与 core fallback 的 no-overwrite reconcile | M112 选择 M113 plugin existing-external reconcile taskbook；M113 只应覆盖 `Plugin/AIGentOrchestrator/**` 与 `Plugin/AIGentQuality/**` 的 path/manifest/history/taskbook，不复制、不覆盖、不启 runtime。 |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；7 个 additive Agent 已 copy-first 但 `VCP_AGENT_DIRS` 暂不启用；core fallback 保留；M100 scoped harness BLOCK：external additive scan `7` but effective external source `0` because current resolver keeps same-id core fallback effective；M101-M103 已把 blocker 转成 collision / override-candidate review taskbooks；M104 classification 仅允许 `小秋` 进入 copy-gate；M105 taskbook PASS；M106 已复制并保留 `AgentOverrides/小秋.txt` 且 rollback drill PASS；M107 锁定剩余六个 Agent 为 deferred/separate-design no-copy；M108 选择 M109 final receipt；M109 正式关闭当前 XiaoQiu override lane；M110 定义打包/commit split；M111 记录 split commit/push 已完成并 origin-aligned；真实 additive runtime 仍未启用。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；M90 page/API extensionization taskbook PASS；M91 source scan and skeleton decision PASS；M92 metadata-only skeleton package gate PASS；M93 reviewed content copy-first gate PASS；M94 default-off metadata registry gate PASS；M95 route/nav decision taskbook PASS；M96-PRE route-id mapping closeout decision PASS；M96 route-nav closeout receipt PASS；仍不启 dynamic frontend runtime。 |
@@ -1308,7 +1320,7 @@ M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本�
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 | Agent additive M100 blocker | `VCP_AGENT_DIRS` future gate | 7 copied additive Agent files | M100 scoped harness BLOCK：external additive scan `7` but effective external source `0`; effective source remains `core:7` because same-id core fallback is retained；do not enable real additive runtime before a separate blocker/defer decision。 |
 
@@ -1369,6 +1381,7 @@ M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本�
 | Agent override lane final closeout receipt | M109 receipt；current XiaoQiu override lane closed; six remaining candidates no-copy; additive runtime still blocked by M100 | PASS_RECEIPT_ONLY；no external package/env/source/runtime action |
 | Uncommitted work packaging decision | M110 decision；future core repo and external package commit split documented; allowlist and must-not-include rules recorded | PASS_DECISION_ONLY；no staging, commit, push, PR, env, or runtime action |
 | Pushed-state aggregate closeout receipt | M111 receipt；core `34c3b5ff` and external `ca5c9c4` pushed and origin-aligned; next recommended gate M112 | PASS_RECEIPT_ONLY；no upstream PR/env/source/runtime action |
+| Next unextracted domain decision | M112 decision；remaining lanes compared; M113 plugin existing-external reconcile taskbook selected | PASS_DECISION_ONLY；no copy/env/source/runtime/private/upstream action |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
