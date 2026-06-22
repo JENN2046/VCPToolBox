@@ -14,6 +14,7 @@ const {
 const VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV = 'VCP_ADMIN_EXTENSION_ALLOWED_ROOTS';
 const VCP_ADMIN_EXTENSION_DIRS_ENV = 'VCP_ADMIN_EXTENSION_DIRS';
 const VCP_ADMIN_EXTENSION_ALLOWLIST_ENV = 'VCP_ADMIN_EXTENSION_ALLOWLIST';
+const VCP_ADMIN_EXTENSION_METADATA_REGISTRY_ENABLED_ENV = 'VCP_ADMIN_EXTENSION_METADATA_REGISTRY_ENABLED';
 
 const ADMIN_EXTENSION_MANIFEST_FILE = 'admin-extension-manifest.json';
 
@@ -88,6 +89,19 @@ const BLOCKED_FILE_PATTERNS = Object.freeze([
   /\.(sqlite|sqlite3|db|db3|duckdb|faiss|parquet|pem|key|pfx|p12|jks|kdbx|log)$/i
 ]);
 
+const HARD_METADATA_REFERENCE_PATTERNS = Object.freeze([
+  /(^|[\\/])(\.env|config\.env)(\.|[\\/]|$)/i,
+  /secret/i,
+  /token/i,
+  /credential/i,
+  /password/i,
+  /\.(sqlite|sqlite3|db|db3|duckdb|faiss|parquet|pem|key|pfx|p12|jks|kdbx|log)$/i
+]);
+
+function isTruthyFlag(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
 function uniqueByResolvedPath(paths) {
   const seen = new Set();
   const result = [];
@@ -145,6 +159,15 @@ function isRelativeSafe(relativePath) {
     && !relativePath.split(/[\\/]+/).includes('..')
     && !hasBlockedPathSegment(relativePath)
     && !BLOCKED_FILE_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+
+function isRelativeMetadataReferenceSafe(relativePath) {
+  return Boolean(relativePath)
+    && typeof relativePath === 'string'
+    && !path.isAbsolute(relativePath)
+    && !relativePath.split(/[\\/]+/).includes('..')
+    && !hasBlockedPathSegment(relativePath)
+    && !HARD_METADATA_REFERENCE_PATTERNS.some((pattern) => pattern.test(relativePath));
 }
 
 function normalizeMountPath(mountPath) {
@@ -408,6 +431,207 @@ function validateManifest(manifest, extensionRoot, options) {
   return { diagnostics, routes, frontendRoutes, extensionId };
 }
 
+function sanitizeMetadataString(value, maxLength = 120) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/[\r\n\t]+/g, ' ').trim().slice(0, maxLength);
+}
+
+function sanitizeStringList(value, maxItems = 12) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => sanitizeMetadataString(item, 80))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function validateMetadataManifest(manifest, extensionRoot, options) {
+  const diagnostics = [];
+  const plannedFrontendRoutes = [];
+  const context = {
+    extensionRoot: toDisplayPath(options.projectRoot, extensionRoot, 'external')
+  };
+
+  if (!manifest || typeof manifest !== 'object') {
+    addDiagnostic(diagnostics, 'admin_extension_metadata_manifest_missing_or_invalid', context);
+    return { diagnostics, plannedFrontendRoutes, extensionId: '' };
+  }
+
+  const extensionId = sanitizeMetadataString(manifest.extensionId, 120);
+  if (manifest.schemaVersion !== 1) addDiagnostic(diagnostics, 'admin_extension_metadata_schema_version_invalid', context);
+  if (!extensionId) addDiagnostic(diagnostics, 'admin_extension_metadata_id_missing', context);
+  if (manifest.defaultEnabled !== false) addDiagnostic(diagnostics, 'admin_extension_metadata_default_enabled_must_be_false', { ...context, extensionId });
+  if (manifest.runtimeEnabled !== false) addDiagnostic(diagnostics, 'admin_extension_metadata_runtime_enabled_must_be_false', { ...context, extensionId });
+  if (manifest.dynamicVueImport !== false) addDiagnostic(diagnostics, 'admin_extension_metadata_dynamic_vue_import_must_be_false', { ...context, extensionId });
+
+  const permissions = manifest.permissions || {};
+  if (!Array.isArray(permissions.adminApi) || permissions.adminApi.length !== 0) {
+    addDiagnostic(diagnostics, 'admin_extension_metadata_admin_api_permissions_must_be_empty', { ...context, extensionId });
+  }
+  if (permissions.externalWrites !== false) addDiagnostic(diagnostics, 'admin_extension_metadata_external_writes_not_false', { ...context, extensionId });
+  if (permissions.providerCalls !== false) addDiagnostic(diagnostics, 'admin_extension_metadata_provider_calls_not_false', { ...context, extensionId });
+  if (permissions.bridgeCalls !== false) addDiagnostic(diagnostics, 'admin_extension_metadata_bridge_calls_not_false', { ...context, extensionId });
+
+  const routes = Array.isArray(manifest.frontend?.plannedRoutes) ? manifest.frontend.plannedRoutes : [];
+  const routeIds = new Set();
+  for (const route of routes) {
+    const routeId = sanitizeMetadataString(route?.routeId, 80);
+    const routeName = sanitizeMetadataString(route?.routeName, 80);
+    const title = sanitizeMetadataString(route?.title || routeName || routeId, 120);
+    const navGroup = sanitizeMetadataString(route?.navGroup, 80);
+    const componentRef = typeof route?.component === 'string' ? route.component.trim() : '';
+    const apiModuleRef = typeof route?.apiModule === 'string' ? route.apiModule.trim() : '';
+    const routeContext = { ...context, extensionId, routeId: routeId || 'unknown' };
+
+    if (!routeId) addDiagnostic(diagnostics, 'admin_extension_metadata_route_id_missing', routeContext);
+    if (routeIds.has(routeId)) addDiagnostic(diagnostics, 'admin_extension_metadata_route_id_duplicate', routeContext);
+    routeIds.add(routeId);
+    if (!routeName) addDiagnostic(diagnostics, 'admin_extension_metadata_route_name_missing', routeContext);
+    if (!title) addDiagnostic(diagnostics, 'admin_extension_metadata_route_title_missing', routeContext);
+    if (!navGroup) addDiagnostic(diagnostics, 'admin_extension_metadata_nav_group_missing', routeContext);
+    if (route.requiresAuth !== true) addDiagnostic(diagnostics, 'admin_extension_metadata_requires_auth_not_true', routeContext);
+    if (route.contentCopied !== true) addDiagnostic(diagnostics, 'admin_extension_metadata_content_copied_not_true', routeContext);
+    if (componentRef && !isRelativeMetadataReferenceSafe(componentRef)) {
+      addDiagnostic(diagnostics, 'admin_extension_metadata_component_ref_unsafe', routeContext);
+    }
+    if (apiModuleRef && !isRelativeMetadataReferenceSafe(apiModuleRef)) {
+      addDiagnostic(diagnostics, 'admin_extension_metadata_api_module_ref_unsafe', routeContext);
+    }
+
+    plannedFrontendRoutes.push({
+      extensionId,
+      routeId,
+      routeName,
+      title,
+      navGroup,
+      showInSidebar: route.showInSidebar === true,
+      requiresAuth: route.requiresAuth === true,
+      contentCopied: route.contentCopied === true,
+      componentRefPresent: Boolean(componentRef),
+      apiModuleRefPresent: Boolean(apiModuleRef),
+      runtimeEnabled: false,
+      dynamicVueImport: false
+    });
+  }
+
+  return { diagnostics, plannedFrontendRoutes, extensionId };
+}
+
+function buildAdminExtensionMetadataRegistry(options = {}) {
+  const projectRoot = path.resolve(options.projectRoot || path.join(__dirname, '..'));
+  const env = options.env || process.env;
+  const externalRoot = options.externalRoot ? path.resolve(options.externalRoot) : path.resolve(projectRoot, '..', 'VCPToolBox-JENN-Extensions');
+
+  const metadataRegistryEnabled = options.metadataRegistryEnabled === true
+    || isTruthyFlag(env[VCP_ADMIN_EXTENSION_METADATA_REGISTRY_ENABLED_ENV]);
+  const diagnostics = [];
+
+  if (!metadataRegistryEnabled) {
+    addDiagnostic(diagnostics, 'admin_extension_metadata_registry_disabled', { level: 'info' });
+    return {
+      metadataRegistryEnabled: false,
+      runtimeEnabled: false,
+      projectRoot,
+      externalRoot,
+      allowedRootCount: 0,
+      extensionDirCount: 0,
+      allowlistCount: 0,
+      metadataPackages: [],
+      frontendMetadataRoutes: [],
+      diagnostics
+    };
+  }
+
+  const requiredEnvPresent = Boolean(env[VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV])
+    && Boolean(env[VCP_ADMIN_EXTENSION_DIRS_ENV])
+    && Boolean(env[VCP_ADMIN_EXTENSION_ALLOWLIST_ENV]);
+
+  const allowedRoots = resolvePathList(env[VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV], projectRoot);
+  const extensionDirs = resolvePathList(env[VCP_ADMIN_EXTENSION_DIRS_ENV], projectRoot);
+  const allowlist = parseAllowlist(env[VCP_ADMIN_EXTENSION_ALLOWLIST_ENV]);
+
+  if (!requiredEnvPresent) {
+    addDiagnostic(diagnostics, 'admin_extension_metadata_required_env_missing', { level: 'info' });
+  }
+
+  const metadataPackages = [];
+  const frontendMetadataRoutes = [];
+
+  for (const extensionDir of extensionDirs) {
+    const context = {
+      root: toDisplayPath(projectRoot, extensionDir, 'external')
+    };
+    const unsafeReason = getUnsafeExtensionRootReason(projectRoot, extensionDir);
+    if (unsafeReason) {
+      addDiagnostic(diagnostics, 'admin_extension_metadata_root_unsafe', { ...context, message: unsafeReason });
+      continue;
+    }
+    if (allowedRoots.length === 0 || !allowedRoots.some((root) => isSubPath(extensionDir, root))) {
+      addDiagnostic(diagnostics, 'admin_extension_metadata_root_not_allowed', context);
+      continue;
+    }
+
+    const manifestPath = path.join(extensionDir, ADMIN_EXTENSION_MANIFEST_FILE);
+    if (!fs.existsSync(manifestPath)) {
+      addDiagnostic(diagnostics, 'admin_extension_metadata_manifest_missing', context);
+      continue;
+    }
+    if (fs.lstatSync(manifestPath).isSymbolicLink()) {
+      addDiagnostic(diagnostics, 'admin_extension_metadata_manifest_symlink_unsupported', context);
+      continue;
+    }
+
+    const manifest = readJsonFile(manifestPath, diagnostics, context);
+    const validation = validateMetadataManifest(manifest, extensionDir, { projectRoot });
+    diagnostics.push(...validation.diagnostics);
+
+    const extensionId = validation.extensionId || manifest?.extensionId || '';
+    const allowlisted = allowlist.has(extensionId);
+    if (!allowlisted) {
+      addDiagnostic(diagnostics, 'admin_extension_metadata_not_allowlisted', { ...context, extensionId, level: 'info' });
+    }
+
+    const hasBlockingDiagnostics = diagnostics.some((diagnostic) => (
+      diagnostic.level !== 'info'
+      && diagnostic.extensionId === extensionId
+      && (!diagnostic.root || diagnostic.root === context.root)
+    ));
+    const metadataRegistered = requiredEnvPresent && allowlisted && !hasBlockingDiagnostics;
+
+    metadataPackages.push({
+      extensionId,
+      displayName: sanitizeMetadataString(manifest?.displayName || extensionId, 120),
+      description: sanitizeMetadataString(manifest?.description || '', 240),
+      sourcePackage: sanitizeMetadataString(manifest?.sourcePackage || '', 80),
+      defaultEnabled: manifest?.defaultEnabled === true,
+      runtimeEnabled: false,
+      dynamicVueImport: false,
+      copyFirstContentIncluded: manifest?.copyFirstContentIncluded === true,
+      reviewRequired: sanitizeStringList(manifest?.reviewRequired),
+      reviewCompleted: sanitizeStringList(manifest?.reviewCompleted),
+      plannedFrontendRouteCount: validation.plannedFrontendRoutes.length,
+      allowlisted,
+      metadataRegistered
+    });
+
+    if (metadataRegistered) {
+      frontendMetadataRoutes.push(...validation.plannedFrontendRoutes);
+    }
+  }
+
+  return {
+    metadataRegistryEnabled: true,
+    runtimeEnabled: false,
+    projectRoot,
+    externalRoot,
+    allowedRootCount: allowedRoots.length,
+    extensionDirCount: extensionDirs.length,
+    allowlistCount: allowlist.size,
+    metadataPackages,
+    frontendMetadataRoutes,
+    diagnostics
+  };
+}
+
 function buildAdminExtensionPlan(options = {}) {
   const projectRoot = path.resolve(options.projectRoot || path.join(__dirname, '..'));
   const env = options.env || process.env;
@@ -536,6 +760,8 @@ module.exports = {
   VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV,
   VCP_ADMIN_EXTENSION_DIRS_ENV,
   VCP_ADMIN_EXTENSION_ALLOWLIST_ENV,
+  VCP_ADMIN_EXTENSION_METADATA_REGISTRY_ENABLED_ENV,
+  buildAdminExtensionMetadataRegistry,
   buildAdminExtensionPlan,
   parseAllowlist,
   summarizeDiagnosticsByCode

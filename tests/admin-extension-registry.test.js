@@ -8,6 +8,8 @@ const {
   VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV,
   VCP_ADMIN_EXTENSION_DIRS_ENV,
   VCP_ADMIN_EXTENSION_ALLOWLIST_ENV,
+  VCP_ADMIN_EXTENSION_METADATA_REGISTRY_ENABLED_ENV,
+  buildAdminExtensionMetadataRegistry,
   buildAdminExtensionPlan,
   summarizeDiagnosticsByCode
 } = require('../modules/adminExtensionRegistry');
@@ -15,6 +17,20 @@ const {
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const EXTERNAL_ROOT = path.resolve(PROJECT_ROOT, '..', 'VCPToolBox-JENN-Extensions');
 const ADMIN_EXTENSION_ROOT = path.join(EXTERNAL_ROOT, 'AdminExtensions', 'JennAdminStatus');
+const PAGE_API_EXTENSION_ROOTS = [
+  path.join(EXTERNAL_ROOT, 'AdminExtensions', 'AiImageAgents'),
+  path.join(EXTERNAL_ROOT, 'AdminExtensions', 'ChannelHub'),
+  path.join(EXTERNAL_ROOT, 'AdminExtensions', 'CodexImagegenRelay'),
+  path.join(EXTERNAL_ROOT, 'AdminExtensions', 'CodexMemoryMonitor'),
+  path.join(EXTERNAL_ROOT, 'AdminExtensions', 'OAuthAuthCenter')
+];
+const PAGE_API_EXTENSION_IDS = [
+  'jenn.admin.ai-image-agents',
+  'jenn.admin.channel-hub',
+  'jenn.admin.codex-imagegen-relay',
+  'jenn.admin.codex-memory-monitor',
+  'jenn.admin.oauth-auth-center'
+];
 
 test('AdminPanel extension registry is default-off when env is unset', () => {
   const plan = buildAdminExtensionPlan({
@@ -108,4 +124,76 @@ test('AdminPanel extension registry plans reviewed read-only route with scoped e
   assert.strictEqual(plan.registeredRoutes[0].writeCapable, false);
   assert.strictEqual(plan.frontendRoutes.length, 1);
   assert.strictEqual(summarizeDiagnosticsByCode(plan.diagnostics), 'none');
+});
+
+test('AdminPanel page/API metadata registry stays default-off without explicit flag', () => {
+  const registry = buildAdminExtensionMetadataRegistry({
+    projectRoot: PROJECT_ROOT,
+    externalRoot: EXTERNAL_ROOT,
+    env: {
+      [VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV]: EXTERNAL_ROOT,
+      [VCP_ADMIN_EXTENSION_DIRS_ENV]: PAGE_API_EXTENSION_ROOTS.join(path.delimiter),
+      [VCP_ADMIN_EXTENSION_ALLOWLIST_ENV]: PAGE_API_EXTENSION_IDS.join(',')
+    }
+  });
+
+  assert.strictEqual(registry.metadataRegistryEnabled, false);
+  assert.strictEqual(registry.runtimeEnabled, false);
+  assert.strictEqual(registry.metadataPackages.length, 0);
+  assert.strictEqual(registry.frontendMetadataRoutes.length, 0);
+  assert.match(summarizeDiagnosticsByCode(registry.diagnostics), /admin_extension_metadata_registry_disabled:1/);
+});
+
+test('AdminPanel page/API metadata registry exposes reviewed labels without runtime loading', () => {
+  const registry = buildAdminExtensionMetadataRegistry({
+    projectRoot: PROJECT_ROOT,
+    externalRoot: EXTERNAL_ROOT,
+    env: {
+      [VCP_ADMIN_EXTENSION_METADATA_REGISTRY_ENABLED_ENV]: '1',
+      [VCP_ADMIN_EXTENSION_ALLOWED_ROOTS_ENV]: EXTERNAL_ROOT,
+      [VCP_ADMIN_EXTENSION_DIRS_ENV]: PAGE_API_EXTENSION_ROOTS.join(path.delimiter),
+      [VCP_ADMIN_EXTENSION_ALLOWLIST_ENV]: PAGE_API_EXTENSION_IDS.join(',')
+    }
+  });
+
+  assert.strictEqual(registry.metadataRegistryEnabled, true);
+  assert.strictEqual(registry.runtimeEnabled, false);
+  assert.strictEqual(registry.metadataPackages.length, 5);
+  assert.strictEqual(registry.frontendMetadataRoutes.length, 5);
+  assert.deepStrictEqual(
+    registry.frontendMetadataRoutes.map((route) => route.routeId).sort(),
+    [
+      'ai-image-agents',
+      'channel-hub',
+      'codex-imagegen-relay',
+      'codex-memory-monitor',
+      'oauth-auth-center'
+    ]
+  );
+
+  for (const metadataPackage of registry.metadataPackages) {
+    assert.strictEqual(metadataPackage.metadataRegistered, true);
+    assert.strictEqual(metadataPackage.defaultEnabled, false);
+    assert.strictEqual(metadataPackage.runtimeEnabled, false);
+    assert.strictEqual(metadataPackage.dynamicVueImport, false);
+    assert.strictEqual(metadataPackage.copyFirstContentIncluded, true);
+    assert.strictEqual(metadataPackage.plannedFrontendRouteCount, 1);
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(metadataPackage, 'displayPath'), false);
+  }
+
+  for (const route of registry.frontendMetadataRoutes) {
+    assert.strictEqual(route.runtimeEnabled, false);
+    assert.strictEqual(route.dynamicVueImport, false);
+    assert.strictEqual(route.contentCopied, true);
+    assert.strictEqual(route.requiresAuth, true);
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(route, 'component'), false);
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(route, 'apiModule'), false);
+  }
+
+  const oauthPackage = registry.metadataPackages.find((item) => item.extensionId === 'jenn.admin.oauth-auth-center');
+  assert.ok(oauthPackage.reviewCompleted.includes('auth-oauth-display-guard'));
+  assert.ok(oauthPackage.reviewRequired.includes('runtime-action-guard-before-mount'));
+  assert.strictEqual(JSON.stringify(registry.frontendMetadataRoutes).includes('frontend/views'), false);
+  assert.strictEqual(JSON.stringify(registry.frontendMetadataRoutes).includes('frontend/api'), false);
+  assert.strictEqual(summarizeDiagnosticsByCode(registry.diagnostics), 'none');
 });
