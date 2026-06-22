@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 99% (97.7 / 99 global milestone units; scope expanded by M98 PASS)
+Progress: [##########] 99% (98.7 / 100 global milestone units; scope expanded by M99 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Agent additive runtime decision taskbook（M98 PASS；M99 scoped Agent additive shadow validation taskbook next）
+当前里程碑：Agent additive scoped shadow validation taskbook（M99 PASS；M100 scoped harness gate next, not authorized yet）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M98；M96-PRE 是不计分前置子门。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S120 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M99；M96-PRE 是不计分前置子门。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S121 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M98 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M98 合计 99 units。
+- 全局 Progress 覆盖 M0-M99 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M99 合计 100 units。
 - `M96-PRE` 是 M96 前置子门，不计入 global milestone unit；M96 正式完成后顶部 Progress 扩展到 `95.7 / 97`。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
@@ -112,6 +112,7 @@ Last updated: 2026-06-22
 - M96 完成 AdminPanel page/API route-nav closeout receipt；当前 route 在 package + metadata registry + core fallback retention 边界收口；不实现 static metadata surface、不启 dynamic frontend runtime、不写真实 env、不 build/dist。
 - M97 完成 aggregate gap / next-lane decision；决策不继续 AdminPanel 残项，下一步只写 M98 Agent additive runtime decision taskbook；不启 `VCP_AGENT_DIRS`、不写真实 env、不读 private。
 - M98 完成 Agent additive runtime decision taskbook；决策下一步只写 M99 scoped Agent additive shadow validation taskbook；仍不启 `VCP_AGENT_DIRS`、不写真实 env、不改 AgentManager、不删 core fallback、不读 private。
+- M99 完成 Agent additive scoped shadow validation taskbook；定义未来 M100 scoped harness gate；本次不实现 harness、不改 scripts/tests/source、不写真实 env、不启 `VCP_AGENT_DIRS`。
 
 计划变更规则：
 
@@ -131,7 +132,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M98 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M99 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -235,6 +236,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M98 是当前 Jenn fork 长期维护
 | [x] | M96 | 0 | AdminPanel page/API route-nav closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_ADMINPANEL_PAGE_API_ROUTE_NAV_CLOSEOUT_RECEIPT_20260622.md`；current route closed at external package + default-off metadata registry + core fallback retention boundary; static metadata surface skipped; no frontend source/runtime/env/build/dist action。 |
 | [x] | M97 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M97_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；AdminPanel residuals deferred; next selected gate `M98_AGENT_ADDITIVE_RUNTIME_DECISION_TASKBOOK`; no runtime/env/private/source action。 |
 | [x] | M98 | 0 | Agent additive runtime decision taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M98_AGENT_ADDITIVE_RUNTIME_DECISION_TASKBOOK_20260622.md`；decision `SELECT_M99_AGENT_ADDITIVE_SCOPED_SHADOW_VALIDATION_TASKBOOK`; no `VCP_AGENT_DIRS` enablement, no real env write, no AgentManager/runtime/source/private action。 |
+| [x] | M99 | 0 | Agent additive scoped shadow validation taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M99_AGENT_ADDITIVE_SCOPED_SHADOW_VALIDATION_TASKBOOK_20260622.md`；defines future M100 scoped harness gate; no harness implementation, no scripts/tests/source change, no real env write, no `VCP_AGENT_DIRS` enablement。 |
 
 全局进度明细：
 
@@ -314,7 +316,8 @@ M96-PRE PASS：0 / 0 unit（pre-M96 route-id mapping closeout decision；不扩�
 M96 PASS：1.0 / 1 unit（AdminPanel page/API route-nav closeout receipt；current route closed, dynamic runtime still deferred）
 M97 PASS：1.0 / 1 unit（aggregate gap / next-lane decision；M98 Agent additive decision taskbook selected）
 M98 PASS：1.0 / 1 unit（Agent additive runtime decision taskbook；M99 scoped shadow validation taskbook selected）
-Global Progress：97.7 / 99 = 98.69%，顶部显示为 99%
+M99 PASS：1.0 / 1 unit（Agent additive scoped shadow validation taskbook；M100 scoped harness gate defined but not authorized）
+Global Progress：98.7 / 100 = 98.70%，顶部显示为 99%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -443,6 +446,7 @@ Global Progress：97.7 / 99 = 98.69%，顶部显示为 99%
 | [x] | S118 | AdminPanel / M96 | 0 | AdminPanel page/API route-nav closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_ADMINPANEL_PAGE_API_ROUTE_NAV_CLOSEOUT_RECEIPT_20260622.md`；core static fallback present; external package/default-off metadata evidence recorded; no static metadata surface/runtime/env/build/dist action。 |
 | [x] | S119 | Aggregate / M97 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M97_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；selected M98 Agent additive decision taskbook; AdminPanel residual/runtime/build/deploy/fallback-removal gates deferred。 |
 | [x] | S120 | Agent / M98 | 0 | Agent additive runtime decision taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M98_AGENT_ADDITIVE_RUNTIME_DECISION_TASKBOOK_20260622.md`；selected M99 scoped shadow validation taskbook; no `VCP_AGENT_DIRS` enablement, no real env/runtime/source/private action。 |
+| [x] | S121 | Agent / M99 | 0 | Agent additive scoped shadow validation taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M99_AGENT_ADDITIVE_SCOPED_SHADOW_VALIDATION_TASKBOOK_20260622.md`；defines M100 future scoped harness gate; no harness/scripts/tests/source/env/runtime action。 |
 
 原始验收拆分说明：
 
@@ -482,7 +486,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M98 完成规则：
+M19-M99 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -560,6 +564,7 @@ M96-PRE：AdminPanel page/API route-id mapping closeout decision PASS；选择 c
 M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 external package + default-off metadata registry + core fallback retention 边界收口；dynamic frontend runtime / static metadata surface / core fallback removal 均 deferred。
 M97：Aggregate gap / next-lane decision PASS；不继续 AdminPanel residuals；选择 M98 Agent additive runtime decision taskbook；M97 不启 runtime、不写 env、不读 private。
 M98：Agent additive runtime decision taskbook PASS；选择 M99 scoped Agent additive shadow validation taskbook；M98 不启 `VCP_AGENT_DIRS`、不写真实 env、不改 AgentManager、不删 core fallback。
+M99：Agent additive scoped shadow validation taskbook PASS；定义 M100 scoped harness gate；M99 不实现 harness、不改 scripts/tests/source、不写真实 env、不启 additive runtime。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -598,6 +603,7 @@ M98：Agent additive runtime decision taskbook PASS；选择 M99 scoped Agent ad
 | AdminPanel page/API route-nav closeout receipt | M96 / S118 | close the current page/API route-nav lane at package + metadata registry + core fallback retention boundary | PASS；external package copied; metadata registry default-off; core fallback retained; static metadata surface/runtime/env/build/dist skipped。 |
 | Aggregate gap / next-lane decision | M97 / S119 | decide whether to continue AdminPanel residuals or move to the next lower-risk deferred lane | PASS；AdminPanel residuals deferred; M98 Agent additive decision taskbook selected; no runtime/env/private action。 |
 | Agent additive runtime decision taskbook | M98 / S120 | decide whether the copied additive Agent package should stay deferred or move to a scoped shadow-only taskbook | PASS；M99 scoped shadow validation taskbook selected; `VCP_AGENT_DIRS` remains off; no real env/runtime/source/private action。 |
+| Agent additive scoped shadow validation taskbook | M99 / S121 | define exact future M100 scoped process.env harness shape and stop lines | PASS；M100 harness gate defined but not implemented; scripts/tests/source/env untouched。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -669,6 +675,7 @@ M98：Agent additive runtime decision taskbook PASS；选择 M99 scoped Agent ad
 | AdminPanel page/API route-nav closeout receipt | M96 / S118 | record final closeout for this lane, including evidence matrix, deferred gates, validation, and rollback | PASS；docs-only; no frontend source/runtime/env/build/dist; Progress `95.7 / 97`。 |
 | Aggregate gap / next-lane decision | M97 / S119 | compare AdminPanel residuals against Agent/Codex-Memory/PhotoStudio/AI Image/LocalState/stub lanes and pick the next safe taskbook | PASS；M98 Agent additive decision taskbook selected; Progress `96.7 / 98`。 |
 | Agent additive runtime decision taskbook | M98 / S120 | decide next additive-Agent runtime step without enabling real additive env | PASS；M99 scoped shadow validation taskbook selected; Progress `97.7 / 99`。 |
+| Agent additive scoped shadow validation taskbook | M99 / S121 | define future M100 harness gate, allowed files, expected markers, block conditions, rollback, and real-config stop line | PASS；taskbook-only; Progress `98.7 / 100`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -800,8 +807,9 @@ M98：Agent additive runtime decision taskbook PASS；选择 M99 scoped Agent ad
 | Q79 | M96/S118 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_ADMINPANEL_PAGE_API_ROUTE_NAV_CLOSEOUT_RECEIPT_20260622.md`；current route closed at package + metadata registry + core fallback retention boundary; dynamic runtime/static metadata surface/env/build/dist remain deferred。 |
 | Q80 | M97/S119 | PASS | Aggregate | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M97_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；AdminPanel residuals deferred; M98 Agent additive decision taskbook selected; no runtime/env/private/source action。 |
 | Q81 | M98/S120 | PASS | Agent | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M98_AGENT_ADDITIVE_RUNTIME_DECISION_TASKBOOK_20260622.md`；M99 scoped shadow validation taskbook selected; additive `VCP_AGENT_DIRS` still disabled; no real env/runtime/source/private action。 |
+| Q82 | M99/S121 | PASS | Agent | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M99_AGENT_ADDITIVE_SCOPED_SHADOW_VALIDATION_TASKBOOK_20260622.md`；M100 scoped harness gate defined; harness not implemented; no real env/runtime/source/private action。 |
 
-### 5.5 M19-M98 + M96-PRE Specific Step Plan
+### 5.5 M19-M99 + M96-PRE Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1141,6 +1149,10 @@ M98：Agent additive runtime decision taskbook PASS；选择 M99 scoped Agent ad
 | M98-02 | PASS | 分类 additive runtime 候选动作 | enable real env/source runtime/core fallback removal/Admin write all blocked now | 不把 copy-first 当 runtime enablement |
 | M98-03 | PASS | 选择下一道门 | `NEXT_GATE=M99_AGENT_ADDITIVE_SCOPED_SHADOW_VALIDATION_TASKBOOK` | 不启 `VCP_AGENT_DIRS` |
 | M98-04 | PASS | 写 M98 taskbook 并更新 tracker：M98/S120/Q81 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M98_AGENT_ADDITIVE_RUNTIME_DECISION_TASKBOOK_20260622.md`; Progress `97.7 / 99` | 不把 M99 implementation 标授权 |
+| M99-01 | PASS | 复核 M12/M13/M17/M45/M86/M98 Agent evidence | additive candidates `7`; override controls `2`; current additive runtime `0` | 不读取真实 env 值 |
+| M99-02 | PASS | 定义未来 M100 scoped process.env-only harness shape | allowed future script/receipt/tracker only | 不实现 harness、不改 scripts/tests/source |
+| M99-03 | PASS | 写 future expected markers、block conditions、rollback 和 real-config stop line | `M101_AGENT_ADDITIVE_REAL_CONFIG_UNLOCK_DECISION_GATE` required before real env | 不启 `VCP_AGENT_DIRS` |
+| M99-04 | PASS | 写 M99 taskbook 并更新 tracker：M99/S121/Q82 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M99_AGENT_ADDITIVE_SCOPED_SHADOW_VALIDATION_TASKBOOK_20260622.md`; Progress `98.7 / 100` | 不把 M100 implementation 标授权 |
 
 ## 6. 领域路线概览
 
@@ -1148,14 +1160,14 @@ M98：Agent additive runtime decision taskbook PASS；选择 M99 scoped Agent ad
 
 | 领域 | 未来 contract | External Runtime / State 目标 | 第一件必须做的事 |
 | --- | --- | --- | --- |
-| Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；7 个 additive Agent 已 copy-first 但 `VCP_AGENT_DIRS` 暂不启用；core fallback 保留；M98 selected M99 scoped Agent additive shadow validation taskbook next，但不授权启用真实 additive runtime。 |
+| Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；7 个 additive Agent 已 copy-first 但 `VCP_AGENT_DIRS` 暂不启用；core fallback 保留；M99 defined future M100 scoped Agent additive shadow validation harness gate，但 M100 未授权、未实现，真实 additive runtime 未启用。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；M90 page/API extensionization taskbook PASS；M91 source scan and skeleton decision PASS；M92 metadata-only skeleton package gate PASS；M93 reviewed content copy-first gate PASS；M94 default-off metadata registry gate PASS；M95 route/nav decision taskbook PASS；M96-PRE route-id mapping closeout decision PASS；M96 route-nav closeout receipt PASS；仍不启 dynamic frontend runtime。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、executable adapter registration deferred；M72 selected M73 taskbook；M73 taskbook PASS；M74 metadata-only registry PASS with scoped metadata `1`、executable `0`、provider/image/output/bridge/LocalState `0`；M75 selected M76；M76 taskbook PASS；M77 test-only diagnostic route factory PASS；M78 selected M79；M79 taskbook PASS；M80 default-off production-router integration PASS；M81 selected M82 real-config apply/rollback decision candidate；M82 transient real config three-key apply PASS and rollback final hash restored；M83 selected current-lane closeout/no persistent enable；最终仍未保留真实 AI Image env、不启 provider、不生成图片、不注册 executable adapter runtime。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
@@ -1201,6 +1213,7 @@ M98：Agent additive runtime decision taskbook PASS；选择 M99 scoped Agent ad
 | AdminPanel page/API route-nav closeout receipt | M96 receipt；core static fallback routes present; external package/default-off metadata evidence recorded; current route closed at package + metadata registry + fallback retention boundary | PASS_DOCS_ONLY_NO_RUNTIME；dynamic frontend runtime, real env, build/dist, provider/OAuth actions still deferred |
 | Aggregate gap / next-lane decision | M97 decision；AdminPanel residuals deferred; M98 Agent additive decision taskbook selected | PASS_DECISION_ONLY；no runtime/env/private/source action |
 | Agent additive runtime decision taskbook | M98 taskbook；7 additive external Agent files remain copied-not-runtime-on, 2 AgentOverrides remain override-runtime-on, and M99 scoped shadow validation taskbook is selected | PASS_TASKBOOK_ONLY；`VCP_AGENT_DIRS` still disabled, no real env/runtime/source/private action |
+| Agent additive scoped shadow validation taskbook | M99 taskbook；future M100 scoped process.env-only harness gate, expected markers, block conditions, rollback, and M101 real-config stop line defined | PASS_TASKBOOK_ONLY；harness not implemented, real additive runtime still off |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
