@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 99% (95.7 / 97 global milestone units; scope expanded by M96 PASS)
+Progress: [##########] 99% (96.7 / 98 global milestone units; scope expanded by M97 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：AdminPanel page/API route-nav closeout receipt（M96 PASS；AdminPanel page/API current route closed）
+当前里程碑：Aggregate gap / next-lane decision（M97 PASS；M98 Agent additive decision taskbook next）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M96；M96-PRE 是不计分前置子门。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S118 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M97；M96-PRE 是不计分前置子门。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S119 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M96 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M96 合计 97 units。
+- 全局 Progress 覆盖 M0-M97 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M97 合计 98 units。
 - `M96-PRE` 是 M96 前置子门，不计入 global milestone unit；M96 正式完成后顶部 Progress 扩展到 `95.7 / 97`。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
@@ -110,6 +110,7 @@ Last updated: 2026-06-22
 - M95 完成 AdminPanel page/API route/nav decision taskbook；确认 5 个 page/API core static fallback 已存在，external metadata 仍默认关闭且非执行；记录 `ChannelHub` metadata/core route-id alignment guard；M96-PRE 后续已选择 closeout receipt，不启 dynamic frontend runtime。
 - M96-PRE 完成 AdminPanel page/API route-id mapping closeout decision；选择 `SELECT_CLOSEOUT_NO_STATIC_METADATA_SURFACE_NOW`，记录 `ChannelHub` display-only mapping `channel-hub -> channel-hub-manager`；pre-gate 当时不计分，M96 later completed。
 - M96 完成 AdminPanel page/API route-nav closeout receipt；当前 route 在 package + metadata registry + core fallback retention 边界收口；不实现 static metadata surface、不启 dynamic frontend runtime、不写真实 env、不 build/dist。
+- M97 完成 aggregate gap / next-lane decision；决策不继续 AdminPanel 残项，下一步只写 M98 Agent additive runtime decision taskbook；不启 `VCP_AGENT_DIRS`、不写真实 env、不读 private。
 
 计划变更规则：
 
@@ -129,7 +130,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M96 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M97 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -231,6 +232,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M96 是当前 Jenn fork 长期维护
 | [x] | M95 | 0 | AdminPanel page/API route/nav decision taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M95_ADMINPANEL_PAGE_API_ROUTE_NAV_DECISION_TASKBOOK_20260622.md`；确认 core static fallback routes already present; records `ChannelHub` route-id alignment guard; M96-PRE later selects closeout/no static metadata surface now; no frontend source/runtime/env/build/dist action。 |
 | [x] | M96-PRE | 0 | AdminPanel page/API route-id mapping closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_PRE_ADMINPANEL_PAGE_API_ROUTE_ID_MAPPING_CLOSEOUT_DECISION_20260622.md`；pre-M96 subgate, no global unit; selects closeout now, no static metadata surface; maps `channel-hub` to existing `channel-hub-manager` for display-only future use; M96 later completed。 |
 | [x] | M96 | 0 | AdminPanel page/API route-nav closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_ADMINPANEL_PAGE_API_ROUTE_NAV_CLOSEOUT_RECEIPT_20260622.md`；current route closed at external package + default-off metadata registry + core fallback retention boundary; static metadata surface skipped; no frontend source/runtime/env/build/dist action。 |
+| [x] | M97 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M97_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；AdminPanel residuals deferred; next selected gate `M98_AGENT_ADDITIVE_RUNTIME_DECISION_TASKBOOK`; no runtime/env/private/source action。 |
 
 全局进度明细：
 
@@ -308,7 +310,8 @@ M94 PASS：1.0 / 1 unit（AdminPanel page/API default-off metadata registry gate
 M95 PASS：1.0 / 1 unit（AdminPanel page/API route/nav decision taskbook；M96-PRE later selected closeout/no static metadata surface now；ChannelHub route-id alignment guard recorded）
 M96-PRE PASS：0 / 0 unit（pre-M96 route-id mapping closeout decision；不扩展 Progress；M96 later completed）
 M96 PASS：1.0 / 1 unit（AdminPanel page/API route-nav closeout receipt；current route closed, dynamic runtime still deferred）
-Global Progress：95.7 / 97 = 98.66%，顶部显示为 99%
+M97 PASS：1.0 / 1 unit（aggregate gap / next-lane decision；M98 Agent additive decision taskbook selected）
+Global Progress：96.7 / 98 = 98.67%，顶部显示为 99%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -435,6 +438,7 @@ Global Progress：95.7 / 97 = 98.66%，顶部显示为 99%
 | [x] | S116 | AdminPanel / M95 | 0 | AdminPanel page/API route/nav decision taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M95_ADMINPANEL_PAGE_API_ROUTE_NAV_DECISION_TASKBOOK_20260622.md`；core static fallback routes kept; external metadata remains non-executable; `ChannelHub` route-id alignment guard recorded; M96-PRE later selected closeout。 |
 | [x] | S117 | AdminPanel / M96-PRE | 0 | AdminPanel page/API route-id mapping closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_PRE_ADMINPANEL_PAGE_API_ROUTE_ID_MAPPING_CLOSEOUT_DECISION_20260622.md`；selected closeout/no static metadata surface now; `ChannelHub` display-only mapping recorded; pre-gate Progress unchanged; M96 later completed。 |
 | [x] | S118 | AdminPanel / M96 | 0 | AdminPanel page/API route-nav closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_ADMINPANEL_PAGE_API_ROUTE_NAV_CLOSEOUT_RECEIPT_20260622.md`；core static fallback present; external package/default-off metadata evidence recorded; no static metadata surface/runtime/env/build/dist action。 |
+| [x] | S119 | Aggregate / M97 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M97_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；selected M98 Agent additive decision taskbook; AdminPanel residual/runtime/build/deploy/fallback-removal gates deferred。 |
 
 原始验收拆分说明：
 
@@ -474,7 +478,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M96 完成规则：
+M19-M97 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -550,6 +554,7 @@ M94：AdminPanel page/API default-off metadata registry gate PASS；core 新增 
 M95：AdminPanel page/API route/nav decision taskbook PASS；确认 core static fallback route/component entries 已存在，external metadata 保持默认关闭且非执行；记录 `ChannelHub` metadata `channel-hub` vs core `channel-hub-manager` alignment guard；M96-PRE later selected closeout/no static metadata surface now。
 M96-PRE：AdminPanel page/API route-id mapping closeout decision PASS；选择 closeout/no static metadata surface now，记录 `ChannelHub` display-only mapping；这是 pre-M96 subgate，不计入 global unit。
 M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 external package + default-off metadata registry + core fallback retention 边界收口；dynamic frontend runtime / static metadata surface / core fallback removal 均 deferred。
+M97：Aggregate gap / next-lane decision PASS；不继续 AdminPanel residuals；选择 M98 Agent additive runtime decision taskbook；M97 不启 runtime、不写 env、不读 private。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -586,6 +591,7 @@ M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 ext
 | AdminPanel page/API route/nav decision taskbook | M95 / S116 | decide whether external metadata changes route/nav behavior and define future static metadata surface stop lines | PASS；keep core static fallback; `ChannelHub` route-id alignment guard recorded; dynamic external Vue/API loading blocked; M96-PRE later selected closeout。 |
 | AdminPanel page/API route-id mapping closeout decision | M96-PRE / S117 | decide closeout vs static metadata surface and handle ChannelHub route-id mapping before M96 | PASS；selected closeout now; static metadata surface skipped; `channel-hub -> channel-hub-manager` display-only mapping recorded; M96 later completed。 |
 | AdminPanel page/API route-nav closeout receipt | M96 / S118 | close the current page/API route-nav lane at package + metadata registry + core fallback retention boundary | PASS；external package copied; metadata registry default-off; core fallback retained; static metadata surface/runtime/env/build/dist skipped。 |
+| Aggregate gap / next-lane decision | M97 / S119 | decide whether to continue AdminPanel residuals or move to the next lower-risk deferred lane | PASS；AdminPanel residuals deferred; M98 Agent additive decision taskbook selected; no runtime/env/private action。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -655,6 +661,7 @@ M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 ext
 | AdminPanel page/API route/nav decision taskbook | M95 / S116 | document current core route/nav fallback reality, select future M96 static metadata surface or closeout decision, and keep dynamic runtime blocked | PASS；docs-only; core fallback retained; route-id alignment guard recorded; M96-PRE later selected closeout。 |
 | AdminPanel page/API route-id mapping closeout decision | M96-PRE / S117 | record exact ChannelHub mapping and choose M96 closeout receipt over static metadata surface | PASS；docs-only; no frontend source/runtime/env/build/dist; Progress unchanged。 |
 | AdminPanel page/API route-nav closeout receipt | M96 / S118 | record final closeout for this lane, including evidence matrix, deferred gates, validation, and rollback | PASS；docs-only; no frontend source/runtime/env/build/dist; Progress `95.7 / 97`。 |
+| Aggregate gap / next-lane decision | M97 / S119 | compare AdminPanel residuals against Agent/Codex-Memory/PhotoStudio/AI Image/LocalState/stub lanes and pick the next safe taskbook | PASS；M98 Agent additive decision taskbook selected; Progress `96.7 / 98`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -784,8 +791,9 @@ M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 ext
 | Q77 | M95/S116 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M95_ADMINPANEL_PAGE_API_ROUTE_NAV_DECISION_TASKBOOK_20260622.md`；core static route/nav fallback retained; external metadata remains non-executable; `ChannelHub` route-id alignment guard recorded; M96-PRE later selected closeout。 |
 | Q78 | M96-PRE/S117 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_PRE_ADMINPANEL_PAGE_API_ROUTE_ID_MAPPING_CLOSEOUT_DECISION_20260622.md`；selected closeout/no static metadata surface now; mapped `channel-hub` to `channel-hub-manager` for future display-only use; M96 later completed。 |
 | Q79 | M96/S118 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_ADMINPANEL_PAGE_API_ROUTE_NAV_CLOSEOUT_RECEIPT_20260622.md`；current route closed at package + metadata registry + core fallback retention boundary; dynamic runtime/static metadata surface/env/build/dist remain deferred。 |
+| Q80 | M97/S119 | PASS | Aggregate | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M97_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；AdminPanel residuals deferred; M98 Agent additive decision taskbook selected; no runtime/env/private/source action。 |
 
-### 5.5 M19-M96 + M96-PRE Specific Step Plan
+### 5.5 M19-M97 + M96-PRE Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1117,6 +1125,10 @@ M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 ext
 | M96-02 | PASS | 记录 core static fallback route/component matrix 和 external package default-off evidence | 5 core routes present; 5 external packages default-off; manifest entries `20` | 不启 dynamic runtime |
 | M96-03 | PASS | 写 deferred gate、validation、rollback 和 final result | M96 sections 6-10 | 不写真实 env、不 build/dist、不启动 server |
 | M96-04 | PASS | 写 M96 closeout receipt 并更新 tracker：M96/S118/Q79 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M96_ADMINPANEL_PAGE_API_ROUTE_NAV_CLOSEOUT_RECEIPT_20260622.md`; Progress `95.7 / 97` | 不把 deferred gates 标完成 |
+| M97-01 | PASS | 复核 M86/M85/M96，列 AdminPanel residuals 和剩余 deferred lanes | M97 aggregate state / next-lane table | 不读 private、不改 source |
+| M97-02 | PASS | 决定是否继续 AdminPanel residuals | `CONTINUE_ADMINPANEL_RESIDUALS_NOW=no` | 不启 dynamic frontend runtime |
+| M97-03 | PASS | 选择下一安全 gate | `NEXT_LANE=M98_AGENT_ADDITIVE_RUNTIME_DECISION_TASKBOOK` | 不启 `VCP_AGENT_DIRS` |
+| M97-04 | PASS | 写 M97 decision 并更新 tracker：M97/S119/Q80 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M97_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`; Progress `96.7 / 98` | 不把 M98 implementation 标授权 |
 
 ## 6. 领域路线概览
 
@@ -1124,14 +1136,14 @@ M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 ext
 
 | 领域 | 未来 contract | External Runtime / State 目标 | 第一件必须做的事 |
 | --- | --- | --- | --- |
-| Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
+| Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留；M97 selected M98 Agent additive decision taskbook next，但不授权启用。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；M90 page/API extensionization taskbook PASS；M91 source scan and skeleton decision PASS；M92 metadata-only skeleton package gate PASS；M93 reviewed content copy-first gate PASS；M94 default-off metadata registry gate PASS；M95 route/nav decision taskbook PASS；M96-PRE route-id mapping closeout decision PASS；M96 route-nav closeout receipt PASS；仍不启 dynamic frontend runtime。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、executable adapter registration deferred；M72 selected M73 taskbook；M73 taskbook PASS；M74 metadata-only registry PASS with scoped metadata `1`、executable `0`、provider/image/output/bridge/LocalState `0`；M75 selected M76；M76 taskbook PASS；M77 test-only diagnostic route factory PASS；M78 selected M79；M79 taskbook PASS；M80 default-off production-router integration PASS；M81 selected M82 real-config apply/rollback decision candidate；M82 transient real config three-key apply PASS and rollback final hash restored；M83 selected current-lane closeout/no persistent enable；最终仍未保留真实 AI Image env、不启 provider、不生成图片、不注册 executable adapter runtime。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
@@ -1175,6 +1187,7 @@ M96：AdminPanel page/API route-nav closeout receipt PASS；当前 route 在 ext
 | AdminPanel page/API route/nav decision taskbook | M95 taskbook；core static route/nav fallback reality recorded; `ChannelHub` route-id alignment guard recorded; M96-PRE later selected closeout/no static metadata surface now | PASS_TASKBOOK_ONLY；dynamic frontend runtime, real env, build/dist, provider/OAuth actions still deferred |
 | AdminPanel page/API route-id mapping closeout decision | M96-PRE decision；selected closeout/no static metadata surface now; `ChannelHub` display-only mapping recorded; M96 later completed | PASS_DECISION_ONLY；pre-gate Progress unchanged |
 | AdminPanel page/API route-nav closeout receipt | M96 receipt；core static fallback routes present; external package/default-off metadata evidence recorded; current route closed at package + metadata registry + fallback retention boundary | PASS_DOCS_ONLY_NO_RUNTIME；dynamic frontend runtime, real env, build/dist, provider/OAuth actions still deferred |
+| Aggregate gap / next-lane decision | M97 decision；AdminPanel residuals deferred; M98 Agent additive decision taskbook selected | PASS_DECISION_ONLY；no runtime/env/private/source action |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
