@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 99% (89.7 / 91 global milestone units; scope expanded by M90 PASS)
+Progress: [##########] 99% (90.7 / 92 global milestone units; scope expanded by M91 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：AdminPanel page/API extensionization taskbook（M90 PASS；M91 source scan and skeleton decision next）
+当前里程碑：AdminPanel page/API source scan and skeleton decision（M91 PASS；M92 metadata-only skeleton package gate next）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M90。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S111 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M91。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S112 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M90 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M90 合计 91 units。
+- 全局 Progress 覆盖 M0-M91 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M91 合计 92 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -102,6 +102,7 @@ Last updated: 2026-06-22
 - M88 完成 plugin copy-first wave；9 个 missing external 插件复制到 external `Plugin/`，external commit `ed8544f`；manifest `126` entries / verify bad `0`；不启 runtime、不删 core。
 - M89 完成 plugin shadow/default-off validation；external `Plugin/` package manifest 完整，真实 config plugin runtime key counts `0/0/0/0`，无 allowlist shadow registration count `0`；不启 runtime。
 - M90 完成 AdminPanel page/API extensionization taskbook；确定沿用 `AdminExtensions/` 合同，并把 5 个 view + 5 个 api 拆为 M91+ 扫描、skeleton、copy-first、default-off metadata gates；不复制、不改 build/dist、不启 runtime。
+- M91 完成 AdminPanel page/API source path scan and skeleton decision；10 个候选源路径存在，hard risk `0`，OAuth/auth review hits `2`，5 个 metadata-only skeleton packages 允许进入 M92；不复制内容、不创建 skeleton。
 
 计划变更规则：
 
@@ -121,7 +122,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M90 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M91 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -216,6 +217,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M90 是当前 Jenn fork 长期维护
 | [x] | M88 | 0 | Plugin copy-first wave | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M88_PLUGIN_COPY_FIRST_RECEIPT_20260622.md`；external commit `ed8544f5feaafebbfeb029be2601a490249c3a71`; copied 9 plugin dirs / 67 source files; manifest entries `126`, verify bad `0`, hash `b178eb30...`; no runtime/env/private/upstream action。 |
 | [x] | M89 | 0 | Plugin shadow/default-off validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M89_PLUGIN_SHADOW_DEFAULT_OFF_VALIDATION_RECEIPT_20260622.md`；external plugin dirs `14`; copied wave dirs `9`; manifest verify `126/0`; real config plugin runtime key counts `0/0/0/0`; no-allowlist shadow registration `0`; tests `40 pass / 0 fail`。 |
 | [x] | M90 | 0 | AdminPanel page/API extensionization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M90_ADMINPANEL_PAGE_API_EXTENSIONIZATION_TASKBOOK_20260622.md`；taskbook-only；keeps `AdminExtensions/` contract; defines M91 source scan / M92 skeleton / M93 copy-first / M94 default-off metadata path; no copy/runtime/env/build/dist/private/upstream action。 |
+| [x] | M91 | 0 | AdminPanel page/API source scan and skeleton decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M91_ADMINPANEL_PAGE_API_SOURCE_SCAN_SKELETON_DECISION_20260622.md`；10 candidate source paths exist; source hard risk `0`; source review hits `2` for OAuth/auth names; target hard risk `0`; M92 metadata skeleton allow count `5`; no copy/skeleton/runtime/env/build/dist action。 |
 
 全局进度明细：
 
@@ -286,7 +288,8 @@ M87 PASS：1.0 / 1 unit（plugin copy-first candidate gate；M88 allowlist ready
 M88 PASS：1.0 / 1 unit（plugin copy-first wave；9 dirs copied to external package, runtime off）
 M89 PASS：1.0 / 1 unit（plugin shadow/default-off validation；package manifest complete, runtime registration blocked by default）
 M90 PASS：1.0 / 1 unit（AdminPanel page/API extensionization taskbook；M91 source scan/skeleton decision next）
-Global Progress：89.7 / 91 = 98.57%，顶部显示为 99%
+M91 PASS：1.0 / 1 unit（AdminPanel page/API source path scan and skeleton decision；M92 metadata-only skeleton gate next）
+Global Progress：90.7 / 92 = 98.59%，顶部显示为 99%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -405,7 +408,8 @@ Global Progress：89.7 / 91 = 98.57%，顶部显示为 99%
 | [x] | S108 | Plugin / M87 | 0 | Plugin copy-first candidate gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M87_PLUGIN_COPY_FIRST_CANDIDATE_GATE_20260622.md`；11 planned plugin candidates path-risk `0`; M88 allow copy list `9`; reconcile/no-overwrite list `2`; no content copied。 |
 | [x] | S109 | Plugin / M88 | 0 | Plugin copy-first wave | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M88_PLUGIN_COPY_FIRST_RECEIPT_20260622.md`；external commit `ed8544f`; copied 9 plugin dirs; manifest verify `126/0`; runtime remains off; core fallback retained。 |
 | [x] | S110 | Plugin / M89 | 0 | Plugin shadow/default-off validation | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M89_PLUGIN_SHADOW_DEFAULT_OFF_VALIDATION_RECEIPT_20260622.md`；external package manifest verify `126/0`; no-allowlist shadow registration `0`; plugin runtime config key counts `0/0/0/0`; tests `40 pass / 0 fail`。 |
-| [x] | S111 | AdminPanel / M90 | 0 | AdminPanel page/API extensionization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M90_ADMINPANEL_PAGE_API_EXTENSIONIZATION_TASKBOOK_20260622.md`；taskbook-only；M91 source scan and skeleton decision next; no copy/runtime/env/build/dist/private action。 |
+| [x] | S111 | AdminPanel / M90 | 0 | AdminPanel page/API extensionization taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M90_ADMINPANEL_PAGE_API_EXTENSIONIZATION_TASKBOOK_20260622.md`；taskbook-only；M91 source scan and skeleton decision later completed; no copy/runtime/env/build/dist/private action。 |
+| [x] | S112 | AdminPanel / M91 | 0 | AdminPanel page/API source scan and skeleton decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M91_ADMINPANEL_PAGE_API_SOURCE_SCAN_SKELETON_DECISION_20260622.md`；candidate source paths `10/10`; hard risk `0`; review hits `2`; M92 metadata skeleton allow groups `5`; no copy/skeleton/runtime action。 |
 
 原始验收拆分说明：
 
@@ -445,7 +449,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M90 完成规则：
+M19-M91 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -514,6 +518,7 @@ M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only
 M88：Plugin copy-first wave PASS；复制 M87 allowlist 中 9 个 missing external 插件到 external `Plugin/`，生成 manifest checksum 并验证；不覆盖已有 external plugin、不启 runtime、不删 core。
 M89：Plugin shadow/default-off validation PASS；真实 external `Plugin/` package 完整并可发现，但无 allowlist shadow registration `0`；真实 config plugin runtime key counts `0/0/0/0`；不启 runtime。
 M90：AdminPanel page/API extensionization taskbook PASS；沿用 `AdminExtensions/` 合同，定义 M91 source scan、M92 skeleton、M93 copy-first、M94 default-off metadata gates；不复制页面/API、不改 build/dist、不启 runtime。
+M91：AdminPanel page/API source scan and skeleton decision PASS；10 个候选源路径存在，hard path risk `0`，OAuth/auth review hits `2`，M92 metadata-only skeleton allow groups `5`；不复制内容、不创建 skeleton。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -542,7 +547,8 @@ M90：AdminPanel page/API extensionization taskbook PASS；沿用 `AdminExtensio
 | Plugin copy-first candidate gate | M87 / S108 | path-only candidate scan for planned plugin copy-first wave; define M88 allowlist and reconcile/no-overwrite list | PASS；9 allowed for future M88 copy-first; 2 require reconcile; no content copied。 |
 | Plugin copy-first wave | M88 / S109 | copy M87 allowlist to external package, regenerate checksum manifest, validate path risk, keep runtime off | PASS；9 plugin dirs copied; external commit `ed8544f`; manifest verify `126/0`; core fallback retained。 |
 | Plugin shadow/default-off validation | M89 / S110 | verify copied external plugin package remains package/discovery only and cannot become runtime registration without allowlist | PASS；real package manifest complete; no-allowlist shadow registration `0`; plugin runtime config key counts `0/0/0/0`; tests `40 pass / 0 fail`。 |
-| AdminPanel page/API extensionization taskbook | M90 / S111 | define source scan, package skeleton, copy-first, metadata/default-off path for five AdminPanel views and five API modules | PASS；taskbook-only；next M91 source scan/skeleton decision；no copy/runtime/build/dist。 |
+| AdminPanel page/API extensionization taskbook | M90 / S111 | define source scan, package skeleton, copy-first, metadata/default-off path for five AdminPanel views and five API modules | PASS；taskbook-only；M91 source scan/skeleton decision later completed；no copy/runtime/build/dist。 |
+| AdminPanel page/API source scan and skeleton decision | M91 / S112 | perform path-only source existence/risk scan and decide target skeleton groups without copying content | PASS；10 source paths present; hard risk `0`; OAuth/auth review hits `2`; M92 skeleton allow groups `5`; no copy/skeleton/runtime。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -604,7 +610,8 @@ M90：AdminPanel page/API extensionization taskbook PASS；沿用 `AdminExtensio
 | Plugin copy-first candidate gate | M87 / S108 | scan 11 planned plugin candidates by path only, classify copy vs reconcile candidates, and define M88 safety rules | PASS；path risk `0`; allowlist `9`; reconcile/no-overwrite `2`; no copy/runtime。 |
 | Plugin copy-first wave | M88 / S109 | copy 9 missing external plugin dirs, regenerate manifest, run path-risk and manifest verification | PASS；copied files `67`; package path risk `0`; manifest hash `b178eb30...`; runtime off。 |
 | Plugin shadow/default-off validation | M89 / S110 | run actual external package shadow registration under no allowlist, package manifest verification, plugin runtime config key count check, and existing external plugin policy tests | PASS；14 manifests discovered; attempted registrations `14`; registered `0`; tests `40 pass / 0 fail`; runtime off。 |
-| AdminPanel page/API extensionization taskbook | M90 / S111 | write the AdminPanel page/API extensionization taskbook with exact source candidates, target package shape, future gates, validation, rollback, and stop conditions | PASS；M91 source path scan and skeleton decision next；no implementation。 |
+| AdminPanel page/API extensionization taskbook | M90 / S111 | write the AdminPanel page/API extensionization taskbook with exact source candidates, target package shape, future gates, validation, rollback, and stop conditions | PASS；M91 source path scan and skeleton decision later completed；no implementation。 |
+| AdminPanel page/API source scan and skeleton decision | M91 / S112 | check 5 view + 5 api source paths, classify hard/review path risks, and decide M92 target skeleton package groups | PASS；candidate source count `10`; missing `0`; hard risk `0`; review risk `2`; target exists `0`; M92 skeleton allow `5`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -726,9 +733,10 @@ M90：AdminPanel page/API extensionization taskbook PASS；沿用 `AdminExtensio
 | Q69 | M87/S108 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M87_PLUGIN_COPY_FIRST_CANDIDATE_GATE_20260622.md`；plugin candidate path-risk scan clean; M88 allowlist/reconcile list recorded; no copy/runtime/env/private/upstream action。 |
 | Q70 | M88/S109 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M88_PLUGIN_COPY_FIRST_RECEIPT_20260622.md`；external package commit `ed8544f`; 9 plugin dirs copied; manifest verify clean; no runtime/env/private/upstream action。 |
 | Q71 | M89/S110 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M89_PLUGIN_SHADOW_DEFAULT_OFF_VALIDATION_RECEIPT_20260622.md`；external package complete; no-allowlist registration `0`; config plugin runtime key counts `0/0/0/0`; tests `40 pass / 0 fail`。 |
-| Q72 | M90/S111 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M90_ADMINPANEL_PAGE_API_EXTENSIONIZATION_TASKBOOK_20260622.md`；AdminPanel page/API extensionization taskbook-only; next M91 scan/skeleton decision; no copy/runtime/build/dist/private/upstream action。 |
+| Q72 | M90/S111 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M90_ADMINPANEL_PAGE_API_EXTENSIONIZATION_TASKBOOK_20260622.md`；AdminPanel page/API extensionization taskbook-only; M91 scan/skeleton decision later completed; no copy/runtime/build/dist/private/upstream action。 |
+| Q73 | M91/S112 | PASS | AdminPanel | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M91_ADMINPANEL_PAGE_API_SOURCE_SCAN_SKELETON_DECISION_20260622.md`；5 view + 5 api paths scanned; hard risk `0`; OAuth/auth review hits classified; M92 metadata-only skeleton groups allowed; no content copy。 |
 
-### 5.5 M19-M90 Specific Step Plan
+### 5.5 M19-M91 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1031,7 +1039,11 @@ M90：AdminPanel page/API extensionization taskbook PASS；沿用 `AdminExtensio
 | M90-01 | PASS | 对照原 architecture plan 和 M86，确认 AdminPanel page/API candidate set | five views + five API modules named | 不复制页面/API、不改 source |
 | M90-02 | PASS | 决定沿用现有 `AdminExtensions/` / `VCP_ADMIN_EXTENSION_DIRS` 合同 | M90 naming decision | 不做 `AdminPanelExtensions/` rename/alias migration |
 | M90-03 | PASS | 写 M91-M94 后续 gate：source scan、skeleton、copy-first、default-off metadata | M90 execution order and stop conditions | 不改 build/dist、不启 dynamic frontend runtime |
-| M90-04 | PASS | 写 M90 taskbook 并更新 tracker：M90/S111/Q72 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M90_ADMINPANEL_PAGE_API_EXTENSIONIZATION_TASKBOOK_20260622.md`; Progress `89.7 / 91` | 不写真实 config、不启动 production server |
+| M90-04 | PASS | 写 M90 taskbook 并更新 tracker：M90/S111/Q72 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M90_ADMINPANEL_PAGE_API_EXTENSIONIZATION_TASKBOOK_20260622.md`; M91 later completed | 不写真实 config、不启动 production server |
+| M91-01 | PASS | 对 5 个 view + 5 个 api 候选源路径做存在性检查 | candidate source count `10`; missing `0` | 不读取源文件内容 |
+| M91-02 | PASS | 对候选 source paths 和 future target paths 做 paths-only hard/review risk scan | source hard risk `0`; source review hits `2`; target hard risk `0`; target review hits `2` | 不复制内容、不创建 target |
+| M91-03 | PASS | 决定 M92 metadata-only skeleton groups 和 blocker 分类 | M92 allow groups `5`; hard block groups `0`; OAuthAuthCenter review required before copy | 不把 review hit 当内容 PASS |
+| M91-04 | PASS | 写 M91 receipt 并更新 tracker：M91/S112/Q73 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M91_ADMINPANEL_PAGE_API_SOURCE_SCAN_SKELETON_DECISION_20260622.md`; Progress `90.7 / 92` | 不写真实 config、不启 runtime、不改 build/dist |
 
 ## 6. 领域路线概览
 
@@ -1041,12 +1053,12 @@ M90：AdminPanel page/API extensionization taskbook PASS；沿用 `AdminExtensio
 | --- | --- | --- | --- |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；`VCP_AGENT_DIRS` additive 暂不启用；core fallback 保留。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
-| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；M90 page/API extensionization taskbook PASS；M91 source scan and skeleton decision next；仍不复制页面/API、不启 dynamic frontend runtime。 |
+| AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；M90 page/API extensionization taskbook PASS；M91 source scan and skeleton decision PASS；M92 metadata-only skeleton package gate next；仍不复制页面/API、不启 dynamic frontend runtime。 |
 | AI Image | Generic adapter contract、default-off gates | Jenn fixtures、bindings、provider-specific adapters | M32 persistent package gate PASS；M46 keeps provider runtime、真实图片生成、executable adapter registration deferred；M72 selected M73 taskbook；M73 taskbook PASS；M74 metadata-only registry PASS with scoped metadata `1`、executable `0`、provider/image/output/bridge/LocalState `0`；M75 selected M76；M76 taskbook PASS；M77 test-only diagnostic route factory PASS；M78 selected M79；M79 taskbook PASS；M80 default-off production-router integration PASS；M81 selected M82 real-config apply/rollback decision candidate；M82 transient real config three-key apply PASS and rollback final hash restored；M83 selected current-lane closeout/no persistent enable；最终仍未保留真实 AI Image env、不启 provider、不生成图片、不注册 executable adapter runtime。 |
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
@@ -1083,6 +1095,7 @@ M90：AdminPanel page/API extensionization taskbook PASS；沿用 `AdminExtensio
 | Plugin copy-first wave | M88 receipt + external commit `ed8544f5feaafebbfeb029be2601a490249c3a71`；9 plugin dirs copied to external package; manifest entries `126`; verify bad `0`; path risk `0` | PASS_COPY_FIRST_NO_RUNTIME；core fallback retained |
 | Plugin shadow/default-off validation | M89 receipt；real external `Plugin/` package manifest complete; no-allowlist shadow registration `0`; runtime maps `0/0/0`; config plugin runtime key counts `0/0/0/0`; tests `40 pass / 0 fail` | PASS_SHADOW_DEFAULT_OFF；package/discovery does not equal runtime registration |
 | AdminPanel page/API extensionization taskbook | M90 taskbook；five view + five API candidates named; `AdminExtensions/` contract retained; M91-M94 scan/skeleton/copy-first/default-off metadata gates defined | PASS_TASKBOOK_ONLY；no page/API copy, no build/dist, no runtime |
+| AdminPanel page/API source scan and skeleton decision | M91 receipt；10 candidate source paths present; hard path risk `0`; OAuth/auth review hits classified; target packages absent; M92 metadata skeleton allow count `5` | PASS_SOURCE_SCAN_ONLY；no content copy, no skeleton creation, no runtime |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
