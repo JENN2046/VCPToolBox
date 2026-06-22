@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 99% (86.7 / 88 global milestone units; scope expanded by M87 PASS)
+Progress: [##########] 99% (87.7 / 89 global milestone units; scope expanded by M88 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Plugin copy-first candidate gate（M87 PASS；M88 copy-first candidate list ready）
+当前里程碑：Plugin copy-first wave（M88 PASS；9 plugin directories copied to external package）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M87。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S108 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M88。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S109 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M87 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M87 合计 88 units。
+- 全局 Progress 覆盖 M0-M88 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M88 合计 89 units。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
 - `TODO`、`DEFERRED`、`BLOCK` 计 0 unit。
@@ -99,6 +99,7 @@ Last updated: 2026-06-22
 - M85 完成 Jenn fork local runtime route final closeout receipt；当前本地 runtime route 正式收口；剩余 upstream PR / production deploy / private / live-write / provider lanes 仍是 future explicit gates。
 - M86 完成 extraction gap matrix；对照 `01-extraction-architecture-plan.md` 列出未抽离 / 半抽离 / 已建包但未 runtime-on 项；下一低风险车道为 M87 plugin copy-first candidate gate，不直接复制、不启 runtime。
 - M87 完成 plugin copy-first candidate gate；11 个计划插件路径风险为 0，9 个 missing external 插件进入 M88 copy-first candidate list，2 个 existing external 插件需 reconcile，不覆盖、不复制、不启 runtime。
+- M88 完成 plugin copy-first wave；9 个 missing external 插件复制到 external `Plugin/`，external commit `ed8544f`；manifest `126` entries / verify bad `0`；不启 runtime、不删 core。
 
 计划变更规则：
 
@@ -118,7 +119,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M87 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M88 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -210,6 +211,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M87 是当前 Jenn fork 长期维护
 | [x] | M85 | 0 | Jenn fork local runtime route final closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M85_JENN_FORK_LOCAL_RUNTIME_ROUTE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；current local runtime route closed; final validation PASS; upstream PR / production deploy / provider / bridge live-write / private lanes remain future explicit gates。 |
 | [x] | M86 | 0 | Extraction gap matrix | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M86_EXTRACTION_GAP_MATRIX_20260622.md`；compares `01-extraction-architecture-plan.md` against current core/external state; plugin/AdminPanel/LocalState gaps listed; next low-risk lane = M87 plugin copy-first candidate gate; no copy/runtime/env/private/upstream action。 |
 | [x] | M87 | 0 | Plugin copy-first candidate gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M87_PLUGIN_COPY_FIRST_CANDIDATE_GATE_20260622.md`；path-only scan for 11 planned plugin candidates risk `0`; M88 allowlist count `9`; reconcile/no-overwrite count `2`; no copy/runtime/env/private/upstream action。 |
+| [x] | M88 | 0 | Plugin copy-first wave | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M88_PLUGIN_COPY_FIRST_RECEIPT_20260622.md`；external commit `ed8544f5feaafebbfeb029be2601a490249c3a71`; copied 9 plugin dirs / 67 source files; manifest entries `126`, verify bad `0`, hash `b178eb30...`; no runtime/env/private/upstream action。 |
 
 全局进度明细：
 
@@ -277,7 +279,8 @@ M84 PASS：1.0 / 1 unit（aggregate runtime lane closeout decision；close curre
 M85 PASS：1.0 / 1 unit（Jenn fork local runtime route final closeout receipt；current local route closed）
 M86 PASS：1.0 / 1 unit（extraction gap matrix；next low-risk lane M87 plugin copy-first candidate gate）
 M87 PASS：1.0 / 1 unit（plugin copy-first candidate gate；M88 allowlist ready, no copy yet）
-Global Progress：86.7 / 88 = 98.52%，顶部显示为 99%
+M88 PASS：1.0 / 1 unit（plugin copy-first wave；9 dirs copied to external package, runtime off）
+Global Progress：87.7 / 89 = 98.54%，顶部显示为 99%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -394,6 +397,7 @@ Global Progress：86.7 / 88 = 98.52%，顶部显示为 99%
 | [x] | S106 | Closeout / M85 | 0 | Jenn fork local runtime route final closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M85_JENN_FORK_LOCAL_RUNTIME_ROUTE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；final lane matrix, real config presence counts, validation, rollback map, and upstream stop line recorded。 |
 | [x] | S107 | Gap Matrix / M86 | 0 | Extraction gap matrix | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M86_EXTRACTION_GAP_MATRIX_20260622.md`；plugin gaps, Agent partial state, AdminPanel planned page/API gaps, LocalState/private blocked lane, core patch keep-list, and M87 next low-risk gate recorded。 |
 | [x] | S108 | Plugin / M87 | 0 | Plugin copy-first candidate gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M87_PLUGIN_COPY_FIRST_CANDIDATE_GATE_20260622.md`；11 planned plugin candidates path-risk `0`; M88 allow copy list `9`; reconcile/no-overwrite list `2`; no content copied。 |
+| [x] | S109 | Plugin / M88 | 0 | Plugin copy-first wave | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M88_PLUGIN_COPY_FIRST_RECEIPT_20260622.md`；external commit `ed8544f`; copied 9 plugin dirs; manifest verify `126/0`; runtime remains off; core fallback retained。 |
 
 原始验收拆分说明：
 
@@ -433,7 +437,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M87 完成规则：
+M19-M88 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -499,6 +503,7 @@ M84：Aggregate runtime lane closeout / next deferred domain decision PASS；选
 M85：Jenn fork local runtime route final closeout receipt PASS；当前本地 runtime route 正式收口；剩余 remote/upstream/private/live-write/provider/production lanes 均保持 future explicit gates。
 M86：Extraction gap matrix PASS；对照原架构计划列出 plugin/AdminPanel/LocalState/Agent/core-patch gap；只做 docs/read-only，不复制、不启 runtime；下一低风险门是 M87 plugin copy-first candidate gate。
 M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only candidate scan，9 个 missing external 插件列入 M88 copy-first allowlist，2 个已有 external 插件进入 reconcile/no-overwrite；M87 不复制、不启 runtime。
+M88：Plugin copy-first wave PASS；复制 M87 allowlist 中 9 个 missing external 插件到 external `Plugin/`，生成 manifest checksum 并验证；不覆盖已有 external plugin、不启 runtime、不删 core。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -525,6 +530,7 @@ M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only
 | Jenn fork local runtime route final closeout | M85 / S106 | final lane state matrix、real config redacted presence、validation、rollback map、upstream stop line | PASS；current Jenn fork local runtime route closed；remaining deferred gates require future explicit authorization。 |
 | Extraction gap matrix | M86 / S107 | compare `01-extraction-architecture-plan.md` with current core/external state and classify remaining gaps by risk order | PASS；plugin copy-first gaps and AdminPanel/LocalState deferred lanes recorded；M87 plugin candidate gate selected next。 |
 | Plugin copy-first candidate gate | M87 / S108 | path-only candidate scan for planned plugin copy-first wave; define M88 allowlist and reconcile/no-overwrite list | PASS；9 allowed for future M88 copy-first; 2 require reconcile; no content copied。 |
+| Plugin copy-first wave | M88 / S109 | copy M87 allowlist to external package, regenerate checksum manifest, validate path risk, keep runtime off | PASS；9 plugin dirs copied; external commit `ed8544f`; manifest verify `126/0`; core fallback retained。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -584,6 +590,7 @@ M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only
 | Jenn fork local runtime route final closeout receipt | M85 / S106 | record final lane matrix, validation, redacted config key presence, rollback map, and explicit upstream stop line | PASS；current local route closed；next automatic runtime lane `none`; future work requires explicit gate。 |
 | Extraction gap matrix | M86 / S107 | compare architecture-plan extraction targets with current core/external state; classify plugin, Agent, AdminPanel, LocalState/private, and core-patch gaps | PASS；docs/read-only; next low-risk lane M87 plugin copy-first candidate gate。 |
 | Plugin copy-first candidate gate | M87 / S108 | scan 11 planned plugin candidates by path only, classify copy vs reconcile candidates, and define M88 safety rules | PASS；path risk `0`; allowlist `9`; reconcile/no-overwrite `2`; no copy/runtime。 |
+| Plugin copy-first wave | M88 / S109 | copy 9 missing external plugin dirs, regenerate manifest, run path-risk and manifest verification | PASS；copied files `67`; package path risk `0`; manifest hash `b178eb30...`; runtime off。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -703,8 +710,9 @@ M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only
 | Q67 | M85/S106 | PASS | Closeout | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M85_JENN_FORK_LOCAL_RUNTIME_ROUTE_FINAL_CLOSEOUT_RECEIPT_20260622.md`；current local runtime route closed; final validation/rollback/upstream stop line recorded。 |
 | Q68 | M86/S107 | PASS | Gap Matrix | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M86_EXTRACTION_GAP_MATRIX_20260622.md`；remaining extraction gaps classified; plugin copy-first candidate gate selected next; no copy/runtime/env/private/upstream action。 |
 | Q69 | M87/S108 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M87_PLUGIN_COPY_FIRST_CANDIDATE_GATE_20260622.md`；plugin candidate path-risk scan clean; M88 allowlist/reconcile list recorded; no copy/runtime/env/private/upstream action。 |
+| Q70 | M88/S109 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M88_PLUGIN_COPY_FIRST_RECEIPT_20260622.md`；external package commit `ed8544f`; 9 plugin dirs copied; manifest verify clean; no runtime/env/private/upstream action。 |
 
-### 5.5 M19-M87 Specific Step Plan
+### 5.5 M19-M88 Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -996,6 +1004,10 @@ M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only
 | M87-02 | PASS | 对 11 个计划插件源路径和 external `Plugin/` baseline 做 paths-only risk scan | source risk `0`; external plugin risk `0` | 不读取 secret/env/auth 值 |
 | M87-03 | PASS | 写 M88 allowlist `9` 与 reconcile/no-overwrite list `2` | M87 section 4 | 不覆盖现有 external plugin dir |
 | M87-04 | PASS | 写 M87 candidate gate receipt 并更新 tracker：M87/S108/Q69 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M87_PLUGIN_COPY_FIRST_CANDIDATE_GATE_20260622.md`; Progress `86.7 / 88` | 不复制内容、不启 runtime、不打开 upstream PR |
+| M88-01 | PASS | 重复 M87 allowlist pre-copy path-risk scan 并确认 target 不存在 | allow count `9`; source file total `67`; target exists count `0`; source path risk `0` | 不覆盖 existing external plugin dirs |
+| M88-02 | PASS | copy-first 复制 9 个 plugin dirs 到 external `Plugin/` | external package commit `ed8544f` | 不删除/stub/untrack core plugin |
+| M88-03 | PASS | 进行 copy hygiene、重生 manifest、验证 checksum | manifest entries `126`; hash `b178eb30...`; verify bad `0`; staged path risk `0` | 不启 runtime、不把 discovery 当 registration |
+| M88-04 | PASS | 写 M88 receipt 并更新 tracker：M88/S109/Q70 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M88_PLUGIN_COPY_FIRST_RECEIPT_20260622.md`; Progress `87.7 / 89` | 不打开 upstream PR、不读 private |
 
 ## 6. 领域路线概览
 
@@ -1010,7 +1022,7 @@ M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 ## 7. 打开 Upstream PR 前的验收门
 
@@ -1044,6 +1056,7 @@ M87：Plugin copy-first candidate gate PASS；11 个计划插件只做 path-only
 | Jenn fork local runtime route final closeout | M85 receipt；final lane matrix, redacted real config presence, validation, rollback map, and upstream PR stop line recorded | PASS_LOCAL_ROUTE_CLOSED；upstream PR still deferred |
 | Extraction gap matrix | M86 receipt；architecture-plan targets compared with actual core/external state; plugin/AdminPanel/LocalState/Agent/core-patch gaps classified; next M87 plugin candidate gate selected | PASS_GAP_MATRIX；no copy/runtime/env/private/upstream action |
 | Plugin copy-first candidate gate | M87 receipt；11 plugin candidate source paths risk `0`; external Plugin baseline risk `0`; M88 allowlist `9`; reconcile/no-overwrite `2` | PASS_CANDIDATE_GATE；no content copied and runtime still off |
+| Plugin copy-first wave | M88 receipt + external commit `ed8544f5feaafebbfeb029be2601a490249c3a71`；9 plugin dirs copied to external package; manifest entries `126`; verify bad `0`; path risk `0` | PASS_COPY_FIRST_NO_RUNTIME；core fallback retained |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
