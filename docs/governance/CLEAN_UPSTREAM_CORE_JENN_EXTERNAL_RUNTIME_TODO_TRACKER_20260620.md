@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (123.7 / 126 global milestone units; scope expanded by M125 PASS)
+Progress: [##########] 98% (124.7 / 127 global milestone units; scope expanded by M126 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Plugin runtime registration scoped shadow validation（M125 PASS；next recommended gate M126 persistent-enable vs closeout decision）
+当前里程碑：Plugin runtime registration persistent-enable vs closeout decision（M126 PASS；current plugin runtime lane closed at scoped shadow proof）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M125；M96-PRE 是不计分前置子门。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S147 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M126；M96-PRE 是不计分前置子门。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S148 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M125 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M125 合计 126 units。
+- 全局 Progress 覆盖 M0-M126 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M126 合计 127 units。
 - `M96-PRE` 是 M96 前置子门，不计入 global milestone unit；M96 正式完成后顶部 Progress 扩展到 `95.7 / 97`。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
@@ -139,6 +139,7 @@ Last updated: 2026-06-22
 - M123 完成 aggregate gap / next-lane decision；选择 M124 plugin runtime registration default-off taskbook；不启 `VCP_PLUGIN_DIRS`、不执行 plugin entrypoint、不写 env。
 - M124 完成 plugin runtime registration default-off taskbook；定义未来 M125 scoped shadow validation；不实现注册、不启 `VCP_PLUGIN_DIRS`、不写 env、不执行 plugin entrypoint。
 - M125 完成 plugin runtime registration scoped shadow validation；process-env only 验证 exact `JennAIGentOrchestrator` 注册门、非法 allowlist、重复 core-name、direct/hybrid block 和 no-entrypoint；不写真实 env、不启动 server。
+- M126 完成 plugin runtime registration persistent-enable vs closeout decision；选择当前 lane 在 scoped shadow proof 收口，持久启用真实 env/runtime 延后；不写真实 env、不启 plugin runtime。
 
 计划变更规则：
 
@@ -158,7 +159,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M125 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M126 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -289,6 +290,7 @@ M0-M8 是原始 acceptance plan 阶段；M9-M125 是当前 Jenn fork 长期维�
 | [x] | M123 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M123_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；decision-only; selected `M124_PLUGIN_RUNTIME_REGISTRATION_DEFAULT_OFF_TASKBOOK`; no plugin runtime/env/entrypoint/private/upstream action。 |
 | [x] | M124 | 0 | Plugin runtime registration default-off taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M124_PLUGIN_RUNTIME_REGISTRATION_DEFAULT_OFF_TASKBOOK_20260622.md`；taskbook-only; defines future M125 scoped shadow validation; no registration/env/entrypoint/package/core-fallback/upstream action。 |
 | [x] | M125 | 0 | Plugin runtime registration scoped shadow validation | PASS | `scripts/run-plugin-runtime-registration-scoped-shadow-harness.js` + `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M125_PLUGIN_RUNTIME_REGISTRATION_SCOPED_SHADOW_VALIDATION_20260622.md`；process-env only; exact Jenn registration `1`, invalid allowlist `0`, duplicate/direct/hybrid `0`, entrypoint `0`; no real env/server/package/upstream action。 |
+| [x] | M126 | 0 | Plugin runtime registration persistent-enable vs closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M126_PLUGIN_RUNTIME_REGISTRATION_PERSISTENT_ENABLE_OR_CLOSEOUT_DECISION_20260622.md`；decision-only; selected closeout at scoped shadow proof; no persistent real-config/runtime enablement。 |
 
 全局进度明细：
 
@@ -395,7 +397,8 @@ M122 PASS：1.0 / 1 unit（Agent additive resolver policy decision；core-preced
 M123 PASS：1.0 / 1 unit（aggregate gap / next-lane decision；M124 plugin runtime registration default-off taskbook selected）
 M124 PASS：1.0 / 1 unit（plugin runtime registration default-off taskbook；M125 scoped shadow validation recommended, no implementation）
 M125 PASS：1.0 / 1 unit（plugin runtime registration scoped shadow validation；process-env only, no entrypoint or real config）
-Global Progress：123.7 / 126 = 98.17%，顶部显示为 98%
+M126 PASS：1.0 / 1 unit（plugin runtime registration persistent-enable vs closeout decision；closeout selected, persistent enable deferred）
+Global Progress：124.7 / 127 = 98.19%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -551,6 +554,7 @@ Global Progress：123.7 / 126 = 98.17%，顶部显示为 98%
 | [x] | S145 | Decision / M123 | 0 | Aggregate gap / next-lane decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M123_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；decision-only; selected M124 plugin runtime registration default-off taskbook; no plugin runtime/env/entrypoint/private/upstream action。 |
 | [x] | S146 | Plugin / M124 | 0 | Plugin runtime registration default-off taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M124_PLUGIN_RUNTIME_REGISTRATION_DEFAULT_OFF_TASKBOOK_20260622.md`；taskbook-only; M125 scoped shadow validation defined; no plugin registration/env/entrypoint/package/core-fallback/upstream action。 |
 | [x] | S147 | Plugin / M125 | 0 | Plugin runtime registration scoped shadow validation | PASS | `scripts/run-plugin-runtime-registration-scoped-shadow-harness.js` + M125 receipt；process-env only; exact Jenn allowlist `1`; invalid allowlist/duplicate/direct/hybrid/entrypoint all `0`; plugin regression tests `40 pass / 0 fail`。 |
+| [x] | S148 | Plugin / M126 | 0 | Plugin runtime registration persistent-enable vs closeout decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M126_PLUGIN_RUNTIME_REGISTRATION_PERSISTENT_ENABLE_OR_CLOSEOUT_DECISION_20260622.md`；decision-only; closeout selected; persistent real-config/runtime enablement deferred。 |
 
 原始验收拆分说明：
 
@@ -590,7 +594,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M125 完成规则：
+M19-M126 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -695,6 +699,7 @@ M122：Agent additive resolver policy decision PASS；选择 core-precedence ret
 M123：Aggregate gap / next-lane decision PASS；选择 M124 plugin runtime registration default-off taskbook；不启 plugin runtime、不执行 entrypoint、不写真实 env。
 M124：Plugin runtime registration default-off taskbook PASS；定义未来 M125 scoped process-env shadow validation；不实现注册、不启 `VCP_PLUGIN_DIRS`、不执行 entrypoint、不写真实 env。
 M125：Plugin runtime registration scoped shadow validation PASS；process-env only 验证 exact `JennAIGentOrchestrator` 注册门、invalid allowlist、duplicate core-name、direct/hybrid block、no-entrypoint；不写真实 env、不启动 server。
+M126：Plugin runtime registration persistent-enable vs closeout decision PASS；选择 closeout at scoped shadow proof；不写真实 env、不启持久 plugin runtime。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -760,6 +765,7 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 | Aggregate gap / next-lane decision | M123 / S145 | choose next unresolved lane after Agent additive policy closeout | PASS；M124 plugin runtime registration default-off taskbook selected; no plugin runtime/env/entrypoint action。 |
 | Plugin runtime registration default-off taskbook | M124 / S146 | define future default-off plugin runtime registration validation boundary | PASS；M125 scoped shadow validation recommended; no registration/env/entrypoint/package/core-fallback action。 |
 | Plugin runtime registration scoped shadow validation | M125 / S147 | validate plugin registration policy with scoped process-env only | PASS；exact Jenn registration `1`; invalid allowlist, duplicate core-name, direct/hybrid, entrypoint all `0`; no real env/server/package action。 |
+| Plugin runtime registration persistent-enable vs closeout decision | M126 / S148 | decide whether to persistently enable plugin runtime after scoped shadow proof | PASS；closeout selected; persistent real-config/runtime enablement deferred。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -858,6 +864,7 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 | Aggregate gap / next-lane decision | M123 / S145 | select M124 plugin runtime registration default-off taskbook without implementation | PASS；Progress `121.7 / 124`。 |
 | Plugin runtime registration default-off taskbook | M124 / S146 | define M125 scoped shadow validation without implementation | PASS；Progress `122.7 / 125`。 |
 | Plugin runtime registration scoped shadow validation | M125 / S147 | run scoped process-env plugin registration shadow harness | PASS；Progress `123.7 / 126`。 |
+| Plugin runtime registration persistent-enable vs closeout decision | M126 / S148 | close current plugin runtime lane at scoped shadow proof | PASS；Progress `124.7 / 127`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -1016,8 +1023,9 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 | Q106 | M123/S145 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M123_AGGREGATE_GAP_NEXT_LANE_DECISION_20260622.md`；decision-only; selected M124 plugin runtime registration default-off taskbook; no plugin runtime/env/entrypoint/private/upstream action。 |
 | Q107 | M124/S146 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M124_PLUGIN_RUNTIME_REGISTRATION_DEFAULT_OFF_TASKBOOK_20260622.md`；taskbook-only; M125 scoped shadow validation defined; no registration/env/entrypoint/package/core-fallback/upstream action。 |
 | Q108 | M125/S147 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M125_PLUGIN_RUNTIME_REGISTRATION_SCOPED_SHADOW_VALIDATION_20260622.md`；process-env only; exact Jenn registration `1`; invalid allowlist/duplicate/direct/hybrid/entrypoint `0`; no real env/server/package/upstream action。 |
+| Q109 | M126/S148 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M126_PLUGIN_RUNTIME_REGISTRATION_PERSISTENT_ENABLE_OR_CLOSEOUT_DECISION_20260622.md`；decision-only; closeout selected; persistent real-config/runtime enablement deferred。 |
 
-### 5.5 M19-M125 + M96-PRE Specific Step Plan
+### 5.5 M19-M126 + M96-PRE Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1448,6 +1456,9 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 | M125-01 | PASS | 实现 scoped process-env plugin registration shadow harness | `scripts/run-plugin-runtime-registration-scoped-shadow-harness.js` | 不写真实 env、不调用 server |
 | M125-02 | PASS | 运行 M125 harness 与 plugin gate regression tests | M125 PASS；existing plugin gate tests `40 pass / 0 fail` | 不执行 plugin entrypoint |
 | M125-03 | PASS | 写 M125 receipt 并更新 tracker：M125/S147/Q108 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M125_PLUGIN_RUNTIME_REGISTRATION_SCOPED_SHADOW_VALIDATION_20260622.md`; Progress `123.7 / 126` | 不 commit/push、不打开 upstream PR |
+| M126-01 | PASS | 复核 M125 scoped shadow proof 与 remaining risk | persistent real-config enablement requires separate authorization | 不写真实 env |
+| M126-02 | PASS | 在 persistent-enable 与 closeout 之间选择 | selected closeout at scoped shadow proof | 不启持久 plugin runtime |
+| M126-03 | PASS | 写 M126 decision 并更新 tracker：M126/S148/Q109 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M126_PLUGIN_RUNTIME_REGISTRATION_PERSISTENT_ENABLE_OR_CLOSEOUT_DECISION_20260622.md`; Progress `124.7 / 127` | 不 commit/push、不打开 upstream PR |
 
 ## 6. 领域路线概览
 
@@ -1455,7 +1466,7 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 
 | 领域 | 未来 contract | External Runtime / State 目标 | 第一件必须做的事 |
 | --- | --- | --- | --- |
-| Plugin reconcile / runtime | `VCP_PLUGIN_DIRS`、`VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` | Existing external plugin dirs 与 core fallback 的 no-overwrite reconcile；scoped default-off runtime registration validation | M119 closeout PASS；`Plugin/AIGentOrchestrator/**` keep existing external no further copy；`Plugin/AIGentQuality/**` keep active external as fork-specific for now；future overwrite/promote requires separate explicit gate；M124 taskbook PASS；M125 scoped process-env shadow validation PASS with exact `JennAIGentOrchestrator` registration `1`, invalid allowlist/duplicate/direct/hybrid/entrypoint `0`；real persistent env enablement/core fallback removal/upstream PR still deferred。 |
+| Plugin reconcile / runtime | `VCP_PLUGIN_DIRS`、`VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` | Existing external plugin dirs 与 core fallback 的 no-overwrite reconcile；scoped default-off runtime registration validation | M119 closeout PASS；`Plugin/AIGentOrchestrator/**` keep existing external no further copy；`Plugin/AIGentQuality/**` keep active external as fork-specific for now；future overwrite/promote requires separate explicit gate；M124 taskbook PASS；M125 scoped process-env shadow validation PASS with exact `JennAIGentOrchestrator` registration `1`, invalid allowlist/duplicate/direct/hybrid/entrypoint `0`；M126 selected closeout at scoped shadow proof；real persistent env enablement/core fallback removal/upstream PR still deferred。 |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；7 个 additive Agent 已 copy-first 但 `VCP_AGENT_DIRS` 暂不启用；core fallback 保留；M100 scoped harness BLOCK：external additive scan `7` but effective external source `0` because current resolver keeps same-id core fallback effective；M101-M103 已把 blocker 转成 collision / override-candidate review taskbooks；M104 classification 仅允许 `小秋` 进入 copy-gate；M105 taskbook PASS；M106 已复制并保留 `AgentOverrides/小秋.txt` 且 rollback drill PASS；M107 锁定剩余六个 Agent 为 deferred/separate-design no-copy；M108 选择 M109 final receipt；M109 正式关闭当前 XiaoQiu override lane；M110 定义打包/commit split；M111 记录 split commit/push 已完成并 origin-aligned；M120 选择 M121 Agent additive resolver policy taskbook 作为下一安全门；M121 policy taskbook PASS；M122 选择 core-precedence retained / additive runtime off；真实 additive runtime 仍未启用。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；M90 page/API extensionization taskbook PASS；M91 source scan and skeleton decision PASS；M92 metadata-only skeleton package gate PASS；M93 reviewed content copy-first gate PASS；M94 default-off metadata registry gate PASS；M95 route/nav decision taskbook PASS；M96-PRE route-id mapping closeout decision PASS；M96 route-nav closeout receipt PASS；仍不启 dynamic frontend runtime。 |
@@ -1463,7 +1474,7 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；M114 plugin reconcile evidence gate PASS；M115 plugin reconcile decision/taskbook PASS；M116 AIGentQuality temp review-copy taskbook PASS；M117 AIGentQuality temp review-copy evidence PASS；M118 AIGentQuality keep decision PASS；M119 plugin reconcile closeout PASS；M120 aggregate next-lane decision PASS；M121 Agent additive resolver policy taskbook PASS；M122 Agent additive resolver policy decision PASS；M123 aggregate next-lane decision PASS；M124 plugin runtime registration default-off taskbook PASS；M125 plugin runtime registration scoped shadow validation PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；M114 plugin reconcile evidence gate PASS；M115 plugin reconcile decision/taskbook PASS；M116 AIGentQuality temp review-copy taskbook PASS；M117 AIGentQuality temp review-copy evidence PASS；M118 AIGentQuality keep decision PASS；M119 plugin reconcile closeout PASS；M120 aggregate next-lane decision PASS；M121 Agent additive resolver policy taskbook PASS；M122 Agent additive resolver policy decision PASS；M123 aggregate next-lane decision PASS；M124 plugin runtime registration default-off taskbook PASS；M125 plugin runtime registration scoped shadow validation PASS；M126 plugin runtime registration closeout decision PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 | Agent additive M100 blocker | `VCP_AGENT_DIRS` future gate | 7 copied additive Agent files | M100 scoped harness BLOCK：external additive scan `7` but effective external source `0`; effective source remains `core:7` because same-id core fallback is retained；M122 selects core-precedence retained / additive runtime off；do not enable real additive runtime without a new explicit policy implementation gate。 |
 
@@ -1538,6 +1549,7 @@ M125：Plugin runtime registration scoped shadow validation PASS；process-env o
 | Aggregate gap / next-lane decision | M123 decision；selected M124 plugin runtime registration default-off taskbook | PASS_DECISION_ONLY；no plugin runtime/env/entrypoint/private/upstream action |
 | Plugin runtime registration default-off taskbook | M124 taskbook；future M125 scoped shadow validation, exact allowlist, no-entrypoint counters, rollback and stop lines defined | PASS_TASKBOOK_ONLY；no registration/env/entrypoint/package/core-fallback/upstream action |
 | Plugin runtime registration scoped shadow validation | M125 receipt；process-env only harness; exact Jenn allowlist registered `1`; invalid allowlist, duplicate core-name, direct/hybrid, entrypoint counters all `0`; plugin regression tests `40 pass / 0 fail` | PASS_SCOPED_PROCESS_ENV；no real env/server/provider/bridge/package/private/upstream action |
+| Plugin runtime registration closeout decision | M126 decision；selected closeout at scoped shadow proof; persistent real-config/runtime enablement deferred | PASS_DECISION_ONLY；no real env/runtime/entrypoint/server/package/private/upstream action |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
