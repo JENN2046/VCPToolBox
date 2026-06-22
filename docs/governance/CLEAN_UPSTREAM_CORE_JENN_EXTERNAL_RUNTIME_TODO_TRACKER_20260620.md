@@ -1,10 +1,10 @@
 # Clean Core + Jenn External Runtime TODO 进度表
 
-Progress: [##########] 98% (111.7 / 114 global milestone units; scope expanded by M113 PASS)
+Progress: [##########] 98% (117.7 / 120 global milestone units; scope expanded by M119 PASS)
 
 Last updated: 2026-06-22
 
-当前里程碑：Plugin existing-external reconcile taskbook（M113 PASS；next recommended gate M114 plugin reconcile evidence gate）
+当前里程碑：Plugin existing-external reconcile closeout（M119 PASS；next recommended gate M120 aggregate gap / next-lane decision）
 
 状态来源：
 
@@ -19,8 +19,8 @@ Last updated: 2026-06-22
 
 当前采用双层结构：
 
-- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M113；M96-PRE 是不计分前置子门。
-- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S135 已完成工作；S49 upstream PR gate deferred。
+- 长期路线图：正式 milestone，从原始 M0-M8 到 Jenn fork maintenance overlay M9-M119；M96-PRE 是不计分前置子门。
+- 短期执行记录：实际 sprint ledger，记录 S1-S48 与 S50-S141 已完成工作；S49 upstream PR gate deferred。
 
 更新规则：
 
@@ -33,8 +33,8 @@ Last updated: 2026-06-22
 
 进度计算规则：
 
-- 全局 Progress 覆盖 M0-M113 全路线，只保留这一种进度口径。
-- 每个 milestone 记 1 个 global milestone unit；M0-M113 合计 114 units。
+- 全局 Progress 覆盖 M0-M119 全路线，只保留这一种进度口径。
+- 每个 milestone 记 1 个 global milestone unit；M0-M119 合计 120 units。
 - `M96-PRE` 是 M96 前置子门，不计入 global milestone unit；M96 正式完成后顶部 Progress 扩展到 `95.7 / 97`。
 - `PASS` 计 1 unit。
 - `PARTIAL` 只按已验证、已记录的比例计入；当前 M8 = 7 / 10 = 0.7 unit。
@@ -127,6 +127,12 @@ Last updated: 2026-06-22
 - M111 完成 pushed-state aggregate closeout receipt；记录 core commit `34c3b5ff` 与 external commit `ca5c9c4` 已 push 且两仓与 origin 对齐；不打开 upstream PR、不启 runtime、不写 env；下一推荐门 M112 next unextracted domain decision。
 - M112 完成 next unextracted domain decision；选择下一门为 M113 plugin existing-external reconcile taskbook；只处理 `Plugin/AIGentOrchestrator/**` 与 `Plugin/AIGentQuality/**` 的 no-overwrite reconcile 任务书；不复制、不启 runtime、不写 env。
 - M113 完成 plugin existing-external reconcile taskbook；记录两个 existing external plugin dirs 的 path/manifest/history 证据，定义 M114 evidence gate；不复制、不覆盖、不启 `VCP_PLUGIN_DIRS`、不写 env。
+- M114 完成 plugin existing-external reconcile evidence gate；`AIGentOrchestrator` classified `KEEP_EXISTING_EXTERNAL`，`AIGentQuality` classified `NEEDS_REVIEW_COPY`；不复制、不覆盖、不启 runtime。
+- M115 完成 plugin reconcile decision / review-copy taskbook；`AIGentOrchestrator` 保持 existing external no further copy，`AIGentQuality` 只进入 future M116 temp review-copy taskbook；不复制、不覆盖、不启 runtime。
+- M116 完成 AIGentQuality temp review-copy taskbook；定义 future M117 临时 review-copy 路径、allowlist、checksum、cleanup 和 stop line；不执行 copy、不覆盖 active external plugin。
+- M117 完成 AIGentQuality temp review-copy evidence gate；按授权临时复制 4 个 allowlist 文件到 external `.tmp`，checksum 记录后已清理；active external plugin 和 manifest 未变化。
+- M118 完成 AIGentQuality promotion-or-keep decision；保留 active external 为 fork-specific for now，不 promote core temp copy，不覆盖 active external。
+- M119 完成 plugin existing-external reconcile closeout；`AIGentOrchestrator` keep existing，`AIGentQuality` keep fork-specific for now；runtime/overwrite/core fallback removal/upstream 均 deferred。
 
 计划变更规则：
 
@@ -146,7 +152,7 @@ Last updated: 2026-06-22
 
 ## 2. 长期路线图（正式阶段）
 
-M0-M8 是原始 acceptance plan 阶段；M9-M113 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
+M0-M8 是原始 acceptance plan 阶段；M9-M119 是当前 Jenn fork 长期维护与本地稳定验收路线。两者共同计入顶部全局 Progress；原始 100 分仅作为历史验收拆分背景，不再单独维护进度。
 
 | 完成 | ID | 原始分 | 里程碑 | Status | 证据 / 下一道门 |
 | --- | --- | ---: | --- | --- | --- |
@@ -265,6 +271,12 @@ M0-M8 是原始 acceptance plan 阶段；M9-M113 是当前 Jenn fork 长期维�
 | [x] | M111 | 0 | Pushed-state aggregate closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M111_PUSHED_STATE_AGGREGATE_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; core `34c3b5ff` and external `ca5c9c4` pushed and origin-aligned; no upstream PR/env/runtime action; next recommended gate M112。 |
 | [x] | M112 | 0 | Next unextracted domain decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M112_NEXT_UNEXTRACTED_DOMAIN_DECISION_20260622.md`；decision-only; selected `M113_PLUGIN_EXISTING_EXTERNAL_RECONCILE_TASKBOOK`; no copy/env/runtime/private/upstream action。 |
 | [x] | M113 | 0 | Plugin existing-external reconcile taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M113_PLUGIN_EXISTING_EXTERNAL_RECONCILE_TASKBOOK_20260622.md`；taskbook-only; covers `Plugin/AIGentOrchestrator/**` and `Plugin/AIGentQuality/**`; next M114 evidence gate; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | M114 | 0 | Plugin existing-external reconcile evidence gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M114_PLUGIN_EXISTING_EXTERNAL_RECONCILE_EVIDENCE_GATE_20260622.md`；evidence-only; `AIGentOrchestrator` shared hashes match with core-only `.disabled`; `AIGentQuality` has 3 hash diffs and needs review-copy decision; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | M115 | 0 | Plugin reconcile decision / review-copy taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M115_PLUGIN_RECONCILE_DECISION_REVIEW_COPY_TASKBOOK_20260622.md`；decision/taskbook-only; `AIGentOrchestrator` keep existing no further copy; `AIGentQuality` selected for future M116 temp review-copy taskbook; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | M116 | 0 | AIGentQuality temp review-copy taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M116_AIGENTQUALITY_TEMP_REVIEW_COPY_TASKBOOK_20260622.md`；taskbook-only; defines exact future temp review-copy root, allowlist, checksum, cleanup and M117 stop line; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | M117 | 0 | AIGentQuality temp review-copy evidence gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M117_AIGENTQUALITY_TEMP_REVIEW_COPY_EVIDENCE_GATE_20260622.md`；authorized temp copy executed and cleaned; temp equals core `4`, differs from active external `3`; active external changed `0`; manifest changed `False`; no overwrite/env/runtime/private/upstream action。 |
+| [x] | M118 | 0 | AIGentQuality promotion-or-keep decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M118_AIGENTQUALITY_PROMOTION_KEEP_DECISION_20260622.md`；decision-only; keep active external as fork-specific for now; promote core copy `no`; active overwrite `no`; no copy/env/runtime/private/upstream action。 |
+| [x] | M119 | 0 | Plugin existing-external reconcile closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M119_PLUGIN_EXISTING_EXTERNAL_RECONCILE_CLOSEOUT_20260622.md`；closeout-only; `AIGentOrchestrator=KEEP_EXISTING_EXTERNAL`; `AIGentQuality=KEEP_EXISTING_EXTERNAL_AS_FORK_SPECIFIC_FOR_NOW`; overwrite/runtime/core fallback removal/upstream deferred。 |
 
 全局进度明细：
 
@@ -359,7 +371,13 @@ M110 PASS：1.0 / 1 unit（uncommitted work packaging decision；future core/ext
 M111 PASS：1.0 / 1 unit（pushed-state aggregate closeout receipt；core/external pushed commits recorded and origin-aligned）
 M112 PASS：1.0 / 1 unit（next unextracted domain decision；M113 plugin existing-external reconcile taskbook selected）
 M113 PASS：1.0 / 1 unit（plugin existing-external reconcile taskbook；M114 evidence gate defined, no copy/overwrite/runtime）
-Global Progress：111.7 / 114 = 97.98%，顶部显示为 98%
+M114 PASS：1.0 / 1 unit（plugin existing-external reconcile evidence gate；classifies AIGentOrchestrator keep-existing and AIGentQuality needs-review-copy）
+M115 PASS：1.0 / 1 unit（plugin reconcile decision / review-copy taskbook；M116 temp review-copy taskbook selected for AIGentQuality, no copy yet）
+M116 PASS：1.0 / 1 unit（AIGentQuality temp review-copy taskbook；future M117 temp copy boundaries defined, no copy yet）
+M117 PASS：1.0 / 1 unit（AIGentQuality temp review-copy evidence gate；authorized temp copy cleaned, active external unchanged）
+M118 PASS：1.0 / 1 unit（AIGentQuality promotion-or-keep decision；keep active external as fork-specific for now, no overwrite）
+M119 PASS：1.0 / 1 unit（plugin existing-external reconcile closeout；overwrite/runtime/core fallback removal deferred）
+Global Progress：117.7 / 120 = 98.08%，顶部显示为 98%
 ```
 
 ## 3. 短期执行记录（Sprint Ledger）
@@ -503,6 +521,12 @@ Global Progress：111.7 / 114 = 97.98%，顶部显示为 98%
 | [x] | S133 | Closeout / M111 | 0 | Pushed-state aggregate closeout receipt | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M111_PUSHED_STATE_AGGREGATE_CLOSEOUT_RECEIPT_20260622.md`；receipt-only; core/external pushed commits recorded; both worktrees clean and origin-aligned; no upstream PR/env/runtime action。 |
 | [x] | S134 | Decision / M112 | 0 | Next unextracted domain decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M112_NEXT_UNEXTRACTED_DOMAIN_DECISION_20260622.md`；decision-only; selected M113 plugin existing-external reconcile taskbook; no copy/env/runtime/private/upstream action。 |
 | [x] | S135 | Plugin / M113 | 0 | Plugin existing-external reconcile taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M113_PLUGIN_EXISTING_EXTERNAL_RECONCILE_TASKBOOK_20260622.md`；taskbook-only; path/manifest/history evidence recorded; M114 evidence gate defined; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | S136 | Plugin / M114 | 0 | Plugin existing-external reconcile evidence gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M114_PLUGIN_EXISTING_EXTERNAL_RECONCILE_EVIDENCE_GATE_20260622.md`；evidence-only; path risk `0/0`; manifest verify `147/0`; `AIGentOrchestrator=KEEP_EXISTING_EXTERNAL`; `AIGentQuality=NEEDS_REVIEW_COPY`; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | S137 | Plugin / M115 | 0 | Plugin reconcile decision / review-copy taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M115_PLUGIN_RECONCILE_DECISION_REVIEW_COPY_TASKBOOK_20260622.md`；decision/taskbook-only; AIGentQuality future M116 temp review-copy taskbook selected; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | S138 | Plugin / M116 | 0 | AIGentQuality temp review-copy taskbook | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M116_AIGENTQUALITY_TEMP_REVIEW_COPY_TASKBOOK_20260622.md`；taskbook-only; future temp root/allowlist/checksum/cleanup/stop line defined; no copy/overwrite/env/runtime/private/upstream action。 |
+| [x] | S139 | Plugin / M117 | 0 | AIGentQuality temp review-copy evidence gate | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M117_AIGENTQUALITY_TEMP_REVIEW_COPY_EVIDENCE_GATE_20260622.md`；authorized temp copy file count `4`; temp/core hash match `4`; active external changed `0`; temp removed; no overwrite/env/runtime/private/upstream action。 |
+| [x] | S140 | Plugin / M118 | 0 | AIGentQuality promotion-or-keep decision | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M118_AIGENTQUALITY_PROMOTION_KEEP_DECISION_20260622.md`；decision-only; active external kept fork-specific; no promote/overwrite/env/runtime/private/upstream action。 |
+| [x] | S141 | Plugin / M119 | 0 | Plugin existing-external reconcile closeout | PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M119_PLUGIN_EXISTING_EXTERNAL_RECONCILE_CLOSEOUT_20260622.md`；closeout-only; two existing external plugin dirs locked; runtime/overwrite/core fallback removal/upstream deferred。 |
 
 原始验收拆分说明：
 
@@ -542,7 +566,7 @@ M18：决策包完成，不自动 delete/untrack/stub core Agent 文件。
 Agent 领域最终完成条件：M9-M18 PASS，真实 env 未被自动修改，LocalState / .agent_board 未被读取或迁移，provider / bridge / live write 未执行，core fallback 保留；core fallback removal 仅 future proposal。
 ```
 
-M19-M113 完成规则：
+M19-M119 完成规则：
 
 ```text
 M19/M21/M23/M25/M26：LocalState、AdminPanel、AI Image、Codex/Memory、PhotoStudio taskbooks PASS；不直接 copy-first 或 runtime wiring。
@@ -635,6 +659,12 @@ M110：Uncommitted work packaging decision PASS；只定义未来 core/external 
 M111：Pushed-state aggregate closeout receipt PASS；记录 M110 split 已本地提交并分别 push 到 Jenn fork / external package origin；两仓 origin-aligned；不打开 upstream PR、不启 runtime、不写 env。
 M112：Next unextracted domain decision PASS；选择 M113 plugin existing-external reconcile taskbook 作为下一低风险门；不复制、不覆盖、不启 runtime、不写 env。
 M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestrator / AIGentQuality no-overwrite reconcile 路线、M114 evidence gate、rollback 和 stop line；不复制、不覆盖、不启 runtime。
+M114：Plugin existing-external reconcile evidence gate PASS；完成 path-set、path-risk、manifest、history、checksum evidence；AIGentOrchestrator keep-existing，AIGentQuality needs-review-copy；不复制、不覆盖、不启 runtime。
+M115：Plugin reconcile decision / review-copy taskbook PASS；把 AIGentQuality 差异收束到 future M116 temp review-copy taskbook；不复制、不覆盖、不启 runtime。
+M116：AIGentQuality temp review-copy taskbook PASS；只定义 future M117 temp copy 的精确路径、allowlist、checksum、cleanup、rollback；不执行 copy。
+M117：AIGentQuality temp review-copy evidence gate PASS；临时 copy 已执行并清理，active external plugin unchanged；不覆盖、不启 runtime。
+M118：AIGentQuality promotion-or-keep decision PASS；保守选择 keep active external as fork-specific for now；future overwrite 必须另开显式 gate。
+M119：Plugin existing-external reconcile closeout PASS；当前 plugin reconcile lane 收口；active overwrite、runtime registration、core fallback removal 均 deferred。
 ```
 
 ## 4. Acceptance Plan 对照矩阵
@@ -688,6 +718,12 @@ M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestra
 | Pushed-state aggregate closeout receipt | M111 / S133 | record that the M110 split was committed and pushed to Jenn fork origins before choosing the next domain | PASS；core `34c3b5ff` and external `ca5c9c4` origin-aligned; no upstream PR/env/runtime action。 |
 | Next unextracted domain decision | M112 / S134 | compare remaining unresolved lanes and select the next narrow gate | PASS；M113 plugin existing-external reconcile taskbook selected; no copy/env/runtime/private/upstream action。 |
 | Plugin existing-external reconcile taskbook | M113 / S135 | define a no-overwrite reconcile plan for `Plugin/AIGentOrchestrator/**` and `Plugin/AIGentQuality/**` | PASS；M114 evidence gate selected; no copy/overwrite/env/runtime/private/upstream action。 |
+| Plugin existing-external reconcile evidence gate | M114 / S136 | compare path sets, manifest entries and SHA256 equality without printing source contents | PASS；`AIGentOrchestrator` keep-existing; `AIGentQuality` needs-review-copy; no copy/overwrite/runtime。 |
+| Plugin reconcile decision / review-copy taskbook | M115 / S137 | decide the next no-overwrite route after M114 evidence | PASS；AIGentQuality future temp review-copy taskbook selected; no copy/overwrite/runtime。 |
+| AIGentQuality temp review-copy taskbook | M116 / S138 | define exact temp review-copy path, source allowlist, checksum and cleanup gates | PASS；M117 evidence gate selected; no copy/overwrite/runtime。 |
+| AIGentQuality temp review-copy evidence gate | M117 / S139 | run authorized temp copy outside active external Plugin and clean it up | PASS；temp/core match `4`; active external changed `0`; no overwrite/runtime。 |
+| AIGentQuality promotion-or-keep decision | M118 / S140 | decide whether to promote core temp evidence or keep active external | PASS；keep active external as fork-specific for now; no overwrite/runtime。 |
+| Plugin existing-external reconcile closeout | M119 / S141 | close current reconcile lane and defer overwrite/runtime/core fallback removal | PASS；next M120 aggregate gap / next-lane decision。 |
 | Jenn fork maintenance final closeout | M29 / S50 | active/deferred/block 总结、最终风险、下一周期路线 | M29 PASS；Jenn fork maintenance route closed；全局仍非 100%，upstream deferred。 |
 | Local stability gate | M30 / S51；M38 / S59 | 定义并执行 accelerated local stability closeout；7-day calendar soak 作为 future upstream-readiness evidence | M38 PASS；local package-layer closeout passed；calendar soak deferred optional。 |
 | AdminPanel persistent package | M31 / S52 | persistent external AdminExtensions skeleton、manifest/checksum、paths-only scan、no-runtime validation | M31 PASS；runtime registration and AdminPanel build remain deferred。 |
@@ -774,6 +810,12 @@ M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestra
 | Pushed-state aggregate closeout receipt | M111 / S133 | record pushed commits, origin alignment, validation, route decision, and next recommended gate | PASS；Progress `109.7 / 112`。 |
 | Next unextracted domain decision | M112 / S134 | select the next unresolved extraction lane from the gap matrix without implementation | PASS；Progress `110.7 / 113`。 |
 | Plugin existing-external reconcile taskbook | M113 / S135 | define no-overwrite reconcile plan for existing external plugin dirs without copying or runtime registration | PASS；Progress `111.7 / 114`。 |
+| Plugin existing-external reconcile evidence gate | M114 / S136 | classify existing external plugin dirs using path-risk, manifest and checksum evidence only | PASS；Progress `112.7 / 115`。 |
+| Plugin reconcile decision / review-copy taskbook | M115 / S137 | select M116 temp review-copy taskbook for AIGentQuality without copying now | PASS；Progress `113.7 / 116`。 |
+| AIGentQuality temp review-copy taskbook | M116 / S138 | define M117 temp review-copy evidence gate without copying now | PASS；Progress `114.7 / 117`。 |
+| AIGentQuality temp review-copy evidence gate | M117 / S139 | execute authorized temp review-copy and cleanup without active external overwrite | PASS；Progress `115.7 / 118`。 |
+| AIGentQuality promotion-or-keep decision | M118 / S140 | keep active external as fork-specific for now and defer overwrite gate | PASS；Progress `116.7 / 119`。 |
+| Plugin existing-external reconcile closeout | M119 / S141 | close current existing-external plugin reconcile lane | PASS；Progress `117.7 / 120`。 |
 
 ## 5. 详细执行待办（Planned Backlog）
 
@@ -920,8 +962,14 @@ M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestra
 | Q94 | M111/S133 | PASS | Closeout | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M111_PUSHED_STATE_AGGREGATE_CLOSEOUT_RECEIPT_20260622.md`；core/external pushed-state recorded; both repos origin-aligned; no upstream PR/env/runtime action; next recommended gate M112。 |
 | Q95 | M112/S134 | PASS | Decision | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M112_NEXT_UNEXTRACTED_DOMAIN_DECISION_20260622.md`；selected M113 plugin existing-external reconcile taskbook; no copy/env/runtime/private/upstream action。 |
 | Q96 | M113/S135 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M113_PLUGIN_EXISTING_EXTERNAL_RECONCILE_TASKBOOK_20260622.md`；taskbook-only; two existing external plugin dirs scoped; M114 evidence gate defined; no copy/overwrite/env/runtime/private/upstream action。 |
+| Q97 | M114/S136 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M114_PLUGIN_EXISTING_EXTERNAL_RECONCILE_EVIDENCE_GATE_20260622.md`；evidence-only; `AIGentOrchestrator=KEEP_EXISTING_EXTERNAL`; `AIGentQuality=NEEDS_REVIEW_COPY`; no copy/overwrite/env/runtime/private/upstream action。 |
+| Q98 | M115/S137 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M115_PLUGIN_RECONCILE_DECISION_REVIEW_COPY_TASKBOOK_20260622.md`；decision/taskbook-only; selected M116 temp review-copy taskbook for AIGentQuality; no copy/overwrite/env/runtime/private/upstream action。 |
+| Q99 | M116/S138 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M116_AIGENTQUALITY_TEMP_REVIEW_COPY_TASKBOOK_20260622.md`；taskbook-only; future M117 temp review-copy evidence gate defined; no copy/overwrite/env/runtime/private/upstream action。 |
+| Q100 | M117/S139 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M117_AIGENTQUALITY_TEMP_REVIEW_COPY_EVIDENCE_GATE_20260622.md`；authorized temp copy executed and cleaned; active external unchanged; no overwrite/env/runtime/private/upstream action。 |
+| Q101 | M118/S140 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M118_AIGENTQUALITY_PROMOTION_KEEP_DECISION_20260622.md`；decision-only; keep active external as fork-specific for now; no promote/overwrite/env/runtime/private/upstream action。 |
+| Q102 | M119/S141 | PASS | Plugin | `CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M119_PLUGIN_EXISTING_EXTERNAL_RECONCILE_CLOSEOUT_20260622.md`；closeout-only; existing external plugin reconcile lane closed; no overwrite/runtime/core fallback/upstream action。 |
 
-### 5.5 M19-M113 + M96-PRE Specific Step Plan
+### 5.5 M19-M119 + M96-PRE Specific Step Plan
 
 | 待办 | Status | 执行动作 | 验收证据 | 禁止事项 |
 | --- | --- | --- | --- | --- |
@@ -1316,6 +1364,24 @@ M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestra
 | M113-01 | PASS | 对 `Plugin/AIGentOrchestrator/**` 与 `Plugin/AIGentQuality/**` 做 path-only core/external/manifest/history 核对 | core/external tracked path counts recorded; manifest verify `147/0`; path risk `0` | 不读取 plugin source body、不复制、不覆盖 |
 | M113-02 | PASS | 定义 no-overwrite reconcile options 与未来 M114 evidence gate | options A-F; recommended M114 checksum/path-set evidence gate | 不启 `VCP_PLUGIN_DIRS`、不写 env、不执行 plugin |
 | M113-03 | PASS | 写 M113 taskbook 并更新 tracker：M113/S135/Q96 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M113_PLUGIN_EXISTING_EXTERNAL_RECONCILE_TASKBOOK_20260622.md`; Progress `111.7 / 114` | 不 commit/push、不打开 upstream PR |
+| M114-01 | PASS | 复核 core/external worktree、tracked path sets、path-risk、manifest entries 和 full manifest verify | core `9` paths, external `8` paths; path risk `0/0`; manifest verify `147/0` | 不复制、不覆盖、不启 runtime |
+| M114-02 | PASS | 对两个 existing external plugin dirs 做 SHA256 equality comparison without source content print | `AIGentOrchestrator` shared hash diff `0`; `AIGentQuality` hash diff `3` | 不打印源码内容、不读取 private |
+| M114-03 | PASS | 写 M114 evidence receipt 并更新 tracker：M114/S136/Q97 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M114_PLUGIN_EXISTING_EXTERNAL_RECONCILE_EVIDENCE_GATE_20260622.md`; Progress `112.7 / 115` | 不 commit/push、不打开 upstream PR |
+| M115-01 | PASS | 将 M114 两个分类转成下一步路线决策 | `AIGentOrchestrator` keep existing; `AIGentQuality` needs temp review-copy taskbook | 不复制、不覆盖 active external plugin |
+| M115-02 | PASS | 定义 M116 temp review-copy taskbook shape、allowlist、cleanup、rollback 和 stop line | next gate `M116_AIGENTQUALITY_TEMP_REVIEW_COPY_TASKBOOK` | 不执行 copy、不启 runtime |
+| M115-03 | PASS | 写 M115 taskbook 并更新 tracker：M115/S137/Q98 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M115_PLUGIN_RECONCILE_DECISION_REVIEW_COPY_TASKBOOK_20260622.md`; Progress `113.7 / 116` | 不 commit/push、不打开 upstream PR |
+| M116-01 | PASS | 定义 future M117 temp review-copy 的 source allowlist 和 target root | source allowlist exactly 4 tracked files; target under external `.tmp` | 不执行 copy、不写 active external `Plugin/AIGentQuality/**` |
+| M116-02 | PASS | 定义 M117 checksum、path-risk、cleanup、rollback 和 future decision outcomes | M117 must prove active external unchanged and cleanup exact temp root | 不启 runtime、不写 env、不读取 private |
+| M116-03 | PASS | 写 M116 taskbook 并更新 tracker：M116/S138/Q99 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M116_AIGENTQUALITY_TEMP_REVIEW_COPY_TASKBOOK_20260622.md`; Progress `114.7 / 117` | 不 commit/push、不打开 upstream PR |
+| M117-01 | PASS | 按用户当前轮授权执行 temp review-copy 到 external `.tmp` | temp file count `4`; path risk `0`; temp/core match `4` | 不写 active external `Plugin/AIGentQuality/**` |
+| M117-02 | PASS | 比较 temp 与 active external hash，并清理 exact temp root | temp differs from active external `3`; active changed `0`; manifest changed `False`; temp removed `True` | 不用 active overwrite、不启 runtime |
+| M117-03 | PASS | 写 M117 evidence receipt 并更新 tracker：M117/S139/Q100 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M117_AIGENTQUALITY_TEMP_REVIEW_COPY_EVIDENCE_GATE_20260622.md`; Progress `115.7 / 118` | 不 commit/push、不打开 upstream PR |
+| M118-01 | PASS | 复核 M117 证据和 future overwrite gate requirements | temp/core match `4`; active changed `0`; content body review not performed | 不把 temp copy 直接 promote |
+| M118-02 | PASS | 决策 AIGentQuality 当前状态 | keep active external as fork-specific for now; promote core copy now `no` | 不覆盖 active external plugin |
+| M118-03 | PASS | 写 M118 decision 并更新 tracker：M118/S140/Q101 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M118_AIGENTQUALITY_PROMOTION_KEEP_DECISION_20260622.md`; Progress `116.7 / 119` | 不 commit/push、不打开 upstream PR |
+| M119-01 | PASS | 汇总 M113-M118 plugin reconcile evidence chain | AIGentOrchestrator keep existing; AIGentQuality keep fork-specific for now | 不新增 copy/overwrite |
+| M119-02 | PASS | 锁定 deferred work：active overwrite、runtime registration、core fallback removal、upstream PR | deferred matrix recorded | 不启 runtime、不删 core fallback |
+| M119-03 | PASS | 写 M119 closeout 并更新 tracker：M119/S141/Q102 PASS | `docs/governance/CLEAN_UPSTREAM_CORE_JENN_EXTERNAL_RUNTIME_M119_PLUGIN_EXISTING_EXTERNAL_RECONCILE_CLOSEOUT_20260622.md`; Progress `117.7 / 120` | 不 commit/push、不打开 upstream PR |
 
 ## 6. 领域路线概览
 
@@ -1323,7 +1389,7 @@ M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestra
 
 | 领域 | 未来 contract | External Runtime / State 目标 | 第一件必须做的事 |
 | --- | --- | --- | --- |
-| Plugin reconcile | `VCP_PLUGIN_DIRS`、`VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` | Existing external plugin dirs 与 core fallback 的 no-overwrite reconcile | M113 taskbook PASS；已覆盖 `Plugin/AIGentOrchestrator/**` 与 `Plugin/AIGentQuality/**` 的 path/manifest/history/no-overwrite plan；下一门 M114 evidence gate 只允许 path-set/checksum/manifest classify，不复制、不覆盖、不启 runtime。 |
+| Plugin reconcile | `VCP_PLUGIN_DIRS`、`VCP_PLUGIN_ALLOWED_ROOTS`、`VCP_EXTERNAL_PLUGIN_ALLOWLIST` | Existing external plugin dirs 与 core fallback 的 no-overwrite reconcile | M119 closeout PASS；`Plugin/AIGentOrchestrator/**` keep existing external no further copy；`Plugin/AIGentQuality/**` keep active external as fork-specific for now；future overwrite/promote requires separate explicit gate；runtime registration/core fallback removal/upstream PR all deferred。 |
 | Agent | `VCP_AGENT_ALLOWED_ROOTS`、`VCP_AGENT_DIRS`、`VCP_AGENT_OVERRIDE_DIRS` | Jenn Agent 和 AgentOverrides | M41 已按授权在真实 `config.env` 启用 `AgentOverrides` only；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；7 个 additive Agent 已 copy-first 但 `VCP_AGENT_DIRS` 暂不启用；core fallback 保留；M100 scoped harness BLOCK：external additive scan `7` but effective external source `0` because current resolver keeps same-id core fallback effective；M101-M103 已把 blocker 转成 collision / override-candidate review taskbooks；M104 classification 仅允许 `小秋` 进入 copy-gate；M105 taskbook PASS；M106 已复制并保留 `AgentOverrides/小秋.txt` 且 rollback drill PASS；M107 锁定剩余六个 Agent 为 deferred/separate-design no-copy；M108 选择 M109 final receipt；M109 正式关闭当前 XiaoQiu override lane；M110 定义打包/commit split；M111 记录 split commit/push 已完成并 origin-aligned；真实 additive runtime 仍未启用。 |
 | LocalState | `VCP_LOCAL_STATE_DIR` | 经批准的私有记忆、项目数据、本地配置 | 定义默认排除项和 `.agent_board/**` 人工 gate。 |
 | AdminPanel | Admin extension manifest / route registration | Jenn 页面、API、菜单项 | M31 persistent package gate PASS；M47 default-off runtime registration taskbook PASS；M48 backend default-off registry gate PASS；M49 shadow rollback drill PASS；M50 scoped process.env local smoke PASS；M51 taskbook PASS；M52 backend production-router integration PASS；M53 real-config unlock decision PASS；M54 real-config backend-readonly apply + rollback PASS；M55 production-server smoke / frontend route-nav decision PASS；M56 production-server smoke taskbook PASS；M57 actual production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 artifact lane closeout PASS；M90 page/API extensionization taskbook PASS；M91 source scan and skeleton decision PASS；M92 metadata-only skeleton package gate PASS；M93 reviewed content copy-first gate PASS；M94 default-off metadata registry gate PASS；M95 route/nav decision taskbook PASS；M96-PRE route-id mapping closeout decision PASS；M96 route-nav closeout receipt PASS；仍不启 dynamic frontend runtime。 |
@@ -1331,7 +1397,7 @@ M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestra
 | Codex/Memory | Generic bridge interface 或不改 core | CodexMemoryBridge 和 Jenn memory tools | M33 persistent no-live-write package gate PASS；M46 keeps runtime bridge registration、live writes、private memory reads deferred；M84 keeps runtime taskbook deferred because no current operator need justifies private/live-write-adjacent expansion。 |
 | PhotoStudio | Generic plugin loading ability | PhotoStudio plugins、data、task templates | M34 persistent source package gate PASS；M46 keeps runtime package registration、真实数据根、external sync/publish/write deferred；M84 keeps runtime taskbook deferred because no current operator need justifies project-data/external-write-adjacent expansion。 |
 | Governance Docs | 最少 clean-core acceptance notes | 详细 migration ledger 和 checksums | 决定哪些证据放在 clean core 外部。 |
-| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
+| Local Stability | Full-local implementation matrix + accelerated closeout + optional calendar soak + real-config runtime-on/unlock gates | same-day multi-round local validation receipt；future 7-day / 3-cycle upstream-readiness soak if required；redacted real `config.env` gate | M38 accelerated local closeout PASS；M41 applied AgentOverrides-only real config and M39/M40 rerun PASS；M42 local read smoke PASS；M43 rollback drill PASS；M44 Admin write guard PASS；M45 aggregate review PASS；M46 decision PASS；M47 AdminPanel taskbook PASS；M48 AdminPanel backend registry gate PASS；M49 shadow rollback drill PASS；M50 scoped local smoke PASS；M51 taskbook PASS；M52 default-off backend production-router integration PASS；M53 AdminPanel real-config unlock decision PASS；M54 AdminPanel real-config backend-readonly apply + rollback PASS；M55 AdminPanel production smoke/frontend decision PASS；M56 production-server smoke taskbook PASS；M57 production-server smoke PASS；M58 frontend route/nav taskbook PASS；M59 frontend static implementation PASS；M60 build/dist decision PASS；M61 no-build validation PASS；M62 build/lint path decision PASS；M63 temp outDir dry-build authorization taskbook PASS；M64 temp outDir dry build PASS；M65 browser visual smoke taskbook PASS；M66 browser visual smoke PASS；M67 normal dist artifact taskbook PASS；M68 normal dist artifact build PASS；M69 post-dist static smoke PASS；M70 AdminPanel closeout PASS；M71 aggregate local route review PASS；M72 next runtime lane decision PASS；M73 AI Image taskbook PASS；M74 AI Image metadata-only registry PASS；M75 AI Image route/closeout decision PASS；M76 AI Image diagnostic route taskbook PASS；M77 AI Image diagnostic route factory PASS；M78 AI Image production-router decision PASS；M79 AI Image production-router taskbook PASS；M80 AI Image default-off production-router integration PASS；M81 AI Image real-config unlock decision PASS；M82 AI Image diagnostic real-config apply/rollback drill PASS；M83 AI Image diagnostic closeout decision PASS；M84 aggregate runtime lane closeout decision PASS；M85 current Jenn fork local runtime route final closeout PASS；M86 extraction gap matrix PASS；M87 plugin copy-first candidate gate PASS；M88 plugin copy-first wave PASS；M89 plugin shadow/default-off validation PASS；M90 AdminPanel page/API taskbook PASS；M91 AdminPanel source scan/skeleton decision PASS；M92 AdminPanel metadata-only skeleton package gate PASS；M93 AdminPanel reviewed content copy-first gate PASS；M94 AdminPanel default-off metadata registry gate PASS；M95 AdminPanel route/nav decision taskbook PASS；M96-PRE AdminPanel route-id mapping closeout decision PASS；M96 AdminPanel route-nav closeout receipt PASS；M97 aggregate next-lane decision PASS；M98 Agent additive decision taskbook PASS；M99 Agent additive scoped shadow validation taskbook PASS；M100 Agent additive scoped harness BLOCK；M101 blocker decision PASS；M102 collision taskbook PASS；M103 override-candidate taskbook PASS；M104 per-Agent classification PASS；M105 XiaoQiu copy-gate taskbook PASS；M106 XiaoQiu override copy + rollback drill PASS；M107 Agent override closeout decision PASS；M108 aggregate decision PASS；M109 final closeout receipt PASS；M110 packaging decision PASS；M111 pushed-state closeout PASS；M112 next-domain decision PASS；M113 plugin reconcile taskbook PASS；M114 plugin reconcile evidence gate PASS；M115 plugin reconcile decision/taskbook PASS；M116 AIGentQuality temp review-copy taskbook PASS；M117 AIGentQuality temp review-copy evidence PASS；M118 AIGentQuality keep decision PASS；M119 plugin reconcile closeout PASS；calendar soak mid/final cycles deferred optional；upstream PR still deferred。 |
 
 | Agent additive M100 blocker | `VCP_AGENT_DIRS` future gate | 7 copied additive Agent files | M100 scoped harness BLOCK：external additive scan `7` but effective external source `0`; effective source remains `core:7` because same-id core fallback is retained；do not enable real additive runtime before a separate blocker/defer decision。 |
 
@@ -1394,6 +1460,12 @@ M113：Plugin existing-external reconcile taskbook PASS；定义 AIGentOrchestra
 | Pushed-state aggregate closeout receipt | M111 receipt；core `34c3b5ff` and external `ca5c9c4` pushed and origin-aligned; next recommended gate M112 | PASS_RECEIPT_ONLY；no upstream PR/env/source/runtime action |
 | Next unextracted domain decision | M112 decision；remaining lanes compared; M113 plugin existing-external reconcile taskbook selected | PASS_DECISION_ONLY；no copy/env/source/runtime/private/upstream action |
 | Plugin existing-external reconcile taskbook | M113 taskbook；`Plugin/AIGentOrchestrator/**` and `Plugin/AIGentQuality/**` scoped for future no-overwrite path-set/checksum evidence gate | PASS_TASKBOOK_ONLY；no copy/overwrite/env/source/runtime/private/upstream action |
+| Plugin existing-external reconcile evidence gate | M114 receipt；path risk `0/0`; manifest verify `147/0`; `AIGentOrchestrator` shared hashes same; `AIGentQuality` has 3 hash diffs | PASS_EVIDENCE_ONLY；no copy/overwrite/env/source/runtime/private/upstream action |
+| Plugin reconcile decision / review-copy taskbook | M115 taskbook；AIGentOrchestrator keep existing; AIGentQuality selected for future M116 temp review-copy taskbook | PASS_DECISION_TASKBOOK_ONLY；no copy/overwrite/env/source/runtime/private/upstream action |
+| AIGentQuality temp review-copy taskbook | M116 taskbook；future M117 temp target under external `.tmp`, four-file allowlist, checksum/cleanup/stop line defined | PASS_TASKBOOK_ONLY；no temp copy, no active external overwrite, no runtime action |
+| AIGentQuality temp review-copy evidence gate | M117 receipt；authorized temp copy `4` files; temp/core match `4`; active external changed `0`; manifest unchanged; temp removed | PASS_TEMP_COPY_CLEANED；no active overwrite/env/source/runtime/private/upstream action |
+| AIGentQuality promotion-or-keep decision | M118 decision；keep active external as fork-specific for now; future promotion requires explicit overwrite gate | PASS_DECISION_ONLY；no copy/overwrite/env/source/runtime/private/upstream action |
+| Plugin existing-external reconcile closeout | M119 closeout；AIGentOrchestrator keep existing; AIGentQuality keep fork-specific for now; runtime/overwrite/core fallback removal deferred | PASS_CLOSEOUT_ONLY；no copy/overwrite/env/source/runtime/private/upstream action |
 | Codex/Memory no-live-write package gate | M33 receipt + external commit `320cf17ec3204179a150161fa87429e1fef29cab`；package risk `0`；bridge/private-memory/LocalState/external/provider counters all `0`；runtime registration reference count `0` | PASS |
 | PhotoStudio source package gate | M34 receipt + external commit `3a63904e753aa8b8869f588fc0b8fc862354e123`；package risk `0`；project-data/external/provider/bridge/LocalState counters all `0`；runtime registration reference count `0` | PASS |
 | Aggregate full-local matrix review | M35 receipt；M31-M34 package harnesses re-run PASS；current aggregate manifest `9e01af36f0ecd99c27294addc99d44d6592a5883fb5b41b2e2ee585f721809fd` | PASS |
