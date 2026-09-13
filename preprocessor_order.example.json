@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "strict": true,
+  "order": [
+    "VCPTavern",
+    "CapturePreprocessor",
+    "ImageProcessor",
+    "RAGDiaryPlugin",
+    "VCPTimeLine",
+    "OpenHerPersona",
+    "OneRing",
+    "ContextFoldingV2"
+  ]
+}

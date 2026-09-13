@@ -51,6 +51,11 @@ web_modules/
 # Optional npm cache directory
 .npm
 
+# Local Python virtual environments
+.venv*/
+__pycache__/
+*.py[cod]
+
 # Optional eslint cache
 .eslintcache
 
@@ -93,9 +98,6 @@ dist
 # 但保留 AdminPanel-Vue 构建产物，让用户开箱即用
 !AdminPanel-Vue/dist/
 !AdminPanel-Vue/dist/**
-# DailyHot 的 dist 是插件运行源码，不是本仓根层构建产物
-!Plugin/DailyHot/dist/
-!Plugin/DailyHot/dist/**
 
 # Gatsby files
 .cache/
@@ -155,31 +157,38 @@ ModelRedirect.json
 agent_map.json
 preprocessor_order.json
 tag-processor-config.env
-SemanticModelRouter.local.json
+# 多模态识别 JSON 真相源（首启自动生成；私密提示词不应入库）
+multimodal-config.json
+sarprompt.json
+
+# 本地插件运行配置 / 状态
+Plugin/AgentAssistant/config.json
+Plugin/VCPBridgeServer/bridge-config.json
+Plugin/VCPTaskAssistant/task-center-data.json
 
 # ===== 运行时数据 / 缓存 =====
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 *.db
+# SQLite sidecar：主库运行期间产生的 WAL / shared memory
+*.db-shm
+*.db-wal
 DebugLog/
+dailynote/*
+!dailynote/VCP桌面知识/
+!dailynote/VCP桌面知识/**
+!dailynote/VCP开发/
+!dailynote/VCP开发/**
 ip_blacklist.json
 /VectorStore
-
-# OneRing runtime data (operator-owned; never commit local stores)
-Plugin/OneRing/OneRingConfig.json
-Plugin/OneRing/OneRingConfig.*.json
-Plugin/OneRing/data/
-Plugin/OneRing/*.db
-Plugin/OneRing/*.db-wal
-Plugin/OneRing/*.db-shm
+/VectorStoreTDB/
 
 # 插件缓存文件
-Plugin/AIGentStyle/datasets/
-Plugin/AIGentStyle/outputs/
 Plugin/ArtistMatcher/artist_cache.json
-Plugin/DoubaoGen/.doubao_api_cache.json
-Plugin/DailyNoteWrite/dailynote/
 Plugin/DailyHot/dailyhot_cache.md
 Plugin/EmojiListGenerator/generated_lists/
 Plugin/FRPSInfoProvider/frps_info_cache.txt
@@ -194,7 +203,7 @@ Plugin/RAGDiaryPlugin/rag_tags.json
 Plugin/RAGDiaryPlugin/semantic_groups.json
 Plugin/RAGDiaryPlugin/semantic_groups.edit.json
 Plugin/RAGDiaryPlugin/semantic_vectors/
-Plugin/SkillBridge/skill-index.txt
+Plugin/Randomness/data/active_decks.json
 Plugin/TavilySearch/.vcptoolbox_tavily_cache.json
 Plugin/UserAuth/code.bin
 Plugin/VCPLog/log/VCPlog.txt
@@ -203,15 +212,36 @@ Plugin/WeatherReporter/weather_cache.txt
 Plugin/WeatherReporter/city_cache.txt
 ToolConfigs/dynamic_tool_catalog.json
 ToolConfigs/dynamic_tool_categories.json
-ToolConfigs/dynamic_tool_catalog.json.*.tmp
-Plugin/**/state/
+ToolConfigs/*.tmp
+Plugin/VCPClawMail/data/
+Plugin/VCPTaskAssistant/task-center-data.json
+Plugin/VCPTavern/access_logs.json
+Plugin/VCPTimeLine/timeline_summaries.json
+Plugin/OneRing/memo/
+VCPAsyncResults/
+file/document/AgentTask/
+Plugin/UrlFetch/browser-profiles
+Plugin/ChromeBridge/ChromeScripts
+Plugin/ChromeBridge/managed-extension-stage
+Plugin/ChromeBridge/managed-profile
+Plugin/VCPTimeLine/config.json
 
-# ===== 本地开发临时产物 =====
-/.tmp/
-/admin-*.err
-/server-*.err
-AdminPanel-Vue/.vite-cache/
-AdminPanel-Vue/vite-*.err
+# Agent 插件执行态
+Plugin/AgentAssistant/agent_scores.json
+Plugin/AgentDream/dream_logs/
+Plugin/AgentDream/dream_schedule_state.json
+
+# ChromeBridge 单次运行令牌
+Plugin/ChromeBridge/managed-runtime-token.json
+ToolConfigs/*.tmp.*
+
+# 本地备份文件
+*.bak
+*.bak-*
+*.backup-*
+
+# 本地构建产物
+Plugin/DailyNoteSearcher/DailyNoteSearcher
 
 # ===== 图片 / 媒体 =====
 # 忽略通用表情包目录下的所有内容...
@@ -220,12 +250,45 @@ image/通用表情包/*
 !image/通用表情包/阿库娅-一脸智障.jpg
 !image/通用表情包/阿库娅-智慧的眼神.jpg
 
-# 忽略 FluxGen 生成的图片
+# 忽略图片生成插件的输出
 image/fluxgen/
-# 忽略 GPTImageGen 生成的图片
 image/gptimagegen/
+image/agnesgen/
+image/zimageturbogen/
+image/comfycloud/
+image/comfyuigen/
+image/doubaogen/
+image/geminiimagegen/
+image/nanobananagen/
+image/novelaigen/
+image/qwenimagegen/
+image/sensegen/
+image/webuigen/
+image/zimagegen/
+
+# MediaRenderer 渲染输出
+image/media-renderer/
+file/media-renderer/
+
+# 网络抓取图片输出
+image/urlfetch/
+
 # 忽略 B站截图的图片
 image/bilibili/
+
+# ===== 本地知识库 =====
+# knowledge 默认为本地私有数据，不进入 Git
+/knowledge/*
+
+# 上游官方维护的知识目录
+!/knowledge/TDBdocs/
+!/knowledge/TDBdocs/**
+
+!/knowledge/VCP百科全书/
+!/knowledge/VCP百科全书/**
+
+!/knowledge/VCP知识/
+!/knowledge/VCP知识/**
 
 # ===== IDE / OS 文件 =====
 .vscode/
@@ -241,19 +304,10 @@ helloagents/
 
 # Windows 缩略图缓存
 Thumbs.db
-desktop.ini
-
-# Python bytecode / cache directories
-__pycache__/
-*.py[cod]
-
-# Local Codex workspace/runtime artifacts
-.codex
-.codex/
-.codex-runtime/
 
 # ===== 编译产物 =====
 rust-vexus-lite/target/
+rust-vexus-lite/target-*/
 Plugin/DailyNoteSearcher/src/target/
 
 # ==== 分布式开发 ====
@@ -261,17 +315,48 @@ VCPDistributedServer
 # XiaohongshuFetch config
 Plugin/XiaohongshuFetch/config.env
 
-# Plugin store local runtime/cache files
+# ==== 插件商店 ====
 pluginStoreSources.json
-/tmp/
+tmp/
 Plugin/.backup/
 
-# Local runtime state and generated indexes
-/state/
-/VCPTimedContacts/
-/VCPTimedResults/
-/data/candidate-cache.json
-/data/chat-history-index.json
-/data/memory-vectors.json
-/Plugin/VCPTaskAssistant/task-center-data.json
-/sarprompt.json
+# ==== 开发SDK ====
+Plugin/VCPQQBotServer/bot-node-sdk-main
+开发日志/
+
+# Tencent source publication: machine state stays outside source control.
+.env*
+!*.example
+!*.template
+**/config.env
+**/config.env.*
+!**/config.env.example
+!**/config.env.template
+/Agent/
+/TVStxt/
+/dailynote/
+/knowledge/
+/image/
+/file/
+/ToolConfigs/
+/Plugin/CodexWorker/
+**/artifacts/
+**/jobs/
+**/state/
+**/generated/
+**/obj/
+**/bin/
+*.node
+*.exe
+*.dll
+*.so
+/AdminPanel-Vue/dist/
+Plugin/GitOperator/repos.json
+Plugin/GitOperator/repos.json.example
+/vcp-chatgpt-app-r0a/profiles/
+!Plugin/GitOperator/repos.json.example
+
+**/build_output.txt
+
+**/dailynote/
+**/knowledge/

@@ -32,16 +32,6 @@ export interface PluginDashboardCardContribution {
   renderer: PluginDashboardCardRenderer;
 }
 
-export interface PluginRuntimeTrust {
-  boundary?: string;
-  execution?: string;
-  environmentSandbox?: boolean | null;
-  processSandbox?: boolean | null;
-  fileSystemSandbox?: boolean | null;
-  untrustedSandbox?: boolean;
-  warningCode?: string;
-}
-
 export interface PluginInvocationCommand {
   commandIdentifier?: string;
   command?: string;
@@ -72,9 +62,7 @@ export interface PluginManifest {
 export interface PluginInfo {
   name: string;
   manifest: PluginManifest;
-  pluginRootId?: string;
-  pluginSource?: string;
-  runtimeTrust?: PluginRuntimeTrust;
+  hasReadme?: boolean;
   isDistributed?: boolean;
   serverId?: string;
   configEnvContent?: string;
@@ -86,6 +74,11 @@ export interface PluginInfo {
 export interface PluginListResponse {
   plugins: PluginInfo[];
   total: number;
+}
+
+export interface PluginReadmeResponse {
+  fileName: string;
+  content: string;
 }
 
 export interface ConfigEntry {

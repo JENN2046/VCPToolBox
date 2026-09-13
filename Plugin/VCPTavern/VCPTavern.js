@@ -12,6 +12,7 @@ class VCPTavern {
         this.presets = new Map();
         this.accessLogs = new Map(); // 存储预设的最后访问时间
         this.debugMode = false;
+        this.pluginManager = null;
     }
 
     async _loadAccessLogs() {
@@ -155,6 +156,88 @@ class VCPTavern {
             .replace(/\{\{Today\}\}/g, today);
     }
 
+    _normalizePlaceholderKey(value) {
+        return String(value || '')
+            .trim()
+            .replace(/^\{\{|\}\}$/g, '');
+    }
+
+    _getPresetPlaceholderAllowlist(preset) {
+        const configured = Array.isArray(preset?.placeholderAllowlist)
+            ? preset.placeholderAllowlist
+            : [];
+
+        return new Set(
+            configured
+                .map(value => this._normalizePlaceholderKey(value))
+                .filter(Boolean)
+        );
+    }
+
+    _isPseudoSystemMessage(text) {
+        const normalizedText = String(text || '').trimStart();
+        if (!normalizedText) return false;
+
+        const systemPrefixMatch = normalizedText.match(/^\[系统[^\]]*\]/);
+        if (!systemPrefixMatch) return false;
+
+        const marker = systemPrefixMatch[0].replace(/[:：]\]$/, ']');
+        const isSystemNotification = marker === '[系统通知]';
+        if (!isSystemNotification) {
+            return true;
+        }
+
+        return /\[系统通知结束\]/.test(normalizedText);
+    }
+
+    _resolveAllowedPlaceholders(text, allowlist) {
+        if (!text || typeof text !== 'string' || !allowlist || allowlist.size === 0) {
+            return text;
+        }
+
+        if (!this._isPseudoSystemMessage(text)) {
+            return text;
+        }
+
+        const getAllPlaceholderValues = this.pluginManager?.getAllPlaceholderValues;
+        if (typeof getAllPlaceholderValues !== 'function') {
+            if (this.debugMode) {
+                console.warn('[VCPTavern] 未注入 pluginManager，无法解析预设白名单占位符。');
+            }
+            return text;
+        }
+
+        const values = getAllPlaceholderValues.call(this.pluginManager);
+        if (!(values instanceof Map)) {
+            if (this.debugMode) {
+                console.warn('[VCPTavern] pluginManager.getAllPlaceholderValues() 未返回 Map。');
+            }
+            return text;
+        }
+
+        const placeholderRegex = /\{\{([a-zA-Z0-9_:@#%&^+\-\u2e80-\u2fff\u3040-\u9fff]+)\}\}/g;
+        return text.replace(placeholderRegex, (fullPlaceholder, rawKey) => {
+            const key = this._normalizePlaceholderKey(rawKey);
+            if (!allowlist.has(key) || !values.has(key)) {
+                return fullPlaceholder;
+            }
+
+            const value = values.get(key);
+            if (value === null || value === undefined) {
+                return fullPlaceholder;
+            }
+
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                return String(value);
+            }
+
+            if (this.debugMode) {
+                console.warn(`[VCPTavern] 占位符 ${fullPlaceholder} 的值不是文本，保留原占位符。`);
+            }
+            return fullPlaceholder;
+        });
+    }
+
     // 深度解析消息对象中的时间变量
     _resolveMessageTimeVariables(messageObj) {
         if (!messageObj) return messageObj;
@@ -175,31 +258,37 @@ class VCPTavern {
         return resolved;
     }
 
-    _presetNeedsAccessTimeTracking(preset) {
-        if (!preset || !Array.isArray(preset.rules)) return false;
+  // 检测预设是否需要时间追踪（是否使用了 {{LastChatTime}} 或 {{TimeSinceLastChat}}）
+  _presetNeedsTimeTracking(preset) {
+    if (!preset || !Array.isArray(preset.rules)) return false;
 
-        const accessTimeVariableRegex = /\{\{(?:LastChatTime|TimeSinceLastChat)\}\}/;
-        for (const rule of preset.rules) {
-            if (!rule || !rule.enabled) continue;
-            let textContent = '';
-            if (typeof rule.content === 'string') {
-                textContent = rule.content;
-            } else if (rule.content && typeof rule.content.content === 'string') {
-                textContent = rule.content.content;
-            } else if (rule.content && typeof rule.content === 'object') {
-                try {
-                    textContent = JSON.stringify(rule.content);
-                } catch {
-                    textContent = '';
-                }
-            }
-            if (accessTimeVariableRegex.test(textContent)) return true;
-        }
-        return false;
+    const timeVarRegex = /\{\{(LastChatTime|TimeSinceLastChat)\}\}/;
+
+    for (const rule of preset.rules) {
+      if (!rule.enabled) continue;
+
+      // 提取规则内容的文本（兼容字符串和对象两种格式）
+      let textContent = "";
+      if (typeof rule.content === "string") {
+        textContent = rule.content;
+      } else if (rule.content && typeof rule.content.content === "string") {
+        textContent = rule.content.content;
+      } else if (rule.content && typeof rule.content === "object") {
+        // 兜底：序列化搜索
+        textContent = JSON.stringify(rule.content);
+      }
+
+      if (timeVarRegex.test(textContent)) {
+        return true;
+      }
     }
 
-    async initialize(config) {
+    return false;
+  }
+
+    async initialize(config, dependencies = {}) {
         this.debugMode = config.DebugMode || false;
+        this.pluginManager = dependencies.pluginManager || null;
         await this._loadPresets();
         await this._loadAccessLogs();
         console.log('[VCPTavern] 插件已初始化。');
@@ -245,13 +334,42 @@ class VCPTavern {
         }
 
         // 支持解析 {{VCPTavern::PresetName::SessionID}} 格式
+        // 以及 {{VCPTavern::PresetName::blacklist:规则名}} 格式
         const triggerContent = match[1];
-        let [presetName, explicitSessionId] = triggerContent.split('::');
+        const parts = triggerContent.split('::');
+        const presetName = parts[0];
+        let explicitSessionId;
+        let blacklistRules = [];
+
+        for (let i = 1; i < parts.length; i++) {
+            const part = parts[i];
+            if (part.startsWith('blacklist:')) {
+                const listStr = part.slice('blacklist:'.length);
+                blacklistRules = listStr
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(s => s.length > 0);
+            } else {
+                explicitSessionId = part;
+            }
+        }
 
         const preset = this.presets.get(presetName);
         if (!preset || !Array.isArray(preset.rules)) {
             console.warn(`[VCPTavern] 预设 "${presetName}" 未找到或其 'rules' 格式无效。`);
             return messages;
+        }
+
+        // 根据黑名单过滤规则（静默跳过指定规则）
+        const skipRuleByName = (rule) => {
+            return blacklistRules.length > 0 && blacklistRules.includes(rule.name);
+        };
+
+        const activeRules = preset.rules.filter(r => !skipRuleByName(r));
+        const skippedRules = preset.rules.filter(r => r.enabled && skipRuleByName(r));
+
+        if (this.debugMode && skippedRules.length > 0) {
+            console.log(`[VCPTavern] 黑名单已静默规则: ${skippedRules.map(r => `"${r.name}"`).join(', ')}`);
         }
 
         // 构建全局正则，清除所有同名占位符（含可选 SessionID 部分）
@@ -277,13 +395,62 @@ class VCPTavern {
 
         if (this.debugMode) console.log(`[VCPTavern] 检测到触发器，使用预设: ${presetName}`);
 
-        const needsAccessTimeTracking = this._presetNeedsAccessTimeTracking(preset);
-        let resolveExtendedVariables = (content) => {
+    // 检测预设是否需要时间追踪（是否使用了 {{LastChatTime}} 或 {{TimeSinceLastChat}}）
+    const needsTimeTracking = this._presetNeedsTimeTracking({ ...preset, rules: activeRules });
+    const placeholderAllowlist = this._getPresetPlaceholderAllowlist(preset);
+
+    // --- 计算时间间隔逻辑 (仅当预设使用时间变量时) ---
+    let resolveExtendedVariables;
+
+    if (needsTimeTracking) {
+        const now = Date.now();
+        let lastChatTimeStr = '';
+        let timeSinceLastChatStr = '';
+
+        // 获取会话唯一标识
+        const sessionKey = this._getSessionKey(messages, explicitSessionId);
+        // 组合 Log Key: 预设名 + 会话标识 (例如 "dailychat:Keqing")
+        const logKey = `${presetName}:${sessionKey}`;
+
+        if (this.accessLogs.has(logKey)) {
+            const lastTime = this.accessLogs.get(logKey);
+            const diff = now - lastTime;
+
+            // 格式化上次时间
+            const lastDate = new Date(lastTime);
+            lastChatTimeStr = `上次对话时间：${lastDate.toLocaleString('zh-CN', { timeZone: REPORT_TIMEZONE })}`;
+
+            // 格式化时间间隔
+            timeSinceLastChatStr = `距离上次对话已过去 ${this._formatDuration(diff)}`;
+
+            if (this.debugMode) {
+                console.log(`[VCPTavern] 预设 ${presetName} (ID:${sessionKey}) 上次访问: ${lastChatTimeStr}, 间隔: ${timeSinceLastChatStr}`);
+            }
+        }
+
+        // 更新访问时间并保存 (带防抖：1分钟内的重复请求不刷新时间戳)
+        const DEBOUNCE_MS = 60 * 1000; // 1分钟防抖窗口
+        const lastLoggedTime = this.accessLogs.get(logKey);
+        if (!lastLoggedTime || (now - lastLoggedTime) >= DEBOUNCE_MS) {
+            this.accessLogs.set(logKey, now);
+            this._saveAccessLogs().catch(e => console.error('[VCPTavern] 异步保存日志失败:', e));
+            if (this.debugMode) console.log(`[VCPTavern] 访问时间已更新 (Key: ${logKey})`);
+        } else {
+            if (this.debugMode) console.log(`[VCPTavern] 防抖生效，跳过时间更新 (距上次仅 ${Math.round((now - lastLoggedTime) / 1000)}s)`);
+        }
+
+        resolveExtendedVariables = (content) => {
             if (!content) return content;
+            
             const replaceFn = (text) => {
                 if (typeof text !== 'string') return text;
-                return this._resolveTimeVariables(text);
+                let resolved = this._resolveTimeVariables(text);
+                resolved = this._resolveAllowedPlaceholders(resolved, placeholderAllowlist);
+                return resolved
+                    .replace(/\{\{LastChatTime\}\}/g, lastChatTimeStr)
+                    .replace(/\{\{TimeSinceLastChat\}\}/g, timeSinceLastChatStr);
             };
+
             if (typeof content === 'string') {
                 return replaceFn(content);
             } else if (Array.isArray(content)) {
@@ -293,77 +460,52 @@ class VCPTavern {
                     }
                     return part;
                 });
+            } else if (content && typeof content === 'object') {
+                const resolved = { ...content };
+                if (Object.prototype.hasOwnProperty.call(resolved, 'content')) {
+                    resolved.content = resolveExtendedVariables(resolved.content);
+                }
+                return resolved;
             }
             return content;
         };
 
-        if (needsAccessTimeTracking) {
-            // --- 计算时间间隔逻辑 ---
-            const now = Date.now();
-            let lastChatTimeStr = '';
-            let timeSinceLastChatStr = '';
+      if (this.debugMode)
+        console.log(
+          `[VCPTavern] 预设 "${presetName}" 已启用时间追踪 (Key: ${logKey})`
+        );
+    } else {
+      if (this.debugMode)
+        console.log(
+          `[VCPTavern] 预设 "${presetName}" 未使用时间变量，跳过时间追踪`
+        );
 
-            // 获取会话唯一标识
-            const sessionKey = this._getSessionKey(messages, explicitSessionId);
-            // 组合 Log Key: 预设名 + 会话标识 (例如 "dailychat:Keqing")
-            const logKey = `${presetName}:${sessionKey}`;
-
-            if (this.accessLogs.has(logKey)) {
-                const lastTime = this.accessLogs.get(logKey);
-                const diff = now - lastTime;
-
-                // 格式化上次时间
-                const lastDate = new Date(lastTime);
-                lastChatTimeStr = `上次对话时间：${lastDate.toLocaleString('zh-CN', { timeZone: REPORT_TIMEZONE })}`;
-
-                // 格式化时间间隔
-                timeSinceLastChatStr = `距离上次对话已过去 ${this._formatDuration(diff)}`;
-
-                if (this.debugMode) {
-                    console.log(`[VCPTavern] 预设 ${presetName} (ID:${sessionKey}) 上次访问: ${lastChatTimeStr}, 间隔: ${timeSinceLastChatStr}`);
+      resolveExtendedVariables = (content) => {
+        if (!content) return content;
+        const replaceFn = (text) => {
+          if (typeof text !== "string") return text;
+          let resolved = this._resolveTimeVariables(text);
+          return this._resolveAllowedPlaceholders(resolved, placeholderAllowlist);
+        };
+        if (typeof content === "string") {
+          return replaceFn(content);
+        } else if (Array.isArray(content)) {
+            return content.map((part) => {
+                if (part && part.type === "text" && typeof part.text === "string") {
+                  return { ...part, text: replaceFn(part.text) };
                 }
+                return part;
+            });
+        } else if (content && typeof content === "object") {
+            const resolved = { ...content };
+            if (Object.prototype.hasOwnProperty.call(resolved, "content")) {
+                resolved.content = resolveExtendedVariables(resolved.content);
             }
-
-            // 更新访问时间并保存 (带防抖：1分钟内的重复请求不刷新时间戳)
-            const DEBOUNCE_MS = 60 * 1000; // 1分钟防抖窗口
-            const lastLoggedTime = this.accessLogs.get(logKey);
-            if (!lastLoggedTime || (now - lastLoggedTime) >= DEBOUNCE_MS) {
-                this.accessLogs.set(logKey, now);
-                this._saveAccessLogs().catch(e => console.error('[VCPTavern] 异步保存日志失败:', e));
-                if (this.debugMode) console.log(`[VCPTavern] 访问时间已更新 (Key: ${logKey})`);
-            } else {
-                if (this.debugMode) console.log(`[VCPTavern] 防抖生效，跳过时间更新 (距上次仅 ${Math.round((now - lastLoggedTime) / 1000)}s)`);
-            }
-
-            // 将计算出的时间变量注入到实例中，供 _resolveTimeVariables 使用
-            // 注意：这里我们需要稍微修改 _resolveTimeVariables 来支持这两个新变量
-            // 或者我们直接在这里定义一个临时的替换函数
-            resolveExtendedVariables = (content) => {
-                if (!content) return content;
-
-                const replaceFn = (text) => {
-                    if (typeof text !== 'string') return text;
-                    let resolved = this._resolveTimeVariables(text);
-                    return resolved
-                        .replace(/\{\{LastChatTime\}\}/g, lastChatTimeStr)
-                        .replace(/\{\{TimeSinceLastChat\}\}/g, timeSinceLastChatStr);
-                };
-
-                if (typeof content === 'string') {
-                    return replaceFn(content);
-                } else if (Array.isArray(content)) {
-                    return content.map(part => {
-                        if (part && part.type === 'text' && typeof part.text === 'string') {
-                            return { ...part, text: replaceFn(part.text) };
-                        }
-                        return part;
-                    });
-                }
-                return content;
-            };
-        } else if (this.debugMode) {
-            console.log(`[VCPTavern] 预设 "${presetName}" 未使用访问时间变量，跳过访问时间记录`);
+            return resolved;
         }
+        return content;
+      };
+    }
 
         // 辅助函数：确保注入内容是消息对象格式
         const ensureMessageObject = (content, defaultRole = 'system') => {
@@ -377,9 +519,9 @@ class VCPTavern {
 
         // 按照注入规则处理
         // 为了处理深度注入，我们先处理嵌入注入，再处理相对注入，最后处理深度注入
-        const embedRules = preset.rules.filter(r => r.enabled && r.type === 'embed');
-        const relativeRules = preset.rules.filter(r => r.enabled && r.type === 'relative').sort((a, b) => (a.position === 'before' ? -1 : 1));
-        const depthRules = preset.rules.filter(r => r.enabled && r.type === 'depth').sort((a, b) => b.depth - a.depth);
+        const embedRules = activeRules.filter(r => r.enabled && r.type === 'embed');
+        const relativeRules = activeRules.filter(r => r.enabled && r.type === 'relative').sort((a, b) => (a.position === 'before' ? -1 : 1));
+        const depthRules = activeRules.filter(r => r.enabled && r.type === 'depth').sort((a, b) => b.depth - a.depth);
 
         // 1. 嵌入注入 (直接修改现有消息内容) - 恢复兼容老版本
         for (const rule of embedRules) {
@@ -428,13 +570,7 @@ class VCPTavern {
             // 即时解析时间变量（包含新变量），将当前时间"烤死"进注入内容
             let contentToInject = rule.content;
 
-            if (typeof contentToInject === 'string') {
-                contentToInject = resolveExtendedVariables(contentToInject);
-            } else if (typeof contentToInject === 'object') {
-                const contentStr = JSON.stringify(contentToInject);
-                const resolvedStr = resolveExtendedVariables(contentStr);
-                contentToInject = JSON.parse(resolvedStr);
-            }
+            contentToInject = resolveExtendedVariables(contentToInject);
 
             // 确保是对象格式
             const msgObj = ensureMessageObject(contentToInject);
@@ -484,13 +620,7 @@ class VCPTavern {
                 for (let j = userIndices.length - 1; j >= 0; j--) {
                     const userIndex = userIndices[j];
                     let clonedContent = rule.content;
-                    if (typeof clonedContent === 'string') {
-                        clonedContent = resolveExtendedVariables(clonedContent);
-                    } else if (typeof clonedContent === 'object') {
-                        const contentStr = JSON.stringify(clonedContent);
-                        const resolvedStr = resolveExtendedVariables(contentStr);
-                        clonedContent = JSON.parse(resolvedStr);
-                    }
+                    clonedContent = resolveExtendedVariables(clonedContent);
 
                     const clonedMsgObj = ensureMessageObject(clonedContent);
 
@@ -507,13 +637,7 @@ class VCPTavern {
         for (const rule of depthRules) {
             if (rule.depth > 0) {
                 let contentToInject = rule.content;
-                if (typeof contentToInject === 'string') {
-                    contentToInject = resolveExtendedVariables(contentToInject);
-                } else if (typeof contentToInject === 'object') {
-                    const contentStr = JSON.stringify(contentToInject);
-                    const resolvedStr = resolveExtendedVariables(contentStr);
-                    contentToInject = JSON.parse(resolvedStr);
-                }
+                contentToInject = resolveExtendedVariables(contentToInject);
 
                 const msgObj = ensureMessageObject(contentToInject);
 
@@ -608,7 +732,7 @@ const vcPTavernInstance = new VCPTavern();
 
 // 使得插件能被 Plugin.js 正确加载和初始化
 module.exports = {
-    initialize: (config) => vcPTavernInstance.initialize(config),
+    initialize: (config, dependencies) => vcPTavernInstance.initialize(config, dependencies),
     processMessages: (messages, config) => vcPTavernInstance.processMessages(messages, config),
     registerRoutes: (app, adminApiRouter, config, projectBasePath) => vcPTavernInstance.registerRoutes(app, adminApiRouter, config, projectBasePath),
     shutdown: () => vcPTavernInstance.shutdown(),

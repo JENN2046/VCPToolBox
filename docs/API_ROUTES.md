@@ -40,7 +40,8 @@ server.js (主入口)
 | 管理面板 API | `/admin_api/*` | Basic Auth | 系统管理、插件控制 |
 | 管理面板静态 | `/AdminPanel/*` | Basic Auth | Web 管理界面 |
 | 论坛 API | `/admin_api/forum/*` | Basic Auth | Agent 论坛交互 |
-| 插件回调 | `/plugin-callback/*` | 无 | 异步插件结果回调 |
+| 插件回调 | `/plugin-callback/*` | Bearer Token | 异步插件结果回调；旧内置发送方有固定期限兼容窗 |
+| 健康探针 | `/health/live`, `/health/ready` | 无 | 仅返回存活/就绪结论，不暴露内部详情 |
 | 图片服务 | `/pw=*/images/*` | URL 密钥 | 图片托管服务 |
 | 文件服务 | `/pw=*/files/*` | URL 密钥 | 文件托管服务 |
 
@@ -60,9 +61,9 @@ server.js (主入口)
    └── app.use(cors({ origin: '*' }))
 
 3. 请求体解析器
-   ├── express.json({ limit: '300mb', verify: captureRawBody })
-   ├── express.urlencoded({ limit: '300mb', extended: true, verify: captureRawBody })
-   └── express.text({ limit: '300mb', type: 'text/plain', verify: captureRawBody })
+   ├── express.json({ limit: '300mb' })
+   ├── express.urlencoded({ limit: '300mb', extended: true })
+   └── express.text({ limit: '300mb', type: 'text/plain' })
 
 4. IP 追踪中间件
    └── 记录 POST 请求来源 IP
@@ -92,14 +93,10 @@ app.use(cors({ origin: '*' })); // 允许所有来源
 
 #### 请求体大小限制
 ```javascript
-express.json({ limit: '300mb', verify: captureRawBody });
-express.urlencoded({ limit: '300mb', extended: true, verify: captureRawBody });
-express.text({ limit: '300mb', type: 'text/plain', verify: captureRawBody });
+express.json({ limit: '300mb' });
+express.urlencoded({ limit: '300mb', extended: true });
+express.text({ limit: '300mb', type: 'text/plain' });
 ```
-
-说明：
-- `captureRawBody` 会把原始请求体保存到 `req.rawBody`
-- `ChannelHub` 的签名校验依赖 `req.rawBody`，不能只依赖 `JSON.stringify(req.body)` 的重组结果
 
 #### IP 黑名单
 ```javascript
@@ -305,76 +302,21 @@ param1:「始」value1「末」
 }
 ```
 
+**认证与路径约束：**
+
+- 正常请求必须携带主服务 `Key`：`Authorization: Bearer <Key>`。
+- `pluginName`、`taskId` 仅允许字母、数字、点、下划线、冒号和连字符，长度为 1–200，且不能为 `.` 或 `..`。
+- 结果使用同目录临时文件和原子 rename 提交，并校验解析后的路径仍位于 `VCPAsyncResults/`。
+- 仅已知内置回调插件可在 `2026-08-05 23:59:59 Asia/Shanghai` 前使用无 Header 兼容路径；兼容命中会记录弃用告警。截止后自动返回 401。
+
 **响应：**
 ```json
 {
   "status": "success",
-  "message": "Callback received and processed"
+  "message": "Callback received and processed",
+  "authMode": "bearer"
 }
 ```
-
----
-
-### 3.7 ChannelHub 内部回调
-
-#### `POST /internal/channelHub/events`
-
-ChannelHub 的 B2 标准事件入口。
-
-请求要求：
-- 推荐显式提供 `x-channel-adapter-id`
-- 如果请求未显式提供 adapterId，服务会尝试按 `channel` 自动解析唯一启用中的 adapter
-- 如果同一 `channel` 下存在多个启用 adapter，且未提供 `x-channel-adapter-id`，会返回 `ADAPTER_RESOLUTION_FAILED`
-
-请求头：
-```
-x-channel-adapter-id: <adapterId>
-x-channel-bridge-key: <adapter secret>
-Content-Type: application/json
-```
-
-错误响应示例：
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "ADAPTER_RESOLUTION_FAILED",
-    "message": "Multiple active adapters found for channel \"dingtalk\". Please provide x-channel-adapter-id explicitly.",
-    "channel": "dingtalk"
-  }
-}
-```
-
-#### `POST /internal/channelHub/webhook/:channel`
-
-统一 webhook 入口，供平台回调或桥接层复用。
-
-行为说明：
-- 支持按 `:channel` 自动推断 adapter
-- 若只匹配到一个启用 adapter，可直接进入主处理链
-- 若匹配不到 adapter，或同 channel 存在多个启用 adapter 且未显式指定，会返回 `ADAPTER_RESOLUTION_FAILED`
-
-#### `POST /internal/channelHub/dingtalk/callback`
-#### `POST /internal/channelHub/wecom/callback`
-#### `POST /internal/channelHub/feishu/callback`
-#### `POST /internal/channelHub/qq/callback`
-#### `POST /internal/channelHub/wechat/callback`
-
-平台专用回调入口。
-
-注意事项：
-- 这些入口会做 adapter 解析与签名校验
-- 签名校验使用原始请求体 `req.rawBody`
-- adapter 无法唯一解析时不会再静默放过，而是直接返回 400
-
-#### `POST /internal/channelHub/b1/ingest`
-#### `POST /internal/channelHub/channel-ingest`
-
-B1 兼容入口，仍可用，但已冻结。
-
-迁移说明：
-- 推荐迁移到 `/internal/channelHub/events`
-- 响应头 `X-ChannelHub-B1-Recommended-Endpoint` 现在返回真实路径 `/internal/channelHub/events`
 
 ---
 
@@ -407,11 +349,7 @@ Authorization: Bearer YOUR_KEY_SUCH_AS_aBcDeFgHiJkLmNoP
 - `/AdminPanel/*` - 使用 Basic Auth
 - `/pw=*/images/*` - URL 密钥认证
 - `/pw=*/files/*` - URL 密钥认证
-- `/plugin-callback/*` - 无认证（内部回调）
-
-补充：
-- `ChannelHub` 内部入口不走这里的 Bearer Token，而是走 adapter 级认证
-- `ChannelHub` 在 B2/B专用 webhook 模式下建议同时提供 `x-channel-adapter-id` 与 adapter secret
+- `/plugin-callback/*` - 由回调处理器执行 Bearer 与固定期限兼容策略
 
 ---
 
@@ -534,22 +472,26 @@ WhitelistEmbeddingModel=gemini-embedding-exp-03-07
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/admin_api/system-monitor/pm2/processes` | PM2 进程列表 |
+| GET | `/admin_api/system-monitor/supervisor/processes` | systemd user unit 优先、PM2 回退的进程列表 |
+| GET | `/admin_api/system-monitor/pm2/processes` | 兼容 URL，返回同一 supervisor adapter 结果 |
 | GET | `/admin_api/system-monitor/system/resources` | 系统 CPU/内存信息 |
 
-**PM2 进程响应：**
+**监督器进程响应：**
 ```json
 {
   "success": true,
+  "supervisor": "systemd-user",
+  "health": "healthy",
   "processes": [
     {
-      "name": "VCPToolBox",
+      "name": "vcptoolbox.service",
       "pid": 12345,
       "status": "online",
-      "cpu": 5.2,
       "memory": 104857600,
       "uptime": 1234567890,
-      "restarts": 0
+      "restarts": 0,
+      "health": "healthy",
+      "unit": "vcptoolbox.service"
     }
   ]
 }
@@ -565,6 +507,11 @@ WhitelistEmbeddingModel=gemini-embedding-exp-03-07
 | GET | `/admin_api/config/main/raw` | 获取原始配置 |
 | POST | `/admin_api/config/main` | 保存主配置 |
 
+保存响应会报告真实应用方式：`applyMode` 为 `hot_reload`、`restart` 或
+`save_only`，并包含 `generation`、`restartRequired` 和 `changedKeys`。插件运行态
+键使用新代际热重载；端口、数据库路径、向量维度等进程级键返回 202 并触发
+systemd 受控重启。热重载失败时恢复原文件和原运行代际。
+
 ---
 
 ### 6.3 插件管理
@@ -577,6 +524,11 @@ WhitelistEmbeddingModel=gemini-embedding-exp-03-07
 | POST | `/admin_api/plugins/:name/config` | 保存插件配置 |
 | GET | `/admin_api/plugins/:name/manifest` | 获取插件清单 |
 | POST | `/admin_api/plugins/:name/instruction` | 更新插件指令 |
+| GET | `/admin_api/plugins/runtime` | 当前 generation、运行状态、最近重载和插件健康 |
+| POST | `/admin_api/plugins/reload` | 显式构建并切换新代际；`force` 默认为 `false` |
+
+默认重载遇到不可迁移的活动任务会返回 409 和 `blockers`，不会强杀任务。启动
+新代际失败时响应包含 `rollback`，旧代际会被重新启动并重新提交。
 
 **插件列表响应：**
 ```json

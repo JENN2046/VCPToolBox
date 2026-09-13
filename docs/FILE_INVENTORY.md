@@ -47,12 +47,12 @@
 
 | 文件路径 | 职责 | 入口函数 | 依赖关系 |
 |---------|------|---------|---------|
-| `scripts/rebuild_vector_indexes.js` | 重建向量索引 | main() | KnowledgeBaseManager |
-| `scripts/rebuild_tag_index_custom.js` | 重建标签索引 | main() | KnowledgeBaseManager |
-| `scripts/repair_database.js` | 数据库修复 | main() | better-sqlite3 |
+| `rebuild_vector_indexes.js` | 重建向量索引 | main() | KnowledgeBaseManager |
+| `rebuild_tag_index_custom.js` | 重建标签索引 | main() | KnowledgeBaseManager |
+| `repair_database.js` | 数据库修复 | main() | better-sqlite3 |
 | `reset_vectordb.js` | 重置向量数据库 | main() | fs |
-| `scripts/sync_missing_tags.js` | 同步缺失标签 | main() | KnowledgeBaseManager |
-| `scripts/diary-tag-batch-processor.js` | 日记标签批处理 | main() | - |
+| `sync_missing_tags.js` | 同步缺失标签 | main() | KnowledgeBaseManager |
+| `diary-tag-batch-processor.js` | 日记标签批处理 | main() | - |
 
 ### 1.4 Python 脚本
 
@@ -60,7 +60,7 @@
 |---------|------|---------|
 | `WinNotify.py` | Windows 系统通知 | win10toast |
 | `backup_vcp.py` | VCP 备份脚本 | - |
-| `scripts/timeline整理器.py` | 时间线整理工具 | - |
+| `timeline整理器.py` | 时间线整理工具 | - |
 
 ### 1.5 批处理脚本
 
@@ -112,7 +112,7 @@
 |---------|------|---------|---------|
 | `modules/SSHManager/index.js` | SSH管理入口 | `SSHManager` | Plugin/LinuxShellExecutor |
 | `modules/SSHManager/SSHManager.js` | SSH连接管理 | `SSHManager` 类 | index.js |
-| `modules/SSHManager/hosts.json` | SSH主机配置 | - | SSHManager |
+| `Plugin/LinuxShellExecutor/hosts.json` | SSH主机唯一主配置；默认模板 MD5 未变化时不启动 SSH 远程功能 | - | SSHManager |
 
 ---
 
@@ -212,10 +212,10 @@
 
 | 插件目录 | 类型 | 职责 | 主要文件 |
 |---------|------|------|---------|
-| `LinuxShellExecutor` | synchronous | Linux Shell执行；stdio 进程通过 `modules/SSHManager/proxy.js` 复用常驻 SSH 连接池，普通命令未显式设置时由服务端决定池化策略 | LinuxShellExecutor.js |
-| `SSHManagerService` | service | 常驻 SSH 连接池服务；通过 UDS 为短生命周期插件提供 RPC，`connect` 仅返回可序列化连接状态 | SSHManagerService.js |
+| `LinuxShellExecutor` | hybridservice | Linux Shell direct 工具入口；常驻模块执行本地/远程命令，受 manifest direct timeout 约束，默认 hosts 模板时仅保留本地执行 | LinuxShellExecutor.js |
+| `SSHManagerService` | service | 常驻 SSH 连接池服务；通过 UDS 为短生命周期插件提供 RPC，默认 hosts 模板或无有效 SSH 资产时不启动并清理全局 IPC 指针 | SSHManagerService.js |
 | `PowerShellExecutor` | synchronous | PowerShell执行 | - |
-| `LinuxLogMonitor` | asynchronous | Linux日志监控 stdio 客户端；通过 `modules/LogMonitor/proxy.js` 携带 token 调用常驻服务 | LinuxLogMonitor.js, core/*.js |
+| `LinuxLogMonitor` | hybridservice | Linux日志监控 direct 工具入口；模块常驻管理任务，优先通过 `modules/LogMonitor/proxy.js` 携带 token 调用常驻服务，必要时 legacy fallback | LinuxLogMonitor.js, core/*.js |
 | `LinuxLogMonitorServer` | service | 常驻日志监控服务；持有 watcher 状态、内存缓冲和规则检测器，查询 fallback 可返回 `partial/fallbackError` | LinuxLogMonitorServer.js, core/*.js |
 | `1PanelInfoProvider` | static | 1Panel信息 | 1PanelInfoProvider.js, utils.js |
 | `FRPSInfoProvider` | static | FRPS信息 | - |
@@ -443,13 +443,12 @@ Plugin/DailyNote/config.env
 
 ## 8. 辅助脚本与工具
 
-### 8.1 辅助工具与测试文件
+### 8.1 测试文件
 
 | 文件路径 | 职责 |
 |---------|------|
-| `scripts/check_tagmemo_status.js` | TagMemo 状态只读检查 |
-| `scripts/test-units.js` | 单元测试 |
-| `scripts/example.test.js` | 示例测试 |
+| `test-units.js` | 单元测试 |
+| `example.test.js` | 示例测试 |
 
 ### 8.2 CI/CD 配置
 

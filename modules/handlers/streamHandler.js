@@ -2,33 +2,7 @@
 const { StringDecoder } = require('string_decoder');
 const vcpInfoHandler = require('../../vcpInfoHandler.js');
 const roleDivider = require('../roleDivider.js');
-const {
-  buildCombinedAssistantRecordCandidate,
-  buildStreamAssistantRecordCandidate,
-} = require('../oneringHandlerAdapter.js');
-const { dispatchOneRingAssistantRecordCandidate } = require('../oneringHandlerWiring.js');
-
-function buildStreamHelperResult({ content = '', raw = '', message = { content: '', reasoning_content: '' }, outcome = 'stream-error', error = null } = {}) {
-  const recordable = outcome === 'success';
-  const result = {
-    content,
-    raw,
-    message,
-    outcome,
-    recordable,
-    partial: !recordable,
-  };
-
-  if (error) {
-    result.error = {
-      name: error.name || null,
-      message: error.message || String(error),
-      type: error.type || null,
-    };
-  }
-
-  return result;
-}
+const EmptyResponseDiagnostics = require('../emptyResponseDiagnostics');
 
 class StreamHandler {
   constructor(context) {
@@ -43,7 +17,6 @@ class StreamHandler {
       pluginManager,
       writeDebugLog,
       writeChatLog,
-      handleDiaryFromAIResponse,
       webSocketServer,
       DEBUG_MODE,
       SHOW_VCP_OUTPUT,
@@ -62,13 +35,19 @@ class StreamHandler {
       abortController,
       originalBody,
       clientIp,
-      executionContext,
       _refreshRagBlocksIfNeeded,
       fetchWithRetry,
       vcpToolUseForbidden,
-      semanticModelFallbackCandidates
+      apiConnectionTimeoutMs,
+      semanticModelFallbackCandidates,
+      oneRingResponseMeta,
+      shouldProcessMedia,
+      shouldProcessMediaPlus,
+      isTextOnlyForceTranslateModel,
+      requestPreprocessorConfig
     } = this.context;
 
+    const diagnostics = new EmptyResponseDiagnostics('stream', originalBody, firstAiAPIResponse);
     const shouldShowVCP = SHOW_VCP_OUTPUT || this.context.forceShowVCP;
     const id = originalBody.requestId || originalBody.messageId;
 
@@ -76,33 +55,83 @@ class StreamHandler {
     let recursionDepth = 0;
     const maxRecursion = maxVCPLoopStream || 5;
     let currentAIContentForLoop = '';
-    let currentAIRawDataForDiary = '';
     let chatLogs = [];
-    let oneRingFinalAssistantRecordCandidate = null;
-    const collectOneRingStreamCandidate = (streamResult) => {
-      const candidate = buildStreamAssistantRecordCandidate(streamResult);
-      oneRingFinalAssistantRecordCandidate = candidate.shouldRecord ? candidate : null;
+    let oneRingAssistantTurnParts = [];
+
+    const containsImageUrlPart = (content) => Array.isArray(content) &&
+      content.some(part => part?.type === 'image_url' && part.image_url && typeof part.image_url.url === 'string');
+
+    const maybeTranslateToolPayloadMedia = async (content) => {
+      if (!containsImageUrlPart(content)) return content;
+
+      const shouldTranslateToolMedia = shouldProcessMedia || isTextOnlyForceTranslateModel;
+      if (!shouldTranslateToolMedia) return content;
+
+      const processorName = pluginManager.messagePreprocessors.has('MultiModalProcessor')
+        ? 'MultiModalProcessor'
+        : 'ImageProcessor';
+      if (!pluginManager.messagePreprocessors.has(processorName)) {
+        if (DEBUG_MODE) console.warn(`[VCP Stream Loop] Tool payload contains image_url, but ${processorName} is unavailable. Forwarding original payload.`);
+        return content;
+      }
+
+      const originalImageParts = content.filter(part => part?.type === 'image_url' && part.image_url && typeof part.image_url.url === 'string');
+      const payloadMessage = { role: 'user', content: JSON.parse(JSON.stringify(content)) };
+
+      if (DEBUG_MODE) {
+        console.log(`[VCP Stream Loop] Translating tool-returned image_url content via ${processorName}. textOnly=${!!isTextOnlyForceTranslateModel}, plus=${!!shouldProcessMediaPlus}`);
+      }
+
+      let translatedMessages;
+      try {
+        translatedMessages = await pluginManager.executeMessagePreprocessor(
+          processorName,
+          [payloadMessage],
+          requestPreprocessorConfig || {}
+        );
+      } catch (pluginError) {
+        console.error(`[VCP Stream Loop] Error translating tool-returned media via ${processorName}:`, pluginError);
+        return content;
+      }
+
+      const translatedContent = translatedMessages?.[0]?.content;
+      if (!Array.isArray(translatedContent)) return content;
+
+      if (shouldProcessMediaPlus && !isTextOnlyForceTranslateModel) {
+        const translatedWithoutImages = translatedContent.filter(part => part?.type !== 'image_url');
+        return [
+          ...translatedWithoutImages,
+          ...JSON.parse(JSON.stringify(originalImageParts))
+        ];
+      }
+
+      return translatedContent;
     };
-    const clearOneRingStreamCandidate = () => {
-      oneRingFinalAssistantRecordCandidate = null;
-    };
-    const flushOneRingAssistantRecordCandidates = () => {
-      const candidate = buildCombinedAssistantRecordCandidate(
-        oneRingFinalAssistantRecordCandidate ? [oneRingFinalAssistantRecordCandidate] : [],
-      );
-      return dispatchOneRingAssistantRecordCandidate(this.context, candidate, {
-        phaseLabel: 'final_turn',
-        logPrefix: '[OneRing Stream]',
-        responseMeta: this.context.oneRingResponseMeta || null,
-      });
+
+    const recordOneRingAIResponse = (aiText, phaseLabel) => {
+      diagnostics.finalize(aiText, oneRingAssistantTurnParts, currentAIContentForLoop, { req, res, abortController });
+      const oneRingModule = pluginManager?.messagePreprocessors?.get?.('OneRing');
+      if (!oneRingModule) return;
+
+      const recordPromise = oneRingResponseMeta && typeof oneRingModule.recordAIResponseWithMeta === 'function'
+        ? oneRingModule.recordAIResponseWithMeta(oneRingResponseMeta, aiText)
+        : (typeof oneRingModule.recordAIResponseFromMessages === 'function'
+          ? oneRingModule.recordAIResponseFromMessages(originalBody.messages, aiText)
+          : null);
+
+      if (recordPromise && typeof recordPromise.catch === 'function') {
+        recordPromise.catch(e =>
+          console.error(`[OneRing Stream] Error recording AI response (${phaseLabel}):`, e),
+        );
+      }
     };
 
     // 辅助函数：处理 AI 响应流 (优化版：直通转发 + 后台解析 + chunk 空闲超时保护)
     const processAIResponseStreamHelper = async (aiResponse, isInitialCall) => {
+      diagnostics.beginResponse(aiResponse);
       return new Promise((resolve, reject) => {
         const decoder = new StringDecoder('utf8');
         let collectedContentThisTurn = '';
-        let rawResponseDataThisTurn = '';
         let sseLineBuffer = '';
         let streamAborted = false;
         let keepAliveTimer = null;
@@ -116,7 +145,9 @@ class StreamHandler {
             message.content += delta.content;
           }
           if (delta && delta.reasoning_content) {
-            collectedContentThisTurn += delta.reasoning_content;
+            // P0 安全修复：reasoning_content 只保留在日志 message.reasoning_content 中，
+            // 绝不混入 collectedContentThisTurn。该变量会进入 VCP 循环与 OneRing 入库，
+            // 一旦混入推理链会造成明文持久化与后续上下文污染。
             message.reasoning_content += delta.reasoning_content;
           }
         };
@@ -140,6 +171,7 @@ class StreamHandler {
             if (streamAborted) return;
             console.warn(`[Stream IdleTimeout] No upstream chunk received for ${CHUNK_IDLE_TIMEOUT / 1000}s. Assuming stream stalled. Forcing end.`);
             streamAborted = true;
+            diagnostics.endTurn(collectedContentThisTurn, 'timeout');
             // 通知前端这次流异常结束
             if (!res.writableEnded && !res.destroyed) {
               try {
@@ -159,27 +191,18 @@ class StreamHandler {
             }
             if (keepAliveTimer) clearInterval(keepAliveTimer);
             if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
-            resolve(buildStreamHelperResult({
-              content: collectedContentThisTurn,
-              raw: rawResponseDataThisTurn,
-              message,
-              outcome: 'idle-timeout',
-            }));
+            resolve({ content: collectedContentThisTurn, message: message });
           }, CHUNK_IDLE_TIMEOUT);
         };
         resetChunkIdleTimer(); // 启动首次空闲计时
 
         const abortHandler = () => {
           streamAborted = true;
+          diagnostics.endTurn(collectedContentThisTurn, 'abort');
           if (DEBUG_MODE) console.log('[Stream Abort] Abort signal received, stopping stream processing.');
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (aiResponse.body && !aiResponse.body.destroyed) aiResponse.body.destroy();
-          resolve(buildStreamHelperResult({
-            content: collectedContentThisTurn,
-            raw: rawResponseDataThisTurn,
-            message,
-            outcome: 'client-abort',
-          }));
+          resolve({ content: collectedContentThisTurn, message: message });
         };
 
         if (abortController?.signal) {
@@ -187,11 +210,11 @@ class StreamHandler {
         }
 
         aiResponse.body.on('data', chunk => {
+          diagnostics.upstreamBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
           if (streamAborted) return;
           resetChunkIdleTimer(); // 每收到一个 chunk 就重置空闲计时器
 
           const chunkString = decoder.write(chunk);
-          rawResponseDataThisTurn += chunkString;
           sseLineBuffer += chunkString;
 
           // 按行处理：既保证了转发的实时性，又解决了 [DONE] 跨包截断的问题
@@ -201,6 +224,7 @@ class StreamHandler {
 
           for (const line of lines) {
             const trimmedLine = line.trim();
+            let diagnosticForwarded = false;
 
             // 1. 转发逻辑：只要不是 [DONE] 就立即转发
             if (!res.writableEnded && !res.destroyed) {
@@ -210,6 +234,7 @@ class StreamHandler {
                 try {
                   // 统一使用 \n 作为换行符转发，确保前端解析正常
                   res.write(line + '\n');
+                  diagnosticForwarded = true;
                 } catch (writeError) {
                   streamAborted = true;
                 }
@@ -217,14 +242,20 @@ class StreamHandler {
             }
 
             // 2. 后台解析逻辑：收集内容用于 VCP 循环
+            diagnostics.streamLine(line, diagnosticForwarded);
             if (trimmedLine.startsWith('data: ')) {
               const jsonData = trimmedLine.substring(6).trim();
               if (jsonData && jsonData !== '[DONE]') {
+                let diagnosticParsed = false;
                 try {
                   const parsedData = JSON.parse(jsonData);
+                  diagnosticParsed = true;
+                  diagnostics.streamParsed(parsedData, true, diagnosticForwarded);
                   const delta = parsedData.choices?.[0]?.delta;
                   appendDelta(delta);
-                } catch (e) { }
+                } catch (e) {
+                  if (!diagnosticParsed) diagnostics.sse.jsonParseFailure++;
+                }
               }
             }
           }
@@ -235,52 +266,50 @@ class StreamHandler {
           if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           const remainingString = decoder.end();
           if (remainingString) {
-            rawResponseDataThisTurn += remainingString;
             sseLineBuffer += remainingString;
           }
 
           // 处理最后剩余的 buffer 并转发
           if (sseLineBuffer.length > 0) {
             const trimmedLine = sseLineBuffer.trim();
+            let diagnosticForwarded = false;
             if (!res.writableEnded && !res.destroyed && trimmedLine !== 'data: [DONE]' && trimmedLine !== 'data:[DONE]') {
               try {
                 res.write(sseLineBuffer + '\n');
+                diagnosticForwarded = true;
               } catch (e) { }
             }
 
+            diagnostics.streamLine(sseLineBuffer, diagnosticForwarded);
             if (trimmedLine.startsWith('data: ')) {
               const jsonData = trimmedLine.substring(6).trim();
               if (jsonData && jsonData !== '[DONE]') {
+                let diagnosticParsed = false;
                 try {
                   const parsedData = JSON.parse(jsonData);
+                  diagnosticParsed = true;
+                  diagnostics.streamParsed(parsedData, true, diagnosticForwarded);
                   const delta = parsedData.choices?.[0]?.delta;
                   appendDelta(delta);
-                } catch (e) { }
+                } catch (e) {
+                  if (!diagnosticParsed) diagnostics.sse.jsonParseFailure++;
+                }
               }
             }
           }
 
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
-          resolve(buildStreamHelperResult({
-            content: collectedContentThisTurn,
-            raw: rawResponseDataThisTurn,
-            message,
-            outcome: streamAborted ? 'stream-abort' : 'success',
-          }));
+          diagnostics.endTurn(collectedContentThisTurn, 'provider_eof');
+          resolve({ content: collectedContentThisTurn, message: message });
         });
 
         aiResponse.body.on('error', streamError => {
+          diagnostics.endTurn(collectedContentThisTurn, streamAborted || streamError.name === 'AbortError' || streamError.type === 'aborted' ? 'abort' : 'exception');
           if (keepAliveTimer) clearInterval(keepAliveTimer);
           if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (streamAborted || streamError.name === 'AbortError' || streamError.type === 'aborted') {
-            resolve(buildStreamHelperResult({
-              content: collectedContentThisTurn,
-              raw: rawResponseDataThisTurn,
-              message,
-              outcome: 'stream-abort',
-              error: streamError,
-            }));
+            resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
             return;
           }
           console.error('Error reading AI response stream:', streamError);
@@ -299,12 +328,10 @@ class StreamHandler {
     if (DEBUG_MODE) console.log('[VCP Stream Loop] Processing initial AI call.');
     let initialAIResponseData = await processAIResponseStreamHelper(firstAiAPIResponse, true);
     currentAIContentForLoop = initialAIResponseData.content;
-    currentAIRawDataForDiary = initialAIResponseData.raw;
     if (writeChatLog) chatLogs.push({ request: originalBody, response: initialAIResponseData.message });
-    collectOneRingStreamCandidate(initialAIResponseData);
-    handleDiaryFromAIResponse(currentAIRawDataForDiary).catch(e =>
-      console.error('[VCP Stream Loop] Error in initial diary handling:', e),
-    );
+    if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
+      oneRingAssistantTurnParts.push(currentAIContentForLoop);
+    }
 
     // --- VCP 循环 ---
     while (recursionDepth < maxRecursion) {
@@ -350,14 +377,16 @@ class StreamHandler {
 
       const { normal: normalCalls, archery: archeryCalls } = ToolCallParser.separate(toolCalls);
       const archeryErrorContents = [];
+      const archeryStatusSummaryItems = [];
 
       // 执行 Archery 调用
       const archeryLogs = await Promise.all(archeryCalls.map(async toolCall => {
         try {
-          const result = await toolExecutor.execute(toolCall, clientIp, currentMessagesForLoop, executionContext);
+          const result = await toolExecutor.execute(toolCall, clientIp, currentMessagesForLoop);
           const isError = !result.success || (result.raw && this.context.isToolResultError(result.raw));
 
           if (isError) {
+            archeryStatusSummaryItems.push(`${toolCall.name} 调用失败${result.recordId ? ` (记录ID: ${result.recordId})` : ''}`);
             archeryErrorContents.push({
               type: 'text',
               text: `[异步工具 "${toolCall.name}" 返回了错误，请注意]:\n${result.content[0].text}`
@@ -382,6 +411,27 @@ class StreamHandler {
 
         if (!res.writableEnded && !res.destroyed) {
           try {
+            if (archeryStatusSummaryItems.length > 0) {
+              if (enableRoleDivider) {
+                res.write(`data: ${JSON.stringify({
+                  id: `chatcmpl-vcp-start-${Date.now()}`,
+                  object: "chat.completion.chunk",
+                  choices: [{ index: 0, delta: { content: "\n<<<[ROLE_DIVIDE_USER]>>>\n" }, finish_reason: null }]
+                })}\n\n`);
+              }
+              res.write(`data: ${JSON.stringify({
+                id: `chatcmpl-vcp-summary-${Date.now()}`,
+                object: "chat.completion.chunk",
+                choices: [{ index: 0, delta: { content: `\n[本轮工具调用摘要:]\n${archeryStatusSummaryItems.join('；')}。\n[本轮工具调用摘要结束]\n` }, finish_reason: null }]
+              })}\n\n`);
+              if (enableRoleDivider) {
+                res.write(`data: ${JSON.stringify({
+                  id: `chatcmpl-vcp-end-${Date.now()}`,
+                  object: "chat.completion.chunk",
+                  choices: [{ index: 0, delta: { content: "\n<<<[END_ROLE_DIVIDE_USER]>>>\n" }, finish_reason: null }]
+                })}\n\n`);
+              }
+            }
             res.write(`data: ${JSON.stringify({
               id: `chatcmpl-VCP-separator-${Date.now()}`,
               object: 'chat.completion.chunk',
@@ -404,30 +454,28 @@ class StreamHandler {
             body: JSON.stringify({ ...originalBody, messages: currentMessagesForLoop, stream: true }),
             signal: abortController.signal,
           },
-          { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
+          { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, connectionTimeout: apiConnectionTimeoutMs, modelFallbackCandidates: semanticModelFallbackCandidates }
         );
 
-        if (!nextAiAPIResponse.ok) {
-          clearOneRingStreamCandidate();
-          break;
+        if (nextAiAPIResponse.ok) {
+          let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
+          currentAIContentForLoop = nextAIResponseData.content;
+          if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
+            oneRingAssistantTurnParts.push(currentAIContentForLoop);
+          }
+          if (writeChatLog) {
+            chatLogs.push({
+              request: { messages: currentMessagesForLoop },
+              toolCalls: archeryLogs,
+              response: nextAIResponseData.message,
+            });
+          }
+          recursionDepth++;
+          continue;
         }
-
-        let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
-        currentAIContentForLoop = nextAIResponseData.content;
-        collectOneRingStreamCandidate(nextAIResponseData);
-        if (writeChatLog) {
-          chatLogs.push({
-            request: { messages: currentMessagesForLoop },
-            toolCalls: archeryLogs,
-            response: nextAIResponseData.message,
-          });
-        }
-        recursionDepth++;
-        continue;
       }
 
       if (normalCalls.length === 0) {
-        clearOneRingStreamCandidate();
         if (!res.writableEnded && !res.destroyed) {
           try {
             res.write(`data: ${JSON.stringify({
@@ -444,7 +492,7 @@ class StreamHandler {
       }
 
       // 执行普通调用
-      const toolResults = await toolExecutor.executeAll(normalCalls, clientIp, currentMessagesForLoop, executionContext);
+      const toolResults = await toolExecutor.executeAll(normalCalls, clientIp, currentMessagesForLoop);
       const combinedToolResultsForAI = toolResults.map(r => r.content).flat();
       if (archeryErrorContents.length > 0) combinedToolResultsForAI.push(...archeryErrorContents);
 
@@ -460,10 +508,28 @@ class StreamHandler {
 
       // VCP 信息展示 - 批量包裹为单个 USER 角色
       let hasStartedUserBlock = false;
+      const toolStatusSummaryItems = [...archeryStatusSummaryItems];
       for (let i = 0; i < normalCalls.length; i++) {
         const toolCall = normalCalls[i];
         const result = toolResults[i];
         const forceThisOne = !shouldShowVCP && toolCall.markHistory;
+        const isError = !result?.success || (result?.raw && this.context.isToolResultError(result.raw));
+        const rawObject = result?.raw && typeof result.raw === 'object' ? result.raw : null;
+        const errorText = isError ? [
+          result?.error,
+          result?.raw,
+          ...(Array.isArray(result?.content) ? result.content.map(item => item?.text) : [])
+        ].filter(Boolean).map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('\n') : '';
+
+        // 摘要状态顺序：先由 isError/结构化 success 确定成败；只有失败时才进一步细分“拒绝”，最后再判超时。
+        const isRejected = isError && (
+          rawObject?.rejected_by_user === true ||
+          rawObject?.error_type === 'approval_rejected' ||
+          /manual\s*approval\s*was\s*rejected|rejected\s*by\s*user|approval\s*rejected|用户拒绝|人工审核.*拒绝/i.test(errorText)
+        );
+        const isTimeout = isError && !isRejected && /超时|timeout|timed\s*out|DIRECT_TOOL_TIMEOUT|TIMEOUT/i.test(errorText);
+        const statusText = isRejected ? '调用拒绝' : (isTimeout ? '调用超时' : (isError ? '调用失败' : '调用成功'));
+        toolStatusSummaryItems.push(`${toolCall.name} ${statusText}${result?.recordId ? ` (记录ID: ${result.recordId})` : ''}`);
 
         if ((shouldShowVCP || forceThisOne) && !res.writableEnded && !res.destroyed) {
           if (!hasStartedUserBlock && enableRoleDivider) {
@@ -479,6 +545,25 @@ class StreamHandler {
           }
           vcpInfoHandler.streamVcpInfo(res, originalBody.model, toolCall.name, result.success ? 'success' : 'error', result.raw || result.error, abortController);
         }
+      }
+
+      if (toolStatusSummaryItems.length > 0 && !res.writableEnded && !res.destroyed) {
+        try {
+          if (!hasStartedUserBlock && enableRoleDivider) {
+            res.write(`data: ${JSON.stringify({
+              id: `chatcmpl-vcp-start-${Date.now()}`,
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: { content: "\n<<<[ROLE_DIVIDE_USER]>>>\n" }, finish_reason: null }]
+            })}\n\n`);
+            hasStartedUserBlock = true;
+          }
+
+          res.write(`data: ${JSON.stringify({
+            id: `chatcmpl-vcp-summary-${Date.now()}`,
+            object: "chat.completion.chunk",
+            choices: [{ index: 0, delta: { content: `\n[本轮工具调用摘要:]\n${toolStatusSummaryItems.join('；')}。\n[本轮工具调用摘要结束]\n` }, finish_reason: null }]
+          })}\n\n`);
+        } catch (e) {}
       }
       
       if (hasStartedUserBlock && !res.writableEnded && !res.destroyed && enableRoleDivider) {
@@ -505,8 +590,14 @@ class StreamHandler {
       }
 
       const hasImage = combinedToolResultsForAI.some(item => item.type === 'image_url');
+      const translatedToolResultsForAI = hasImage
+        ? await maybeTranslateToolPayloadMedia([
+          { type: 'text', text: `<!-- VCP_TOOL_PAYLOAD -->\nResults:` },
+          ...combinedToolResultsForAI
+        ])
+        : null;
       const finalToolPayloadForAI = hasImage
-        ? [{ type: 'text', text: `<!-- VCP_TOOL_PAYLOAD -->\nResults:` }, ...combinedToolResultsForAI]
+        ? translatedToolResultsForAI
         : `<!-- VCP_TOOL_PAYLOAD -->\n${toolResultsTextForRAG}`;
 
       currentMessagesForLoop.push({ role: 'user', content: finalToolPayloadForAI });
@@ -533,17 +624,16 @@ class StreamHandler {
           body: JSON.stringify({ ...originalBody, messages: currentMessagesForLoop, stream: true }),
           signal: abortController.signal,
         },
-        { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, modelFallbackCandidates: semanticModelFallbackCandidates }
+        { retries: apiRetries, delay: apiRetryDelay, debugMode: DEBUG_MODE, connectionTimeout: apiConnectionTimeoutMs, modelFallbackCandidates: semanticModelFallbackCandidates }
       );
 
-      if (!nextAiAPIResponse.ok) {
-        clearOneRingStreamCandidate();
-        break;
-      }
+      if (!nextAiAPIResponse.ok) break;
 
       let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
       currentAIContentForLoop = nextAIResponseData.content;
-      collectOneRingStreamCandidate(nextAIResponseData);
+      if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
+        oneRingAssistantTurnParts.push(currentAIContentForLoop);
+      }
       if (writeChatLog) {
         chatLogs.push({
           request: { messages: currentMessagesForLoop },
@@ -552,16 +642,11 @@ class StreamHandler {
         });
       }
 
-      // 记录日志
-      handleDiaryFromAIResponse(nextAIResponseData.raw).catch(e =>
-        console.error(`[VCP Stream Loop] Error in diary handling for depth ${recursionDepth}:`, e),
-      );
-
       recursionDepth++;
     } // toolcall loop end
 
     if (writeChatLog) writeChatLog(originalBody, chatLogs);
-    flushOneRingAssistantRecordCandidates();
+    recordOneRingAIResponse(oneRingAssistantTurnParts.join('\n'), 'final_turn');
 
     if (recursionDepth >= maxRecursion && !res.writableEnded && !res.destroyed) {
       try {
@@ -577,7 +662,5 @@ class StreamHandler {
     }
   }
 }
-
-StreamHandler._buildStreamHelperResult = buildStreamHelperResult;
 
 module.exports = StreamHandler;

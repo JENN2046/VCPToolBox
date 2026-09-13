@@ -1,6 +1,7 @@
 {
   "manifestVersion": "1.0.0",
   "name": "DailyNoteManager",
+  "runtimeLifecycle": 2,
   "version": "2.0.0",
   "displayName": "日记整理器",
   "description": "日记管理与整理混合插件，提供列出(list)、整理(organize)和联想(associate)三个功能。list 可按日期范围查看指定文件夹内的所有日记及其URL；organize 可将多篇旧日记归档到「已整理」文件夹并创建一篇新的合并日记；associate 可基于一篇或多篇日记通过向量语义搜索发现关联日记。",

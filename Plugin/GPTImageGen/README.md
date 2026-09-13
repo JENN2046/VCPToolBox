@@ -1,13 +1,11 @@
 # GPTImageGen — GPT Image 2 图像生成插件
 
-> **Author:** 小飒 (Xiaosa) & infinite-vector
-> **Version:** 1.1.0
-> **License:** MIT
+> **Author:** 小飒 (Xiaosa) & infinite-vector  
+> **Version:** 1.1.0  
+> **License:** MIT  
 > **Runtime:** Node.js ≥ 18（零外部依赖）
 
 VCPToolBox 同步插件，通过 OpenAI 兼容 API 调用 `gpt-image-2` 模型，支持 **文生图** 和 **图生图（垫图/风格转换）** 两种模式。
-
-> **prod/stable 默认安全态**：稳定生产线保留本插件源码，但将 manifest 保存为 `plugin-manifest.json.block`，因此默认不会加载、不会注入工具提示、不会调用外部 API、不会写入生成图片。启用前必须先完成配置审查，并将 manifest 显式改名为 `plugin-manifest.json`。
 
 ---
 
@@ -26,10 +24,9 @@ VCPToolBox 同步插件，通过 OpenAI 兼容 API 调用 `gpt-image-2` 模型�
 
 ## 📦 安装
 
-1. 确认 `GPTImageGen` 文件夹已位于 VCPToolBox 的 `Plugin/` 目录
+1. 将 `GPTImageGen` 文件夹放入 VCPToolBox 的 `Plugin/` 目录
 2. 复制 `config.env.example` 为 `config.env`，填入 API 密钥和反代地址
-3. 将 `plugin-manifest.json.block` 显式改名为 `plugin-manifest.json`
-4. 重启 VCPToolBox 或等待插件热重载
+3. 重启 VCPToolBox 或等待插件热重载
 
 ```bash
 cd Plugin/GPTImageGen
@@ -52,7 +49,6 @@ cp config.env.example config.env
 | `DEFAULT_BACKGROUND`      | ❌    | `auto`                   | 默认背景：`opaque` / `auto`（见下方注意事项）                |
 | `MAX_RETRIES`             | ❌    | `2`                      | API 请求失败（429/503）时的最大重试次数                      |
 | `RETRY_BASE_DELAY_MS`     | ❌    | `2000`                   | 重试基础延迟（毫秒），按指数退避递增                         |
-| `USE_CHAT_COMPLETIONS_MODE` | ❌  | `false`                  | 兼容渠道模式：设为 `true` 时直接走 `/v1/chat/completions` + `image_generation` tool；默认先尝试 images 端点，遇到兼容错误时回退 |
 | `DebugMode`               | ❌    | `false`                  | 调试模式，开启后在 stderr 输出详细日志                       |
 
 > ⚠️ **关于 `transparent` 背景**：gpt-image-2 官方 API 目前不支持透明背景（`transparent`），参数验证中保留该选项以兼容部分反代实现，但实际效果取决于您的 API 端点。如需透明背景，建议使用 GPT Image 1.5 或后期处理。
@@ -80,7 +76,10 @@ quality:「始」high「末」
 tool_name:「始」GPTImageGen「末」,
 command:「始」GPTEditImage「末」,
 prompt:「始」Transform this photo into a Studio Ghibli anime style illustration with soft watercolor textures「末」,
-image:「始」(必需) 原图来源。支持单张 URL、base64 data URI、本地文件路径；多张图片可使用 JSON 数组格式 ["path1.png", "path2.jpg"]。每张图片≤4MB，最多16张。「末」,
+image:「始」(必需) 原图来源。支持以下格式：
+  - 单张图片：直接填写 URL、base64 data URI 或本地文件路径
+  - 多张图片：使用 JSON 数组格式 ["path1.png", "path2.jpg"]
+每张图片≤4MB，最多16张。「末」,
 size:「始」1536x1024「末」,
 quality:「始」high「末」
 <<<[END_TOOL_REQUEST]>>>
@@ -89,6 +88,7 @@ quality:「始」high「末」
 ### 参数说明
 
 **文生图参数：**
+
 - `prompt`（必需）：图像生成提示词，建议英文。不支持负面提示词参数，可在 prompt 中用 "Avoid: ..." 模拟
 - `size`（可选）：WIDTHxHEIGHT，最短边≥256，最长边≤3840。也支持纯数字简写（如 `1024` 自动转为 `1024x1024`）
 - `quality`（可选）：low（快速低成本）/ medium / high（精细高成本）/ auto
@@ -96,12 +96,13 @@ quality:「始」high「末」
 - `n`（可选）：生成数量 1-4
 
 **图生图参数：**
+
 - `prompt`（必需）：描述如何修改图片
 - `image`（必需）：原始图片来源（**单张≤4MB**），支持：
   - HTTP/HTTPS URL
   - base64 data URI（`data:image/png;base64,...`）
   - 本地文件路径（相对于项目根目录，如 `image/gptimagegen/xxx.png`）
-  - 图片数组（可同时传入多张，最多 16 张）；VCP 工具参数传入 JSON 数组字符串时会自动兼容解析
+  - 图片数组（可同时传入多张，最多 16 张）
 - `size`（可选）：输出尺寸
 - `quality`（可选）：图片质量
 
@@ -122,7 +123,7 @@ quality:「始」high「末」
 
 ## 🔧 技术细节
 
-- **文生图** 优先使用 `/v1/images/generations` 端点，JSON 格式请求；兼容渠道可通过 `USE_CHAT_COMPLETIONS_MODE=true` 直接使用 `/v1/chat/completions` + `image_generation` tool
+- **文生图** 使用 `/v1/images/generations` 端点，JSON 格式请求
 - **图生图** 使用 `/v1/images/edits` 端点，**multipart/form-data 格式请求**（OpenAI 要求，零依赖手动构建 multipart body）
 - 图片根据 API 返回的 Content-Type 自动推断格式（PNG/JPEG/WebP/GIF），保存到 `image/gptimagegen/` 目录
 - 通过 VCP 的 ImageServer 插件提供 HTTP 访问 URL
@@ -135,6 +136,7 @@ quality:「始」high「末」
 ## 📝 更新日志
 
 ### v1.0.2 (2026-04-29) — by infinite-vector
+
 - **🔒 安全性**：修复源码中 `OPENAI_BASE_URL` 默认值硬编码为开发用反代地址的问题
 - **🔄 自动重试**：新增 `httpRequestWithRetry()` 包装器，对 429/503 自动指数退避重试（可配置 `MAX_RETRIES` / `RETRY_BASE_DELAY_MS`）
 - **✅ 输入校验**：图生图输入图片新增 4MB 大小校验，支持 data URI / URL / 本地文件三种来源
@@ -143,6 +145,7 @@ quality:「始」high「末」
 - **📝 Manifest 完善**：更新 configSchema 为带描述的对象格式，补充 quality 档位、transparent 限制、4MB 限制等说明
 
 ### v1.0.1 (2025-04-25) — by 小飒
+
 - **🐛 修复图生图功能**：`callEditAPI()` 从错误的 `application/json` 格式改为 OpenAI 要求的 `multipart/form-data` 格式
 - **✨ 新增 `buildMultipartBody()`**：零依赖的 multipart/form-data 请求体构建器
 - **✨ 新增 `parseDataURI()`**：data URI → Buffer + MIME 类型解析器
@@ -150,6 +153,7 @@ quality:「始」high「末」
 - 文生图功能不受影响
 
 ### v1.0.0
+
 - 初始版本，支持文生图（GPTGenerateImage）
 - 图生图功能因 API 请求格式错误无法使用
 
@@ -157,7 +161,7 @@ quality:「始」high「末」
 
 ## 🤝 贡献
 
-本插件由 **小飒 (Xiaosa)** 开发，**infinite-vector** 进行鲁棒性增强与文档完善。
+本插件由 **小飒 (Xiaosa)** 开发，**infinite-vector** 进行鲁棒性增强与文档完善。  
 Bug 修复与功能改进欢迎提交 PR。
 
 ## 📄 许可

@@ -1,30 +1,41 @@
 const net = require('net');
+const util = require('util');
 
-function redactSensitiveText(value, redactionValues = []) {
-    let text = String(value);
-    for (const secret of redactionValues) {
-        if (typeof secret === 'string' && secret.length > 0) {
-            text = text.split(secret).join('[redacted]');
-        }
-    }
-    text = text.replace(/("authToken"\s*:\s*")[^"]+(")/g, '$1[redacted]$2');
-    text = text.replace(/(authToken\s*[:=]\s*)[^\s,}]+/gi, '$1[redacted]');
-    return text;
-}
+let loggerModule = null;
 
-function formatRpcError(error, redactionValues = []) {
-    if (!error) return 'Unknown RPC error';
-    if (typeof error === 'string') return redactSensitiveText(error, redactionValues);
-    if (error.message) return redactSensitiveText(error.message, redactionValues);
+function isServerLoggerActive() {
     try {
-        return redactSensitiveText(JSON.stringify(error), redactionValues);
+        loggerModule = loggerModule || require('../logger');
+        return Boolean(
+            loggerModule.originalConsoleError &&
+            console.error !== loggerModule.originalConsoleError
+        );
     } catch (_) {
-        return redactSensitiveText(String(error), redactionValues);
+        return false;
     }
 }
 
-function createRpcError(error, redactionValues = []) {
-    const wrapped = new Error(formatRpcError(error, redactionValues));
+function logInfo(...args) {
+    if (isServerLoggerActive()) {
+        console.info(...args);
+        return;
+    }
+    process.stderr.write(`${util.format(...args)}\n`);
+}
+
+function formatRpcError(error) {
+    if (!error) return 'Unknown RPC error';
+    if (typeof error === 'string') return error;
+    if (error.message) return error.message;
+    try {
+        return JSON.stringify(error);
+    } catch (_) {
+        return String(error);
+    }
+}
+
+function createRpcError(error) {
+    const wrapped = new Error(formatRpcError(error));
     if (error && typeof error === 'object' && error.code !== undefined) {
         wrapped.code = error.code;
     }
@@ -33,9 +44,6 @@ function createRpcError(error, redactionValues = []) {
 
 class SSHManagerProxy {
     constructor(sockPath, authToken = process.env.SSH_MANAGER_TOKEN || '') {
-        if (!sockPath || typeof sockPath !== 'string') {
-            throw new Error('SSHManager proxy socket path is required');
-        }
         this.sockPath = sockPath;
         this.authToken = authToken;
         this.socket = null;
@@ -100,10 +108,9 @@ class SSHManagerProxy {
             this._resolveReady();
         });
         this.socket.on('error', err => {
-            const message = this._redact(err.message);
-            this._log(`Socket error: ${message}`);
+            this._log(`Socket error: ${err.message}`);
             this.connected = false;
-            this._rejectReady(new Error(`SSHManager proxy not connected: ${message}`));
+            this._rejectReady(new Error(`SSHManager proxy not connected: ${err.message}`));
         });
         this.socket.on('close', () => {
             this.connected = false;
@@ -133,7 +140,7 @@ class SSHManagerProxy {
                 const { resolve, reject, timer } = this.pending.get(msg.id);
                 this.pending.delete(msg.id);
                 clearTimeout(timer);
-                if (msg.error) reject(createRpcError(msg.error, [this.authToken]));
+                if (msg.error) reject(createRpcError(msg.error));
                 else resolve(msg.result);
             } else if (msg.method) {
                 // 流式会话的推送通知
@@ -162,7 +169,7 @@ class SSHManagerProxy {
             if (cb && cb.onData) cb.onData(params.data);
         } else if (method === 'stream.error') {
             const cb = this.streamCallbacks.get(params.sessionId);
-            if (cb && cb.onError) cb.onError(formatRpcError(params.error, [this.authToken]));
+            if (cb && cb.onError) cb.onError(formatRpcError(params.error));
         } else if (method === 'stream.close') {
             const cb = this.streamCallbacks.get(params.sessionId);
             if (cb && cb.onClose) cb.onClose();
@@ -191,7 +198,7 @@ class SSHManagerProxy {
                 if (!err) return;
                 clearTimeout(timer);
                 this.pending.delete(id);
-                reject(new Error(this._redact(err.message || String(err))));
+                reject(err);
             });
         });
     }
@@ -254,7 +261,7 @@ class SSHManagerProxy {
             options
         });
         if (result && result.error) {
-            throw createRpcError(result.error, [this.authToken]);
+            throw createRpcError(result.error);
         }
         if (!result || !result.sessionId) {
             throw new Error('createStreamSession failed: missing sessionId');
@@ -275,13 +282,9 @@ class SSHManagerProxy {
     }
 
     _log(msg) {
-        const entry = `[${new Date().toISOString()}] [SSHManagerProxy] ${this._redact(msg)}`;
-        console.error(entry);
+        const entry = `[${new Date().toISOString()}] [SSHManagerProxy] ${msg}`;
+        logInfo(entry);
         this.debugLogs.push(entry);
-    }
-
-    _redact(value) {
-        return redactSensitiveText(value, [this.authToken]);
     }
 
     destroy() {
@@ -342,7 +345,7 @@ class ProxyStreamSession {
         if (result && result.error) {
             this.proxy.streamCallbacks.delete(this.sessionId);
             this.isActive = false;
-            throw createRpcError(result.error, [this.proxy.authToken]);
+            throw createRpcError(result.error);
         }
         this.startedAt = new Date();
         this.isActive = true;
@@ -352,7 +355,7 @@ class ProxyStreamSession {
     async stop() {
         const result = await this.proxy._call('stream.stop', { sessionId: this.sessionId });
         if (result && result.error) {
-            throw createRpcError(result.error, [this.proxy.authToken]);
+            throw createRpcError(result.error);
         }
         this.isActive = false;
         return result;
@@ -365,7 +368,7 @@ class ProxyStreamSession {
             sessionId: this.sessionId
         });
         if (result && result.error) {
-            throw createRpcError(result.error, [this.proxy.authToken]);
+            throw createRpcError(result.error);
         }
         return result;
     }
@@ -386,4 +389,4 @@ class ProxyStreamSession {
     }
 }
 
-module.exports = { SSHManagerProxy, _private: { redactSensitiveText, formatRpcError, createRpcError } };
+module.exports = { SSHManagerProxy };

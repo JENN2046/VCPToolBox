@@ -163,7 +163,7 @@ export async function apiFetch(url, options = {}, showLoader = true) {
 | 功能 | API 端点 | 更新频率 |
 |------|----------|----------|
 | CPU/内存监控 | `/admin_api/system-monitor/system/resources` | 5s |
-| PM2 进程状态 | `/admin_api/system-monitor/pm2/processes` | 5s |
+| 监督器进程状态 | `/admin_api/system-monitor/supervisor/processes` | 5s |
 | 用户认证码 | `/admin_api/user-auth-code` | 5s |
 | 天气预报 | `/admin_api/weather` | 5s |
 | 日程挂件 | 本地数据 | 5s |
@@ -772,7 +772,7 @@ param2:「始」value2「末」
 
 ```
 <<<[TOOL_REQUEST]>>>
-tool_name:「始」FileOperator「末」,
+tool_name:「始」ServerFileOperator「末」,
 
 command1:「始」CreateFile「末」,
 filePath1:「始」/path/to/file.txt「末」,

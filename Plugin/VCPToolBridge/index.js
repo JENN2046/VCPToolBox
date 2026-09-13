@@ -9,6 +9,9 @@ class VCPToolBridge {
         this.debugMode = false;
         this.isHooked = false;
         this.taskToClientMap = new Map(); // taskId -> serverId
+        this.eventHandlers = null;
+        this.originalDistributedHandler = null;
+        this.patchedDistributedHandler = null;
     }
 
     /**
@@ -20,12 +23,11 @@ class VCPToolBridge {
         this.log = dependencies.vcpLogFunctions || { pushVcpLog: () => { }, pushVcpInfo: () => { } };
 
         // 拿到核心 PluginManager 实例
-        try {
-            this.pluginManager = require('../../Plugin.js');
-            this.setupEventListeners();
-        } catch (e) {
-            console.error('[VCPToolBridge] Failed to load PluginManager for event listening:', e.message);
+        this.pluginManager = dependencies?.pluginManager || null;
+        if (!this.pluginManager) {
+            throw new Error('VCPToolBridge requires the injected PluginManager.');
         }
+        this.setupEventListeners();
 
         if (this.debugMode) console.log('[VCPToolBridge] Initialized with Event Listeners.');
     }
@@ -34,7 +36,7 @@ class VCPToolBridge {
      * 设置核心事件监听
      */
     setupEventListeners() {
-        if (!this.pluginManager) return;
+        if (!this.pluginManager || this.eventHandlers) return;
 
         // 1. 监听进度日志 (vcp_log / vcp_info)
         const forwardLog = (type, data) => {
@@ -55,11 +57,13 @@ class VCPToolBridge {
             }
         };
 
-        this.pluginManager.on('vcp_log', (data) => forwardLog('log', data));
-        this.pluginManager.on('vcp_info', (data) => forwardLog('info', data));
+        const onVcpLog = data => forwardLog('log', data);
+        const onVcpInfo = data => forwardLog('info', data);
+        this.pluginManager.on('vcp_log', onVcpLog);
+        this.pluginManager.on('vcp_info', onVcpInfo);
 
         // 2. 监听异步回调结果 (plugin_async_callback)
-        this.pluginManager.on('plugin_async_callback', (info) => {
+        const onAsyncCallback = info => {
             if (this.config.Bridge_Enabled === false) return;
 
             const { taskId, data } = info;
@@ -79,7 +83,9 @@ class VCPToolBridge {
                 // 任务完成，清理映射
                 this.taskToClientMap.delete(taskId);
             }
-        });
+        };
+        this.pluginManager.on('plugin_async_callback', onAsyncCallback);
+        this.eventHandlers = { onVcpLog, onVcpInfo, onAsyncCallback };
     }
 
     /**
@@ -118,13 +124,10 @@ class VCPToolBridge {
         const self = this;
         const wss = this.wss;
 
-        // 1. 尝试获取 PluginManager 的引用
-        let pluginManager;
-        try {
-            pluginManager = require('../../Plugin.js');
-        } catch (e) {
-            console.error('[VCPToolBridge] Error requiring Plugin.js:', e.message);
-        }
+        // Runtime V2 injects the generation host. Requiring the singleton here
+        // would couple prepared candidates to global state and start its file
+        // watchers during isolated lifecycle tests.
+        const pluginManager = this.pluginManager;
 
         if (!pluginManager) {
             console.error('[VCPToolBridge] Could not obtain PluginManager instance.');
@@ -140,7 +143,7 @@ class VCPToolBridge {
         }
 
         // 替换原始处理器
-        wss.handleDistributedServerMessage = async function (serverId, message) {
+        const patchedHandler = async function (serverId, message) {
             if (self.config.Bridge_Enabled === false) {
                 return originalHandler.call(wss, serverId, message);
             }
@@ -163,6 +166,9 @@ class VCPToolBridge {
 
             return originalHandler.call(wss, serverId, message);
         };
+        this.originalDistributedHandler = originalHandler;
+        this.patchedDistributedHandler = patchedHandler;
+        wss.handleDistributedServerMessage = patchedHandler;
 
         this.isHooked = true;
         console.log('[VCPToolBridge] 🛡️ Monkey Patch successful: VCP Tool Bridge is now active.');
@@ -218,16 +224,7 @@ class VCPToolBridge {
         if (this.debugMode) console.log(`[VCPToolBridge] ⚡ Executing bridged tool: ${toolName} (Req: ${requestId})`);
 
         try {
-            const result = await pluginManager.processToolCall(
-                toolName,
-                toolArgs,
-                null,
-                {
-                    requestSource: 'vcp-tool-bridge',
-                    bridgeId: serverId,
-                    invocationId: requestId
-                }
-            );
+            const result = await pluginManager.processToolCall(toolName, toolArgs);
 
             // 如果是异步任务（返回了 taskId），记录映射关系
             // 这样当 vcp_log 或 plugin_async_callback 事件触发时，我们知道发回给谁
@@ -281,6 +278,25 @@ class VCPToolBridge {
      */
     shutdown() {
         if (this.debugMode) console.log('[VCPToolBridge] Shutting down...');
+        if (this.pluginManager && this.eventHandlers) {
+            this.pluginManager.off('vcp_log', this.eventHandlers.onVcpLog);
+            this.pluginManager.off('vcp_info', this.eventHandlers.onVcpInfo);
+            this.pluginManager.off('plugin_async_callback', this.eventHandlers.onAsyncCallback);
+        }
+        this.eventHandlers = null;
+        if (
+            this.wss
+            && this.originalDistributedHandler
+            && this.wss.handleDistributedServerMessage === this.patchedDistributedHandler
+        ) {
+            this.wss.handleDistributedServerMessage = this.originalDistributedHandler;
+        }
+        this.originalDistributedHandler = null;
+        this.patchedDistributedHandler = null;
+        this.taskToClientMap.clear();
+        this.pluginManager = null;
+        this.wss = null;
+        this.isHooked = false;
     }
 }
 

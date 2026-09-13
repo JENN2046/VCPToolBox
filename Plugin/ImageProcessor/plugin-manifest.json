@@ -1,6 +1,7 @@
 {
   "manifestVersion": "1.0.0",
   "name": "ImageProcessor",
+  "runtimeLifecycle": 2,
   "version": "1.1.0",
   "displayName": "多模态数据提取器",
   "description": "处理用户消息中的多模态数据（图像、音频、视频），调用多模态模型提取信息，并将其替换或附加到消息文本中。同时管理多模态数据的描述缓存。",

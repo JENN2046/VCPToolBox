@@ -1,0 +1,427 @@
+{
+  "algorithm": "ECDSA_P256_SHA256",
+  "fixture": "Public deterministic fixture scalar 1 (P-256 generator); no production key. Signatures frozen once; verification reproducible.",
+  "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+  "fingerprint": "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+  "signatureContract": "SHA256(exact signingInput), P1363 64-byte low-S; Host rejects high-S/DER",
+  "cases": [
+    {
+      "name": "valid-enrollment-claim",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e5400763100656e726f6c6c6d656e742d636c61696d009f094313067946bb372fac78a7fea0b74d7423242a7da1181212b077dc23e1d4",
+      "sha256InputHex": "74700ee8c580179d4d438e073dcd828f88e2697b68e5996ee1c35b290551b07b",
+      "signatureHex": "545df29b70cff52e21ad0bac6b2103e219b877ab03de7a283febcdb15887c0f40c5d411710119b45983767ddb07e7c4df712bd028642510ab9b134e1d2486854",
+      "valid": true,
+      "boundFields": {
+        "protocolVersion": 1,
+        "purpose": "enrollment-claim",
+        "hostBootId": "fixture-boot",
+        "hostAuthorityId": "fixture-authority",
+        "trustedHostOrigin": "https://host.fixture",
+        "surface": "vcp_chat",
+        "publicKeyFingerprint": "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+        "enrollmentId": "fixture-enrollment",
+        "sessionId": "fixture-session",
+        "clientEnrollmentId": "fixture-client",
+        "keyVersion": 1,
+        "nonceId": "fixture-nonce",
+        "issuedAt": 1000,
+        "expiresAt": 31000,
+        "method": "POST",
+        "path": "/fixture/enrollment-claim",
+        "bodyDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "valid-capability-mint",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "4cd4e2e0c4c238dc6cbb9a559a682147022335674d3bd19add6758f5cfb785270642f7afda57c7769662c06cadeaf0a5d91b8f6e5bd3c960cec3cb79b540dff7",
+      "valid": true,
+      "boundFields": {
+        "protocolVersion": 1,
+        "purpose": "capability-mint",
+        "hostBootId": "fixture-boot",
+        "hostAuthorityId": "fixture-authority",
+        "trustedHostOrigin": "https://host.fixture",
+        "surface": "vcp_chat",
+        "publicKeyFingerprint": "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+        "enrollmentId": "fixture-enrollment",
+        "sessionId": "fixture-session",
+        "clientEnrollmentId": "fixture-client",
+        "keyVersion": 1,
+        "nonceId": "fixture-nonce",
+        "issuedAt": 1000,
+        "expiresAt": 31000,
+        "method": "POST",
+        "path": "/fixture/capability-mint",
+        "bodyDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "valid-channel-upgrade",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006368616e6e656c2d7570677261646500d3c28b5f4ee2dffb434877bd51f19e8e822d895369aeb0d5bed6166afdbc8af4",
+      "sha256InputHex": "579cd3c603acfb19d1de217b35bb14a3dc13ea551fd588e57affa372e812bc6c",
+      "signatureHex": "4491132a16b43c2914545e9837b693c12f3602b7a90b42c4d1052e25d0f1a3d901e7f01b2e3cd8d33bbce55f132367fedec3177fcc26c1edff33b21bb3b5f8d2",
+      "valid": true,
+      "boundFields": {
+        "protocolVersion": 1,
+        "purpose": "channel-upgrade",
+        "hostBootId": "fixture-boot",
+        "hostAuthorityId": "fixture-authority",
+        "trustedHostOrigin": "https://host.fixture",
+        "surface": "vcp_chat",
+        "publicKeyFingerprint": "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+        "enrollmentId": "fixture-enrollment",
+        "sessionId": "fixture-session",
+        "clientEnrollmentId": "fixture-client",
+        "keyVersion": 1,
+        "nonceId": "fixture-nonce",
+        "issuedAt": 1000,
+        "expiresAt": 31000,
+        "method": "GET",
+        "path": "/VCPlog/vcp-chat-approval",
+        "bodyDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "valid-self-revoke",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e540076310073656c662d7265766f6b6500d39863be304293e5631c3eb388aae0bde17a2710a2507ee490ea8a69d3b601a9",
+      "sha256InputHex": "7b34fdd86e31639b7f9272485b2d33c58a9415e3bc7213603351ad7e7711d6c4",
+      "signatureHex": "682d8394b4a179e45cb7bd2d61e0461d536f4ae3b7aba8bfb0dbdfa542f7267768c0c3429c5f9c13186e4d4afea9c0e69e479f7eaf2565e8fafb227e551e883b",
+      "valid": true,
+      "boundFields": {
+        "protocolVersion": 1,
+        "purpose": "self-revoke",
+        "hostBootId": "fixture-boot",
+        "hostAuthorityId": "fixture-authority",
+        "trustedHostOrigin": "https://host.fixture",
+        "surface": "vcp_chat",
+        "publicKeyFingerprint": "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+        "enrollmentId": "fixture-enrollment",
+        "sessionId": "fixture-session",
+        "clientEnrollmentId": "fixture-client",
+        "keyVersion": 1,
+        "nonceId": "fixture-nonce",
+        "issuedAt": 1000,
+        "expiresAt": 31000,
+        "method": "POST",
+        "path": "/fixture/self-revoke",
+        "bodyDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "valid-session-authenticate",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e540076310073657373696f6e2d61757468656e74696361746500cd9bb0d9bc68bee44166655e828505500a47c0a2542716850c4fb759f3c14e01",
+      "sha256InputHex": "739567aef281b32184b49339d2155ad243743e7ee71a33ba2e12e1d464992052",
+      "signatureHex": "f6b16f1fce906655a52461dcb4b8c7b44f330bab3e7c5aa2e5b9f28ee549540c503f079ec7f84a69b73016d329f218030913ea2fb5b2be7cc7fe1aba7870bfee",
+      "valid": true,
+      "boundFields": {
+        "protocolVersion": 1,
+        "purpose": "session-authenticate",
+        "hostBootId": "fixture-boot",
+        "hostAuthorityId": "fixture-authority",
+        "trustedHostOrigin": "https://host.fixture",
+        "surface": "vcp_chat",
+        "publicKeyFingerprint": "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+        "enrollmentId": "fixture-enrollment",
+        "sessionId": "fixture-session",
+        "clientEnrollmentId": "fixture-client",
+        "keyVersion": 1,
+        "nonceId": "fixture-nonce",
+        "issuedAt": 1000,
+        "expiresAt": 31000,
+        "method": "POST",
+        "path": "/fixture/session-authenticate",
+        "bodyDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "wrong-key",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200047cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "modified-purpose",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e540076310073656c662d7265766f6b65003070905419ba36778bd241957a064047d227ac20452e17486ae4435bd28a2fad",
+      "sha256InputHex": "91e4fecba88e43fb5c54ed059d4d93567632ac40a0e3aca03683e660fe20324a",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "modified-nonceId",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e7400405c5a72d49759e2a2c05abdc365dd132681e45058518cc0c35ecdd2466f80a4",
+      "sha256InputHex": "28eace591add6a562a0052786a64c9b355ca146cec2895821b6877adf9277229",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "modified-path",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e74006b912997212f8de663a484a0271f3bc88ddb377e703a6e181bf8cf09fc2541d7",
+      "sha256InputHex": "13ba43ae39fcbdddc4a9d6570c453f1af15c021b3d55cbb47876a6e764b9f9d9",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "modified-surface",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e7400940e13c65bbaa9f5c369f39d208d6b5c2b194ce75bc47c0e6d5c1139301f5df1",
+      "sha256InputHex": "6e78ea3a3cf89b489f7cb040372035fc75b5accefa0fcbe1750f288a1f39a398",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "modified-transcript",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5743502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "334fb5efcc01eccc792576f1a0b71fd8c960be25c2b91672711162db4fe009a6",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "high-S",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b67f5677a8c9af206881d1577acc67e03993e52a2550d5c26738153870d428ac73e",
+      "valid": false
+    },
+    {
+      "name": "zero-r",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "00000000000000000000000000000000000000000000000000000000000000000a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "zero-s",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000",
+      "valid": false
+    },
+    {
+      "name": "r-at-order",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc6325510a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "s-at-order",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "0000000000000000000000000000000000000000000000000000000000000001ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+      "valid": false
+    },
+    {
+      "name": "DER-wire-rejected",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "3045022100bf25da5f99b446f484769341b13c9bf830bbde4313743d6e1f9f6019638077dd02206f7f8d8ae46a0299035bf60c4d9df1789b77477a80ce99f85c4527232010fce1",
+      "valid": false
+    },
+    {
+      "name": "short-P1363",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e",
+      "valid": false
+    },
+    {
+      "name": "long-P1363",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e1300",
+      "valid": false
+    },
+    {
+      "name": "double-hash-rejected",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "54f6346e4f4f00d47d4c9ccfde33e8894a7cf7cf2ba44ed2969be2324813f4f951e2a3c9ee72c13438cf9faeb367ec98a48208f8f81af46e6e997f7ea5073f72",
+      "valid": false
+    },
+    {
+      "name": "wrong-curve-secp384r1",
+      "publicKeyDerHex": "3076301006072a8648ce3d020106052b8104002203620004f4fbbb11158082ecd072a9babdeec5f038fde37d8bb3ae3cbd6f36872777f819dad8d60f53322a81652e2050c011b57e7b81f13e11d26e242371e72b997a3c50a7d11b40a7e8f37344211f7ef635e8eefcb209701fe3a54752a7523180840519",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "wrong-curve-secp521r1",
+      "publicKeyDerHex": "30819b301006072a8648ce3d020106052b81040023038186000400ff1bb872e9ae44407e9e9726ec10c1b86f13d1c9297b94d7cd5c90a0ba3c0e31c75ed6fc099258b1803de96e74324737e421418bcbdcddc51b8d7c29bb85ccd70800d99a8f508e333ba4dbd2de1a0143fa26adecb5bc2a36e7d10002f4936ce16b769a29eb3a501f180250804b627245ca15d6a96a2e4030ffe6dee6171e3d80b11cf0",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "wrong-curve-secp256k1",
+      "publicKeyDerHex": "3056301006072a8648ce3d020106052b8104000a0342000435e0934b4b377df2abdcc74106eddc29689d7679199dc78c94386e3e1aa7b0c96edf6bf2b8ca57e9e5c71d174544e0fda16af5c0eeb56b540d289cf56cedb267",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "explicit-EC-parameters",
+      "publicKeyDerHex": "3082014b3082010306072a8648ce3d02013081f7020101302c06072a8648ce3d0101022100ffffffff00000001000000000000000000000000ffffffffffffffffffffffff305b0420ffffffff00000001000000000000000000000000fffffffffffffffffffffffc04205ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b031500c49d360886e704936a6678e1139d26b7819f7e900441046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5022100ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551020101034200046a9eba8a8a797a5a76c37071bf49b576d39aaaceaaffc083317f6075a25795de354c05bb1412c8122cd9f81b7f8a303e1175072b81ca5f9d63930f523d27a295",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "missing-curve-parameters",
+      "publicKeyDerHex": "304f300906072a8648ce3d0201034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "compressed-point",
+      "publicKeyDerHex": "3039301306072a8648ce3d020106082a8648ce3d030107032200036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "off-curve-point",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d0301070342000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "trailing-DER",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f500",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "malformed-SPKI",
+      "publicKeyDerHex": "010203",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "noncanonical-DER-length",
+      "publicKeyDerHex": "308159301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "confusion-P256-as-ED25519",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ED25519",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "confusion-ED25519-as-P256",
+      "publicKeyDerHex": "302a300506032b65700321004927c961e708519987b14bc8b90dbfcb8b0c8143da6a52508e622b494f3b45ae",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "f937028d6ff82844a388199116da373af6a1d5d066b7b16473dc08e506f7230a6dfc7a77415d00d484d6b8825948de111c97091d89b4ce84d9054e96246ba00f",
+      "valid": false
+    },
+    {
+      "name": "confusion-ED-signature-P256-key",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "ECDSA_P256_SHA256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "f937028d6ff82844a388199116da373af6a1d5d066b7b16473dc08e506f7230a6dfc7a77415d00d484d6b8825948de111c97091d89b4ce84d9054e96246ba00f",
+      "valid": false
+    },
+    {
+      "name": "confusion-P256-signature-ED-key",
+      "publicKeyDerHex": "302a300506032b65700321004927c961e708519987b14bc8b90dbfcb8b0c8143da6a52508e622b494f3b45ae",
+      "publicKeyAlgorithm": "ED25519",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    },
+    {
+      "name": "confusion-unknown-algorithm",
+      "publicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "publicKeyAlgorithm": "P256",
+      "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff",
+      "sha256InputHex": "e8c4fced5a7cf9391c25e2d7634e3a62b52e9d14b713c3be9417ab0480dd8441",
+      "signatureHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+      "valid": false
+    }
+  ],
+  "providerFixtures": {
+    "rawP1363Hex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+    "providerDerHex": "3046022100f064ffbf8418de2bd27094359bcae9af6fef94fcd4588fc9ba0df0029a92c409022100cf179782387a7fc8893001da6e7e959773b913378290b9d210ce56d199c71e64",
+    "convertedLowP1363Hex": "f064ffbf8418de2bd27094359bcae9af6fef94fcd4588fc9ba0df0029a92c40930e8687cc785803876cffe2591816a68492de7762486e4b2e2eb73f1629c06ed",
+    "providerHighSHex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b67f5677a8c9af206881d1577acc67e03993e52a2550d5c26738153870d428ac73e",
+    "normalizedLowP1363Hex": "feab372749ce271b5a261bcd113b11516d3dba9758d817b93320a2178abd0b670a988572650df978e2ea88533981fc667e94585899bb7811726643b5b9d85e13",
+    "signingInputHex": "5643502d48554d414e2d434c49454e54007631006361706162696c6974792d6d696e740008f6aa80b9c8943d213ef6578a2d13aff6dc0cb8f7a0b03a6074b5d9ba0102ff"
+  }
+}

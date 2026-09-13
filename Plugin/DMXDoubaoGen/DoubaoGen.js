@@ -249,6 +249,9 @@ async function getImageData(imageUrl, imageBase64) {
 
 
 async function generateImageAndSave(args) {
+    // 解析 showbase64 参数，默认为 false
+    const showBase64 = args.showbase64 === 'true' || args.showbase64 === true;
+
     // Check for essential environment variables
     if (!VOLCENGINE_API_KEY) {
         throw new Error("DoubaoGen Plugin Error: API_KEY (e.g., VOLCENGINE_API_KEY in config.env) environment variable is required.");
@@ -451,8 +454,8 @@ async function generateImageAndSave(args) {
         `请务必使用以下HTML <img> 标签将图片直接展示给用户 (您可以调整width属性，建议200-500像素)：\n` +
         `${imageHtml}\n`;
 
+    const base64Image = imageBuffer.toString('base64');
     const imageMimeType = `image/${imageExtension}`;
-    const showBase64 = args.showbase64 === true || args.showbase64 === 'true' || args.showBase64 === true || args.showBase64 === 'true';
 
     // Attempt to get the seed from the API response, fallback to payload or N/A
     const responseSeed = response.data?.data?.[0]?.seed;
@@ -467,24 +470,26 @@ async function generateImageAndSave(args) {
         }
     ];
 
+    // 只有当 showbase64 为 true 时才添加 base64 图片数据
     if (showBase64) {
         content.push({
             type: 'image_url',
             image_url: {
-                url: `data:${imageMimeType};base64,${imageBuffer.toString('base64')}`
+                url: `data:${imageMimeType};base64,${base64Image}`
             }
         });
     }
 
     const result = {
-        content,
+        content: content,
         details: { // Keep details for logging or other purposes if needed
             serverPath: `image/doubaogen/${generatedFileName}`,
             fileName: generatedFileName,
             prompt: args.prompt,
             resolution: size,
             seed: finalSeed,
-            imageUrl: accessibleImageUrl
+            imageUrl: accessibleImageUrl,
+            showBase64: showBase64
         }
     };
 

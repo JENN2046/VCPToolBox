@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, 'config.env') });
+const dotenv = require('dotenv');
+const fsSync = require('fs');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const AnonymizeUAPlugin = require('puppeteer-extra-plugin-anonymize-ua');
@@ -11,6 +13,7 @@ const { Readability } = require('@mozilla/readability');
 const { JSDOM } = require('jsdom');
 const https = require('https');
 const http = require('http');
+const browserRuntimeManager = require('../../modules/browserRuntimeManager.js');
 
 // 图片扩展名常量
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff', '.tif'];
@@ -30,6 +33,23 @@ const JINA_READER_TIMEOUT_MS = Number(process.env.JINA_READER_TIMEOUT_MS || 2000
 const DIRECT_FETCH_TIMEOUT_MS = Number(process.env.DIRECT_FETCH_TIMEOUT_MS || 12000);
 const DIRECT_FETCH_MAX_BYTES = Number(process.env.DIRECT_FETCH_MAX_BYTES || 5 * 1024 * 1024);
 const KNOWLEDGE_BASE_DIR = path.resolve(PROJECT_BASE_PATH || process.cwd(), 'knowledge');
+const URLFETCH_PERSISTENT_PROFILE = String(process.env.URLFETCH_PERSISTENT_PROFILE || 'true').toLowerCase() !== 'false';
+const URLFETCH_PROFILE_DIR = process.env.URLFETCH_PROFILE_DIR || path.resolve(__dirname, 'browser-profiles');
+const URLFETCH_PROFILE_MODE = String(process.env.URLFETCH_PROFILE_MODE || 'domain').toLowerCase();
+const URLFETCH_BROWSER_FIRST = String(process.env.URLFETCH_BROWSER_FIRST || 'false').toLowerCase() === 'true';
+const URLFETCH_HEADLESS = String(process.env.URLFETCH_HEADLESS || 'true').toLowerCase();
+const URLFETCH_BROWSER_BACKEND = String(process.env.URLFETCH_BROWSER_BACKEND || 'auto').toLowerCase();
+const URLFETCH_USE_MANAGED_CHROME = String(process.env.URLFETCH_USE_MANAGED_CHROME || 'false').toLowerCase() === 'true';
+const URLFETCH_MANAGED_CHROME_HIGH_RISK_ONLY = String(process.env.URLFETCH_MANAGED_CHROME_HIGH_RISK_ONLY || 'true').toLowerCase() !== 'false';
+const URLFETCH_MANAGED_CHROME_AUTO_CLOSE = String(process.env.URLFETCH_MANAGED_CHROME_AUTO_CLOSE || process.env.VCP_BROWSER_AUTO_CLOSE_AFTER_URLFETCH || 'true').toLowerCase() === 'true';
+const URLFETCH_MANAGED_CHROME_CLOSE_TAB = String(process.env.URLFETCH_MANAGED_CHROME_CLOSE_TAB || 'true').toLowerCase() !== 'false';
+const URLFETCH_HIGH_RISK_DOMAINS = String(
+    process.env.URLFETCH_HIGH_RISK_DOMAINS ||
+    'mp.weixin.qq.com,zhihu.com,x.com,twitter.com,bilibili.com,weibo.com'
+)
+    .split(',')
+    .map(domain => domain.trim().toLowerCase())
+    .filter(Boolean);
 
 puppeteer.use(StealthPlugin());
 puppeteer.use(AnonymizeUAPlugin());
@@ -56,6 +76,59 @@ function normalizeInlineText(text) {
         .replace(/\u00a0/g, ' ')
         .replace(/[ \t\r\f\v]+/g, ' ')
         .replace(/\s*\n\s*/g, '\n')
+        .trim();
+}
+
+function looksLikeCjk(text) {
+    return /[\u3400-\u9fff]/.test(text || '');
+}
+
+function protectUrls(text, transform) {
+    const urlTokens = [];
+    const protectedText = String(text || '').replace(/https?:\/\/[^\s<>"'`，。！？；：、）)\]}]+/g, (url) => {
+        const token = `__URLFETCH_URL_TOKEN_${urlTokens.length}__`;
+        urlTokens.push(url);
+        return token;
+    });
+
+    const transformedText = transform(protectedText);
+    return urlTokens.reduce((result, url, index) => {
+        return result.replaceAll(`__URLFETCH_URL_TOKEN_${index}__`, url);
+    }, transformedText);
+}
+
+function repairBrokenUrls(text) {
+    return String(text || '')
+        .replace(/(https?:\/\/[^\s<>"'`，。！？；：、）)\]}]+[?&])\s*\n+\s*([A-Za-z0-9_%.-]+=[^\s<>"'`，。！？；：、）)\]}]*)/g, '$1$2')
+        .replace(/(https?:\/\/[^\s<>"'`，。！？；：、）)\]}]+[?&])\s*\n+\s*([A-Za-z0-9_%.-]+)/g, '$1$2');
+}
+
+function splitDenseCjkTextIntoParagraphs(text) {
+    const normalized = repairBrokenUrls(String(text || '').trim());
+    if (!normalized || !looksLikeCjk(normalized)) return normalized;
+
+    // 部分站点（尤其微信公众号）在 DOM 中把整篇正文压成单个文本节点。
+    // Readability 的 textContent 也会丢弃这些隐式段落边界，因此这里按中文句末标点、
+    // 问答说话人、编号观点等特征恢复可读段落。URL 需先保护，避免 watch?v= 里的 ? 被误判为句末。
+    return protectUrls(normalized, protectedText => protectedText
+        .replace(/([。！？!?])(?=(?:[A-Z][A-Za-z]+\s+[A-Z][A-Za-z]+|[\u4e00-\u9fff]{2,10})[：:])/g, '$1\n\n')
+        .replace(/([。！？!?])(?=(?:\d{1,2}[.．、]\s*)?[\u4e00-\u9fffA-Za-z])/g, '$1\n\n')
+        .replace(/([；;])(?=\d{1,2}[.．、]\s*[\u4e00-\u9fffA-Za-z])/g, '$1\n\n')
+        .replace(/([：:])(?=\d{1,2}[.．、]\s*[\u4e00-\u9fffA-Za-z])/g, '$1\n\n')
+        .replace(/\n{3,}/g, '\n\n'));
+}
+
+function normalizeExtractedText(rawText) {
+    return repairBrokenUrls(String(rawText || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .split('\n')
+        .map(line => splitDenseCjkTextIntoParagraphs(line.trimEnd()))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n'))
         .trim();
 }
 
@@ -150,16 +223,7 @@ function formatExtractedArticleContent(article) {
         rawText = article.textContent;
     }
 
-    return rawText
-        .replace(/\u00a0/g, ' ')
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n[ \t]+/g, '\n')
-        .replace(/[ \t]{2,}/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .split('\n')
-        .map(line => line.trimEnd())
-        .join('\n')
-        .trim();
+    return normalizeExtractedText(rawText);
 }
 
 // A more robust auto-scroll function to handle lazy-loading content
@@ -246,9 +310,144 @@ function isImageUrl(url) {
     }
 }
 
+function isPdfUrl(url) {
+    try {
+        return new URL(url).pathname.toLowerCase().endsWith('.pdf');
+    } catch {
+        return false;
+    }
+}
+
+function getCurrentUrlFetchCookieEnv() {
+    try {
+        const configPath = path.resolve(__dirname, 'config.env');
+        return {
+            ...process.env,
+            ...dotenv.parse(fsSync.readFileSync(configPath, 'utf8'))
+        };
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            console.error(`读取 UrlFetch config.env 失败: ${error.message}`);
+        }
+        return process.env;
+    }
+}
+
+function hasPdfSignature(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 5) return false;
+    // 允许 PDF 文件签名前存在少量 BOM、空白或传输填充。
+    return buffer.subarray(0, Math.min(buffer.length, 1024)).includes(Buffer.from('%PDF-'));
+}
+
+function isPdfResponse({ url = '', contentType = '', contentDisposition = '', buffer = null }) {
+    return isPdfUrl(url) ||
+        String(contentType).toLowerCase().includes('application/pdf') ||
+        /filename\*?=(?:UTF-8''|["'])?[^;"']*\.pdf\b/i.test(String(contentDisposition)) ||
+        hasPdfSignature(buffer);
+}
+
+async function extractPdfText(buffer, sourceUrl) {
+    if (!Buffer.isBuffer(buffer) || !buffer.length) {
+        throw new Error('PDF 解析失败: 文件内容为空');
+    }
+
+    const parser = new PDFParse({ data: buffer });
+    try {
+        const data = await parser.getText();
+        const text = normalizeExtractedText(data && data.text);
+        if (!text) {
+            throw new Error('PDF 中未提取到文本；该文件可能是纯扫描件，需要 OCR 才能识别');
+        }
+
+        let fileName = 'document.pdf';
+        try {
+            fileName = decodeURIComponent(path.basename(new URL(sourceUrl).pathname)) || fileName;
+        } catch (_) {
+            // ignore
+        }
+
+        return `PDF文件: ${fileName}\n来源: ${sourceUrl}\n页数: ${data.total || data.pages?.length || '未知'}\n\n${text}`;
+    } finally {
+        await parser.destroy();
+    }
+}
+
+async function extractPdfFromPuppeteerResponse(response, fallbackUrl) {
+    if (!response) return null;
+
+    const responseUrl = response.url() || fallbackUrl;
+    const headers = response.headers();
+    const contentType = String(headers['content-type'] || '').toLowerCase();
+    const contentDisposition = String(headers['content-disposition'] || '');
+
+    if (!isPdfResponse({ url: responseUrl, contentType, contentDisposition })) {
+        return null;
+    }
+
+    const contentLength = Number(headers['content-length'] || 0);
+    if (contentLength > PDF_FETCH_MAX_BYTES) {
+        throw new Error(`PDF 响应大小超过 ${(PDF_FETCH_MAX_BYTES / 1024 / 1024).toFixed(1)}MB 限制`);
+    }
+
+    const buffer = await response.buffer();
+    if (buffer.length > PDF_FETCH_MAX_BYTES) {
+        throw new Error(`PDF 响应超过 ${(PDF_FETCH_MAX_BYTES / 1024 / 1024).toFixed(1)}MB 限制`);
+    }
+    if (!hasPdfSignature(buffer)) {
+        throw new Error(`服务器声明返回 PDF，但响应内容不是有效 PDF: ${responseUrl}`);
+    }
+
+    return await extractPdfText(buffer, responseUrl);
+}
+
+function sanitizeProfileSegment(segment) {
+    return String(segment || 'default')
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '_')
+        .replace(/^\.+|\.+$/g, '')
+        .slice(0, 80) || 'default';
+}
+
+function isHighRiskDomain(url) {
+    try {
+        const hostname = new URL(url).hostname.toLowerCase();
+        return URLFETCH_HIGH_RISK_DOMAINS.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
+    } catch {
+        return false;
+    }
+}
+
+function shouldUseBrowserFirst(url, mode) {
+    return mode === 'text' && (URLFETCH_BROWSER_FIRST || isHighRiskDomain(url));
+}
+
+function getPersistentProfilePath(url, proxyPort = null) {
+    if (!URLFETCH_PERSISTENT_PROFILE) return null;
+
+    let urlObj;
+    try {
+        urlObj = new URL(url);
+    } catch {
+        return path.resolve(URLFETCH_PROFILE_DIR, 'default');
+    }
+
+    const hostname = sanitizeProfileSegment(urlObj.hostname);
+    const proxySegment = proxyPort ? `proxy_${sanitizeProfileSegment(proxyPort)}` : 'direct';
+
+    if (URLFETCH_PROFILE_MODE === 'default') {
+        return path.resolve(URLFETCH_PROFILE_DIR, proxySegment, 'default');
+    }
+
+    if (URLFETCH_PROFILE_MODE === 'proxy-aware') {
+        return path.resolve(URLFETCH_PROFILE_DIR, proxySegment, hostname);
+    }
+
+    return path.resolve(URLFETCH_PROFILE_DIR, hostname, proxySegment);
+}
+
 function sanitizeKnowledgeSubfolderName(folderName) {
     const normalized = String(folderName || '').trim();
-    if (!normalized || normalized === '.') {
+    if (!normalized) {
         throw new Error("缺少必需的参数: knowledgeFolder（knowledge 根目录下的子文件夹名）");
     }
 
@@ -326,57 +525,6 @@ function wrapMarkdownArchiveContent(content, url, sourceMode) {
     ].join('\n');
 }
 
-function isPathInside(baseDir, targetPath) {
-    const relative = path.relative(baseDir, targetPath);
-    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-async function ensureSafeKnowledgeTargetDir(targetDir) {
-    if (!isPathInside(KNOWLEDGE_BASE_DIR, targetDir)) {
-        throw new Error("目标目录越界，已拒绝写入。");
-    }
-
-    await fs.mkdir(KNOWLEDGE_BASE_DIR, { recursive: true });
-    const baseStats = await fs.lstat(KNOWLEDGE_BASE_DIR);
-    if (baseStats.isSymbolicLink()) {
-        throw new Error("knowledge 根目录是符号链接，已拒绝写入。");
-    }
-
-    let targetStats;
-    try {
-        targetStats = await fs.lstat(targetDir);
-    } catch (error) {
-        if (!error || error.code !== 'ENOENT') {
-            throw error;
-        }
-        try {
-            await fs.mkdir(targetDir);
-        } catch (mkdirError) {
-            if (!mkdirError || mkdirError.code !== 'EEXIST') {
-                throw mkdirError;
-            }
-        }
-        targetStats = await fs.lstat(targetDir);
-    }
-
-    if (targetStats.isSymbolicLink()) {
-        throw new Error("knowledge 子文件夹是符号链接，已拒绝写入。");
-    }
-
-    if (!targetStats.isDirectory()) {
-        throw new Error("knowledge 子文件夹不是目录，已拒绝写入。");
-    }
-
-    const [realBaseDir, realTargetDir] = await Promise.all([
-        fs.realpath(KNOWLEDGE_BASE_DIR),
-        fs.realpath(targetDir)
-    ]);
-
-    if (!isPathInside(realBaseDir, realTargetDir)) {
-        throw new Error("knowledge 子文件夹真实路径越界，已拒绝写入。");
-    }
-}
-
 async function getAvailableMarkdownPath(targetDir, safeFileName) {
     const parsed = path.parse(safeFileName);
     const baseName = parsed.name || 'webpage';
@@ -408,9 +556,13 @@ async function saveMarkdownToKnowledgeFolder({ url, content, knowledgeFolder, fi
     const safeFolderName = sanitizeKnowledgeSubfolderName(knowledgeFolder);
     const targetDir = path.resolve(KNOWLEDGE_BASE_DIR, safeFolderName);
 
+    if (!targetDir.startsWith(KNOWLEDGE_BASE_DIR + path.sep) && targetDir !== KNOWLEDGE_BASE_DIR) {
+        throw new Error("目标目录越界，已拒绝写入。");
+    }
+
     const safeFileName = buildSafeMarkdownFileName(content, url, fileName);
     const markdownContent = wrapMarkdownArchiveContent(content, url, sourceMode);
-    await ensureSafeKnowledgeTargetDir(targetDir);
+    await fs.mkdir(targetDir, { recursive: true });
 
     const { handle, filePath: targetPath, fileName: finalFileName } = await getAvailableMarkdownPath(targetDir, safeFileName);
     try {
@@ -434,41 +586,6 @@ async function saveMarkdownToKnowledgeFolder({ url, content, knowledgeFolder, fi
             relativePath: path.relative(PROJECT_BASE_PATH || process.cwd(), targetPath).replace(/\\/g, '/')
         }
     };
-}
-
-async function fetchDownloadMarkdownContent(url, downloadSourceMode, proxyPort = null, fetchers = {}) {
-    const effectiveSourceMode = downloadSourceMode === 'text' ? 'text' : 'jina';
-    const readWithJina = fetchers.fetchWithJinaReader || fetchWithJinaReader;
-    const readDirect = fetchers.fetchWithDirectHttp || fetchWithDirectHttp;
-    const readWithPuppeteer = fetchers.fetchWithPuppeteer || fetchWithPuppeteer;
-
-    try {
-        if (effectiveSourceMode === 'jina') {
-            try {
-                return { content: await readWithJina(url), sourceMode: 'jina' };
-            } catch (jinaError) {
-                console.error(`Jina 下载路径失败，回退 text: ${jinaError.message}`);
-                try {
-                    return { content: await readDirect(url), sourceMode: 'text' };
-                } catch (directError) {
-                    console.error(`直接读取快速路径失败，回退 Puppeteer: ${directError.message}`);
-                    return { content: await readWithPuppeteer(url, 'text'), sourceMode: 'text' };
-                }
-            }
-        }
-
-        try {
-            return { content: await readDirect(url), sourceMode: 'text' };
-        } catch (directError) {
-            console.error(`直接读取快速路径失败，回退 Puppeteer: ${directError.message}`);
-            return { content: await readWithPuppeteer(url, 'text'), sourceMode: 'text' };
-        }
-    } catch (error) {
-        if (proxyPort) {
-            return { content: await readWithPuppeteer(url, 'text', proxyPort), sourceMode: 'text' };
-        }
-        throw error;
-    }
 }
 
 function isUsableJinaApiKey(apiKey) {
@@ -641,7 +758,7 @@ async function fetchWithDirectHttp(url) {
         }
     }
 
-    const fallbackText = normalizeInlineText(doc.window.document.body?.textContent || '');
+    const fallbackText = normalizeExtractedText(doc.window.document.body?.innerText || doc.window.document.body?.textContent || '');
     if (fallbackText.length >= 80) {
         return `标题: ${doc.window.document.title || finalUrl}\n\n${fallbackText}`;
     }
@@ -649,13 +766,93 @@ async function fetchWithDirectHttp(url) {
     throw new Error('直接读取失败: 无法提取有效正文');
 }
 
+function shouldUseManagedChrome(url, mode) {
+    if (!URLFETCH_USE_MANAGED_CHROME) return false;
+    if (mode !== 'text') return false;
+    if (URLFETCH_BROWSER_BACKEND === 'puppeteer' || URLFETCH_BROWSER_BACKEND === 'direct' || URLFETCH_BROWSER_BACKEND === 'jina') return false;
+    if (URLFETCH_BROWSER_BACKEND === 'managed') return true;
+    return !URLFETCH_MANAGED_CHROME_HIGH_RISK_ONLY || isHighRiskDomain(url) || URLFETCH_BROWSER_FIRST;
+}
+
+async function fetchWithManagedChrome(url, mode = 'text') {
+    if (mode !== 'text') {
+        throw new Error('managed Chrome backend 当前仅支持 text 模式');
+    }
+
+    let browser;
+    let page;
+    try {
+        await browserRuntimeManager.ensureManagedBrowser();
+        const browserWSEndpoint = await browserRuntimeManager.getManagedBrowserWebSocketEndpoint();
+        if (!browserWSEndpoint) {
+            throw new Error('无法获取 managed Chrome DevTools WebSocket 端点');
+        }
+
+        browser = await puppeteer.connect({ browserWSEndpoint });
+        page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 900 });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+        await autoScroll(page, mode);
+
+        const pageContent = await page.content();
+        const doc = new JSDOM(pageContent, { url });
+        const reader = new Readability(doc.window.document);
+        const article = reader.parse();
+
+        if (article && (article.content || article.textContent)) {
+            const formattedContent = formatExtractedArticleContent(article) || normalizeExtractedText(article.textContent || '');
+            if (formattedContent && formattedContent.length >= 80) {
+                return `标题: ${article.title || await page.title() || url}\n\n${formattedContent}`;
+            }
+        }
+
+        const renderedText = await page.evaluate(() => document.body ? document.body.innerText : '');
+        const normalized = normalizeExtractedText(renderedText);
+        if (normalized && normalized.length >= 80) {
+            return `标题: ${await page.title() || url}\n\n${normalized}`;
+        }
+
+        throw new Error('managed Chrome backend 未提取到有效正文');
+    } finally {
+        if (URLFETCH_MANAGED_CHROME_CLOSE_TAB && page) {
+            try {
+                await page.close();
+            } catch (_) {
+                // ignore
+            }
+        }
+        if (browser) {
+            await browser.disconnect();
+        }
+        if (URLFETCH_MANAGED_CHROME_AUTO_CLOSE) {
+            try {
+                await browserRuntimeManager.closeManagedBrowser('urlfetch_auto_close');
+            } catch (error) {
+                console.error(`managed Chrome 自动关闭失败: ${error.message}`);
+            }
+        } else {
+            try {
+                browserRuntimeManager.touchManagedBrowser();
+            } catch (_) {
+                // ignore
+            }
+        }
+    }
+}
+
 async function fetchWithPuppeteer(url, mode = 'text', proxyPort = null) {
     let browser;
     try {
+        const userDataDir = getPersistentProfilePath(url, proxyPort);
         const launchOptions = {
-            headless: true,
+            headless: URLFETCH_HEADLESS === 'false' ? false : (URLFETCH_HEADLESS === 'new' ? 'new' : true),
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         };
+
+        if (userDataDir) {
+            await fs.mkdir(userDataDir, { recursive: true });
+            launchOptions.userDataDir = userDataDir;
+        }
 
         if (proxyPort) {
             launchOptions.args.push(`--proxy-server=http://127.0.0.1:${proxyPort}`);
@@ -691,16 +888,26 @@ async function fetchWithPuppeteer(url, mode = 'text', proxyPort = null) {
         };
 
         // 方式1：多站点原始格式 (FETCH_COOKIES_RAW_MULTI) - 优先级最高
-        const fetchCookiesRawMulti = process.env.FETCH_COOKIES_RAW_MULTI;
+        const currentCookieEnv = getCurrentUrlFetchCookieEnv();
+        const fetchCookiesRawMulti = currentCookieEnv.FETCH_COOKIES_RAW_MULTI;
         if (fetchCookiesRawMulti && fetchCookiesRawMulti.trim()) {
             try {
                 const cookiesMap = JSON.parse(fetchCookiesRawMulti);
-                // 遍历所有域名配置，找到匹配当前访问 URL 的
-                for (const [domain, cookieString] of Object.entries(cookiesMap)) {
-                    if (urlObj.hostname.includes(domain)) {
-                        cookiesToSet = parseRawCookies(cookieString, urlObj);
-                        break;
-                    }
+                const matchingEntry = Object.entries(cookiesMap)
+                    .filter(([domain, cookieString]) => {
+                        if (typeof cookieString !== 'string') return false;
+                        const normalizedDomain = String(domain || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+                        return normalizedDomain &&
+                            (urlObj.hostname.toLowerCase() === normalizedDomain ||
+                                urlObj.hostname.toLowerCase().endsWith(`.${normalizedDomain}`));
+                    })
+                    .sort((left, right) => {
+                        const leftDomain = String(left[0]).trim().replace(/^\.+|\.+$/g, '');
+                        const rightDomain = String(right[0]).trim().replace(/^\.+|\.+$/g, '');
+                        return rightDomain.length - leftDomain.length;
+                    })[0];
+                if (matchingEntry) {
+                    cookiesToSet = parseRawCookies(matchingEntry[1], urlObj);
                 }
             } catch (multiCookieError) {
                 console.error('解析多站点 Cookies 失败:', multiCookieError.message);
@@ -973,7 +1180,10 @@ async function fetchWithPuppeteer(url, mode = 'text', proxyPort = null) {
 
             if (article && (article.content || article.textContent)) {
                 // Format the output with title and content while preserving paragraph/list/heading boundaries.
-                const formattedContent = formatExtractedArticleContent(article);
+                let formattedContent = formatExtractedArticleContent(article);
+                if (!formattedContent && article.textContent) {
+                    formattedContent = normalizeExtractedText(article.textContent);
+                }
                 const result = `标题: ${article.title}\n\n${formattedContent}`;
                 return result;
             } else {
@@ -1038,8 +1248,45 @@ async function main() {
 
                 try {
                     if (mode === 'download') {
-                        const downloadResult = await fetchDownloadMarkdownContent(url, downloadSourceMode, process.env.FETCH_PROXY_PORT);
-                        fetchedData = downloadResult.content;
+                        const effectiveSourceMode = downloadSourceMode === 'text' ? 'text' : 'jina';
+                        if (effectiveSourceMode === 'jina') {
+                            try {
+                                fetchedData = await fetchWithJinaReader(url);
+                            } catch (jinaError) {
+                                console.error(`Jina 下载路径失败，回退 text: ${jinaError.message}`);
+                                try {
+                                    fetchedData = await fetchWithDirectHttp(url);
+                                } catch (directError) {
+                                    console.error(`直接读取快速路径失败，回退浏览器: ${directError.message}`);
+                                    if (shouldUseManagedChrome(url, 'text')) {
+                                        try {
+                                            fetchedData = await fetchWithManagedChrome(url, 'text');
+                                        } catch (managedError) {
+                                            console.error(`managed Chrome 路径失败，回退 Puppeteer: ${managedError.message}`);
+                                            fetchedData = await fetchWithPuppeteer(url, 'text');
+                                        }
+                                    } else {
+                                        fetchedData = await fetchWithPuppeteer(url, 'text');
+                                    }
+                                }
+                            }
+                        } else {
+                            try {
+                                fetchedData = await fetchWithDirectHttp(url);
+                            } catch (directError) {
+                                console.error(`直接读取快速路径失败，回退浏览器: ${directError.message}`);
+                                if (shouldUseManagedChrome(url, 'text')) {
+                                    try {
+                                        fetchedData = await fetchWithManagedChrome(url, 'text');
+                                    } catch (managedError) {
+                                        console.error(`managed Chrome 路径失败，回退 Puppeteer: ${managedError.message}`);
+                                        fetchedData = await fetchWithPuppeteer(url, 'text');
+                                    }
+                                } else {
+                                    fetchedData = await fetchWithPuppeteer(url, 'text');
+                                }
+                            }
+                        }
 
                         if (typeof fetchedData !== 'string' || !fetchedData.trim()) {
                             throw new Error("下载模式未提取到可写入的 Markdown 文本。");
@@ -1052,7 +1299,7 @@ async function main() {
                                 content: fetchedData,
                                 knowledgeFolder,
                                 fileName: outputFileName,
-                                sourceMode: downloadResult.sourceMode
+                                sourceMode: effectiveSourceMode
                             })
                         };
                         process.stdout.write(JSON.stringify(output, null, 2));
@@ -1060,11 +1307,33 @@ async function main() {
                     } else if (mode === 'jina') {
                         fetchedData = await fetchWithJinaReader(url);
                     } else if (mode === 'text') {
-                        try {
-                            fetchedData = await fetchWithDirectHttp(url);
-                        } catch (directError) {
-                            console.error(`直接读取快速路径失败，回退 Puppeteer: ${directError.message}`);
+                        if (shouldUseManagedChrome(url, mode)) {
+                            console.error(`检测到 managed Chrome 策略，使用托管浏览器 Profile: ${url}`);
+                            try {
+                                fetchedData = await fetchWithManagedChrome(url, mode);
+                            } catch (managedError) {
+                                console.error(`managed Chrome 路径失败，回退 Puppeteer: ${managedError.message}`);
+                                fetchedData = await fetchWithPuppeteer(url, mode);
+                            }
+                        } else if (shouldUseBrowserFirst(url, mode)) {
+                            console.error(`检测到浏览器优先策略，使用 Puppeteer 持久化 Profile: ${url}`);
                             fetchedData = await fetchWithPuppeteer(url, mode);
+                        } else {
+                            try {
+                                fetchedData = await fetchWithDirectHttp(url);
+                            } catch (directError) {
+                                console.error(`直接读取快速路径失败，回退浏览器: ${directError.message}`);
+                                if (shouldUseManagedChrome(url, mode)) {
+                                    try {
+                                        fetchedData = await fetchWithManagedChrome(url, mode);
+                                    } catch (managedError) {
+                                        console.error(`managed Chrome 路径失败，回退 Puppeteer: ${managedError.message}`);
+                                        fetchedData = await fetchWithPuppeteer(url, mode);
+                                    }
+                                } else {
+                                    fetchedData = await fetchWithPuppeteer(url, mode);
+                                }
+                            }
                         }
                     } else {
                         fetchedData = await fetchWithPuppeteer(url, mode);
@@ -1117,22 +1386,8 @@ async function main() {
     });
 }
 
-if (require.main === module) {
-    main().catch(error => {
-        const errorMsgStr = `未处理的插件错误: ${error.message || error}`;
-        process.stdout.write(JSON.stringify({ status: "error", error: errorMsgStr, result: { content: [{ type: 'text', text: errorMsgStr }] } }));
-        process.exit(1);
-    });
-}
-
-module.exports = {
-    sanitizeKnowledgeSubfolderName,
-    sanitizeMarkdownFileName,
-    buildSafeMarkdownFileName,
-    ensureSafeKnowledgeTargetDir,
-    fetchDownloadMarkdownContent,
-    getAvailableMarkdownPath,
-    isPathInside,
-    saveMarkdownToKnowledgeFolder,
-    wrapMarkdownArchiveContent
-};
+main().catch(error => {
+    const errorMsgStr = `未处理的插件错误: ${error.message || error}`;
+    process.stdout.write(JSON.stringify({ status: "error", error: errorMsgStr, result: { content: [{ type: 'text', text: errorMsgStr }] } }));
+    process.exit(1);
+});

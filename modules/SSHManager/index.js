@@ -11,14 +11,8 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const util = require('util');
-const { AsyncLocalStorage } = require('async_hooks');
 
-const DEFAULT_HOSTS_TEMPLATE_MD5_SET = new Set([
-    '0de7893698c555898c0dfa13e3891877',
-    '6a9e77013aabc6f8108827f6a5c83633',
-    'eadb3849ca5a596f50018c5a7e55a2cd',
-    'b1d6472eba3a65b9354a096ce21d3f3e'
-]);
+const DEFAULT_HOSTS_TEMPLATE_MD5 = 'b1d6472eba3a65b9354a096ce21d3f3e';
 
 let SSHManagerClass = null;
 let instance = null;
@@ -30,19 +24,6 @@ let lastConfigError = null;
 let lastClassPath = null;
 let lastClassError = null;
 let loggerModule = null;
-const serviceEnvStorage = new AsyncLocalStorage();
-
-function getServiceEnvValue(key) {
-    const serviceEnv = serviceEnvStorage.getStore();
-    if (serviceEnv && typeof serviceEnv[key] === 'string' && serviceEnv[key]) {
-        return serviceEnv[key];
-    }
-    return process.env[key];
-}
-
-function runWithSSHManagerServiceEnv(serviceEnv, fn) {
-    return serviceEnvStorage.run({ ...(serviceEnv || {}) }, fn);
-}
 
 function isServerLoggerActive() {
     try {
@@ -102,57 +83,7 @@ function calculateFileMd5(filePath) {
     return crypto
         .createHash('md5')
         .update(fs.readFileSync(filePath))
-        .digest('hex')
-        .toLowerCase();
-}
-
-function isKnownDefaultHostsTemplate(filePath) {
-    return DEFAULT_HOSTS_TEMPLATE_MD5_SET.has(calculateFileMd5(filePath));
-}
-
-function getDefaultConfigPaths() {
-    return [
-        path.join(__dirname, 'hosts.json'),  // 共享模块目录
-        path.join(__dirname, '..', '..', 'Plugin', 'LinuxShellExecutor', 'hosts.json')  // LinuxShellExecutor 目录
-    ];
-}
-
-function loadHostsConfigFromPaths(configPaths) {
-    let defaultTemplatePath = null;
-
-    for (const configPath of configPaths) {
-        try {
-            if (!fs.existsSync(configPath)) {
-                continue;
-            }
-
-            if (isKnownDefaultHostsTemplate(configPath)) {
-                defaultTemplatePath = configPath;
-                logWarn(`[SSHManager Module] ${configPath} matches the bundled hosts template; skipping remote SSH hosts`);
-                continue;
-            }
-
-            // 清除 require 缓存以支持热重载
-            delete require.cache[require.resolve(configPath)];
-            const loadedConfig = require(configPath);
-            lastConfigPath = configPath;
-            logInfo(`[SSHManager Module] 加载主机配置: ${configPath}`);
-            return loadedConfig;
-        } catch (e) {
-            lastClassError = e.message;
-            lastConfigError = e.message;
-            console.error(`[SSHManager Module] 无法加载配置 ${configPath}: ${e.message}`);
-        }
-    }
-
-    lastConfigPath = defaultTemplatePath;
-    lastConfigError = defaultTemplatePath
-        ? 'hosts.json matches bundled template; only local execution is enabled'
-        : null;
-    if (!defaultTemplatePath) {
-        logWarn('[SSHManager Module] 未找到主机配置文件，使用默认配置');
-    }
-    return createLocalOnlyHostsConfig();
+        .digest('hex');
 }
 
 /**
@@ -164,10 +95,41 @@ function loadHostsConfig() {
 
     lastConfigPath = null;
     lastConfigError = null;
-
-    // 配置文件搜索路径（优先级从高到低）
-    hostsConfig = loadHostsConfigFromPaths(getDefaultConfigPaths());
-
+    
+    // 配置文件搜索路径：仅保留 LinuxShellExecutor 目录下的单一主配置
+    const configPaths = [
+        path.join(__dirname, '..', '..', 'Plugin', 'LinuxShellExecutor', 'hosts.json')
+    ];
+    
+    for (const configPath of configPaths) {
+        try {
+            if (fs.existsSync(configPath)) {
+                const configMd5 = calculateFileMd5(configPath);
+                if (configMd5 === DEFAULT_HOSTS_TEMPLATE_MD5) {
+                    hostsConfig = createLocalOnlyHostsConfig();
+                    lastConfigPath = configPath;
+                    lastConfigError = 'hosts.json 仍为仓库默认模板，SSH 远程功能未启动';
+                    logWarn(`[SSHManager Module] ${configPath} 仍为默认模板 (MD5=${configMd5})，仅启用本地执行`);
+                    return hostsConfig;
+                }
+                // 清除 require 缓存以支持热重载
+                delete require.cache[require.resolve(configPath)];
+                hostsConfig = require(configPath);
+                lastConfigPath = configPath;
+                logInfo(`[SSHManager Module] 加载主机配置: ${configPath}`);
+                return hostsConfig;
+            }
+        } catch (e) {
+            lastClassError = e.message;
+            lastConfigError = e.message;
+            console.error(`[SSHManager Module] 无法加载配置 ${configPath}: ${e.message}`);
+        }
+    }
+    
+    // 默认配置（仅本地执行）
+    logWarn('[SSHManager Module] 未找到主机配置文件，使用默认配置');
+    hostsConfig = createLocalOnlyHostsConfig();
+    
     return hostsConfig;
 }
 
@@ -249,18 +211,15 @@ function getLocalSSHManager(providedConfig = null, options = {}) {
  */
 function getSSHManager(providedConfig = null, options = {}) {
     // 检查是否在 stdio 插件子进程内（通过环境变量判断）
-    const proxySock = getServiceEnvValue('SSH_MANAGER_SOCK');
+    const proxySock = process.env.SSH_MANAGER_SOCK;
     if (proxySock) {
         try {
             const { SSHManagerProxy } = require('./proxy');
-            const proxyAuthToken = typeof options.proxyAuthToken === 'string'
-                ? options.proxyAuthToken
-                : getServiceEnvValue('SSH_MANAGER_TOKEN') || '';
-            const proxy = new SSHManagerProxy(proxySock, proxyAuthToken);
+            const proxy = new SSHManagerProxy(proxySock);
             logInfo('[SSHManager Module] 使用 UDS 代理模式连接到常驻服务:', proxySock);
             return proxy;
         } catch (e) {
-            console.error('[SSHManager Module] 代理模式初始化失败，回退到本地模式:', e.message);
+            logWarn('[SSHManager Module] 代理模式初始化失败，回退到本地模式:', e.message);
         }
     }
 
@@ -341,7 +300,6 @@ function getStatus() {
 module.exports = {
     getSSHManager,
     resetSSHManager,
-    runWithSSHManagerServiceEnv,
     getHostsConfig,
     reloadConfig,
     isAvailable,
@@ -349,12 +307,5 @@ module.exports = {
     // 导出类本身，供需要独立实例的场景使用
     get SSHManager() {
         return loadSSHManagerClass();
-    },
-    _private: {
-        DEFAULT_HOSTS_TEMPLATE_MD5_SET,
-        createLocalOnlyHostsConfig,
-        calculateFileMd5,
-        isKnownDefaultHostsTemplate,
-        loadHostsConfigFromPaths
     }
 };

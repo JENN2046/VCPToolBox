@@ -2,54 +2,37 @@
  * LogMonitor 共享模块 - 单例导出
  *
  * 用途：为 LinuxLogMonitor 提供统一的日志监控客户端入口
- * 自动检测环境：如果在 stdio 插件子进程内（LOG_MONITOR_SOCK 存在），使用带 token 的 UDS 代理模式
+ * 自动检测环境：stdio 子进程读取 LOG_MONITOR_SOCK；hybrid/direct 模块读取主进程 global 中的 UDS 信息。
  *
  * @version 1.0.0
  * @author VCP Team
  */
 
-const { AsyncLocalStorage } = require('async_hooks');
-
 let proxyInstance = null;
-const serviceEnvStorage = new AsyncLocalStorage();
-
-function getServiceEnvValue(key) {
-    const serviceEnv = serviceEnvStorage.getStore();
-    if (serviceEnv && typeof serviceEnv[key] === 'string' && serviceEnv[key]) {
-        return serviceEnv[key];
-    }
-    return process.env[key];
-}
-
-function runWithLogMonitorServiceEnv(serviceEnv, fn) {
-    return serviceEnvStorage.run({ ...(serviceEnv || {}) }, fn);
-}
-
-function hasLogMonitorServiceEnv() {
-    return Boolean(getServiceEnvValue('LOG_MONITOR_SOCK'));
-}
+let proxySockPath = null;
+let proxyAuthToken = null;
 
 /**
  * 获取 LogMonitor 代理实例
  * @returns {LogMonitorProxy|null} 代理实例或 null（未设置环境变量时）
  */
 function getLogMonitorProxy() {
-    const sock = getServiceEnvValue('LOG_MONITOR_SOCK');
-    const token = getServiceEnvValue('LOG_MONITOR_TOKEN') || '';
+    const sock = process.env.LOG_MONITOR_SOCK || global.__vcp_log_monitor_sock;
     if (sock) {
-        if (
-            proxyInstance &&
-            (proxyInstance.sockPath !== sock || proxyInstance.authToken !== token)
-        ) {
-            resetLogMonitorProxy();
+        const authToken = process.env.LOG_MONITOR_TOKEN || global.__vcp_log_monitor_token || '';
+        if (proxyInstance && (proxySockPath !== sock || proxyAuthToken !== authToken)) {
+            proxyInstance.destroy();
+            proxyInstance = null;
         }
+
         if (!proxyInstance) {
             const { LogMonitorProxy } = require('./proxy');
-            proxyInstance = new LogMonitorProxy(sock, token);
+            proxyInstance = new LogMonitorProxy(sock, authToken);
+            proxySockPath = sock;
+            proxyAuthToken = authToken;
         }
         return proxyInstance;
     }
-    resetLogMonitorProxy();
     // 未设置环境变量 → 返回 null（后续由调用方处理 fallback）
     return null;
 }
@@ -61,12 +44,9 @@ function resetLogMonitorProxy() {
     if (proxyInstance) {
         proxyInstance.destroy();
         proxyInstance = null;
+        proxySockPath = null;
+        proxyAuthToken = null;
     }
 }
 
-module.exports = {
-    getLogMonitorProxy,
-    hasLogMonitorServiceEnv,
-    resetLogMonitorProxy,
-    runWithLogMonitorServiceEnv
-};
+module.exports = { getLogMonitorProxy, resetLogMonitorProxy };

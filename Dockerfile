@@ -36,20 +36,33 @@ ENV PUPPETEER_SKIP_DOWNLOAD=${PUPPETEER_SKIP_DOWNLOAD}
 
 # 复制 Node.js 依赖定义文件并安装依赖 (包含 pm2)
 COPY package*.json ./
-RUN npm cache clean --force && npm install
+RUN npm ci --no-audit --no-fund
 
 # 复制 Python 依赖定义文件并安装
 COPY requirements.txt ./
-# 在 Linux 环境下构建时，注释掉仅适用于 Windows 的 win10toast 包
-RUN sed -i '/^win10toast/s/^/#/' requirements.txt
+COPY Plugin/ArtistMatcher/requirements.txt ./Plugin/ArtistMatcher/requirements.txt
+COPY Plugin/SciCalculator/requirements.txt ./Plugin/SciCalculator/requirements.txt
+COPY Plugin/SkillBridge/SKILL/gif-sticker-maker/references/requirements.txt ./Plugin/SkillBridge/SKILL/gif-sticker-maker/references/requirements.txt
+COPY Plugin/VideoGenerator/requirements.txt ./Plugin/VideoGenerator/requirements.txt
+COPY Plugin/DigitalOracle/requirements.txt ./Plugin/DigitalOracle/requirements.txt
 RUN python3 -m pip install --no-cache-dir --break-system-packages -U pip setuptools wheel
-RUN pip3 install --no-cache-dir --break-system-packages --target=/usr/src/app/pydeps -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages --target=/usr/src/app/pydeps \
+    -r requirements.txt \
+    -r Plugin/ArtistMatcher/requirements.txt \
+    -r Plugin/SciCalculator/requirements.txt \
+    -r Plugin/SkillBridge/SKILL/gif-sticker-maker/references/requirements.txt \
+    -r Plugin/VideoGenerator/requirements.txt \
+    -r Plugin/DigitalOracle/requirements.txt
 
-# 先单独复制并编译 Rust N-API 向量引擎，使 Docker layer cache 只在 Rust 源码变化时失效。
-# COPY . . 之后会再用这里的现编产物覆盖仓库中可能滞后的预编译 .node。
+# =================================================================
+# 编译 Rust N-API 向量引擎 (vexus-lite)
+# 关键：把 Rust 子项目单独 COPY 并提前编译，让 Docker layer cache 能复用编译产物。
+# 这样 README、插件、图片、普通 JS 文件变更时，不会触发 Rust 全量重编；
+# 只有 rust-vexus-lite/package.json、Cargo.toml、build.rs、src/** 变化才会失效。
+# 仓库内 commit 的预编译 .node 仅作为 node 直跑用户的兜底，镜像必须以源码现编产物为准。
+# =================================================================
 COPY rust-vexus-lite/package.json ./rust-vexus-lite/package.json
 COPY rust-vexus-lite/Cargo.toml ./rust-vexus-lite/Cargo.toml
-COPY rust-vexus-lite/Cargo.lock ./rust-vexus-lite/Cargo.lock
 COPY rust-vexus-lite/build.rs ./rust-vexus-lite/build.rs
 COPY rust-vexus-lite/src ./rust-vexus-lite/src
 
@@ -62,38 +75,55 @@ RUN echo ">>> Building rust-vexus-lite native addon..." && \
     cd .. && \
     echo ">>> rust-vexus-lite build complete."
 
+# DailyNoteSearcher ships as a native sidecar. Build it on Alpine instead of
+# copying the host's glibc binary, otherwise spawn() reports ENOENT when musl's
+# dynamic loader cannot load it.
+COPY Plugin/DailyNoteSearcher/src/Cargo.toml ./Plugin/DailyNoteSearcher/src/Cargo.toml
+COPY Plugin/DailyNoteSearcher/src/Cargo.lock ./Plugin/DailyNoteSearcher/src/Cargo.lock
+COPY Plugin/DailyNoteSearcher/src/src ./Plugin/DailyNoteSearcher/src/src
+RUN echo ">>> Building DailyNoteSearcher musl sidecar..." && \
+    cd Plugin/DailyNoteSearcher/src && \
+    CARGO_TARGET_DIR=/tmp/daily-note-searcher-target cargo build --locked --release && \
+    mkdir -p /tmp/daily-note-searcher-built && \
+    cp /tmp/daily-note-searcher-target/release/DailyNoteSearcher \
+      /tmp/daily-note-searcher-built/DailyNoteSearcher && \
+    strip /tmp/daily-note-searcher-built/DailyNoteSearcher && \
+    echo ">>> DailyNoteSearcher build complete."
+
 # 复制所有源代码
 COPY . .
 
-# 确保镜像运行时加载的是当前源码对应的容器内现编 native addon。
-RUN cp /tmp/rust-vexus-lite-built/*.node ./rust-vexus-lite/
+# COPY . . 会把仓库中可能滞后的预编译 .node 合并进 rust-vexus-lite。
+# 将上一步容器内现编产物覆盖回去，确保镜像运行时加载的是当前源码对应的 native addon。
+RUN cp /tmp/rust-vexus-lite-built/*.node ./rust-vexus-lite/ && \
+    cp /tmp/daily-note-searcher-built/DailyNoteSearcher \
+      ./Plugin/DailyNoteSearcher/DailyNoteSearcher && \
+    chmod 0755 ./Plugin/DailyNoteSearcher/DailyNoteSearcher
 
 # 构建 AdminPanel-Vue 前端
-RUN if [ -f AdminPanel-Vue/package.json ]; then \
+RUN set -eu; \
+    if [ -f AdminPanel-Vue/package.json ]; then \
       echo ">>> Building AdminPanel-Vue frontend..."; \
-      cd AdminPanel-Vue && npm install && npm run build:no-type-check; \
+      cd AdminPanel-Vue; \
+      npm ci --no-audit --no-fund; \
+      npm run build:no-type-check; \
       cd ..; \
       echo ">>> AdminPanel-Vue build complete."; \
     fi
 
-# 查找所有插件目录下的 requirements.txt 并安装依赖
-# 使用 find 命令查找所有名为 requirements.txt 的文件
-# 然后使用 for 循环遍历这些文件并用 pip 安装
-RUN find Plugin -name requirements.txt -exec sh -c ' \
-    for req_file do \
-        echo ">>> Installing Python dependencies from $req_file"; \
-        pip3 install --no-cache-dir --break-system-packages --target=/usr/src/app/pydeps -r "$req_file" || \
-            { echo "!!! Failed to install Python dependencies from $req_file"; exit 1; }; \
-    done' sh {} +
-
 # 查找所有插件目录下的 package.json 并安装 npm 依赖
 # 使用 find 命令查找所有名为 package.json 的文件
 # 然后使用 for 循环遍历这些文件，并在其所在目录运行 npm install
-RUN find Plugin -name package.json -exec sh -c ' \
+RUN find Plugin -mindepth 2 -maxdepth 2 -name package.json -exec sh -c ' \
     for pkg_file do \
         plugin_dir=$(dirname "$pkg_file"); \
         echo ">>> Installing Node.js dependencies in $plugin_dir"; \
-        (cd "$plugin_dir" && npm install --legacy-peer-deps) || \
+        if [ -f "$plugin_dir/package-lock.json" ]; then \
+            install_command="npm ci --legacy-peer-deps --no-audit --no-fund"; \
+        else \
+            install_command="npm install --legacy-peer-deps --no-audit --no-fund"; \
+        fi; \
+        (cd "$plugin_dir" && $install_command) || \
             { echo "!!! Failed to install Node.js dependencies in $plugin_dir"; exit 1; }; \
     done' sh {} +
 
@@ -138,14 +168,16 @@ COPY --from=build /usr/src/app/Agent ./Agent
 COPY --from=build /usr/src/app/routes ./routes
 COPY --from=build /usr/src/app/modules ./modules
 COPY --from=build /usr/src/app/requirements.txt ./
-# 主服务启动时 KnowledgeBaseManager 会 require('./rust-vexus-lite')。
-# 只复制运行所需文件，避免把 Rust target/ 和构建期 node_modules 带进最终镜像。
+# 只复制 Rust N-API 的运行时加载器和 musl 产物。Cargo target、源码和
+# @napi-rs/cli 都是构建期内容，不应进入最终镜像。
+RUN mkdir -p ./rust-vexus-lite
 COPY --from=build /usr/src/app/rust-vexus-lite/index.js ./rust-vexus-lite/index.js
-COPY --from=build /usr/src/app/rust-vexus-lite/index.d.ts ./rust-vexus-lite/index.d.ts
 COPY --from=build /usr/src/app/rust-vexus-lite/package.json ./rust-vexus-lite/package.json
-COPY --from=build /usr/src/app/rust-vexus-lite/*.node ./rust-vexus-lite/
+COPY --from=build /usr/src/app/rust-vexus-lite/vexus-lite.linux-*-musl.node ./rust-vexus-lite/
 # 复制 AdminPanel-Vue 构建产物（管理面板前端）
 COPY --from=build /usr/src/app/AdminPanel-Vue/dist ./AdminPanel-Vue/dist
+# 严格预处理顺序、agent/toolbox/RAG 等根运行时配置。
+COPY --from=build /usr/src/app/*.json ./
 
 # 创建所有应用可能需要写入的持久化目录，以增强镜像的健壮性
 # 这样即使用户的宿主机目录不完整，容器也能正常启动。

@@ -1,21 +1,19 @@
 #!/usr/bin/env node
 /**
  * GPTImageGen - GPT Image 2 图像生成插件
- *
+ * 
  * 通过 OpenAI 兼容 API 调用 gpt-image-2 模型进行图像生成。
  * 零外部依赖，仅使用 Node.js 原生模块。
- *
+ * 
  * 通信协议：stdio JSON（VCP 插件标准协议）
  * 流程：stdin 接收 JSON 参数 → 解析命令 → 调用 API → 保存图像到本地 → stdout 输出 JSON 结果
- *
+ * 
  * @author 小飒 (Xiaosa) & infinite-vector
  * @version 1.1.0
  */
 
 import http from 'http';
 import https from 'https';
-import dns from 'dns/promises';
-import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -33,6 +31,9 @@ const DEFAULT_QUALITY = process.env.DEFAULT_QUALITY || 'auto';
 const DEFAULT_RESPONSE_FORMAT = process.env.DEFAULT_RESPONSE_FORMAT || 'url';
 const DEFAULT_BACKGROUND = process.env.DEFAULT_BACKGROUND || 'auto';
 const DEBUG = process.env.DebugMode === 'true';
+
+// Chat Completions 模式：某些兼容渠道不支持 /v1/images/generations，
+// 而是通过 /v1/chat/completions + 内置 image_generation tool 来生成图片
 const USE_CHAT_COMPLETIONS_MODE = process.env.USE_CHAT_COMPLETIONS_MODE === 'true';
 
 // 重试配置
@@ -47,8 +48,6 @@ const PROJECT_BASE_PATH = process.env.PROJECT_BASE_PATH || process.cwd();
 const SERVER_PORT = process.env.SERVER_PORT || '5000';
 const IMAGESERVER_IMAGE_KEY = process.env.IMAGESERVER_IMAGE_KEY || '';
 const VAR_HTTP_URL = process.env.VarHttpUrl || 'http://localhost';
-const PROJECT_IMAGE_ROOT = path.resolve(PROJECT_BASE_PATH, 'image');
-const GPTIMAGEGEN_OUTPUT_DIR = path.join(PROJECT_IMAGE_ROOT, 'gptimagegen');
 
 // ============================================================
 // 工具函数
@@ -74,234 +73,6 @@ function outputAndExit(result) {
  */
 function debugLog(...args) {
     if (DEBUG) console.error('[GPTImageGen DEBUG]', ...args);
-}
-
-function parseImageArrayInput(value) {
-    if (Array.isArray(value)) return value.filter(Boolean);
-    if (typeof value !== 'string') return value ? [value] : [];
-
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-
-    if (trimmed.startsWith('[')) {
-        try {
-            let parsed;
-            try {
-                parsed = JSON.parse(trimmed);
-            } catch {
-                parsed = JSON.parse(trimmed.replace(/\\/g, '\\\\'));
-            }
-            if (Array.isArray(parsed)) return parsed.filter(Boolean);
-        } catch {
-            // Keep as a single image string if JSON parsing fails.
-        }
-    }
-
-    return [trimmed];
-}
-
-function inferMimeFromBase64Image(base64Value) {
-    const header = Buffer.from(base64Value.slice(0, 64), 'base64');
-    if (header.length >= 8 && header[0] === 0x89 && header.slice(1, 4).toString('ascii') === 'PNG') return 'image/png';
-    if (header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return 'image/jpeg';
-    if (header.length >= 6 && (header.slice(0, 6).toString('ascii') === 'GIF87a' || header.slice(0, 6).toString('ascii') === 'GIF89a')) return 'image/gif';
-    if (header.length >= 12 && header.slice(0, 4).toString('ascii') === 'RIFF' && header.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
-    return 'image/png';
-}
-
-function normalizeBase64AliasInput(value) {
-    const trimmed = value.trim();
-    if (/^data:image\/[^;]+;base64,/i.test(trimmed)) return trimmed;
-    if (/^(https?:\/\/|file:\/\/\/)/i.test(trimmed)) return trimmed;
-
-    const compact = trimmed.replace(/\s+/g, '');
-    if (!compact || compact.length % 4 === 1 || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
-        return trimmed;
-    }
-
-    return `data:${inferMimeFromBase64Image(compact)};base64,${compact}`;
-}
-
-function collectImageInputs(args) {
-    const images = [];
-    const seen = new Set();
-    const pushImage = (value, options = {}) => {
-        for (const item of parseImageArrayInput(value)) {
-            if (typeof item === 'string' && item.trim()) {
-                const image = options.base64Alias ? normalizeBase64AliasInput(item) : item.trim();
-                if (!seen.has(image)) {
-                    seen.add(image);
-                    images.push(image);
-                }
-            }
-        }
-    };
-
-    const primaryImage = args.image || args.Image || args.image_url || args.source_image;
-    if (primaryImage) {
-        pushImage(primaryImage);
-    } else {
-        pushImage(args.image_base64, { base64Alias: true });
-    }
-
-    const indexedKeys = Object.keys(args)
-        .map((key) => {
-            const match = key.match(/^image(?:_url)?_(\d+)$/i) || key.match(/^image_base64_(\d+)$/i);
-            return match ? { key, index: parseInt(match[1], 10), base64Alias: /^image_base64_/i.test(key) } : null;
-        })
-        .filter(Boolean)
-        .sort((a, b) => a.index - b.index || a.key.localeCompare(b.key));
-
-    for (const { key, base64Alias } of indexedKeys) {
-        pushImage(args[key], { base64Alias });
-    }
-
-    return images;
-}
-
-function isPathInside(childPath, parentPath) {
-    const relative = path.relative(parentPath, childPath);
-    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function normalizeHostname(hostname) {
-    return String(hostname || '')
-        .trim()
-        .toLowerCase()
-        .replace(/^\[|\]$/g, '')
-        .replace(/%.+$/, '');
-}
-
-function parseIPv4Address(address) {
-    const parts = String(address || '').split('.');
-    if (parts.length !== 4) return null;
-
-    const octets = parts.map((part) => {
-        if (!/^\d+$/.test(part)) return NaN;
-        const value = Number(part);
-        return value >= 0 && value <= 255 ? value : NaN;
-    });
-
-    return octets.every(Number.isInteger) ? octets : null;
-}
-
-function expandIPv6Address(address) {
-    let value = normalizeHostname(address);
-
-    if (value.includes('.')) {
-        const lastColon = value.lastIndexOf(':');
-        const ipv4 = parseIPv4Address(value.slice(lastColon + 1));
-        if (!ipv4) return null;
-        const high = ((ipv4[0] << 8) | ipv4[1]).toString(16);
-        const low = ((ipv4[2] << 8) | ipv4[3]).toString(16);
-        value = `${value.slice(0, lastColon)}:${high}:${low}`;
-    }
-
-    const doubleColonParts = value.split('::');
-    if (doubleColonParts.length > 2) return null;
-
-    const head = doubleColonParts[0] ? doubleColonParts[0].split(':') : [];
-    const tail = doubleColonParts.length === 2 && doubleColonParts[1] ? doubleColonParts[1].split(':') : [];
-    const fillCount = doubleColonParts.length === 2 ? 8 - head.length - tail.length : 0;
-    const parts = doubleColonParts.length === 2
-        ? [...head, ...Array(fillCount).fill('0'), ...tail]
-        : value.split(':');
-
-    if (parts.length !== 8 || fillCount < 0) return null;
-
-    const hextets = parts.map((part) => {
-        if (!/^[0-9a-f]{1,4}$/.test(part)) return NaN;
-        return parseInt(part, 16);
-    });
-
-    return hextets.every(Number.isInteger) ? hextets : null;
-}
-
-function isBlockedIPv4Address(address) {
-    const octets = parseIPv4Address(address);
-    if (!octets) return true;
-
-    const [a, b] = octets;
-    return (
-        a === 0 ||
-        a === 10 ||
-        a === 127 ||
-        (a === 100 && b >= 64 && b <= 127) ||
-        (a === 169 && b === 254) ||
-        (a === 172 && b >= 16 && b <= 31) ||
-        (a === 192 && b === 168)
-    );
-}
-
-function isBlockedIPv6Address(address) {
-    const hextets = expandIPv6Address(address);
-    if (!hextets) return true;
-
-    const isUnspecified = hextets.every((part) => part === 0);
-    const isLoopback = hextets.slice(0, 7).every((part) => part === 0) && hextets[7] === 1;
-    const isUniqueLocal = (hextets[0] & 0xfe00) === 0xfc00;
-    const isLinkLocal = (hextets[0] & 0xffc0) === 0xfe80;
-    const isIPv4Mapped = hextets.slice(0, 5).every((part) => part === 0) && hextets[5] === 0xffff;
-
-    if (isUnspecified || isLoopback || isUniqueLocal || isLinkLocal) {
-        return true;
-    }
-
-    if (isIPv4Mapped) {
-        const mappedIPv4 = [
-            hextets[6] >> 8,
-            hextets[6] & 0xff,
-            hextets[7] >> 8,
-            hextets[7] & 0xff
-        ].join('.');
-        return isBlockedIPv4Address(mappedIPv4);
-    }
-
-    return false;
-}
-
-function isBlockedIpAddress(address) {
-    const normalized = normalizeHostname(address);
-    const ipVersion = net.isIP(normalized);
-    if (ipVersion === 4) return isBlockedIPv4Address(normalized);
-    if (ipVersion === 6) return isBlockedIPv6Address(normalized);
-    return true;
-}
-
-function isLocalHostname(hostname) {
-    const host = normalizeHostname(hostname);
-    return !host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local');
-}
-
-async function resolveImageDownloadUrl(rawUrl, baseUrl = '') {
-    const parsedUrl = baseUrl ? new URL(rawUrl, baseUrl) : new URL(rawUrl);
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-        throw new Error('图片 URL 仅支持 http 或 https 协议');
-    }
-
-    const hostname = normalizeHostname(parsedUrl.hostname);
-    if (isLocalHostname(hostname)) {
-        throw new Error('图片 URL 不允许指向本机、链路本地或私有网段地址');
-    }
-
-    if (net.isIP(hostname)) {
-        if (isBlockedIpAddress(hostname)) {
-            throw new Error('图片 URL 不允许指向本机、链路本地或私有网段地址');
-        }
-        return { parsedUrl, lookupAddress: null };
-    }
-
-    const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
-    if (!addresses.length) {
-        throw new Error(`图片 URL 主机无法解析: ${hostname}`);
-    }
-
-    const blockedAddress = addresses.find((entry) => isBlockedIpAddress(entry.address));
-    if (blockedAddress) {
-        throw new Error('图片 URL 不允许指向本机、链路本地或私有网段地址');
-    }
-
-    return { parsedUrl, lookupAddress: addresses[0] };
 }
 
 /**
@@ -373,7 +144,7 @@ function inferImageExtension(contentType, urlOrPath) {
 /**
  * 通用 HTTP/HTTPS 请求函数（零依赖）
  * 根据 URL 协议自动选择 http 或 https 模块
- *
+ * 
  * @param {string} url - 完整请求 URL
  * @param {object} options - 请求选项（method, headers 等）
  * @param {string|Buffer|null} body - 请求体
@@ -532,7 +303,7 @@ function httpRequest(url, options = {}, body = null) {
 /**
  * 带指数退避重试的 HTTP 请求包装器
  * 对 429 (Rate Limit) 和 503 (Service Unavailable) 自动重试
- *
+ * 
  * @param {string} url - 完整请求 URL
  * @param {object} options - 请求选项
  * @param {string|Buffer|null} body - 请求体
@@ -559,39 +330,27 @@ async function httpRequestWithRetry(url, options = {}, body = null) {
 /**
  * 下载远程图片
  * 返回 Buffer 和 Content-Type（学 DoubaoGen 的 httpsDownload 模式）
- *
+ * 
  * @param {string} url - 图片 URL
  * @returns {Promise<{data: Buffer, contentType: string}>}
  */
-async function downloadImage(url, maxBytes = 0, redirectCount = 0, baseUrl = '') {
-    const { parsedUrl, lookupAddress } = await resolveImageDownloadUrl(url, baseUrl);
-
+function downloadImage(url) {
     return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(url);
         const transport = parsedUrl.protocol === 'https:' ? https : http;
 
         const reqOptions = {
-            hostname: normalizeHostname(parsedUrl.hostname),
+            hostname: parsedUrl.hostname,
             port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
             path: parsedUrl.pathname + parsedUrl.search,
             method: 'GET',
-            timeout: 60000,
-            ...(lookupAddress ? {
-                lookup: (_hostname, _options, callback) => {
-                    callback(null, lookupAddress.address, lookupAddress.family);
-                }
-            } : {})
+            timeout: 60000
         };
 
         const req = transport.request(reqOptions, (res) => {
             // 处理重定向
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                res.resume();
-                if (redirectCount >= 5) {
-                    reject(new Error('图片下载重定向次数过多'));
-                    return;
-                }
-
-                downloadImage(res.headers.location, maxBytes, redirectCount + 1, parsedUrl.href).then(resolve).catch(reject);
+                downloadImage(res.headers.location).then(resolve).catch(reject);
                 return;
             }
 
@@ -601,16 +360,7 @@ async function downloadImage(url, maxBytes = 0, redirectCount = 0, baseUrl = '')
             }
 
             const chunks = [];
-            let totalBytes = 0;
-            res.on('data', (chunk) => {
-                totalBytes += chunk.length;
-                if (maxBytes > 0 && totalBytes > maxBytes) {
-                    req.destroy();
-                    reject(new Error(`下载的图片超过 ${maxBytes / 1024 / 1024}MB 限制。请使用更小的图片或压缩后重试。`));
-                    return;
-                }
-                chunks.push(chunk);
-            });
+            res.on('data', (chunk) => chunks.push(chunk));
             res.on('end', () => resolve({
                 data: Buffer.concat(chunks),
                 contentType: res.headers['content-type'] || ''
@@ -629,6 +379,51 @@ async function downloadImage(url, maxBytes = 0, redirectCount = 0, baseUrl = '')
 // ============================================================
 // 图片输入处理
 // ============================================================
+
+function parseImageArrayInput(value) {
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value !== 'string') return value ? [value] : [];
+
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith('[')) {
+        try {
+            const sanitized = trimmed.replace(/\\/g, '\\\\');
+            const parsed = JSON.parse(sanitized);
+            if (Array.isArray(parsed)) return parsed.filter(Boolean);
+        } catch {
+            // Keep as a single image string if JSON parsing fails.
+        }
+    }
+
+    return [trimmed];
+}
+
+function collectImageInputs(args) {
+    const images = [];
+    const pushImage = (value) => {
+        for (const item of parseImageArrayInput(value)) {
+            if (typeof item === 'string' && item.trim()) images.push(item.trim());
+        }
+    };
+
+    pushImage(args.image || args.Image || args.image_url || args.source_image || args.image_base64);
+
+    const indexedKeys = Object.keys(args)
+        .map((key) => {
+            const match = key.match(/^image(?:_url)?_(\d+)$/i) || key.match(/^image_base64_(\d+)$/i);
+            return match ? { key, index: parseInt(match[1], 10) } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.index - b.index || a.key.localeCompare(b.key));
+
+    for (const { key } of indexedKeys) {
+        pushImage(args[key]);
+    }
+
+    return images;
+}
 
 /**
  * 处理图片输入，支持多种格式：
@@ -665,9 +460,8 @@ async function processImageInput(imageInput) {
 
     // HTTP/HTTPS URL
     if (input.startsWith('http://') || input.startsWith('https://')) {
-        await resolveImageDownloadUrl(input);
         debugLog('Image input: URL, downloading...', input.substring(0, 100));
-        const { data: buffer, contentType } = await downloadImage(input, MAX_IMAGE_SIZE);
+        const { data: buffer, contentType } = await downloadImage(input);
         // 校验下载后的文件大小
         if (buffer.length > MAX_IMAGE_SIZE) {
             throw new Error(`下载的图片大小 ${(buffer.length / 1024 / 1024).toFixed(1)}MB，超过 ${MAX_IMAGE_SIZE / 1024 / 1024}MB 限制。请使用更小的图片或压缩后重试。`);
@@ -693,14 +487,8 @@ async function processImageInput(imageInput) {
 
     // 安全检查
     const resolved = path.resolve(filePath);
-    if (!isPathInside(resolved, PROJECT_IMAGE_ROOT)) {
-        throw new Error('本地图片路径仅允许位于项目 image/ 目录下');
-    }
     if (!fs.existsSync(resolved)) {
         throw new Error(`图片文件不存在: ${filePath}`);
-    }
-    if (!fs.statSync(resolved).isFile()) {
-        throw new Error(`图片路径不是文件: ${filePath}`);
     }
 
     debugLog('Image input: local file', resolved);
@@ -734,7 +522,7 @@ function normalizeImageItem(item) {
     if (typeof item !== 'object') return {};
 
     return {
-        b64_json: item.b64_json || item.base64 || item.image_base64 || (typeof item.data === 'string' ? item.data : undefined),
+        b64_json: item.b64_json || item.base64 || item.image_base64,
         data_uri: item.data_uri || item.dataUrl || item.image_data || item.image,
         url: item.url || item.image_url
     };
@@ -838,108 +626,39 @@ function buildImageGenerationUrls() {
     return [...new Set(urls)];
 }
 
+/**
+ * 判断错误是否属于"渠道不支持 images 端点，需要走 Chat Completions 模式"的情况
+ * @param {Error|string} error - 错误对象或错误消息
+ * @returns {boolean}
+ */
 function shouldFallbackToChatCompletions(error) {
     const msg = error && error.message ? error.message : String(error);
-    return /tool[_\s.-]?choice.*not found|image_generation.*not found|tools?.*parameter/i.test(msg);
+    // 典型特征：渠道把图像生成实现为 chat completions 的内置 tool
+    return /tool.?choice.*not found|image_generation.*not found|tools.*parameter/i.test(msg);
 }
 
-function extractImageFromChatResponse(parsed) {
-    if (Array.isArray(parsed?.data) && parsed.data.length > 0) {
-        return normalizeImageApiResponseBody(parsed);
-    }
-
-    const choices = parsed?.choices;
-    if (Array.isArray(choices) && choices.length > 0) {
-        const message = choices[0]?.message;
-
-        if (Array.isArray(message?.tool_calls)) {
-            for (const toolCall of message.tool_calls) {
-                if (toolCall?.function?.name !== 'image_generation') continue;
-
-                let toolArgs = {};
-                try {
-                    toolArgs = JSON.parse(toolCall.function.arguments || '{}');
-                } catch {
-                    toolArgs = {};
-                }
-
-                if (toolArgs.url || toolArgs.b64_json || toolArgs.image_url || toolArgs.base64 || toolArgs.data_uri) {
-                    return { data: [normalizeImageItem(toolArgs)] };
-                }
-                if (typeof toolArgs.result === 'string') {
-                    return { data: [normalizeImageItem(toolArgs.result)] };
-                }
-                if (toolArgs.result && typeof toolArgs.result === 'object') {
-                    return normalizeImageApiResponseBody(toolArgs.result);
-                }
-            }
-        }
-
-        if (typeof message?.content === 'string') {
-            const content = message.content.trim();
-            try {
-                const contentParsed = JSON.parse(content);
-                if (contentParsed.data || contentParsed.url || contentParsed.b64_json || contentParsed.data_uri) {
-                    return normalizeImageApiResponseBody(contentParsed);
-                }
-            } catch {
-                // Keep checking non-JSON response variants below.
-            }
-
-            if (/^https?:\/\/\S+/i.test(content) || /^data:image\/[^;]+;base64,/i.test(content)) {
-                return { data: [normalizeImageItem(content)] };
-            }
-
-            const dataUriMatch = content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/i);
-            if (dataUriMatch) {
-                return { data: [normalizeImageItem(dataUriMatch[0].replace(/\s+/g, ''))] };
-            }
-
-            const urlMatch = content.match(/https?:\/\/[^\s"'<>]+/i);
-            if (urlMatch) {
-                return { data: [{ url: urlMatch[0] }] };
-            }
-        }
-
-        if (Array.isArray(message?.content)) {
-            const imageItems = [];
-            for (const part of message.content) {
-                if (part?.type === 'image_url' && part.image_url?.url) {
-                    imageItems.push(normalizeImageItem(part.image_url.url));
-                } else if (part?.type === 'image' && (part.url || part.b64_json || part.data_uri || part.data)) {
-                    imageItems.push(normalizeImageItem(part));
-                }
-            }
-            if (imageItems.length > 0) {
-                return { data: imageItems };
-            }
-        }
-    }
-
-    if (parsed?.image || parsed?.image_url || parsed?.b64_json || parsed?.url || parsed?.data_uri) {
-        return { data: [normalizeImageItem(parsed)] };
-    }
-
-    throw new Error(`Chat Completions 模式：无法从响应中提取图像数据。响应结构: ${JSON.stringify(parsed).substring(0, 500)}`);
-}
-
+/**
+ * 通过 Chat Completions API + 内置 image_generation tool 生成图片
+ *
+ * 某些 OpenAI 兼容渠道不提供 /v1/images/generations 端点，
+ * 而是要求通过 /v1/chat/completions 配合 tool_choice 来触发图像生成。
+ *
+ * @param {object} params - 生成参数
+ * @returns {Promise<object>} 标准化的图像 API 响应体（与 images/generations 格式一致）
+ */
 async function callImageAPIViaChatCompletions(params) {
     const normalizedBase = OPENAI_BASE_URL.replace(/\/+$/, '');
     const apiUrl = `${normalizedBase}/v1/chat/completions`;
-    const promptWithParams = [
-        params.prompt,
-        `size=${params.size}`,
-        `quality=${params.quality}`,
-        `background=${params.background}`,
-        `n=${params.n}`
-    ].join('\n');
 
+    debugLog('Chat Completions mode: using', apiUrl);
+
+    // 构建 Chat Completions 请求体，使用内置 image_generation tool
     const requestBody = {
         model: GPT_IMAGE_MODEL,
         messages: [
             {
                 role: 'user',
-                content: promptWithParams
+                content: params.prompt
             }
         ],
         tools: [
@@ -947,15 +666,30 @@ async function callImageAPIViaChatCompletions(params) {
                 type: 'function',
                 function: {
                     name: 'image_generation',
-                    description: 'Generate image data or an image URL from a prompt.',
+                    description: 'Generate an image based on the prompt',
                     parameters: {
                         type: 'object',
                         properties: {
-                            prompt: { type: 'string' },
-                            size: { type: 'string' },
-                            quality: { type: 'string' },
-                            background: { type: 'string' },
-                            n: { type: 'number' }
+                            prompt: {
+                                type: 'string',
+                                description: 'The image generation prompt'
+                            },
+                            size: {
+                                type: 'string',
+                                description: 'Image size in WIDTHxHEIGHT format'
+                            },
+                            quality: {
+                                type: 'string',
+                                description: 'Image quality: low, medium, high, auto'
+                            },
+                            background: {
+                                type: 'string',
+                                description: 'Background: transparent, opaque, auto'
+                            },
+                            n: {
+                                type: 'number',
+                                description: 'Number of images to generate'
+                            }
                         },
                         required: ['prompt']
                     }
@@ -969,7 +703,6 @@ async function callImageAPIViaChatCompletions(params) {
     };
 
     const bodyStr = JSON.stringify(requestBody);
-    debugLog('Chat Completions Request URL:', apiUrl);
     debugLog('Chat Completions Request Body:', bodyStr.substring(0, 800));
 
     const response = await httpRequestWithRetry(apiUrl, {
@@ -983,18 +716,144 @@ async function callImageAPIViaChatCompletions(params) {
         timeout: 300000
     }, bodyStr);
 
+    debugLog('Chat Completions Response Status:', response.statusCode);
+    debugLog('Chat Completions Response Body (first 800 chars):', response.body.substring(0, 800));
+
     if (response.statusCode !== 200) {
+        // 复用标准错误解析
         parseApiResponse(response);
     }
 
     let parsed;
     try {
         parsed = JSON.parse(response.body);
-    } catch {
+    } catch (e) {
         throw new Error(`Chat Completions API 返回了无效的 JSON 响应: ${response.body.substring(0, 200)}`);
     }
 
+    // 从 Chat Completions 响应中提取图像数据
+    // 响应格式可能有多种变体，需要逐一尝试
     return extractImageFromChatResponse(parsed);
+}
+
+/**
+ * 从 Chat Completions 响应中提取图像数据，转换为标准 images API 格式
+ *
+ * 兼容多种渠道的响应格式：
+ * 1. choices[0].message.tool_calls[0].function.arguments 中包含图片数据
+ * 2. choices[0].message.content 中直接包含 base64 或 URL
+ * 3. 响应顶层直接包含 data 数组（某些渠道的透传模式）
+ *
+ * @param {object} parsed - 解析后的 Chat Completions 响应
+ * @returns {object} 标准化的 { data: [{b64_json?, url?}] } 格式
+ */
+function extractImageFromChatResponse(parsed) {
+    // 情况 0：响应本身已经是标准 images API 格式（某些渠道直接透传）
+    if (Array.isArray(parsed.data) && parsed.data.length > 0) {
+        debugLog('Chat Completions: response already in standard images format');
+        return normalizeImageApiResponseBody(parsed);
+    }
+
+    // 情况 1：从 tool_calls 中提取
+    const choices = parsed.choices;
+    if (Array.isArray(choices) && choices.length > 0) {
+        const message = choices[0].message;
+
+        if (message) {
+            // 1a: tool_calls 中的 function arguments
+            if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+                for (const toolCall of message.tool_calls) {
+                    if (toolCall.function && toolCall.function.name === 'image_generation') {
+                        let toolArgs;
+                        try {
+                            toolArgs = JSON.parse(toolCall.function.arguments);
+                        } catch {
+                            toolArgs = {};
+                        }
+
+                        // 某些渠道在 arguments 中返回图片数据
+                        if (toolArgs.url || toolArgs.b64_json || toolArgs.image_url || toolArgs.base64) {
+                            debugLog('Chat Completions: extracted image from tool_calls arguments');
+                            return { data: [normalizeImageItem(toolArgs)] };
+                        }
+
+                        // 某些渠道在 arguments.result 中返回
+                        if (toolArgs.result) {
+                            if (typeof toolArgs.result === 'string') {
+                                return { data: [normalizeImageItem(toolArgs.result)] };
+                            }
+                            if (typeof toolArgs.result === 'object') {
+                                return normalizeImageApiResponseBody(toolArgs.result);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1b: message.content 中包含图片数据
+            if (message.content) {
+                // content 可能是字符串或数组
+                if (typeof message.content === 'string') {
+                    const content = message.content.trim();
+
+                    // 尝试解析为 JSON
+                    try {
+                        const contentParsed = JSON.parse(content);
+                        if (contentParsed.data || contentParsed.url || contentParsed.b64_json) {
+                            debugLog('Chat Completions: extracted image from message.content (JSON string)');
+                            return normalizeImageApiResponseBody(contentParsed);
+                        }
+                    } catch {
+                        // 不是 JSON，检查是否是 URL 或 base64
+                    }
+
+                    // 检查是否直接是 URL
+                    if (/^https?:\/\/.+\.(png|jpg|jpeg|webp|gif)/i.test(content)) {
+                        debugLog('Chat Completions: extracted image URL from message.content');
+                        return { data: [{ url: content }] };
+                    }
+
+                    // 检查是否是 base64 数据
+                    if (/^data:image\/[^;]+;base64,/i.test(content)) {
+                        debugLog('Chat Completions: extracted data URI from message.content');
+                        return { data: [normalizeImageItem(content)] };
+                    }
+
+                    // 尝试从文本中提取 URL
+                    const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(png|jpg|jpeg|webp|gif)(\?[^\s"'<>]*)?/i);
+                    if (urlMatch) {
+                        debugLog('Chat Completions: extracted image URL from message.content text');
+                        return { data: [{ url: urlMatch[0] }] };
+                    }
+                }
+
+                // content 是数组格式（multimodal response）
+                if (Array.isArray(message.content)) {
+                    const imageItems = [];
+                    for (const part of message.content) {
+                        if (part.type === 'image_url' && part.image_url?.url) {
+                            imageItems.push(normalizeImageItem(part.image_url.url));
+                        } else if (part.type === 'image' && (part.url || part.b64_json || part.data)) {
+                            imageItems.push(normalizeImageItem(part));
+                        }
+                    }
+                    if (imageItems.length > 0) {
+                        debugLog('Chat Completions: extracted', imageItems.length, 'image(s) from multimodal content');
+                        return { data: imageItems };
+                    }
+                }
+            }
+        }
+    }
+
+    // 情况 2：某些渠道在顶层返回非标准字段
+    if (parsed.image || parsed.image_url || parsed.b64_json || parsed.url) {
+        debugLog('Chat Completions: extracted image from top-level fields');
+        return { data: [normalizeImageItem(parsed)] };
+    }
+
+    // 无法提取图像数据
+    throw new Error(`Chat Completions 模式：无法从响应中提取图像数据。响应结构: ${JSON.stringify(parsed).substring(0, 500)}`);
 }
 
 /**
@@ -1003,15 +862,16 @@ async function callImageAPIViaChatCompletions(params) {
  * 兼容三类渠道：
  * 1. 标准端点：/v1/images/generations
  * 2. 某些反代端点：/v1/images
- * 3. Chat Completions 兼容端点：/v1/chat/completions + image_generation tool
+ * 3. Chat Completions 模式：/v1/chat/completions + image_generation tool
  *
  * @param {object} params - 生成参数
  * @returns {Promise<object>} API 响应体
  */
 async function callImageAPI(params) {
+    // 如果配置了直接使用 Chat Completions 模式，跳过标准端点尝试
     if (USE_CHAT_COMPLETIONS_MODE) {
-        debugLog('USE_CHAT_COMPLETIONS_MODE=true, using Chat Completions image path.');
-        return callImageAPIViaChatCompletions(params);
+        debugLog('USE_CHAT_COMPLETIONS_MODE=true, directly using Chat Completions path');
+        return await callImageAPIViaChatCompletions(params);
     }
 
     const apiUrls = buildImageGenerationUrls();
@@ -1059,12 +919,13 @@ async function callImageAPI(params) {
             lastError = error;
             const msg = error && error.message ? error.message : String(error);
 
+            // 检测是否需要回退到 Chat Completions 模式
             if (shouldFallbackToChatCompletions(error)) {
-                debugLog(`Images endpoint returned a chat-tool compatibility error, falling back to Chat Completions. Error: ${msg}`);
-                return callImageAPIViaChatCompletions(params);
+                debugLog(`Standard images endpoint failed with tool_choice error, falling back to Chat Completions mode. Error: ${msg}`);
+                return await callImageAPIViaChatCompletions(params);
             }
 
-            // 仅对明显的“端点不匹配”错误尝试下一个候选端点
+            // 仅对明显的"端点不匹配"错误尝试下一个候选端点
             if ((/HTTP 404|HTTP 405|404 Not Found|405 Method Not Allowed/i.test(msg)) && i < apiUrls.length - 1) {
                 debugLog(`Endpoint ${apiUrl} failed with endpoint-like error, trying next candidate. Error: ${msg}`);
                 continue;
@@ -1200,14 +1061,14 @@ async function callEditAPI(params) {
 
 /**
  * 将图像数据保存到本地文件系统
- *
+ * 
  * @param {Buffer} imageBuffer - 图像二进制数据
  * @param {number} index - 图片序号（用于多图场景的日志标识）
  * @param {string} [contentType] - HTTP Content-Type（用于推断扩展名）
  * @returns {object} { localPath, accessibleUrl, serverPath, fileName }
  */
 function saveImageToLocal(imageBuffer, index = 0, contentType = '') {
-    const imageDir = GPTIMAGEGEN_OUTPUT_DIR;
+    const imageDir = path.join(PROJECT_BASE_PATH, 'image', 'gptimagegen');
     const ext = inferImageExtension(contentType);
     const fileName = `${crypto.randomUUID()}.${ext}`;
     const localPath = path.join(imageDir, fileName);
@@ -1245,7 +1106,7 @@ function saveImageToLocal(imageBuffer, index = 0, contentType = '') {
 
 /**
  * 根据 API 结果构建标准化的 VCP 插件响应
- *
+ * 
  * @param {object} apiResult - API 返回的响应体
  * @param {object} params - 原始请求参数
  * @returns {Promise<object>} VCP 标准响应对象
@@ -1254,7 +1115,7 @@ async function buildResponse(apiResult, params) {
     const content = [];
     const imageUrls = [];
     const savedImages = [];
-    const savedBuffers = [];
+    const savedBuffers = []; // 仅在 showBase64 时使用
 
     for (let i = 0; i < apiResult.data.length; i++) {
         const item = apiResult.data[i];
@@ -1289,6 +1150,7 @@ async function buildResponse(apiResult, params) {
         savedImages.push(savedInfo);
         imageUrls.push(savedInfo.accessibleUrl);
 
+        // 仅在需要 showBase64 时保留 buffer 引用
         if (params.showBase64) {
             savedBuffers.push({ buffer: imageBuffer, contentType });
         }
@@ -1300,20 +1162,19 @@ async function buildResponse(apiResult, params) {
         throw new Error('API 未返回任何有效的图像数据');
     }
 
-    // 构建文本内容
+    // 构建文本内容（与 DoubaoGen 风格一致，简洁明了）
     const imageListText = savedImages.map((img, i) => {
         const idx = savedImages.length > 1 ? ` ${i + 1}` : '';
         return `- 图片${idx} URL: ${img.accessibleUrl}\n- 图片${idx} 服务器路径: ${img.serverPath}\n- 图片${idx} 文件名: ${img.fileName}`;
     }).join('\n');
 
-    const textContent = `图片已成功生成！\n\n` +
-        `生成信息：\n` +
+    const textContent = `图片已成功生成！\n` +
         `- 提示词: ${params.prompt}\n` +
         `- 尺寸: ${params.size}\n` +
         `- 质量: ${params.quality}\n` +
         `- 背景: ${params.background}\n` +
-        `- 数量: ${savedImages.length}\n\n` +
-        `图片详情：\n${imageListText}\n\n` +
+        `- 数量: ${savedImages.length}\n` +
+        `${imageListText}\n` +
         `请将生成好的图片转发给用户哦。`;
 
     content.push({
@@ -1321,10 +1182,11 @@ async function buildResponse(apiResult, params) {
         text: textContent
     });
 
-    // 只有显式开启 showbase64 时，才返回 base64 图片数据供多模态模型直接查看。
+    // 只有当 showbase64 为 true 时才添加 base64 图片数据
     if (params.showBase64) {
-        for (const { buffer, contentType } of savedBuffers) {
-            const ext = inferImageExtension(contentType);
+        for (let i = 0; i < savedBuffers.length; i++) {
+            const { buffer, contentType: ct } = savedBuffers[i];
+            const ext = inferImageExtension(ct);
             const mimeMap = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
             const imageMimeType = mimeMap[ext] || 'image/png';
             content.push({
@@ -1336,7 +1198,7 @@ async function buildResponse(apiResult, params) {
         }
     }
 
-    // 构建 details 对象
+    // 构建 details 对象（不包含任何 base64 数据，避免输出膨胀）
     const details = {
         serverPath: savedImages.map(img => img.serverPath),
         fileName: savedImages.map(img => img.fileName),
@@ -1407,7 +1269,8 @@ async function main() {
         }
 
         // 获取命令类型（默认 generate）
-        const showBase64 = args.showbase64 === true || args.showbase64 === 'true' || args.showBase64 === true || args.showBase64 === 'true';
+        // 解析 showbase64 参数，默认为 false
+        const showBase64 = args.showbase64 === 'true' || args.showbase64 === true;
 
         const command = (args.command || args.Command || args.cmd || 'generate').toLowerCase();
         // 对 invocationCommands 的 commandIdentifier 做兼容

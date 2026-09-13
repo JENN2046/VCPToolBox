@@ -1,6 +1,7 @@
 {
   "manifestVersion": "1.0.0",
   "name": "AgentAssistant",
+  "runtimeLifecycle": 2,
   "displayName": "女仆团协作插件",
   "version": "2.0.0",
   "description": "允许莱恩先生或其主AI调用家中配置的专属女仆Agent，进行专业领域咨询与高效协作。支持即时通讯、定时发送的“未来电话”、异步委托模式，以及通过 inject_tools 为单次通讯临时注入工具组。注入工具会被拼接到 system 尾部并明确标注为临时工具组，不影响 Agent 的长期固定系统提示词。",
@@ -10,7 +11,8 @@
     "script": "AgentAssistant.js"
   },
   "communication": {
-    "protocol": "direct"
+    "protocol": "direct",
+    "timeout": 358000
   },
   "webSocketPush": {
     "enabled": true,

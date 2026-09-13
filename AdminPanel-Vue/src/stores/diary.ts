@@ -15,7 +15,30 @@ export interface DiaryNote {
   preview?: string
 }
 
+export type DiaryResourceMode = 'diary' | 'knowledge'
+
+const RESOURCE_CONFIG = {
+  diary: {
+    label: '日记',
+    folderLabel: '日记本',
+    itemLabel: '日记',
+    basePath: '/admin_api/dailynotes',
+    enableRagTags: true,
+    enableDiscovery: true,
+  },
+  knowledge: {
+    label: '知识库',
+    folderLabel: '知识库',
+    itemLabel: '文件',
+    basePath: '/admin_api/knowledge',
+    enableRagTags: true,
+    enableDiscovery: false,
+  },
+} as const
+
 export const useDiaryStore = defineStore('diary', () => {
+  const resourceMode = ref<DiaryResourceMode>('diary')
+  const resourceConfig = computed(() => RESOURCE_CONFIG[resourceMode.value])
   const folders = ref<string[]>([])
   const selectedFolder = ref('')
 
@@ -48,7 +71,7 @@ export const useDiaryStore = defineStore('diary', () => {
 
   async function loadFolders() {
     try {
-      const data = await diaryApi.getFolders()
+      const data = await diaryApi.getFolders(undefined, resourceConfig.value.basePath)
       folders.value = data.map((folder) => folder.name)
 
       if (folders.value.length > 0) {
@@ -63,7 +86,7 @@ export const useDiaryStore = defineStore('diary', () => {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      showMessage(`加载知识库列表失败：${errorMessage}`, 'error')
+      showMessage(`加载${resourceConfig.value.folderLabel}列表失败：${errorMessage}`, 'error')
       folders.value = []
     }
   }
@@ -72,7 +95,12 @@ export const useDiaryStore = defineStore('diary', () => {
     selectedFolder.value = folder
     selectedNotes.value = []
     moveTargetFolder.value = ''
-    await Promise.all([loadNotes(), loadRagTags()])
+    if (resourceConfig.value.enableRagTags) {
+      await Promise.all([loadNotes(), loadRagTags()])
+    } else {
+      resetRagTagsConfig()
+      await loadNotes()
+    }
   }
 
   async function loadNotes() {
@@ -83,7 +111,7 @@ export const useDiaryStore = defineStore('diary', () => {
 
     loadingNotes.value = true
     try {
-      const data = await diaryApi.getDiaryList({ folder, search })
+      const data = await diaryApi.getDiaryList({ folder, search, basePath: resourceConfig.value.basePath })
       if (requestId !== notesRequestId || folder !== selectedFolder.value) {
         return
       }
@@ -100,7 +128,7 @@ export const useDiaryStore = defineStore('diary', () => {
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error)
-      notesStatus.value = `加载日记列表失败：${errorMessage}`
+      notesStatus.value = `加载${resourceConfig.value.itemLabel}列表失败：${errorMessage}`
       notesStatusType.value = 'error'
       notes.value = []
     } finally {
@@ -111,10 +139,11 @@ export const useDiaryStore = defineStore('diary', () => {
   }
 
   async function loadRagTags() {
-    if (!selectedFolder.value) return
+    if (!selectedFolder.value || !resourceConfig.value.enableRagTags) return
 
     try {
-      ragTagsConfig.value = await diaryApi.getRagTagsConfig(selectedFolder.value)
+      const endpoint = resourceMode.value === 'knowledge' ? '/admin_api/tdb-tags' : '/admin_api/rag-tags'
+      ragTagsConfig.value = await diaryApi.getRagTagsConfig(selectedFolder.value, undefined, endpoint)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       showMessage(`加载 RAG 标签失败：${errorMessage}`, 'error')
@@ -156,24 +185,33 @@ export const useDiaryStore = defineStore('diary', () => {
     ragTagsConfig.value.tags.splice(index, 1)
   }
 
+  function updateDescription(value: string) {
+    ragTagsConfig.value.description = value
+  }
+
   async function saveRagTags() {
     if (!selectedFolder.value) return false
 
     try {
-      const config: { tags: string[]; threshold?: number } = {
+      const config: { tags: string[]; threshold?: number; description?: string } = {
         tags: ragTagsConfig.value.tags.filter((tag) => tag.trim())
       }
       if (ragTagsConfig.value.thresholdEnabled) {
         config.threshold = ragTagsConfig.value.threshold
       }
+      if (ragTagsConfig.value.description?.trim()) {
+        config.description = ragTagsConfig.value.description.trim()
+      }
 
+      const endpoint = resourceMode.value === 'knowledge' ? '/admin_api/tdb-tags' : '/admin_api/rag-tags'
       await diaryApi.saveRagTagsConfig(selectedFolder.value, {
         thresholdEnabled: ragTagsConfig.value.thresholdEnabled,
         threshold: ragTagsConfig.value.threshold,
-        tags: config.tags
+        tags: config.tags,
+        description: config.description
       }, {
         loadingKey: 'diary.rag-tags.save'
-      })
+      }, endpoint)
 
       ragTagsStatus.value = 'RAG 标签已保存！'
       ragTagsStatusType.value = 'success'
@@ -189,10 +227,10 @@ export const useDiaryStore = defineStore('diary', () => {
 
   async function getNoteContent(file: string, folder = selectedFolder.value): Promise<string> {
     if (!folder) {
-      throw new Error('请先选择一个知识库')
+      throw new Error(`请先选择一个${resourceConfig.value.folderLabel}`)
     }
 
-    return diaryApi.getDiaryContent(`${folder}/${file}`)
+    return diaryApi.getDiaryContent(`${folder}/${file}`, undefined, resourceConfig.value.basePath)
   }
 
   async function saveNoteContent(file: string, content: string, folder = selectedFolder.value): Promise<boolean> {
@@ -204,10 +242,11 @@ export const useDiaryStore = defineStore('diary', () => {
         content,
         {
           loadingKey: 'diary.note.save'
-        }
+        },
+        resourceConfig.value.basePath
       )
 
-      showMessage('日记已保存！', 'success')
+      showMessage(`${resourceConfig.value.itemLabel}已保存！`, 'success')
       await loadNotes()
       return true
     } catch (error) {
@@ -224,13 +263,13 @@ export const useDiaryStore = defineStore('diary', () => {
     try {
       const response = await diaryApi.deleteDiary([`${selectedFolder.value}/${file}`], {
         loadingKey: 'diary.note.delete'
-      })
+      }, resourceConfig.value.basePath)
 
       if ((response.errors || []).length > 0) {
         throw new Error(formatOperationErrors(response.errors || []))
       }
 
-      notesStatus.value = '日记已删除'
+      notesStatus.value = `${resourceConfig.value.itemLabel}已删除`
       notesStatusType.value = 'success'
       await loadNotes()
       return true
@@ -250,7 +289,8 @@ export const useDiaryStore = defineStore('diary', () => {
         selectedNotes.value.map((file) => `${selectedFolder.value}/${file}`),
         {
         loadingKey: 'diary.notes.batch-delete'
-        }
+        },
+        resourceConfig.value.basePath
       )
 
       const errors = response.errors || []
@@ -262,7 +302,7 @@ export const useDiaryStore = defineStore('diary', () => {
         notesStatusType.value = 'error'
         showMessage(notesStatus.value, 'error')
       } else {
-        notesStatus.value = '已批量删除选中的日记'
+        notesStatus.value = `已批量删除选中的${resourceConfig.value.itemLabel}`
         notesStatusType.value = 'success'
         selectedNotes.value = []
       }
@@ -289,7 +329,8 @@ export const useDiaryStore = defineStore('diary', () => {
         moveTargetFolder.value,
         {
         loadingKey: 'diary.notes.batch-move'
-        }
+        },
+        resourceConfig.value.basePath
       )
 
       const errors = response.errors || []
@@ -302,7 +343,7 @@ export const useDiaryStore = defineStore('diary', () => {
         notesStatusType.value = 'error'
         showMessage(notesStatus.value, 'error')
       } else {
-        notesStatus.value = `已移动 ${movedCount} 篇日记到 ${moveTargetFolder.value}`
+        notesStatus.value = `已移动 ${movedCount} 个${resourceConfig.value.itemLabel}到 ${moveTargetFolder.value}`
         notesStatusType.value = 'success'
         selectedNotes.value = []
         moveTargetFolder.value = ''
@@ -318,7 +359,14 @@ export const useDiaryStore = defineStore('diary', () => {
     }
   }
 
-  async function init() {
+  async function init(mode: DiaryResourceMode = 'diary') {
+    resourceMode.value = mode
+    selectedFolder.value = ''
+    notes.value = []
+    selectedNotes.value = []
+    moveTargetFolder.value = ''
+    searchQuery.value = ''
+    resetRagTagsConfig()
     await loadFolders()
   }
 
@@ -330,6 +378,8 @@ export const useDiaryStore = defineStore('diary', () => {
   }
 
   return {
+    resourceMode,
+    resourceConfig,
     folders,
     selectedFolder,
     notes,
@@ -356,6 +406,7 @@ export const useDiaryStore = defineStore('diary', () => {
     addTag,
     updateTag,
     removeTag,
+    updateDescription,
     saveRagTags,
     getNoteContent,
     saveNoteContent,

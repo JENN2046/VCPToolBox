@@ -7,7 +7,7 @@
             "allowedArgs": [
                 "status", "is-active", "is-enabled", "list-units", "list-unit-files",
                 "start", "stop", "restart", "reload", "enable", "disable",
-                "--type=service", "--state=running", "--state=failed", "--no-pager", "-l"
+                "--user", "--type=service", "--state=running", "--state=failed", "--no-pager", "-l"
             ],
             "noPathRequired": true,
             "riskLevel": "high",

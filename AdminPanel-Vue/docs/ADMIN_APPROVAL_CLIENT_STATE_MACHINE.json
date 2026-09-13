@@ -1,0 +1,79 @@
+{
+  "status": "S2-B-A2 corrective candidate; no production activation",
+  "owner": "AdminPanel presentation only",
+  "identity": "Host requestId",
+  "states": [
+    "ACTIVE",
+    "SENDING",
+    "DELIVERY_UNKNOWN",
+    "ACCEPTED",
+    "DENIED",
+    "TERMINAL_OTHER_CLIENT",
+    "EXPIRED",
+    "CANCELLED",
+    "STALE_UNKNOWN",
+    "LOCAL_DEADLINE_REACHED",
+    "ERROR",
+    "ACTIVE_RETRY_REQUIRES_RECONNECT"
+  ],
+  "host_terminal": [
+    "ALLOWED",
+    "DENIED",
+    "EXPIRED",
+    "CANCELLED"
+  ],
+  "separate_facts": [
+    "state",
+    "hostTerminal",
+    "localDecisionAccepted",
+    "attemptedDecision",
+    "acceptedSubmittedDecision"
+  ],
+  "transitions": {
+    "click": "ACTIVE→SENDING; disable both actions before send",
+    "send_success": "SENDING unchanged",
+    "send_failure_or_ack_timeout": "DELIVERY_UNKNOWN; bounded sync, never decision replay",
+    "terminal": "adopt Host terminal, preserve bounded pending ACK attribution if any",
+    "own_accepted_ack": "Preserve sole submitted identity for current request/generation, including after bounded ACK wait. Local epoch is diagnostic, not Host-correlated.",
+    "local_deadline": "ACTIVE→LOCAL_DEADLINE_REACHED; no hostTerminal",
+    "sync_active": "If request was submitted on current generation: quarantine and require fresh capability/socket/sync. Otherwise new explicit human click may be allowed.",
+    "sync_terminal": "adopt Host terminal",
+    "sync_absent": "STALE_UNKNOWN for previously local nonterminal",
+    "sync_timeout": "snapshot quarantine; fresh connection required",
+    "host_terminal_conflict": "ERROR/PROTOCOL_STATE_CONFLICT for incompatible Host terminals OR acceptedSubmittedDecision versus terminal/snapshot; preserve received Host evidence; no false conflict for unaccepted attempts",
+    "ambiguous_retry": "Same request/generation cannot send again; shared socket rotation requires fresh trusted sync for all cards."
+  },
+  "limits": {
+    "ack_wait_ms": 10000,
+    "sync_wait_ms": 10000,
+    "wall_clock_offset_ms": 86400000,
+    "approval_records": 1280,
+    "ordinary_notifications": 200,
+    "reason_chars": 1000
+  },
+  "transport": {
+    "response_version": 1,
+    "echo_host_digest": true,
+    "sync_each_connection": true,
+    "fresh_capability_each_connection": true,
+    "old_generation_callbacks": "ignored; current trusted sync recovers missed terminals",
+    "automatic_decision_replay": false
+  },
+  "authority": {
+    "source": "Host authenticated Admin capability only",
+    "surface_payload_authority": false,
+    "vcp_key_human_authority": false,
+    "ack_is_downstream_success": false
+  },
+  "decision_identity": {
+    "immutable_fields": [
+      "requestId",
+      "generation",
+      "decisionEpoch",
+      "decision=ALLOW|DENY"
+    ],
+    "promotion": "Matching current request/generation sole submitted decision plus ACCEPTED ACK; timeout ends waiting, not evidence retention.",
+    "lifetime": "Accepted proof survives ACK-wait cleanup, sync and connection replacement; old connection cannot create new proof",
+    "retry": "Fresh capability + strictly increasing socket generation + successful ACTIVE sync + new explicit click; one decision per request/generation"
+  }
+}

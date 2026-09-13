@@ -262,39 +262,26 @@ module.exports = {
 pm2 start ecosystem.config.js
 ```
 
-### 3.3 Systemd 服务 (Linux)
+### 3.3 systemd user 服务（Linux，推荐）
 
 ```bash
-# 创建服务文件
-sudo nano /etc/systemd/system/vcptoolbox.service
+# 先按实际安装位置调整模板中的 WorkingDirectory/EnvironmentFile/ExecStart
+mkdir -p ~/.config/systemd/user
+cp deploy/systemd/vcp-*.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now vcp-main.service vcp-admin.service
+systemctl --user status vcp-main.service
+journalctl --user -u vcp-main.service -f
 ```
 
-```ini
-[Unit]
-Description=VCPToolBox Service
-After=network.target
+模板使用 `Type=notify`、10 分钟启动门限和 30 秒 watchdog。只有 Rust、SQLite、
+Python 必需能力、插件代际、HTTP 与 WebSocket 全部就绪后，主进程才发送
+`READY=1`。管理面板优先读取同一 user bus 中的 systemd unit；非 systemd
+环境才回退到 PM2。不要让 systemd 与 PM2 同时监督同一个实例。
 
-[Service]
-Type=simple
-User=vcptoolbox
-WorkingDirectory=/opt/VCPToolBox
-ExecStart=/usr/bin/node server.js
-Restart=on-failure
-RestartSec=10
-Environment=NODE_ENV=production
-Environment=TZ=Asia/Shanghai
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-# 启用并启动服务
-sudo systemctl daemon-reload
-sudo systemctl enable vcptoolbox
-sudo systemctl start vcptoolbox
-sudo systemctl status vcptoolbox
-```
+服务器需要在用户退出登录后继续运行时，可由管理员执行
+`sudo loginctl enable-linger <部署用户名>`。完整模板说明见
+[`deploy/systemd/README.md`](../deploy/systemd/README.md)。
 
 ---
 
@@ -622,16 +609,17 @@ sudo chown -R 1000:1000 ./dailynote ./image ./VectorStore
 
 | 日志类型 | 位置 | 说明 |
 |----------|------|------|
-| 主服务日志 | 控制台 / PM2 | 启动、请求、错误 |
+| 主服务 stdout/stderr | journald | 启动、崩溃、关闭阶段与 systemd 监督日志 |
 | VCPLog 插件 | `Plugin/VCPLog/log/` | 工具调用记录 |
-| PM2 日志 | `~/.pm2/logs/` | PM2 管理的进程日志 |
+| 应用业务日志 | 现有旋转日志目录 | 请求、插件与业务事件 |
+| PM2 日志 | `~/.pm2/logs/` | 仅非 systemd 兼容部署 |
 
 ```bash
 # 查看实时日志
-pm2 logs vcptoolbox --lines 100
+journalctl --user -u vcp-main.service -n 100 -f
 
-# 查看 PM2 错误日志
-cat ~/.pm2/logs/vcptoolbox-error.log
+# 查看本次启动日志
+journalctl --user -u vcp-main.service -b
 
 # 查看 VCPLog
 ls -la Plugin/VCPLog/log/
@@ -659,8 +647,11 @@ DEBUG=VCP* node server.js
 #### 健康检查
 
 ```bash
-# 检查服务是否响应
-curl http://localhost:6005/health
+# 检查 HTTP/事件循环存活
+curl http://localhost:6005/health/live
+
+# 检查必需组件与当前插件代际就绪
+curl --fail http://localhost:6005/health/ready
 
 # 检查 API 连通性
 curl -H "Authorization: Bearer YOUR_KEY" \
@@ -743,7 +734,7 @@ grep "POST /v1/chat" ~/.pm2/logs/vcptoolbox-out.log | wc -l
 访问 `http://<服务器IP>:6005/AdminPanel` 查看：
 
 - 实时 CPU/内存使用率
-- PM2 进程状态
+- systemd user unit 状态（非 systemd 环境回退 PM2）
 - 系统日志
 - 插件状态
 
@@ -770,6 +761,49 @@ grep "POST /v1/chat" ~/.pm2/logs/vcptoolbox-out.log | wc -l
 ---
 
 ## 8. 备份与恢复
+
+### 8.0 `knowledge_base.sqlite` 在线直连红线
+
+> **主服务在线时，禁止 SQLite CLI、维护脚本、备份/分析程序或第二个
+> VCPToolBox 实例直接打开生产 `VectorStore/knowledge_base.sqlite`。**
+
+核心知识库由同一 Node.js 进程内的 `better-sqlite3` 与 Rust `rusqlite`
+两套 bundled SQLite runtime 共同访问。WAL 模式下存在两类致命风险：
+
+1. **同进程第二套 SQLite runtime 的 readwrite first-attach**
+   - POSIX `fcntl` 锁按进程记录，不同 bundled runtime 无法可靠识别同进程另一
+     runtime 持有的 DMS 锁。
+   - readwrite first-attach 可能缩短并重建 `-shm`；另一 runtime 若仍映射旧长度，
+     macOS 会直接产生不可恢复的 `SIGBUS`。
+   - 主服务通过 Rust 常驻 keepalive 与 JavaScript 候选连接“先验证、后发布、
+     再关闭旧连接”共同维持运行期连接引用，任何绕过该纪律的新直连入口都必须审计。
+
+2. **外部进程关闭 WAL 连接**
+   - 外部进程若被 SQLite 判定为可执行最后连接清理的一方，并成功取得所需排他锁，
+     可能 checkpoint 并删除 `-wal`/`-shm`。
+   - 在线主服务的连接、事务和锁状态会影响该分支是否成功，因此这不是每次关闭都
+     必然发生；但一旦发生，主服务可能继续映射旧 inode，后续连接则创建新 inode，
+     形成 WAL-index 双脑、写分叉或静默坏库。
+   - 只读打开不会执行 readwrite first-attach 截断，但不应据此把外部进程关闭或
+     在线文件操作视为安全。
+
+在线查看数据库必须走管理面板或主服务 API。必须使用 SQLite CLI 或仓库内维护脚本时：
+
+```bash
+# 1. 先按实际部署名称停止唯一主实例
+pm2 stop vcptoolbox
+
+# 2. 确认 Node/VCPToolBox 进程已经完全退出后再操作数据库
+pm2 status
+
+# 3. 操作完成后恢复唯一实例
+pm2 start vcptoolbox
+```
+
+不要在主服务在线时直接复制 `knowledge_base.sqlite`，也不要只复制主文件而忽略
+同代的 `-wal`。需要一致性备份时应先停服，或使用由主服务协调的 SQLite 备份接口。
+Rust keepalive 建立后，进程存活期间禁止对同一路径执行在线
+`rename + recreate` 换库；运行期损坏应停止业务并通过重启后的 quarantine 流程恢复。
 
 ### 8.1 需要备份的数据
 
@@ -893,7 +927,7 @@ diff config.env.example config.env
 pm2 start vcptoolbox
 
 # 7. 验证服务
-curl http://localhost:6005/health
+curl --fail http://localhost:6005/health/ready
 ```
 
 ### 9.3 Docker 升级
@@ -1021,7 +1055,7 @@ docker-compose up --build -d
 docker-compose logs -f
 
 # 健康检查
-curl http://localhost:6005/health
+curl --fail http://localhost:6005/health/ready
 ```
 
 ### B. 相关文档

@@ -29,8 +29,16 @@ backups/
 *.bak
 backup_*.bat
 
-# Test and documentation files are source assets for this panel.
+# Test files
+tests/
 coverage/
+*.test.ts
+*.spec.ts
+
+# Documentation
+*.md
+!README.md
+!docs/**/*.md
 
 # Lint output
 lint-output.txt

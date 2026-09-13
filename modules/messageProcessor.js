@@ -9,7 +9,7 @@ const dynamicToolRegistry = require('./dynamicToolRegistry.js');
 const sarPromptManager = require('./sarPromptManager.js');
 
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'Asia/Shanghai';
-const REPORT_TIMEZONE = process.env.REPORT_TIMEZONE || 'Asia/Shanghai'; // 新增：用于控制 AI 报告的时间，默认回退到中国时区
+const REPORT_TIMEZONE = process.env.REPORT_TIMEZONE || DEFAULT_TIMEZONE; // 用于控制 AI 报告的时间，默认回退到根目录 config.env 的 DEFAULT_TIMEZONE
 function resolveAgentDir() {
     const configPath = process.env.AGENT_DIR_PATH;
     if (!configPath || typeof configPath !== 'string' || configPath.trim() === '') {
@@ -53,15 +53,14 @@ function replaceFirstAliasPlaceholder(text, alias, replacementText, prefix = '')
     });
 }
 
-const SYSTEM_PROMPT_PREFIX_REGEX = /^\s*\[系统提示[:：]\]/;
+const SYSTEM_USER_PREFIX_REGEX = /^\s*\[系统[^\]]*\]/;
 const SYSTEM_NOTIFICATION_PREFIX_REGEX = /^\s*\[系统通知[:：]?\]/;
-const SYSTEM_EMPTY_PROMPT_PREFIX_REGEX = /^\s*\[系统提示[:：]\]无内容/;
-const SYSTEM_INVITATION_PREFIX_REGEX = /^\s*\[系统邀请指令[:：]\]/;
+const SYSTEM_EMPTY_PROMPT_PREFIX_REGEX = /^\s*\[系统提示:\]无内容/;
+const SYSTEM_INVITATION_PREFIX_REGEX = /^\s*\[系统邀请指令[:：]?\]/;
 const VCP_TOOL_PAYLOAD_PREFIX_REGEX = /^\s*<!-- VCP_TOOL_PAYLOAD -->/;
 
 function extractTextFromMessageContent(content) {
     if (typeof content === 'string') return content;
-
     if (Array.isArray(content)) {
         return content
             .filter(part => part && part.type === 'text' && typeof part.text === 'string')
@@ -69,11 +68,9 @@ function extractTextFromMessageContent(content) {
             .join('\n')
             .trim();
     }
-
     if (content && typeof content === 'object' && typeof content.text === 'string') {
         return content.text;
     }
-
     return '';
 }
 
@@ -85,8 +82,7 @@ function isBetaSystemUserText(text) {
     const normalizedText = String(text || '');
     if (!normalizedText) return false;
     if (isSystemNotificationText(normalizedText)) return false;
-    return SYSTEM_PROMPT_PREFIX_REGEX.test(normalizedText) ||
-        SYSTEM_INVITATION_PREFIX_REGEX.test(normalizedText);
+    return SYSTEM_USER_PREFIX_REGEX.test(normalizedText);
 }
 
 function stripSystemNotificationBlocks(text) {
@@ -110,29 +106,17 @@ function findLastRealUserMessage(messages, options = {}) {
         if (!message || message.role !== 'user') continue;
 
         const rawContent = extractTextFromMessageContent(message.content);
-        const trimmedRawContent = rawContent.trim();
+        if (!rawContent || !rawContent.trim()) continue;
 
-        if (!trimmedRawContent) {
-            return { index, message, rawContent, sanitizedContent: '' };
-        }
-
-        const notificationStrippedContent = stripSystemNotificationBlocks(rawContent);
-        if (
-            isSystemNotificationText(trimmedRawContent) &&
-            (!notificationStrippedContent || !notificationStrippedContent.trim())
-        ) {
+        if (skipEmptySystemPrompt && SYSTEM_EMPTY_PROMPT_PREFIX_REGEX.test(rawContent.trim())) {
             continue;
         }
 
-        if (skipEmptySystemPrompt && SYSTEM_EMPTY_PROMPT_PREFIX_REGEX.test(trimmedRawContent)) {
+        if (skipSystemInvitation && SYSTEM_INVITATION_PREFIX_REGEX.test(rawContent.trim())) {
             continue;
         }
 
-        if (skipSystemInvitation && SYSTEM_INVITATION_PREFIX_REGEX.test(trimmedRawContent)) {
-            continue;
-        }
-
-        if (skipToolPayload && VCP_TOOL_PAYLOAD_PREFIX_REGEX.test(trimmedRawContent)) {
+        if (skipToolPayload && VCP_TOOL_PAYLOAD_PREFIX_REGEX.test(rawContent.trim())) {
             continue;
         }
 
@@ -143,24 +127,16 @@ function findLastRealUserMessage(messages, options = {}) {
         const sanitizedContent = sanitizer
             ? sanitizer(rawContent, 'user')
             : stripSystemNotificationBlocks(rawContent);
-        const normalizedSanitizedContent = typeof sanitizedContent === 'string'
-            ? sanitizedContent
-            : String(sanitizedContent || '');
 
-        if (!normalizedSanitizedContent || !normalizedSanitizedContent.trim()) {
-            return {
-                index,
-                message,
-                rawContent,
-                sanitizedContent: ''
-            };
+        if (!sanitizedContent || !sanitizedContent.trim()) {
+            continue;
         }
 
         return {
             index,
             message,
             rawContent,
-            sanitizedContent: normalizedSanitizedContent.trim()
+            sanitizedContent: sanitizedContent.trim()
         };
     }
 
@@ -180,7 +156,8 @@ async function resolveAllVariables(text, model, role, context, processingStack =
     // CJK Radicals Supplement - Ideographic Description Characters 0x2E80 - 0x2FFF
     // Hiragana - CJK Unified Ideographs 0x3040 - 0x9FFF
     // 跳过标点符号 CJK Symbols and Punctuation 0x3000 - 0x303F
-    const placeholderRegex = /\{\{([a-zA-Z0-9_:@#%&^+_-\u2e80-\u2fff\u3040-\u9fff]+)\}\}/g;
+    // 扩展支持 @ 和 #%&^+-_ 符号
+    const placeholderRegex = /\{\{([a-zA-Z0-9_:@#%&^+_\-\u2e80-\u2fff\u3040-\u9fff]+)\}\}/g;
     const matches = [...processedText.matchAll(placeholderRegex)];
 
     // 提取所有潜在的别名（去除 "agent:" / "toolbox:" 前缀）
@@ -285,25 +262,21 @@ function extractStaticFoldMode(text) {
     let mode = 'auto';
     let match;
 
-    STATIC_FOLD_MODE_REGEX.lastIndex = 0;
     while ((match = STATIC_FOLD_MODE_REGEX.exec(rawText)) !== null) {
         mode = String(match[1] || 'Auto').toLowerCase();
     }
-    STATIC_FOLD_MODE_REGEX.lastIndex = 0;
 
+    STATIC_FOLD_MODE_REGEX.lastIndex = 0;
     return mode;
 }
 
 function removeStaticFoldModePlaceholders(text) {
     STATIC_FOLD_MODE_REGEX.lastIndex = 0;
-    const result = String(text || '').replace(STATIC_FOLD_MODE_REGEX, '');
-    STATIC_FOLD_MODE_REGEX.lastIndex = 0;
-    return result;
+    return String(text || '').replace(STATIC_FOLD_MODE_REGEX, '').trim();
 }
 
-function getNormalizedStaticFoldBlocks(foldObj) {
+function getNormalizedFoldBlocks(foldObj) {
     if (!foldObj || !Array.isArray(foldObj.fold_blocks)) return [];
-
     return foldObj.fold_blocks
         .map((block, index) => ({
             ...block,
@@ -314,7 +287,7 @@ function getNormalizedStaticFoldBlocks(foldObj) {
 }
 
 function resolveStaticFoldLite(foldObj) {
-    const blocks = getNormalizedStaticFoldBlocks(foldObj);
+    const blocks = getNormalizedFoldBlocks(foldObj);
     if (blocks.length === 0) return '';
 
     const sortedBlocks = [...blocks].sort((a, b) => {
@@ -326,7 +299,7 @@ function resolveStaticFoldLite(foldObj) {
 }
 
 function resolveStaticFoldFull(foldObj) {
-    const blocks = getNormalizedStaticFoldBlocks(foldObj);
+    const blocks = getNormalizedFoldBlocks(foldObj);
     if (blocks.length === 0) return '';
 
     return blocks
@@ -577,8 +550,9 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
 }
 
 function applyDetectorRules(text, role, context = {}) {
-    const { detectors = [], superDetectors = [] } = context || {};
+    const { detectors = [], superDetectors = [] } = context;
     if (text == null) return '';
+
     let processedText = String(text);
 
     if (role === 'system') {
@@ -604,10 +578,6 @@ function applyDetectorsToMessages(messages, context = {}) {
     }
 
     return messages.map((message) => {
-        if (!message || typeof message !== 'object') {
-            return message;
-        }
-
         const newMessage = JSON.parse(JSON.stringify(message));
 
         if (typeof newMessage.content === 'string') {
@@ -646,7 +616,7 @@ async function replaceOtherVariables(text, model, role, context) {
         for (const placeholder of uniquePlaceholders) {
             // 从 {{SarPrompt4}} 中提取 SarPrompt4
             const promptKey = placeholder.substring(2, placeholder.length - 2);
-            
+
             // 从 sarPromptManager 中查找匹配的 promptKey
             const prompts = sarPromptManager.getAllPrompts();
             const group = prompts.find(g => g.promptKey === promptKey);
@@ -654,8 +624,9 @@ async function replaceOtherVariables(text, model, role, context) {
 
             if (group && group.models && group.content) {
                 const modelList = group.models.map(m => m.trim().toLowerCase());
-                // 检查当前模型是否在列表中
-                if (model && modelList.includes(model.toLowerCase())) {
+                const matchMode = group.matchMode || 'exact';
+                // 检查当前模型是否匹配（支持exact/includes两种模式）
+                if (model && sarPromptManager.isModelMatch(modelList, model.toLowerCase(), matchMode)) {
                     let promptValue = group.content;
                     // 模型匹配，准备注入的文本
                     if (typeof promptValue === 'string' && promptValue.toLowerCase().endsWith('.txt')) {
@@ -674,6 +645,35 @@ async function replaceOtherVariables(text, model, role, context) {
             // 对当前文本中所有匹配的占位符进行替换
             const placeholderRegExp = new RegExp(placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
             processedText = processedText.replace(placeholderRegExp, replacementText);
+        }
+
+        // === {{SarPromptAll}} 批量模型匹配注入 ===
+        if (processedText.includes('{{SarPromptAll}}')) {
+            const allPrompts = sarPromptManager.getAllPrompts();
+            const matchedContents = [];
+
+            for (const group of allPrompts) {
+                if (!group.models || !group.content) continue;
+                const modelList = group.models.map(m => m.trim().toLowerCase());
+                const matchMode = group.matchMode || 'exact';
+
+                if (model && sarPromptManager.isModelMatch(modelList, model.toLowerCase(), matchMode)) {
+                    let promptValue = group.content;
+                    // .txt 文件引用支持（复用现有模式）
+                    if (typeof promptValue === 'string' && promptValue.toLowerCase().endsWith('.txt')) {
+                        const fileContent = await tvsManager.getContent(promptValue);
+                        if (fileContent.startsWith('[变量文件') || fileContent.startsWith('[处理变量文件')) {
+                            promptValue = fileContent;
+                        } else {
+                            promptValue = await replaceOtherVariables(fileContent, model, role, context);
+                        }
+                    }
+                    matchedContents.push(promptValue);
+                }
+            }
+
+            const sarAllText = matchedContents.join('\n');
+            processedText = processedText.replace(/\{\{SarPromptAll\}\}/g, sarAllText);
         }
     }
 
@@ -699,22 +699,43 @@ async function replaceOtherVariables(text, model, role, context) {
             }
         }
 
+        if (processedText.includes('{{VCPDistributedServerList}}')) {
+            let distributedServerListText = '[VCPDistributedServerList information unavailable]';
+            try {
+                const formatter = context.webSocketServer?.formatDistributedServerListForPrompt;
+                if (typeof formatter === 'function') {
+                    distributedServerListText = formatter();
+                }
+            } catch (error) {
+                console.error('[replaceOtherVariables] Error processing {{VCPDistributedServerList}}:', error);
+            }
+            processedText = processedText.replaceAll('{{VCPDistributedServerList}}', distributedServerListText);
+        }
+
         const now = new Date();
         if (DEBUG_MODE) {
             console.log(`[TimeVar] Raw Date: ${now.toISOString()}`);
             console.log(`[TimeVar] Default Timezone (for internal use): ${DEFAULT_TIMEZONE}`);
             console.log(`[TimeVar] Report Timezone (for AI prompt): ${REPORT_TIMEZONE}`);
         }
-        // 使用 REPORT_TIMEZONE 替换时间占位符
+        // 使用 REPORT_TIMEZONE 替换时间占位符；REPORT_TIMEZONE 未配置时回退 DEFAULT_TIMEZONE
         const date = now.toLocaleDateString('zh-CN', { timeZone: REPORT_TIMEZONE });
         processedText = processedText.replace(/\{\{Date\}\}/g, date);
         const time = now.toLocaleTimeString('zh-CN', { timeZone: REPORT_TIMEZONE });
         processedText = processedText.replace(/\{\{Time\}\}/g, time);
         const today = now.toLocaleDateString('zh-CN', { weekday: 'long', timeZone: REPORT_TIMEZONE });
         processedText = processedText.replace(/\{\{Today\}\}/g, today);
-        const year = now.getFullYear();
-        const month = now.getMonth() + 1;
-        const day = now.getDate();
+
+        // 农历/节气也必须按同一报告时区取年月日，不能使用服务器宿主机本地时区
+        const dateParts = new Intl.DateTimeFormat('zh-CN', {
+            timeZone: REPORT_TIMEZONE,
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric'
+        }).formatToParts(now);
+        const year = Number(dateParts.find(part => part.type === 'year')?.value);
+        const month = Number(dateParts.find(part => part.type === 'month')?.value);
+        const day = Number(dateParts.find(part => part.type === 'day')?.value);
         const lunarDate = lunarCalendar.getLunar(year, month, day);
         let yearName = lunarDate.lunarYear.replace('年', '');
         let festivalInfo = `${yearName}${lunarDate.zodiac}年${lunarDate.dateStr}`;
@@ -728,11 +749,14 @@ async function replaceOtherVariables(text, model, role, context) {
         if (staticPlaceholderValues && staticPlaceholderValues.size > 0) {
             for (const [placeholder, entry] of staticPlaceholderValues.entries()) {
                 // 修复上下文折叠漏洞：如果当前文本压根没有这个占位符，直接跳过，避免触发不必要的向量化和计算
-                if (!processedText.includes(placeholder)) {
+                // 修复占位符前缀包含冲突：使用 {{}} 边界精确匹配，防止短名称吞噬长名称（如 VCPClawMailInbox ⊂ VCPClawMailInboxMail1）
+                const fullPlaceholder = `{{${placeholder}}}`;
+                if (!processedText.includes(fullPlaceholder)) {
                     continue;
                 }
 
-                const placeholderRegex = new RegExp(placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
+                const escapedPlaceholder = placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                const placeholderRegex = new RegExp('\\{\\{' + escapedPlaceholder + '\\}\\}', 'g');
 
                 let valueToInject = entry;
                 if (typeof entry === 'object' && entry !== null && entry.hasOwnProperty('value')) {
@@ -796,9 +820,6 @@ async function replaceOtherVariables(text, model, role, context) {
         } else if (processedText && typeof processedText === 'string' && processedText.includes('{{Image_Key}}')) {
             if (DEBUG_MODE) console.warn('[replaceOtherVariables] {{Image_Key}} placeholder found in text, but ImageServer plugin or its Image_Key is not resolved. Placeholder will not be replaced.');
         }
-    }
-    if (context?.detectorPhase !== 'deferred') {
-        processedText = applyDetectorRules(processedText, role, context);
     }
 
     // 同时兼容标准双花括号、异常三花括号、以及被字符串转义后常见的四花括号格式

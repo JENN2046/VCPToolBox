@@ -6,7 +6,28 @@ import {
 } from "./requestWithUi";
 import type { UserAuthCodeResponse } from "@/types/api.auth";
 import type {
+  BridgeHijackConfig,
+  BridgeHijackConfigResponse,
+  BridgeHijackConfigSaveResponse,
+  BridgeProfile,
+  BridgeProfileActivateResponse,
+  BridgeProfileDeleteResponse,
+  BridgeProfileResponse,
+  BridgeProfilesResponse,
+  FinalContextListResponse,
   FinalContextResponse,
+  MultiModalConfig,
+  MultiModalConfigResponse,
+  NotificationsConnectionInfo,
+  NotificationsConnectionResponse,
+  OneRingConfig,
+  OneRingConfigResponse,
+  OneRingConfigSaveResponse,
+  OneRingMemoListResponse,
+  OneRingMemoResponse,
+  OneRingMemoStatusResponse,
+  MemoryProfile,
+  MemoryProfileResponse,
   PM2Process,
   PM2ProcessesResponse,
   RawSystemResourcesResponse,
@@ -15,19 +36,36 @@ import type {
   SystemResources,
 } from "@/types/api.system";
 
-export type { FinalContextResponse, ServerLogQuery, ServerLogResponse } from "@/types/api.system";
+export type { BridgeHijackConfig, BridgeHijackConfigResponse, BridgeHijackConfigSaveResponse, FinalContextListResponse, FinalContextResponse, MultiModalConfig, MultiModalConfigResponse, OneRingConfig, OneRingConfigResponse, OneRingConfigSaveResponse, ServerLogQuery, ServerLogResponse } from "@/types/api.system";
 export type { UserAuthCodeResponse } from "@/types/api.auth";
 
 export type SystemResourcesResponse = SystemResources;
 export type PM2ProcessInfo = PM2Process;
-export interface PM2ProcessListResult {
-  source?: string;
-  degraded: boolean;
-  warning?: string;
+export interface SupervisorProcessesSnapshot {
+  supervisor: string;
+  health: string;
   processes: PM2ProcessInfo[];
 }
 
 const DEFAULT_READ_UI_OPTIONS: RequestUiOptions = { showLoader: false };
+
+async function fetchSupervisorProcesses(
+  requestContext: HttpRequestContext,
+  uiOptions: RequestUiOptions
+): Promise<SupervisorProcessesSnapshot> {
+  const response = await requestWithUi<PM2ProcessesResponse>(
+    {
+      url: "/admin_api/system-monitor/supervisor/processes",
+      ...requestContext,
+    },
+    uiOptions
+  );
+  return {
+    supervisor: response.supervisor ?? "unknown",
+    health: response.health ?? "unknown",
+    processes: response.processes ?? [],
+  };
+}
 
 function createServerLogRequest(
   query: ServerLogQuery = {},
@@ -95,20 +133,29 @@ export const systemApi = {
   async getPM2Processes(
     requestContext: HttpRequestContext = {},
     uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
-  ): Promise<PM2ProcessListResult> {
-    const response = await requestWithUi<PM2ProcessesResponse>(
+  ): Promise<PM2ProcessInfo[]> {
+    return (await fetchSupervisorProcesses(requestContext, uiOptions)).processes;
+  },
+
+  async getSupervisorProcesses(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<SupervisorProcessesSnapshot> {
+    return fetchSupervisorProcesses(requestContext, uiOptions);
+  },
+
+  async getMemoryProfile(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<MemoryProfile> {
+    const response = await requestWithUi<MemoryProfileResponse>(
       {
-        url: "/admin_api/system-monitor/pm2/processes",
+        url: "/admin_api/system-monitor/memory/profile",
         ...requestContext,
       },
       uiOptions
     );
-    return {
-      source: response.source,
-      degraded: response.degraded === true,
-      warning: response.warning,
-      processes: response.processes ?? [],
-    };
+    return response.profile;
   },
 
   async getUserAuthCode(
@@ -126,11 +173,182 @@ export const systemApi = {
 
   async getFinalContext(
     requestContext: HttpRequestContext = {},
-    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS,
+    snapshotId?: number | string
   ): Promise<FinalContextResponse> {
     return requestWithUi<FinalContextResponse>(
       {
         url: "/admin_api/final-context",
+        query: snapshotId !== undefined && snapshotId !== ''
+          ? { id: snapshotId }
+          : undefined,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async listFinalContexts(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<FinalContextListResponse> {
+    return requestWithUi<FinalContextListResponse>(
+      {
+        url: "/admin_api/final-context/list",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async getMultiModalConfig(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<MultiModalConfigResponse> {
+    return requestWithUi<MultiModalConfigResponse>(
+      {
+        url: "/admin_api/multimodal-config",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async saveMultiModalConfig(
+    config: Partial<MultiModalConfig>,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<MultiModalConfigResponse> {
+    return requestWithUi<MultiModalConfigResponse>(
+      {
+        url: "/admin_api/multimodal-config",
+        method: "PUT",
+        body: config,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async getOneRingConfig(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<OneRingConfigResponse> {
+    return requestWithUi<OneRingConfigResponse>(
+      {
+        url: "/admin_api/onering-config",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async saveOneRingConfig(
+    config: OneRingConfig,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<OneRingConfigSaveResponse> {
+    return requestWithUi<OneRingConfigSaveResponse>(
+      {
+        url: "/admin_api/onering-config",
+        method: "PUT",
+        body: config,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async listOneRingMemos(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<OneRingMemoListResponse> {
+    return requestWithUi<OneRingMemoListResponse>(
+      { url: "/admin_api/onering-memos", ...requestContext },
+      uiOptions
+    );
+  },
+
+  async getOneRingMemo(
+    agentName: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<OneRingMemoResponse> {
+    return requestWithUi<OneRingMemoResponse>(
+      { url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}`, ...requestContext },
+      uiOptions
+    );
+  },
+
+  async saveOneRingMemo(
+    agentName: string,
+    summary: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<OneRingMemoResponse> {
+    return requestWithUi<OneRingMemoResponse>(
+      {
+        url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}`,
+        method: "PUT",
+        body: { summary },
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async getOneRingMemoStatus(
+    agentName: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<OneRingMemoStatusResponse> {
+    return requestWithUi<OneRingMemoStatusResponse>(
+      {
+        url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}/status`,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async generateOneRingMemo(
+    agentName: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<OneRingMemoResponse> {
+    return requestWithUi<OneRingMemoResponse>(
+      {
+        url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}/generate`,
+        method: "POST",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async getBridgeHijackConfig(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<BridgeHijackConfigResponse> {
+    return requestWithUi<BridgeHijackConfigResponse>(
+      {
+        url: "/admin_api/bridge-config",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async saveBridgeHijackConfig(
+    config: BridgeHijackConfig,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<BridgeHijackConfigSaveResponse> {
+    return requestWithUi<BridgeHijackConfigSaveResponse>(
+      {
+        url: "/admin_api/bridge-config",
+        method: "PUT",
+        body: config,
         ...requestContext,
       },
       uiOptions
@@ -159,6 +377,20 @@ export const systemApi = {
     );
   },
 
+  async getNotificationsConnection(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<NotificationsConnectionInfo> {
+    const response = await requestWithUi<NotificationsConnectionResponse>(
+      {
+        url: "/admin_api/notifications/connection",
+        ...requestContext,
+      },
+      uiOptions
+    );
+    return response.connection;
+  },
+
   async restartServer(
     uiOptions: RequestUiOptions = {}
   ): Promise<{ message?: string }> {
@@ -182,5 +414,94 @@ export const systemApi = {
       uiOptions
     );
   },
-};
 
+  // ─── Bridge Profiles ───────────────────────────────────────────────
+
+  async getBridgeProfiles(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<BridgeProfilesResponse> {
+    return requestWithUi<BridgeProfilesResponse>(
+      {
+        url: "/admin_api/bridge-profiles",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async getBridgeProfile(
+    name: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<BridgeProfileResponse> {
+    return requestWithUi<BridgeProfileResponse>(
+      {
+        url: `/admin_api/bridge-profiles/${encodeURIComponent(name)}`,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async saveBridgeProfile(
+    name: string,
+    data: Partial<BridgeProfile>,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<BridgeProfileResponse> {
+    return requestWithUi<BridgeProfileResponse>(
+      {
+        url: `/admin_api/bridge-profiles/${encodeURIComponent(name)}`,
+        method: "POST",
+        body: data,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async deleteBridgeProfile(
+    name: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<BridgeProfileDeleteResponse> {
+    return requestWithUi<BridgeProfileDeleteResponse>(
+      {
+        url: `/admin_api/bridge-profiles/${encodeURIComponent(name)}`,
+        method: "DELETE",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async activateBridgeProfile(
+    name: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<BridgeProfileActivateResponse> {
+    return requestWithUi<BridgeProfileActivateResponse>(
+      {
+        url: `/admin_api/bridge-profiles/${encodeURIComponent(name)}/activate`,
+        method: "POST",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async deactivateBridgeProfile(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<BridgeProfileActivateResponse> {
+    return requestWithUi<BridgeProfileActivateResponse>(
+      {
+        url: "/admin_api/bridge-profiles/deactivate",
+        method: "POST",
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+};

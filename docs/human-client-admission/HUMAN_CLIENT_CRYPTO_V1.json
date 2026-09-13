@@ -1,0 +1,74 @@
+{
+  "protocolVersion": 1,
+  "algorithm": "Ed25519",
+  "publicKeyEncoding": "RFC 8410 SPKI DER, canonical strict unpadded base64url, re-export exact equality, asymmetricKeyType ed25519",
+  "signatureEncoding": "64 raw bytes, canonical strict unpadded base64url",
+  "signingInput": "ASCII(VCP-HUMAN-CLIENT\\0) || ASCII(v1\\0) || ASCII(purpose) || 0x00 || SHA256(UTF8(canonical(boundFields)))",
+  "canonicalizer": "modules/approvalReceiptAuthority.js canonical (single reused Host implementation)",
+  "purposes": [
+    "enrollment-claim",
+    "capability-mint",
+    "channel-upgrade",
+    "self-revoke",
+    "session-authenticate"
+  ],
+  "bootId": "CSPRNG 32 bytes per admission process instance",
+  "origin": "Explicit HUMAN_CLIENT_HOST_ORIGIN; no Host/forwarded/Origin/payload authority derivation",
+  "commonFields": [
+    "protocolVersion",
+    "purpose",
+    "hostBootId",
+    "trustedHostOrigin",
+    "surface",
+    "publicKeyFingerprint",
+    "nonceId",
+    "issuedAt",
+    "expiresAt",
+    "method",
+    "path",
+    "bodyDigest",
+    "hostAuthorityId"
+  ],
+  "enrollmentFields": [
+    "enrollmentId"
+  ],
+  "sessionFields": [
+    "sessionId"
+  ],
+  "upgradeAdditional": [
+    "capabilityDigest"
+  ],
+  "omissions": "sessionId does not exist at enrollment. enrollmentId not needed once session fixes approved key. nonceId doubles as challenge identity. Signature excluded from body digest to avoid circular signing. No root credentials in transcripts.",
+  "client": "Sign exact decoded Host signingInput after validating fixed V1 purpose/envelope; do not reconstruct canonical JSON",
+  "verification": "Exact stored bytes/key, synchronous Node verification, final current enrollment/admission/nonce/deadline check before consumption; issued receipt has no client-lifecycle dependency",
+  "testVector": "ED25519_CROSS_RUNTIME_TEST_VECTORS.json; published RFC 8032 TEST 1 key; no production private key",
+  "crossRuntime": "Node production crypto and independent Rust ed25519-dalek =2.2.0: 8 signature cases (4 valid/4 modified invalid) + 14 weak-key rejection cases; shared vector identities are not distinct threat scenarios.",
+  "pointEncodingValidation": "Canonical compressed coordinate plus standard small-order encoding rejection on public key and signature R. Byte comparisons only; signing/verification remain Node crypto Ed25519. See libsodium 1.0.18 ge25519_has_small_order constants.",
+  "sessionRecoveryFields": [
+    "clientEnrollmentId",
+    "keyVersion"
+  ],
+  "identity": "Durable Ed25519 public-key enrollment; key persistence belongs to C2, not this Host gate",
+  "additionalSessionVector": "ED25519_A1_SESSION_VECTORS.json preserves all original 22 checks and adds session-authenticate; independent Rust verifier now confirms 23 checks",
+  "A2AlgorithmAgility": {
+    "algorithms": [
+      "ED25519",
+      "ECDSA_P256_SHA256"
+    ],
+    "identity": "Host derives from canonical imported SPKI; stored publicKeyAlgorithm must match, no caller override/default for missing metadata",
+    "Ed25519": "Existing implementations, weak-point defenses, transcript and vectors unchanged",
+    "P256": {
+      "SPKI": "exact id-ecPublicKey + prime256v1 named curve DER; uncompressed SEC1 point; canonical re-export equality",
+      "digest": "D=SHA256(exact existing signingInput bytes); Node sha256 verify on M, Rust prehash verify on D",
+      "wire": "64-byte IEEE-P1363 r||s; canonical unpadded base64url",
+      "ranges": "1<=r<n; 1<=s<=floor(n/2)",
+      "order": "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+      "highS": "reject, no Host normalization",
+      "DER": "not Host wire; test-only provider conversion fixture",
+      "vectors": "P256_CROSS_RUNTIME_TEST_VECTORS.json"
+    },
+    "transcript": "no change or algorithm field added",
+    "productionProfile": "PRODUCTION_DISABLED",
+    "nativeC2": "not implemented"
+  }
+}

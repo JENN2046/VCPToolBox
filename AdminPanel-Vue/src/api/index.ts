@@ -36,9 +36,18 @@ export type * from './news'
 export { pluginApi } from './plugin'
 export type * from './plugin'
 
+export { clawMailApi } from './clawMail'
+export type * from './clawMail'
+
+export { vcpTimelineApi } from './vcpTimeline'
+export type * from './vcpTimeline'
+
 // Agent 管理 API
 export { agentApi } from './agent'
 export type * from './agent'
+
+export { openHerPersonaApi } from './openHerPersona'
+export type * from './openHerPersona'
 
 export { adminConfigApi } from './admin-config'
 export type * from './admin-config'
@@ -58,9 +67,6 @@ export type * from './placeholder'
 export { ragApi } from './rag'
 export type * from './rag'
 
-export { codexMemoryApi } from './codexMemory'
-export type * from './codexMemory'
-
 export { scheduleApi } from './schedule'
 export type * from './schedule'
 
@@ -79,11 +85,14 @@ export type * from './tvs'
 export { toolListApi } from './toolList'
 export type * from './toolList'
 
+export { toolCallRecordsApi } from './toolCallRecords'
+export type * from './toolCallRecords'
+
 export { dynamicToolsApi } from './dynamicTools'
 export type * from './dynamicTools'
 
-export { channelHubApi } from './channelHub'
-export type * from './channelHub'
+export { semanticRouterApi } from './semanticRouter'
+export type * from './semanticRouter'
 
 export { vcptavernApi } from './vcptavern'
 export type * from './vcptavern'
@@ -94,17 +103,8 @@ export type * from './forum'
 export { forumAssistantApi } from './forum-assistant'
 export type * from './forum-assistant'
 
-export { aiImageAgentsApi } from './aiImageAgents'
-export type * from './aiImageAgents'
-
-export { codexImagegenRelayApi } from './codexImagegenRelay'
-export type * from './codexImagegenRelay'
-
-export { oauthAuthApi } from './oauthAuth'
-export type * from './oauthAuth'
-
-export { semanticRouterApi } from './semanticRouter'
-export type * from './semanticRouter'
+export { tarotDivinationApi } from './tarotDivination'
+export type * from './tarotDivination'
 
 // 插件商店 API
 export { pluginStoreApi } from './pluginStore'

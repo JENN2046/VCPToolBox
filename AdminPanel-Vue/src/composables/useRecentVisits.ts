@@ -8,8 +8,6 @@ export interface RecentVisit {
   label: string;
   icon?: string;
   pluginName?: string;
-  pluginRootId?: string;
-  pluginSource?: string;
 }
 
 export interface NavigationUsageRecord {
@@ -24,15 +22,11 @@ interface CreateRecentVisitOptions {
   navItems: readonly NavItem[];
   plugins: readonly PluginInfo[];
   pluginName?: string;
-  pluginRootId?: string;
-  pluginSource?: string;
 }
 
 interface PushNavigationUsageOptions {
   target: string;
   pluginName?: string;
-  pluginRootId?: string;
-  pluginSource?: string;
   timestamp?: number;
 }
 
@@ -56,22 +50,9 @@ function getPluginDisplayName(plugin: PluginInfo): string {
 
 function getPluginByName(
   plugins: readonly PluginInfo[],
-  pluginName: string,
-  criteria?: { pluginRootId?: string; pluginSource?: string }
+  pluginName: string
 ): PluginInfo | undefined {
-  return plugins.find((plugin) =>
-    getPluginName(plugin) === pluginName &&
-    (!criteria?.pluginRootId || plugin.pluginRootId === criteria.pluginRootId) &&
-    (!criteria?.pluginSource || plugin.pluginSource === criteria.pluginSource)
-  );
-}
-
-function getPluginVisitKey(visit: Pick<RecentVisit, "pluginName" | "pluginRootId" | "pluginSource">): string {
-  return [
-    visit.pluginName || "",
-    visit.pluginRootId || "",
-    visit.pluginSource || "",
-  ].join(":");
+  return plugins.find((plugin) => getPluginName(plugin) === pluginName);
 }
 
 export function createRecentVisit({
@@ -79,23 +60,18 @@ export function createRecentVisit({
   navItems,
   plugins,
   pluginName,
-  pluginRootId,
-  pluginSource,
 }: CreateRecentVisitOptions): RecentVisit | null {
   if (pluginName) {
-    const plugin = getPluginByName(plugins, pluginName, { pluginRootId, pluginSource });
+    const plugin = getPluginByName(plugins, pluginName);
     if (!plugin) {
       return null;
     }
 
-    const resolvedPluginName = getPluginName(plugin);
     return {
-      target: `plugin-${resolvedPluginName}-config`,
+      target: `plugin-${pluginName}-config`,
       label: getPluginDisplayName(plugin),
       icon: plugin.manifest.icon || "extension",
-      pluginName: resolvedPluginName,
-      pluginRootId: plugin.pluginRootId,
-      pluginSource: plugin.pluginSource,
+      pluginName,
     };
   }
 
@@ -119,7 +95,7 @@ export function pushRecentVisit(
 ): RecentVisit[] {
   const nextVisits = recentVisits.filter((item) =>
     nextVisit.pluginName
-      ? getPluginVisitKey(item) !== getPluginVisitKey(nextVisit)
+      ? item.pluginName !== nextVisit.pluginName
       : item.target !== nextVisit.target
   );
 
@@ -128,12 +104,9 @@ export function pushRecentVisit(
 
 export function getNavigationUsageKey(
   target: string,
-  pluginName?: string,
-  targetCriteria?: { pluginRootId?: string; pluginSource?: string }
+  pluginName?: string
 ): string {
-  return pluginName
-    ? `plugin:${pluginName}:${targetCriteria?.pluginRootId || ""}:${targetCriteria?.pluginSource || ""}`
-    : `page:${target}`;
+  return pluginName ? `plugin:${pluginName}` : `page:${target}`;
 }
 
 export function pushNavigationUsage(
@@ -141,12 +114,10 @@ export function pushNavigationUsage(
   {
     target,
     pluginName,
-    pluginRootId,
-    pluginSource,
     timestamp = Date.now(),
   }: PushNavigationUsageOptions
 ): NavigationUsageMap {
-  const usageKey = getNavigationUsageKey(target, pluginName, { pluginRootId, pluginSource });
+  const usageKey = getNavigationUsageKey(target, pluginName);
   const currentRecord = navigationUsage[usageKey];
 
   return {
@@ -165,8 +136,6 @@ export function recordNavigationVisit({
   recentVisits,
   navigationUsage,
   pluginName,
-  pluginRootId,
-  pluginSource,
   timestamp,
 }: RecordNavigationVisitOptions): {
   recentVisits: RecentVisit[];
@@ -175,8 +144,6 @@ export function recordNavigationVisit({
   const nextNavigationUsage = pushNavigationUsage(navigationUsage, {
     target,
     pluginName,
-    pluginRootId,
-    pluginSource,
     timestamp,
   });
   const nextVisit = createRecentVisit({
@@ -184,8 +151,6 @@ export function recordNavigationVisit({
     navItems,
     plugins,
     pluginName,
-    pluginRootId,
-    pluginSource,
   });
 
   return {

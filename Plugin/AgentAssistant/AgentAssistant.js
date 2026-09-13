@@ -5,9 +5,14 @@ const dotenv = require('dotenv');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const {
-    createSignedPluginCallbackUrl,
-    redactPluginCallbackUrlForLog
-} = require('../../modules/pluginCallbackAuth');
+    normalizeReasoningTag,
+    normalizeReasoningModelFilters,
+    shouldConvertReasoningForModel
+} = require('../../modules/reasoningContentAdapter.js');
+const {
+    DEFAULT_HEARTBEAT_DELAY_SECONDS,
+    parseFlowlockDirectives
+} = require('./flowlockProtocol.js');
 
 // --- State and Config Variables ---
 let VCP_SERVER_PORT;
@@ -23,12 +28,17 @@ let DELEGATION_TIMEOUT;
 let DELEGATION_SYSTEM_PROMPT;
 let DELEGATION_HEARTBEAT_PROMPT;
 
+const DEFAULT_PLUGIN_COMMUNICATION_TIMEOUT_MS = 900000; // 15分钟，需与 chat 总线上游长超时默认值保持一致
 const AGENTS = {};
 const agentContexts = new Map();
 const activeSessionLocks = new Set(); // 追踪正在进行中的持久对话 session
-const activeDelegations = new Map(); // delegationId -> { status, agentName, currentRound, startTime }
+const activeDelegations = new Map(); // delegationId -> delegation tracking state
+const completedDelegations = []; // 最近完成/失败/取消的委托任务快照，供管理面板查看
+const COMPLETED_DELEGATION_HISTORY_LIMIT = 50;
+const DELEGATION_PREVIEW_CHARS = 800;
 
 let pushVcpInfo = () => { }; // Default no-op function
+let hostPluginManager = null;
 let cleanupInterval;
 
 // --- Core Module Functions ---
@@ -41,10 +51,11 @@ let cleanupInterval;
  */
 function initialize(config, dependencies) {
     VCP_SERVER_PORT = config.PORT;
-    VCP_SERVER_ACCESS_KEY = config.Key;
+    VCP_SERVER_ACCESS_KEY = process.env.Key || config.Key;
     DEBUG_MODE = String(config.DebugMode || 'false').toLowerCase() === 'true';
     // 使用 127.0.0.1 避开某些系统上 localhost 解析到 IPv6 (::1) 导致的延迟
     VCP_API_TARGET_URL = `http://127.0.0.1:${VCP_SERVER_PORT}/v1`;
+    hostPluginManager = dependencies?.pluginManager || null;
 
     if (DEBUG_MODE) {
         console.error(`[AgentAssistant Service] Initializing...`);
@@ -73,11 +84,28 @@ function initialize(config, dependencies) {
 /**
  * Shuts down the service, clearing any intervals.
  */
-function shutdown() {
+async function shutdown() {
     if (cleanupInterval) {
         clearInterval(cleanupInterval);
+        cleanupInterval = null;
         if (DEBUG_MODE) console.error('[AgentAssistant Service] Context cleanup interval stopped.');
     }
+    for (const state of activeDelegations.values()) {
+        cancelDelegation(state.id, '插件运行时代际正在关闭。');
+    }
+    const deadline = Date.now() + 8000;
+    while (activeDelegations.size > 0 && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    if (activeDelegations.size > 0) {
+        const error = new Error(
+            `${activeDelegations.size} AgentAssistant delegation(s) did not stop before shutdown.`
+        );
+        error.code = 'ACTIVE_DELEGATIONS_DID_NOT_STOP';
+        throw error;
+    }
+    hostPluginManager = null;
+    pushVcpInfo = () => {};
     console.log('[AgentAssistant Service] Shutdown complete.');
 }
 
@@ -169,8 +197,8 @@ function loadAgentsFromLocalConfig() {
     CONTEXT_TTL_HOURS = parseInt(config.contextTtlHours || '24', 10);
     DELEGATION_MAX_ROUNDS = parseInt(config.delegationMaxRounds || '15', 10);
     DELEGATION_TIMEOUT = parseInt(config.delegationTimeout || '300000', 10);
-    DELEGATION_SYSTEM_PROMPT = config.delegationSystemPrompt || "[异步委托模式]\n你当前正在接受来自 {{SenderName}} 的一项异步委托任务。请专注于完成以下委托内容，按照任务要求认真执行。你可以自由使用你所拥有的的所有工具来完成任务。\n\n[长执行任务优化机制]\n如果当前步骤涉及需要长时间等待的任务（如：视频生成、大型文件处理等），你可以在输出中包含 `[[NextHeartbeat::秒数]]` 占位符。系统将推迟下一次心跳（心跳即：再次唤醒你）的到来，在这段时间内不会产生额外的轮次和Token消耗。例如：如果你预计渲染需要3分钟，可以输出 `[[NextHeartbeat::180]]`。\n\n委托任务内容:\n{{TaskPrompt}}\n\n当你确认任务已经彻底完成后，请输出委托完成报告，格式如下:\n[[TaskComplete]]\n（此处写上你的任务完成报告，详细描述你完成了什么、执行过程和最终结果）\n\n如果你认为任务由于缺少工具、信息或其他原因【完全无法完成】，请输出失败报告，格式如下:\n[[TaskFailed]]\n（此处写上失败原因）";
-    DELEGATION_HEARTBEAT_PROMPT = config.delegationHeartbeatPrompt || "[系统提示:]当前委托任务仍在进行中。请继续执行你的委托任务。如果你在等待长执行任务，请根据需要输出 `[[NextHeartbeat::秒数]]` 进行推迟。如果任务已完成，请输出 [[TaskComplete]] 及完成报告。如果确认无法完成，请输出 [[TaskFailed]] 及失败原因。";
+    DELEGATION_SYSTEM_PROMPT = config.delegationSystemPrompt || "[异步委托模式]\n你当前正在接受来自 {{SenderName}} 的一项异步委托任务。请专注于完成以下委托内容，按照任务要求认真执行。你可以自由使用你所拥有的所有工具来完成任务。\n\n[Flowlock 心流锁协议]\n开始自主心跳必须输出 `[[Flowlock::Start]]`；未启动心流锁时，其他继续类 Flowlock 指令不会启动后续心跳。\n任务彻底完成时输出 `[[Flowlock::Complete]]` 和完成报告；确认完全无法完成时输出 `[[Flowlock::Fail]]` 和失败原因；需要主动退出但不宣告完成或失败时输出 `[[Flowlock::Stop]]`。\n默认在回复结束 2 秒后触发下一轮。可输出 `[[Flowlock::NextHeartbeat::秒数]]` 调整下一次心跳时间，例如 `[[Flowlock::NextHeartbeat::180]]`。\n可输出 `[[Flowlock::NextPrompt]]下一轮要使用的提示词[[/Flowlock::NextPrompt]]` 自定义下一轮提示词。NextPrompt 与 NextHeartbeat 可以在同一回复中组合使用。\n若同一回复包含多个控制标记，优先级始终为 Complete > Fail > Stop > Start/Continue；终止标记生效时忽略心跳时间和下一轮提示词。\n旧标记 `[[TaskComplete]]`、`[[TaskFailed]]`、`[[NextHeartbeat::秒数]]` 仍兼容，但新任务应优先使用 Flowlock 协议。\n\n委托任务内容:\n{{TaskPrompt}}";
+    DELEGATION_HEARTBEAT_PROMPT = config.delegationHeartbeatPrompt || "[系统提示:]心流锁仍在运行，请继续执行委托任务。默认 2 秒后再次唤醒；你可以组合使用 [[Flowlock::NextHeartbeat::秒数]] 和 [[Flowlock::NextPrompt]]...[[/Flowlock::NextPrompt]]。完成时输出 [[Flowlock::Complete]]，无法完成时输出 [[Flowlock::Fail]]，仅需退出自主心跳时输出 [[Flowlock::Stop]]。";
 
     const AGENT_ALL_SYSTEM_PROMPT = config.globalSystemPrompt || "";
     Object.keys(AGENTS).forEach(key => delete AGENTS[key]); // Clear existing agents
@@ -466,12 +494,14 @@ function buildTemporaryToolsSystemPrompt(injectToolsRaw) {
     }
 
     try {
-        const pluginManager = require('../../Plugin.js');
-        const descriptionsMap = pluginManager.getIndividualPluginDescriptions();
+        if (!hostPluginManager) {
+            throw new Error('PluginManager dependency is unavailable.');
+        }
+        const descriptionsMap = hostPluginManager.getIndividualPluginDescriptions();
         const sections = [];
 
         for (const toolName of toolNames) {
-            const plugin = pluginManager.getPlugin(toolName);
+            const plugin = hostPluginManager.getPlugin(toolName);
             // 兼容两种命名：工具名可能已经带 VCP 前缀（如 "VCPForum"），也可能不带（如 "Forum"）
             const placeholderKey = toolName.startsWith('VCP') ? toolName : `VCP${toolName}`;
             const description = descriptionsMap && (descriptionsMap.get(placeholderKey) || descriptionsMap.get(`VCP${toolName}`));
@@ -499,6 +529,98 @@ function buildTemporaryToolsSystemPrompt(injectToolsRaw) {
         }
         return '';
     }
+}
+
+function truncateText(value, maxChars = DELEGATION_PREVIEW_CHARS) {
+    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (text.length <= maxChars) return text;
+    return `${text.slice(0, maxChars)}...`;
+}
+
+function createDelegationSnapshot(state) {
+    if (!state) return null;
+    const now = Date.now();
+    return {
+        id: state.id,
+        status: state.status,
+        agentName: state.agentName,
+        agentBaseName: state.agentBaseName,
+        senderName: state.senderName,
+        currentRound: state.currentRound,
+        maxRounds: DELEGATION_MAX_ROUNDS,
+        startTime: state.startTime,
+        updatedAt: state.updatedAt,
+        endTime: state.endTime || null,
+        elapsedMs: (state.endTime || now) - state.startTime,
+        taskPromptPreview: state.taskPromptPreview,
+        lastResponsePreview: state.lastResponsePreview || '',
+        lastHeartbeatDelaySeconds: state.lastHeartbeatDelaySeconds || 0,
+        flowlockActive: !!state.flowlockActive,
+        flowlockProtocolMode: state.flowlockProtocolMode || 'pending',
+        nextHeartbeatPromptPreview: state.nextHeartbeatPromptPreview || '',
+        cancelRequested: !!state.cancelRequested,
+        completionStatus: state.completionStatus || null,
+        finalReportPreview: state.finalReportPreview || '',
+        archivePath: state.archivePath || null
+    };
+}
+
+function rememberCompletedDelegation(state) {
+    const snapshot = createDelegationSnapshot(state);
+    if (!snapshot) return;
+    completedDelegations.unshift(snapshot);
+    if (completedDelegations.length > COMPLETED_DELEGATION_HISTORY_LIMIT) {
+        completedDelegations.length = COMPLETED_DELEGATION_HISTORY_LIMIT;
+    }
+}
+
+function listDelegations() {
+    return {
+        active: Array.from(activeDelegations.values()).map(createDelegationSnapshot),
+        recent: completedDelegations
+    };
+}
+
+function getDelegationDetail(delegationId) {
+    if (activeDelegations.has(delegationId)) {
+        return createDelegationSnapshot(activeDelegations.get(delegationId));
+    }
+    return completedDelegations.find(item => item.id === delegationId) || null;
+}
+
+function cancelDelegation(delegationId, reason = '用户从管理面板请求取消。') {
+    const state = activeDelegations.get(delegationId);
+    if (!state) {
+        return { success: false, message: `未找到运行中的委托任务: ${delegationId}` };
+    }
+    if (state.cancelRequested || state.status === 'cancelling') {
+        return { success: true, message: `委托任务 ${delegationId} 已经在取消中。`, task: createDelegationSnapshot(state) };
+    }
+    state.cancelRequested = true;
+    state.cancelReason = String(reason || '用户请求取消。');
+    state.status = 'cancelling';
+    state.updatedAt = Date.now();
+    activeDelegations.set(delegationId, state);
+    return { success: true, message: `已请求取消委托任务 ${delegationId}。任务会在当前等待/请求结束后尽快退出。`, task: createDelegationSnapshot(state) };
+}
+
+function assertDelegationNotCancelled(delegationId) {
+    const state = activeDelegations.get(delegationId);
+    if (state && state.cancelRequested) {
+        const err = new Error(state.cancelReason || '委托任务已被取消。');
+        err.code = 'DELEGATION_CANCELLED';
+        throw err;
+    }
+    return state;
+}
+
+async function sleepWithDelegationCancel(delegationId, totalMs, stepMs = 1000) {
+    const deadline = Date.now() + Math.max(0, totalMs);
+    while (Date.now() < deadline) {
+        assertDelegationNotCancelled(delegationId);
+        await new Promise(resolve => setTimeout(resolve, Math.min(stepMs, deadline - Date.now())));
+    }
+    assertDelegationNotCancelled(delegationId);
 }
 
 function sanitizeTextForLog(value) {
@@ -537,13 +659,19 @@ async function processToolCall(args) {
         throwToolError(errorMsg);
     }
 
-    const { agent_name, prompt, timely_contact, temporary_contact, maid, task_delegation, query_delegation, inject_tools, river_context, __vcp_timed_call } = args;
+    const { agent_name, prompt, timely_contact, temporary_contact, maid, task_delegation, query_delegation, cancel_delegation, inject_tools, river_context, __vcp_timed_call } = args;
+
+    // Handle cancelling a delegation
+    if (cancel_delegation) {
+        const cancelResult = cancelDelegation(cancel_delegation, maid ? `由 ${maid} 请求取消。` : '用户请求取消。');
+        return createTextResult(cancelResult.message);
+    }
 
     // Handle querying a delegation status
     if (query_delegation) {
         if (activeDelegations.has(query_delegation)) {
             const state = activeDelegations.get(query_delegation);
-            return createTextResult(`委托任务 (ID: ${query_delegation}) 仍在进行中。当前状态: ${state.status}。被委托 Agent: ${state.agentName}。已执行轮数: ${state.currentRound}/${DELEGATION_MAX_ROUNDS}。已运行时长: ${Math.round((Date.now() - state.startTime) / 1000)}s。`);
+            return createTextResult(`委托任务 (ID: ${query_delegation}) 仍在进行中。当前状态: ${state.status}。被委托 Agent: ${state.agentName}。已执行轮数: ${state.currentRound}/${DELEGATION_MAX_ROUNDS}。已运行时长: ${Math.round((Date.now() - state.startTime) / 1000)}s。\n\n原始任务预览:\n${state.taskPromptPreview || '[无]'}\n\n最近回复预览:\n${state.lastResponsePreview || '[尚未产生回复]'}`);
         } else {
             // Check if the result file already exists signaling completion
             try {
@@ -643,20 +771,43 @@ async function processToolCall(args) {
         const temporaryToolsSystemPrompt = buildTemporaryToolsSystemPrompt(inject_tools);
 
         activeDelegations.set(delegationId, {
+            id: delegationId,
             status: 'running',
             agentName: agent_name,
+            agentBaseName: agentConfig.baseName,
+            senderName: delegationSenderName,
             currentRound: 0,
-            startTime: Date.now()
+            startTime: Date.now(),
+            updatedAt: Date.now(),
+            taskPromptPreview: truncateText(promptTextForStorage),
+            lastResponsePreview: '',
+            lastHeartbeatDelaySeconds: 0,
+            flowlockActive: false,
+            flowlockProtocolMode: 'pending',
+            nextHeartbeatPromptPreview: '',
+            cancelRequested: false,
+            cancelReason: '',
+            completionStatus: null,
+            finalReportPreview: '',
+            archivePath: null
         });
 
         if (DEBUG_MODE) console.error(`[AgentAssistant Service] Starting async delegation ${delegationId} for ${agent_name}`);
 
         // Launch the background task un-awaited
-        executeDelegation(delegationId, agentConfig, promptTextForStorage, delegationSenderName, temporaryToolsSystemPrompt).catch(async err => {
+        executeDelegation(delegationId, agentConfig, promptWithRiverAttachment, promptTextForStorage, delegationSenderName, temporaryToolsSystemPrompt).catch(async err => {
             console.error(`[AgentAssistant Service] Background delegation task ${delegationId} failed:`, err);
             const state = activeDelegations.get(delegationId);
-            if (state) state.status = 'failed';
-            await sendDelegationCallback(delegationId, 'Failed', `任务执行过程中发生异常: ${err.message}`, agent_name);
+            const status = err.code === 'DELEGATION_CANCELLED' ? 'Cancelled' : 'Failed';
+            if (state) {
+                state.status = status === 'Cancelled' ? 'cancelled' : 'failed';
+                state.completionStatus = status;
+                state.finalReportPreview = truncateText(`任务执行过程中发生异常: ${err.message}`);
+                state.endTime = Date.now();
+                state.updatedAt = Date.now();
+                rememberCompletedDelegation(state);
+            }
+            await sendDelegationCallback(delegationId, status, `任务执行过程中发生异常: ${err.message}`, agent_name);
             activeDelegations.delete(delegationId);
         });
 
@@ -739,7 +890,7 @@ async function processToolCall(args) {
 
         const responseFromVCP = await axios.post(`${VCP_API_TARGET_URL}/chat/completions`, payloadForVCP, {
             headers: { 'Authorization': `Bearer ${VCP_SERVER_ACCESS_KEY}`, 'Content-Type': 'application/json' },
-            timeout: (parseInt(process.env.PLUGIN_COMMUNICATION_TIMEOUT) || 358000)
+            timeout: (parseInt(process.env.PLUGIN_COMMUNICATION_TIMEOUT) || DEFAULT_PLUGIN_COMMUNICATION_TIMEOUT_MS)
         });
 
         const assistantResponseContent = responseFromVCP.data?.choices?.[0]?.message?.content;
@@ -769,14 +920,11 @@ async function processToolCall(args) {
             timestamp: new Date().toISOString()
         };
         try {
-            // 关键修复：在调用时动态获取最新的 PluginManager 实例和 VCPLog 函数，以避免初始化阶段的陈旧引用。
-            const pluginManager = require('../../Plugin.js');
-            const freshVcpLogFunctions = pluginManager.getVCPLogFunctions();
-            if (freshVcpLogFunctions && typeof freshVcpLogFunctions.pushVcpInfo === 'function') {
-                freshVcpLogFunctions.pushVcpInfo(broadcastData);
+            if (typeof pushVcpInfo === 'function') {
+                pushVcpInfo(broadcastData);
                 if (DEBUG_MODE) console.error(`[AgentAssistant Service] VCP Info broadcasted for chat with ${agent_name}.`);
             } else {
-                if (DEBUG_MODE) console.error(`[AgentAssistant Service] Could not get fresh pushVcpInfo function.`);
+                if (DEBUG_MODE) console.error(`[AgentAssistant Service] pushVcpInfo dependency is unavailable.`);
             }
         } catch (e) {
             console.error('[AgentAssistant Service] Error broadcasting VCP Info:', e.message);
@@ -818,14 +966,14 @@ async function processToolCall(args) {
 /**
  * Executes a delegated task asynchronously by running a bounded conversation loop
  */
-async function executeDelegation(delegationId, agentConfig, taskPrompt, senderName, temporaryToolsSystemPrompt = '') {
+async function executeDelegation(delegationId, agentConfig, taskPromptContent, taskPromptText, senderName, temporaryToolsSystemPrompt = '') {
     const userSessionId = `agent_${agentConfig.baseName}_delegation_session`;
     const lockKey = `${agentConfig.baseName}::${userSessionId}`;
 
     // 我们对于代理任务也是一个持久会话，因此需要占线锁保护
     while (activeSessionLocks.has(lockKey)) {
         if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Wait for lock: ${lockKey}`);
-        await new Promise(r => setTimeout(r, 2000));
+        await sleepWithDelegationCancel(delegationId, 2000);
         const state = activeDelegations.get(delegationId);
         if (Date.now() - state.startTime > DELEGATION_TIMEOUT) {
             throw new Error("Acquiring session lock timed out");
@@ -836,11 +984,29 @@ async function executeDelegation(delegationId, agentConfig, taskPrompt, senderNa
 
     let finalReport = null;
     let completionStatus = 'Failed';
+    let taskPromptForSystem = '';
 
     try {
+        taskPromptForSystem = String(taskPromptText ?? (
+            typeof taskPromptContent === 'string'
+                ? taskPromptContent
+                : (Array.isArray(taskPromptContent)
+                    ? (taskPromptContent.find(part => part && part.type === 'text')?.text || '[多模态任务内容，文本为空]')
+                    : String(taskPromptContent ?? ''))
+        ));
+        const userTaskPromptContent = Array.isArray(taskPromptContent)
+            ? [
+                {
+                    type: 'text',
+                    text: await replacePlaceholdersInUserPrompt(taskPromptContent.find(part => part && part.type === 'text')?.text || '', agentConfig)
+                },
+                ...taskPromptContent.filter(part => !(part && part.type === 'text'))
+            ]
+            : await replacePlaceholdersInUserPrompt(taskPromptContent, agentConfig);
+
         const delegationPrompt = DELEGATION_SYSTEM_PROMPT
             .replace(/\{\{SenderName\}\}/g, senderName)
-            .replace(/\{\{TaskPrompt\}\}/g, taskPrompt);
+            .replace(/\{\{TaskPrompt\}\}/g, taskPromptForSystem);
 
         const injectedSystemPrompt = temporaryToolsSystemPrompt
             ? `${agentConfig.systemPrompt}\n\n${temporaryToolsSystemPrompt}\n\n${delegationPrompt}`
@@ -849,17 +1015,22 @@ async function executeDelegation(delegationId, agentConfig, taskPrompt, senderNa
         // 我们使用独立的历史记录
         let messagesForVCP = [
             { role: 'system', content: injectedSystemPrompt },
-            { role: 'user', content: taskPrompt }
+            { role: 'user', content: userTaskPromptContent }
         ];
 
         let state = activeDelegations.get(delegationId);
 
         while (state.currentRound < DELEGATION_MAX_ROUNDS) {
+            state = assertDelegationNotCancelled(delegationId);
             if (Date.now() - state.startTime > DELEGATION_TIMEOUT) {
                 completionStatus = 'Failed';
                 finalReport = '委托任务执行超时。';
                 break;
             }
+
+            state.status = 'running';
+            state.updatedAt = Date.now();
+            activeDelegations.set(delegationId, state);
 
             if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Round ${state.currentRound + 1}/${DELEGATION_MAX_ROUNDS} for ${delegationId}`);
 
@@ -873,7 +1044,7 @@ async function executeDelegation(delegationId, agentConfig, taskPrompt, senderNa
 
             const responseFromVCP = await axios.post(`${VCP_API_TARGET_URL}/chat/completions`, payloadForVCP, {
                 headers: { 'Authorization': `Bearer ${VCP_SERVER_ACCESS_KEY}`, 'Content-Type': 'application/json' },
-                timeout: (parseInt(process.env.PLUGIN_COMMUNICATION_TIMEOUT) || 358000)
+                timeout: (parseInt(process.env.PLUGIN_COMMUNICATION_TIMEOUT) || DEFAULT_PLUGIN_COMMUNICATION_TIMEOUT_MS)
             });
 
             const assistantResponseContent = responseFromVCP.data?.choices?.[0]?.message?.content;
@@ -882,60 +1053,99 @@ async function executeDelegation(delegationId, agentConfig, taskPrompt, senderNa
             }
 
             const cleanedAssistantResponse = removeVCPThinkingChain(assistantResponseContent);
-
-            // 检查完成标记的容错正则
-            const completionMatch = cleanedAssistantResponse.match(/\[\[TaskComplete(?:\s*\]\]|\s[\s\S]*?\]\])/i);
-            const failureMatch = cleanedAssistantResponse.match(/\[\[TaskFailed(?:\s*\]\]|\s[\s\S]*?\]\])/i);
-
-            if (completionMatch) {
-                // Task is completed
-                completionStatus = 'Succeed';
-                // 提取标记后面的内容作为报告
-                const reportStartIndex = completionMatch.index + completionMatch[0].length;
-                let potentialReport = cleanedAssistantResponse.substring(reportStartIndex).trim();
-
-                // 如果标记后面没有内容，把整个回复当做报告
-                if (!potentialReport) {
-                    potentialReport = cleanedAssistantResponse;
+            state = assertDelegationNotCancelled(delegationId);
+            state.lastResponsePreview = truncateText(cleanedAssistantResponse);
+            state.updatedAt = Date.now();
+            activeDelegations.set(delegationId, state);
+            const flowlock = parseFlowlockDirectives(cleanedAssistantResponse);
+            if (flowlock.isFlowlockProtocol) {
+                if (state.flowlockProtocolMode !== 'flowlock') {
+                    // 从兼容模式首次切换到严格 Flowlock 模式时，不继承旧模式的隐式活动状态。
+                    state.flowlockActive = false;
                 }
-                finalReport = potentialReport;
-                break; // Exit the loop
-            } else if (failureMatch) {
-                // Task is explicitly failed by the agent
-                completionStatus = 'Failed';
-                // 提取标记后面的内容作为报告
-                const reportStartIndex = failureMatch.index + failureMatch[0].length;
-                let potentialReport = cleanedAssistantResponse.substring(reportStartIndex).trim();
-
-                // 如果标记后面没有内容，把整个回复当做报告
-                if (!potentialReport) {
-                    potentialReport = cleanedAssistantResponse;
-                }
-                finalReport = "【Agent主动放弃任务】\n" + potentialReport;
-                break; // Exit the loop
-            } else {
-                // Task is not completed yet, push history and add heartbeat prompt
-                messagesForVCP.push({ role: 'assistant', content: cleanedAssistantResponse });
-
-                // 处理心跳延迟占位符: [[NextHeartbeat::秒数]]
-                const delayMatch = cleanedAssistantResponse.match(/\[\[NextHeartbeat::(\d+)\]\]/i);
-                if (delayMatch && delayMatch[1]) {
-                    const delaySeconds = parseInt(delayMatch[1], 10);
-                    if (!isNaN(delaySeconds) && delaySeconds > 0) {
-                        // 确保总延迟不超过剩余超时时间，避免永久挂起
-                        const elapsed = Date.now() - state.startTime;
-                        const remainingTimeout = DELEGATION_TIMEOUT - elapsed;
-                        const actualDelayMs = Math.min(delaySeconds * 1000, Math.max(0, remainingTimeout - 10000)); // 预留10s缓冲
-
-                        if (actualDelayMs > 0) {
-                            if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] AI requested heartbeat delay: ${delaySeconds}s. Actual delay: ${Math.round(actualDelayMs / 1000)}s.`);
-                            await new Promise(resolve => setTimeout(resolve, actualDelayMs));
-                        }
-                    }
-                }
-
-                messagesForVCP.push({ role: 'user', content: DELEGATION_HEARTBEAT_PROMPT });
+                state.flowlockProtocolMode = 'flowlock';
+            } else if (state.flowlockProtocolMode === 'pending') {
+                // 没有 Flowlock 标记时维持旧版委托兼容行为。
+                state.flowlockProtocolMode = 'legacy';
+                state.flowlockActive = true;
             }
+
+            // 终止控制优先级由解析器统一保证：Complete > Fail > Stop。
+            if (flowlock.action === 'complete') {
+                completionStatus = 'Succeed';
+                finalReport = flowlock.report || cleanedAssistantResponse;
+                state.flowlockActive = false;
+                state.status = 'completed';
+                state.completionStatus = completionStatus;
+                state.finalReportPreview = truncateText(finalReport);
+                state.updatedAt = Date.now();
+                activeDelegations.set(delegationId, state);
+                break;
+            } else if (flowlock.action === 'fail') {
+                completionStatus = 'Failed';
+                finalReport = `【Agent主动放弃任务】\n${flowlock.report || cleanedAssistantResponse}`;
+                state.flowlockActive = false;
+                state.status = 'failed';
+                state.completionStatus = completionStatus;
+                state.finalReportPreview = truncateText(finalReport);
+                state.updatedAt = Date.now();
+                activeDelegations.set(delegationId, state);
+                break;
+            } else if (flowlock.action === 'stop') {
+                completionStatus = 'Stopped';
+                finalReport = `【Agent主动停止心流锁】\n${flowlock.report || 'Agent 已主动退出自主心跳模式，任务未宣告完成或失败。'}`;
+                state.flowlockActive = false;
+                state.status = 'stopped';
+                state.completionStatus = completionStatus;
+                state.finalReportPreview = truncateText(finalReport);
+                state.updatedAt = Date.now();
+                activeDelegations.set(delegationId, state);
+                break;
+            }
+
+            if (flowlock.start) {
+                state.flowlockActive = true;
+            }
+
+            // 一旦使用 Flowlock 协议，必须先 Start；仅输出 Prompt/Heartbeat 不会隐式启动。
+            if (state.flowlockProtocolMode === 'flowlock' && !state.flowlockActive) {
+                completionStatus = 'Stopped';
+                finalReport = `【心流锁未启动】\n${flowlock.report || 'Agent 未输出 [[Flowlock::Start]]，因此没有进入自主心跳模式。'}`;
+                state.status = 'stopped';
+                state.completionStatus = completionStatus;
+                state.finalReportPreview = truncateText(finalReport);
+                state.updatedAt = Date.now();
+                activeDelegations.set(delegationId, state);
+                break;
+            }
+
+            messagesForVCP.push({ role: 'assistant', content: cleanedAssistantResponse });
+
+            const requestedDelaySeconds = flowlock.nextHeartbeatSeconds || DEFAULT_HEARTBEAT_DELAY_SECONDS;
+            const elapsed = Date.now() - state.startTime;
+            const remainingTimeout = DELEGATION_TIMEOUT - elapsed;
+            const actualDelayMs = Math.min(
+                requestedDelaySeconds * 1000,
+                Math.max(0, remainingTimeout - 10000)
+            );
+
+            state.lastHeartbeatDelaySeconds = Math.round(actualDelayMs / 1000);
+            state.nextHeartbeatPromptPreview = truncateText(flowlock.nextPrompt || DELEGATION_HEARTBEAT_PROMPT);
+            state.updatedAt = Date.now();
+
+            if (actualDelayMs > 0) {
+                state.status = 'waiting';
+                activeDelegations.set(delegationId, state);
+                if (DEBUG_MODE) {
+                    console.error(`[AgentAssistant Delegation] Next heartbeat in ${Math.round(actualDelayMs / 1000)}s (${flowlock.hasExplicitHeartbeat ? 'explicit' : 'default'}).`);
+                }
+                await sleepWithDelegationCancel(delegationId, actualDelayMs);
+            }
+
+            messagesForVCP.push({
+                role: 'user',
+                content: flowlock.nextPrompt || DELEGATION_HEARTBEAT_PROMPT
+            });
 
             state.currentRound++;
             activeDelegations.set(delegationId, state);
@@ -945,11 +1155,29 @@ async function executeDelegation(delegationId, agentConfig, taskPrompt, senderNa
             finalReport = `达到最大轮数限制 (${DELEGATION_MAX_ROUNDS} 轮)，任务尚未自动上报完成。`;
         }
 
+    } catch (err) {
+        if (err && err.code === 'DELEGATION_CANCELLED') {
+            completionStatus = 'Cancelled';
+            finalReport = `委托任务已取消。原因: ${err.message}`;
+        } else {
+            throw err;
+        }
     } finally {
         activeSessionLocks.delete(lockKey);
-        activeDelegations.delete(delegationId);
 
         const secureReport = finalReport || "未知错误导致无报告";
+        const finalState = activeDelegations.get(delegationId);
+        if (finalState) {
+            finalState.status = completionStatus === 'Succeed'
+                ? 'completed'
+                : (completionStatus === 'Cancelled'
+                    ? 'cancelled'
+                    : (completionStatus === 'Stopped' ? 'stopped' : 'failed'));
+            finalState.completionStatus = completionStatus;
+            finalState.finalReportPreview = truncateText(secureReport);
+            finalState.endTime = Date.now();
+            finalState.updatedAt = Date.now();
+        }
 
         // 给成功完成任务的 Agent 发放积分奖励
         if (completionStatus === 'Succeed') {
@@ -957,7 +1185,12 @@ async function executeDelegation(delegationId, agentConfig, taskPrompt, senderNa
         }
 
         // Save to AgentTask Document Directory
-        await archiveDelegationReport(delegationId, agentConfig.baseName, completionStatus, secureReport, taskPrompt);
+        const archivePath = await archiveDelegationReport(delegationId, agentConfig.baseName, completionStatus, secureReport, taskPromptForSystem);
+        if (finalState) {
+            finalState.archivePath = archivePath || null;
+            rememberCompletedDelegation(finalState);
+        }
+        activeDelegations.delete(delegationId);
 
         await sendDelegationCallback(delegationId, completionStatus, secureReport, agentConfig.baseName);
     }
@@ -990,8 +1223,10 @@ async function archiveDelegationReport(delegationId, agentName, status, report, 
 
         fs.writeFileSync(filePath, fileContent, 'utf-8');
         if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Archived report to ${filePath}`);
+        return `file/document/AgentTask/${fileName}`;
     } catch (e) {
         console.error(`[AgentAssistant Delegation] Failed to archive report file for ${delegationId}:`, e.message);
+        return null;
     }
 }
 
@@ -999,13 +1234,7 @@ async function archiveDelegationReport(delegationId, agentName, status, report, 
  * Sends the completion notification via VCP's plugin callback webhook
  */
 async function sendDelegationCallback(delegationId, status, report, agentName) {
-    const callbackUrl = createSignedPluginCallbackUrl({
-        baseUrl: `${VCP_API_TARGET_URL.replace('/v1', '')}/plugin-callback`,
-        pluginName: 'AgentAssistant',
-        taskId: delegationId,
-        secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || VCP_SERVER_ACCESS_KEY
-    });
-    const logCallbackUrl = redactPluginCallbackUrlForLog(callbackUrl);
+    const callbackUrl = `${VCP_API_TARGET_URL.replace('/v1', '')}/plugin-callback/AgentAssistant/${delegationId}`;
     const payload = {
         requestId: delegationId,
         pluginName: 'AgentAssistant',
@@ -1014,9 +1243,14 @@ async function sendDelegationCallback(delegationId, status, report, agentName) {
     };
 
     try {
-        if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Sending callback for ${delegationId} to ${logCallbackUrl}`);
+        if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Sending callback for ${delegationId} to ${callbackUrl}`);
         await axios.post(callbackUrl, payload, {
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                ...(VCP_SERVER_ACCESS_KEY
+                    ? { Authorization: `Bearer ${VCP_SERVER_ACCESS_KEY}` }
+                    : {})
+            }
         });
         if (DEBUG_MODE) console.error(`[AgentAssistant Delegation] Callback sent successfully.`);
 
@@ -1036,5 +1270,19 @@ module.exports = {
     initialize,
     shutdown,
     processToolCall,
-    reloadConfig: loadAgentsFromLocalConfig
+    reloadConfig: loadAgentsFromLocalConfig,
+    listDelegations,
+    getDelegationDetail,
+    cancelDelegation,
+    health: () => ({
+        status: 'ready',
+        activeDelegations: activeDelegations.size,
+        activeSessions: activeSessionLocks.size
+    }),
+    getReloadBlockers: () => Array.from(activeDelegations.values()).map(state => ({
+        type: 'active_delegation',
+        id: state.id,
+        agentName: state.agentName,
+        status: state.status
+    }))
 };

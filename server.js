@@ -1,6 +1,6 @@
 // server.js
 const express = require('express');
-require('./modules/dotenvPatch.js');
+require('./modules/dotenvPatch.js'); // 应用 dotenv.parse 补丁以支持特殊字符
 const dotenv = require('dotenv');
 dotenv.config({ path: 'config.env' });
 const schedule = require('node-schedule');
@@ -16,12 +16,16 @@ const fs = require('fs').promises; // fs.promises for async operations
 const path = require('path');
 const { Writable } = require('stream');
 const fsSync = require('fs'); // Renamed to fsSync for clarity with fs.promises
-const { getEmbeddingFallbackStats } = require('./EmbeddingUtils');
+const { getFetchAgent } = require('./modules/networkAgent.js');
+const { resolveMainApiKey, resolveMainApiUrl } = require('./modules/upstreamConfig.js');
+const runtimeHealth = require('./modules/runtimeHealth.js');
+const SystemdNotifier = require('./modules/systemdNotifier.js');
 const {
-    derivePluginCallbackSecret,
-    hasPluginCallbackProxyHeaders,
-    verifyPluginCallbackRequest
-} = require('./modules/pluginCallbackAuth');
+    authorizeCallback,
+    resolveCallbackResultPath,
+    atomicWriteJson,
+    getCallbackCompatibilityMetrics
+} = require('./modules/asyncCallbackSecurity.js');
 
 // 🌟 核心修复：彻底解放 Node.js 默认的全局连接池限制，防止底层网络排队导致 AdminPanel 死锁
 const http = require('http');
@@ -117,14 +121,15 @@ const toolboxManager = require('./modules/toolboxManager.js');
 const dynamicToolRegistry = require('./modules/dynamicToolRegistry.js');
 const messageProcessor = require('./modules/messageProcessor.js');
 const knowledgeBaseManager = require('./KnowledgeBaseManager.js'); // 新增：引入统一知识库管理器
+const tdbKnowledgeManager = require('./TDBKnowledge.js'); // 新增：引入 TriviumDB 冷知识库管理器
+let recoveryOperatorServer = null;
 const pluginManager = require('./Plugin.js');
 const sarPromptManager = require('./modules/sarPromptManager.js');
 const taskScheduler = require('./routes/taskScheduler.js');
-const toolExecutionRoutes = require('./routes/toolExecutionRoutes.js');
-const codexMemoryMcpRoutes = require('./routes/codexMemoryMcp.js');
 const webSocketServer = require('./WebSocketServer.js'); // 新增 WebSocketServer 引入
 const FileFetcherServer = require('./FileFetcherServer.js'); // 引入新的 FileFetcherServer 模块
 const vcpInfoHandler = require('./vcpInfoHandler.js'); // 引入新的 VCP 信息处理器
+const toolCallRecordStore = require('./modules/toolCallRecordStore.js'); // 工具调用记录独立 SQLite 存储
 const basicAuth = require('basic-auth');
 const cors = require('cors'); // 引入 cors 模块
 
@@ -143,11 +148,9 @@ const TEMP_BLOCK_DURATION = 30 * 60 * 1000; // 封禁30分钟（错误凭据触�
 const NO_CREDENTIAL_BLOCK_DURATION = 15 * 60 * 1000; // 封禁15分钟（无凭据DDoS触发）
 
 const ChatCompletionHandler = require('./modules/chatCompletionHandler.js');
-const { ChannelHubService } = require('./modules/channelHub/ChannelHubService');
 const ToolCallParser = require('./modules/vcpLoop/toolCallParser.js');
 
 const activeRequests = new Map(); // 新增：用于存储活动中的请求，以便中止
-const dailyNoteRootPath = process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(__dirname, 'dailynote');
 
 const SERVER_LIFECYCLE = Object.freeze({
     RUNNING: 'RUNNING',
@@ -164,6 +167,51 @@ let lastShutdownExitCode = 0;
 let forceShutdownTimer = null;
 const trackedSockets = new Set();
 const activeHttpRequests = new Set();
+const systemdNotifier = new SystemdNotifier();
+
+runtimeHealth.setComponent('http', 'starting', null, true);
+runtimeHealth.setComponent('rust', 'starting', null, true);
+runtimeHealth.setComponent('sqlite', 'starting', null, true);
+runtimeHealth.setComponent('plugins', 'starting', null, true);
+runtimeHealth.setComponent('python', 'starting', null, true);
+runtimeHealth.setComponent('websocket', 'starting', null, true);
+
+function refreshPythonRuntimeHealth() {
+    const pythonStatus = pluginManager.getPythonRuntimeStatus?.();
+    const unavailablePython = pythonStatus
+        ? Array.from(pythonStatus.values?.() || pythonStatus)
+            .filter(item => item && item.available === false)
+        : [];
+    runtimeHealth.setComponent(
+        'python',
+        unavailablePython.length === 0 ? 'ready' : 'failed',
+        {
+            unavailable: unavailablePython.map(item => ({
+                pluginName: item.pluginName,
+                missing: item.missing
+            }))
+        },
+        true
+    );
+}
+
+pluginManager.on('runtime_state_changed', status => {
+    const state = status?.state || 'UNKNOWN';
+    const componentStatus = state === 'READY'
+        ? 'ready'
+        : (state === 'FAILED' || state === 'STOPPED_WITH_ERRORS' ? 'failed' : state.toLowerCase());
+    runtimeHealth.setComponent('plugins', componentStatus, {
+        generation: status?.generation || null,
+        generationState: status?.generationState || null,
+        candidateGeneration: status?.candidateGeneration || null,
+        reason: status?.reason || null,
+        lastReload: status?.reload || status?.lastReload || null
+    }, true);
+    if (state === 'READY') refreshPythonRuntimeHealth();
+    systemdNotifier.status(
+        `VCPToolBox plugins ${state.toLowerCase()} (generation ${status?.generation || 'none'})`
+    ).catch(() => {});
+});
 
 function getServerLifecycleStatus() {
     return {
@@ -256,30 +304,40 @@ function destroyIdleSockets() {
     console.log(`[Server] Destroyed ${destroyedCount} idle socket(s).`);
 }
 
-function closeHttpServerGracefully() {
+let httpServerClosePromise = null;
+
+async function closeHttpServerGracefully() {
     if (!server || typeof server.close !== 'function') {
-        return Promise.resolve();
+        return;
     }
 
     console.log(`[Server] Preparing to close HTTP server. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
 
     destroyIdleSockets();
 
-    return new Promise((resolve) => {
-        try {
-            server.close((error) => {
-                if (error) {
-                    console.error('[Server] Error while closing HTTP server:', error);
-                } else {
-                    console.log('[Server] HTTP server stopped accepting new connections.');
-                }
+    if (!httpServerClosePromise) {
+        httpServerClosePromise = new Promise((resolve) => {
+            try {
+                server.close((error) => {
+                    if (error) {
+                        console.error('[Server] Error while closing HTTP server:', error);
+                    } else {
+                        console.log('[Server] HTTP server stopped accepting new connections.');
+                    }
+                    resolve();
+                });
+                server.closeIdleConnections?.();
+            } catch (error) {
+                console.error('[Server] Failed to invoke server.close():', error);
                 resolve();
-            });
-        } catch (error) {
-            console.error('[Server] Failed to invoke server.close():', error);
-            resolve();
-        }
-    });
+            }
+        });
+    }
+
+    // server.close() invokes its callback only after existing connections have
+    // drained. Do not await that callback here or the explicit request drain
+    // and abort phases below would never run for a stuck request.
+    await new Promise(resolve => setImmediate(resolve));
 }
 
 async function waitForActiveRequestsToDrain(timeoutMs = 30000) {
@@ -406,6 +464,37 @@ try {
 }
 const CHINA_MODEL_1_COT = (process.env.ChinaModel1Cot || "false").toLowerCase() === "true";
 
+// 多模态配置 JSON 真相源（multimodal-config.json）：优先级高于 config.env，支持热更新
+// 在初始化阶段先确保文件存在并加载内存配置；运行时由 chatCompletionHandler / image-processor 直接调用 store。
+const multiModalConfigStore = require('./modules/multiModalConfigStore.js');
+try {
+    multiModalConfigStore.init();
+    console.log('[Server] multimodal-config.json 配置真相源已加载，路径：', multiModalConfigStore.CONFIG_PATH);
+} catch (multiModalInitErr) {
+    console.error('[Server] 初始化 multimodal-config.json 失败：', multiModalInitErr);
+}
+
+// 纯文本模型强制翻译多模态：tag 列表，命中即无视 {{TransBase64}}/{{TransBase64+}} 占位符
+// 用于配合模型动态路由（VCPModelAuto/SemanticModelRouter），避免把 base64 多模态传给纯文本模型
+// 仅作为启动快照保留；运行时 chatCompletionHandler 会从 multiModalConfigStore 拉取最新值
+let MULTIMODAL_FORCE_TRANSLATE_MODELS = [];
+try {
+    const storeTags = multiModalConfigStore.getForceTranslateModels();
+    if (Array.isArray(storeTags) && storeTags.length > 0) {
+        MULTIMODAL_FORCE_TRANSLATE_MODELS = storeTags;
+    } else {
+        MULTIMODAL_FORCE_TRANSLATE_MODELS = (process.env.MultiModalForceTranslateModels || "")
+            .split(',')
+            .map(tag => tag.trim().toLowerCase())
+            .filter(tag => tag !== "");
+    }
+    if (MULTIMODAL_FORCE_TRANSLATE_MODELS.length > 0) {
+        console.log(`[Server] MultiModalForceTranslateModels 启动快照已加载 ${MULTIMODAL_FORCE_TRANSLATE_MODELS.length} 个 tag: [${MULTIMODAL_FORCE_TRANSLATE_MODELS.join(', ')}]`);
+    }
+} catch (e) {
+    console.error("Failed to parse MultiModalForceTranslateModels:", e);
+}
+
 // 新增：模型重定向功能
 const ModelRedirectHandler = require('./modelRedirectHandler.js');
 const modelRedirectHandler = new ModelRedirectHandler();
@@ -522,45 +611,26 @@ else console.log('未加载任何全局上下文转换规则。');
 
 const app = express();
 app.set('trust proxy', true); // 新增：信任代理，以便正确解析 X-Forwarded-For 头，解决本地IP识别为127.0.0.1的问题
+// Narrow self-authenticated admission routes precede global body parsers/Bearer middleware.
+const humanClientRoutes = require('./modules/humanClientAdmissionRoutes');
+app.use('/human-client', humanClientRoutes.createClientRouter());
+app.use('/admin_api/human-client', humanClientRoutes.createAdminRouter());
 app.use(cors({ origin: '*' })); // 启用 CORS，允许所有来源的跨域请求，方便本地文件调试
 
-const DEFAULT_AUTHENTICATED_BODY_LIMIT = '5mb';
-const LARGE_AUTHENTICATED_BODY_LIMIT = '300mb';
+// 在路由决策之前解析请求体，以便 req.body 可用
+app.use(express.json({ limit: '300mb' }));
+app.use(express.urlencoded({ limit: '300mb', extended: true }));
+app.use(express.text({ limit: '300mb', type: 'text/plain' })); // 新增：用于处理纯文本请求体
 
-function captureRawBody(req, _res, buf, encoding) {
-    if (!buf || buf.length === 0) {
-        return;
-    }
-
-    req.rawBody = buf.toString(encoding || 'utf8');
-}
-function normalizeSocketAddress(address) {
-    if (!address || typeof address !== 'string') {
-        return '';
-    }
-
-    const trimmed = address.trim();
-    return trimmed.startsWith('::ffff:')
-        ? trimmed.slice(7)
-        : trimmed;
-}
-
-function isLoopbackSocket(req) {
-    const remoteAddress = normalizeSocketAddress(req?.socket?.remoteAddress || req?.connection?.remoteAddress);
-    return remoteAddress === '127.0.0.1' || remoteAddress === '::1';
-}
-
-function createAuthenticatedJsonParser(limit = DEFAULT_AUTHENTICATED_BODY_LIMIT) {
-    return express.json({ limit, verify: captureRawBody });
-}
-
-function createAuthenticatedUrlencodedParser(limit = DEFAULT_AUTHENTICATED_BODY_LIMIT) {
-    return express.urlencoded({ limit, extended: true, verify: captureRawBody });
-}
-
-function createAuthenticatedTextParser(limit = DEFAULT_AUTHENTICATED_BODY_LIMIT) {
-    return express.text({ limit, type: 'text/plain', verify: captureRawBody });
-}
+// Public probes intentionally expose no component names, configuration, paths,
+// or failure details. The authenticated runtime endpoint carries diagnostics.
+app.get('/health/live', (req, res) => {
+    res.status(200).json(runtimeHealth.getPublicLiveness());
+});
+app.get('/health/ready', (req, res) => {
+    const payload = runtimeHealth.getPublicReadiness();
+    res.status(payload.status === 'ready' ? 200 : 503).json(payload);
+});
 
 // 新增：IP追踪中间件
 app.use((req, res, next) => {
@@ -647,171 +717,24 @@ app.use((req, res, next) => {
 });
 
 const port = process.env.PORT;
-const apiKey = process.env.API_Key;
-const apiUrl = process.env.API_URL;
+const bindHost = (process.env.VCP_BIND_HOST || process.env.BIND_HOST || '').trim();
+const resolvedApiKey = resolveMainApiKey();
+const resolvedApiUrl = resolveMainApiUrl();
+const apiKey = resolvedApiKey.value;
+const apiUrl = resolvedApiUrl.value;
 const serverKey = process.env.Key;
-const consumedPluginCallbackNonces = new Map();
-const PLUGIN_CALLBACK_NONCE_GRACE_MS = 60 * 1000;
 
-function getPluginCallbackAuthSecrets(pluginName) {
-    const secrets = [];
-    if (process.env.PLUGIN_CALLBACK_SECRET) {
-        secrets.push(process.env.PLUGIN_CALLBACK_SECRET);
-    }
-    if (serverKey) {
-        secrets.push(serverKey);
-        const derivedSecret = derivePluginCallbackSecret(serverKey, pluginName);
-        if (derivedSecret && !secrets.includes(derivedSecret)) {
-            secrets.push(derivedSecret);
-        }
-    }
-    return secrets;
+if (resolvedApiKey.name && resolvedApiKey.name !== 'API_Key') {
+    console.warn(`[UpstreamConfig] API_Key is empty; using ${resolvedApiKey.name} as the upstream API key source.`);
 }
-
-function getPluginCallbackHostName(req) {
-    const host = String(req?.headers?.host || '').trim().toLowerCase();
-    if (!host) return '';
-    if (host.startsWith('[')) {
-        const closeIndex = host.indexOf(']');
-        return closeIndex > 0 ? host.slice(1, closeIndex) : '';
-    }
-    return host.split(':')[0];
+if (!apiKey) {
+    console.warn('[UpstreamConfig] No upstream API key configured. Chat completions will fail until API_Key or a supported fallback key is set.');
 }
-
-function isUnsignedLoopbackPluginCallbackCompatibilityEnabled() {
-    return String(process.env.VCP_ALLOW_UNSIGNED_LOOPBACK_PLUGIN_CALLBACKS || '').toLowerCase() === 'true';
-}
-
-function isUnsignedLoopbackPluginCallbackAllowed(req) {
-    if (!isUnsignedLoopbackPluginCallbackCompatibilityEnabled()) {
-        return false;
-    }
-    const hostName = getPluginCallbackHostName(req);
-    const isLocalHost =
-        hostName === 'localhost' ||
-        hostName === '127.0.0.1' ||
-        hostName === '::1';
-    return isLoopbackSocket(req) && isLocalHost && !hasPluginCallbackProxyHeaders(req);
-}
-
-function pruneConsumedPluginCallbackNonces(now = Date.now()) {
-    for (const [key, expiresAt] of consumedPluginCallbackNonces.entries()) {
-        if (expiresAt <= now) {
-            consumedPluginCallbackNonces.delete(key);
-        }
-    }
-}
-
-function consumePluginCallbackNonce(req, verification, now = Date.now()) {
-    pruneConsumedPluginCallbackNonces(now);
-    const nonceKey = [
-        req.params.pluginName,
-        req.params.taskId,
-        verification.nonce
-    ].join('\0');
-    if (consumedPluginCallbackNonces.has(nonceKey)) {
-        return {
-            ok: false,
-            status: 401,
-            code: 'plugin_callback_auth_replay',
-            message: 'Plugin callback authentication nonce has already been used.'
-        };
-    }
-    consumedPluginCallbackNonces.set(nonceKey, verification.expiresAt + PLUGIN_CALLBACK_NONCE_GRACE_MS);
-    return { ok: true };
-}
-
-function authorizePluginCallbackRequest(req, res, next) {
-    if (isUnsignedLoopbackPluginCallbackAllowed(req)) {
-        return next();
-    }
-    const secrets = getPluginCallbackAuthSecrets(req.params.pluginName);
-    let verification = {
-        ok: false,
-        status: 503,
-        code: 'plugin_callback_secret_unconfigured',
-        message: 'Plugin callback authentication secret is not configured.'
-    };
-    for (const secret of secrets) {
-        verification = verifyPluginCallbackRequest(req, { secret });
-        if (verification.ok) break;
-    }
-    const nonceConsumption = verification.ok
-        ? consumePluginCallbackNonce(req, verification)
-        : verification;
-    if (!nonceConsumption.ok) {
-        console.warn(`[Security] Rejected plugin callback: ${nonceConsumption.code}`);
-        return res.status(nonceConsumption.status).json({
-            error: 'Unauthorized plugin callback',
-            code: nonceConsumption.code,
-            message: nonceConsumption.message
-        });
-    }
-
-    return next();
+if (resolvedApiUrl.name && process.env[resolvedApiUrl.name] && process.env[resolvedApiUrl.name].trim().replace(/\/+$/, '') !== apiUrl) {
+    console.warn(`[UpstreamConfig] Normalized ${resolvedApiUrl.name} to remove a trailing /v1 segment.`);
 }
 
 const cachedEmojiLists = new Map();
-const SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH = '/internal/ai-image-agents/execute/serum-bottle-secretless';
-const R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH =
-    '/internal/ai-image-agents/execute/r2r-v2-trial-001-serum-detail-control';
-const R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH =
-    '/internal/ai-image-agents/execute/r2r-v2-trial-002-lantern-ecommerce-hero';
-const enableAiImageRuntimeToReviewTrialRoutes =
-    process.env.ENABLE_AI_IMAGE_RUNTIME_TO_REVIEW_TRIAL_ROUTES === 'true';
-
-function isSerumBottleSecretlessInternalRoute(req) {
-    return req && req.path === SERUM_BOTTLE_SECRETLESS_INTERNAL_ROUTE_PATH;
-}
-
-function isRuntimeToReviewTrialSecretlessInternalRoute(req) {
-    return req && (
-        req.path === R2R_V2_TRIAL_001_SECRETLESS_INTERNAL_ROUTE_PATH ||
-        req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH
-    );
-}
-
-function isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) {
-    return req && req.path === R2R_V2_TRIAL_002_SECRETLESS_INTERNAL_ROUTE_PATH;
-}
-
-function isCodexMemoryMcpLoopbackAllowed(req) {
-    return req &&
-        req.path.startsWith('/mcp/codex-memory') &&
-        process.env.ENABLE_CODEX_MEMORY_MCP_LOOPBACK === 'true' &&
-        isLoopbackSocket(req);
-}
-
-function isAuthorizedCodexMemoryMcpRequest(req) {
-    const authHeader = req && req.headers ? req.headers.authorization : null;
-    const hasConfiguredServerKey = typeof serverKey === 'string' && serverKey.length > 0;
-    return (
-        (hasConfiguredServerKey && authHeader === `Bearer ${serverKey}`) ||
-        isCodexMemoryMcpLoopbackAllowed(req)
-    );
-}
-
-function authorizeCodexMemoryMcpRequest(req) {
-    if (isAuthorizedCodexMemoryMcpRequest(req)) {
-        return { ok: true };
-    }
-    return {
-        ok: false,
-        statusCode: 401,
-        error: 'Unauthorized (Bearer token required)'
-    };
-}
-
-function authorizeCodexMemoryMcpIncludeContent(req) {
-    if (isAuthorizedCodexMemoryMcpRequest(req)) {
-        return { ok: true };
-    }
-    return {
-        ok: false,
-        statusCode: 403,
-        error: 'codex_memory_include_content_forbidden'
-    };
-}
 
 // Authentication middleware for Admin Panel and Admin API
 const adminAuth = (req, res, next) => {
@@ -982,7 +905,6 @@ const adminAuth = (req, res, next) => {
         if (clientIp) {
             loginAttempts.delete(clientIp); // 成功后清除尝试记录
         }
-        req.adminAuthUser = credentials.name;
         return next();
     }
 
@@ -1015,25 +937,6 @@ app.use((req, res, next) => {
         return next();
     }
 
-    if (
-        isSerumBottleSecretlessInternalRoute(req) ||
-        (
-            enableAiImageRuntimeToReviewTrialRoutes &&
-            isRuntimeToReviewTrialSecretlessInternalRoute(req)
-        )
-    ) {
-        const isAllowedSecretlessInternalHead =
-            req.method === 'HEAD' && isLoopbackSocket(req);
-        const isAllowedTrial002SecretlessInternalPost =
-            enableAiImageRuntimeToReviewTrialRoutes &&
-            req.method === 'POST' &&
-            isRuntimeToReviewV2Trial002SecretlessInternalRoute(req) &&
-            isLoopbackSocket(req);
-        if (isAllowedSecretlessInternalHead || isAllowedTrial002SecretlessInternalPost) {
-            return next();
-        }
-    }
-
     const imageServicePathRegex = /^\/pw=[^/]+\/images\//;
     if (imageServicePathRegex.test(req.path)) {
         return next();
@@ -1045,12 +948,9 @@ app.use((req, res, next) => {
         return next();
     }
 
-    // Skip bearer token check for plugin callbacks
-    if (req.path.startsWith('/plugin-callback')) {
-        return next();
-    }
-
-    if (isCodexMemoryMcpLoopbackAllowed(req)) {
+    // Callback authentication is enforced by the callback handler so the
+    // time-limited built-in compatibility policy can be evaluated there.
+    if (req.path.startsWith('/plugin-callback/')) {
         return next();
     }
 
@@ -1061,44 +961,11 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use('/plugin-callback/:pluginName/:taskId', authorizePluginCallbackRequest);
-
-// Authenticated body parsing happens only after admin/basic and bearer authentication.
-// Keep broad defaults small; preserve historic large-body surfaces only after auth.
-const largeAuthenticatedJsonBodyPaths = [
-    '/v1/chat/completions',
-    '/v1/chatvcp/completions',
-    '/v1/embeddings',
-    '/v1/responses',
-    '/admin_api/multimodal-cache/reidentify'
-];
-
-for (const routePath of largeAuthenticatedJsonBodyPaths) {
-    app.use(routePath, createAuthenticatedJsonParser(LARGE_AUTHENTICATED_BODY_LIMIT));
-}
-app.use('/v1/human/tool', createAuthenticatedTextParser(LARGE_AUTHENTICATED_BODY_LIMIT));
-app.use(createAuthenticatedJsonParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
-app.use(createAuthenticatedUrlencodedParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
-app.use(createAuthenticatedTextParser(DEFAULT_AUTHENTICATED_BODY_LIMIT));
-
-// 引入并使用特殊模型路由；该路由依赖 req.body，必须位于认证后的 body parser 之后。
+// Special model forwarding must pass through the same Bearer gate as every
+// other model route. Mounting it before the middleware would make whitelist
+// hits an authentication bypass.
 const specialModelRouter = require('./routes/specialModelRouter');
-app.use(specialModelRouter); // 这个将处理所有白名单模型的请求
-
-app.use(toolExecutionRoutes({ pluginManager }));
-app.use('/mcp/codex-memory', codexMemoryMcpRoutes({
-    authorizeRequest: authorizeCodexMemoryMcpRequest,
-    authorizeIncludeContent: authorizeCodexMemoryMcpIncludeContent,
-    pluginManager,
-    knowledgeBaseManager,
-    getRagDiaryPlugin: () => pluginManager.messagePreprocessors.get('RAGDiaryPlugin'),
-    projectBasePath: __dirname,
-    dailyNoteRootPath
-}));
-const createCodexOAuthResponsesRouter = require('./routes/codexOAuthResponses');
-app.use(createCodexOAuthResponsesRouter({
-    projectBasePath: __dirname
-}));
+app.use(specialModelRouter);
 
 // This function is no longer needed as the EmojiListGenerator plugin handles generation.
 // async function updateAndLoadAgentEmojiList(agentName, dirPath, filePath) { ... }
@@ -1127,31 +994,7 @@ app.get('/v1/models', async (req, res) => {
         }
         return modelsData;
     };
-    const appendCodexOAuthModels = async (modelsData) => {
-        const codexModels = await createCodexOAuthResponsesRouter.fetchCodexOAuthModels({
-            projectBasePath: __dirname
-        });
-        if (!codexModels.length) return modelsData;
 
-        if (!modelsData || typeof modelsData !== 'object') {
-            modelsData = { object: 'list', data: [] };
-        }
-        if (!Array.isArray(modelsData.data)) {
-            modelsData.data = [];
-        }
-
-        const existingIds = new Set(modelsData.data.map(model => model && model.id).filter(Boolean));
-        for (const model of codexModels) {
-            if (!existingIds.has(model.id)) {
-                modelsData.data.push(model);
-                existingIds.add(model.id);
-            }
-        }
-        return modelsData;
-    };
-    const appendVirtualModels = async (modelsData) => {
-        return appendCodexOAuthModels(appendSemanticRouterModels(modelsData));
-    };
     try {
         const modelsApiUrl = `${apiUrl}/v1/models`;
         const apiResponse = await fetch(modelsApiUrl, {
@@ -1161,6 +1004,7 @@ app.get('/v1/models', async (req, res) => {
                 ...(req.headers['user-agent'] && { 'User-Agent': req.headers['user-agent'] }),
                 'Accept': req.headers['accept'] || 'application/json',
             },
+            agent: getFetchAgent,
         });
 
         if (apiResponse.ok) {
@@ -1168,6 +1012,7 @@ app.get('/v1/models', async (req, res) => {
             try {
                 let modelsData = JSON.parse(responseText);
 
+                // 新增：如果启用了模型重定向，需要处理模型列表响应
                 if (modelRedirectHandler.isEnabled()) {
                     if (modelsData.data && Array.isArray(modelsData.data)) {
                         modelsData.data = modelsData.data.map(model => {
@@ -1185,7 +1030,7 @@ app.get('/v1/models', async (req, res) => {
                     }
                 }
 
-                modelsData = await appendVirtualModels(modelsData);
+                modelsData = appendSemanticRouterModels(modelsData);
 
                 // 设置响应头
                 res.status(apiResponse.status);
@@ -1200,14 +1045,16 @@ app.get('/v1/models', async (req, res) => {
                 return;
             } catch (parseError) {
                 console.warn('[Models] 解析模型列表响应失败，返回语义路由虚拟模型列表:', parseError.message);
-                const fallbackModelsData = await appendVirtualModels({ object: 'list', data: [] });
+                const fallbackModelsData = appendSemanticRouterModels({ object: 'list', data: [] });
                 if (fallbackModelsData.data.length > 0) {
                     return res.status(200).json(fallbackModelsData);
                 }
+                // 如果解析失败且没有虚拟模型，回退到错误响应
             }
         }
 
-        const fallbackModelsData = await appendVirtualModels({ object: 'list', data: [] });
+        // 上游模型列表不可用时，仍返回语义路由虚拟模型，避免前端无法选择 VCPModelAuto。
+        const fallbackModelsData = appendSemanticRouterModels({ object: 'list', data: [] });
         if (fallbackModelsData.data.length > 0) {
             return res.status(200).json(fallbackModelsData);
         }
@@ -1227,18 +1074,6 @@ app.get('/v1/models', async (req, res) => {
     }
 });
 // 新增：标准化任务创建API端点
-app.get('/v1/embedding/fallback-stats', (req, res) => {
-    try {
-        res.json({
-            status: 'ok',
-            ...getEmbeddingFallbackStats(),
-        });
-    } catch (error) {
-        console.error('[EmbeddingFallbackStats] Failed to read stats:', error);
-        res.status(500).json({ error: 'Failed to read embedding fallback stats', details: error.message });
-    }
-});
-
 const VCP_TIMED_CONTACTS_DIR = path.join(__dirname, 'VCPTimedContacts');
 
 // 辅助函数：将 Date 对象格式化为包含时区偏移的本地时间字符串 (e.g., 2025-06-29T15:00:00+08:00)
@@ -1304,7 +1139,8 @@ app.get('/admin_api/server/lifecycle', (req, res) => {
     res.status(200).json({
         status: 'success',
         lifecycle: getServerLifecycleStatus(),
-        shutdownExitCode: lastShutdownExitCode
+        shutdownExitCode: lastShutdownExitCode,
+        health: runtimeHealth.getDetailedStatus()
     });
 });
 
@@ -1430,14 +1266,12 @@ const chatCompletionHandler = new ChatCompletionHandler({
     activeRequests,
     writeDebugLog,
     writeChatLog,
-    handleDiaryFromAIResponse,
     webSocketServer,
     DEBUG_MODE,
     SHOW_VCP_OUTPUT,
     VCPToolCode, // 新增：传递VCP工具调用验证码开关
     RAGMemoRefresh: RAG_MEMO_REFRESH, // 新增：传递RAG日记刷新开关
     enableRoleDivider: ENABLE_ROLE_DIVIDER, // 新增：传递角色分割开关
-    promptPipelineOrderMode: process.env.PromptPipelineOrderMode,
     enableRoleDividerInLoop: ENABLE_ROLE_DIVIDER_IN_LOOP, // 新增：传递循环栈角色分割开关
     roleDividerIgnoreList: ROLE_DIVIDER_IGNORE_LIST, // 新增：传递角色分割忽略列表
     roleDividerSwitches: {
@@ -1455,13 +1289,16 @@ const chatCompletionHandler = new ChatCompletionHandler({
     maxVCPLoopNonStream: parseInt(process.env.MaxVCPLoopNonStream),
     apiRetries: parseInt(process.env.ApiRetries) || 3, // 新增：API重试次数
     apiRetryDelay: parseInt(process.env.ApiRetryDelay) || 1000, // 新增：API重试延迟
+    apiConnectionTimeoutMs: parseInt(process.env.ApiConnectionTimeoutMs) || 900000, // 单次上游连接/首包超时，默认15分钟
     cachedEmojiLists,
     detectors,
     superDetectors,
     chinaModel1: CHINA_MODEL_1,
     chinaModel1Cot: CHINA_MODEL_1_COT,
-    semanticModelRouter
+    semanticModelRouter,
+    multiModalForceTranslateModels: MULTIMODAL_FORCE_TRANSLATE_MODELS // 纯文本模型 tag 命中后强制翻译多模态
 });
+console.log(`[Server] Chat timeouts: upstreamHeadersMs=${chatCompletionHandler.config.apiConnectionTimeoutMs}, pluginCommunicationMs=${parseInt(process.env.PLUGIN_COMMUNICATION_TIMEOUT) || 900000}`);
 
 // Route for standard chat completions. VCP info is shown based on the .env config.
 app.post('/v1/chat/completions', async (req, res) => {
@@ -1490,6 +1327,11 @@ app.post('/v1/chatvcp/completions', async (req, res) => {
         }
     }
 });
+
+// 协议桥接路由：支持 OpenAI Responses API、Anthropic Messages、Gemini GenerateContent
+// 将这些协议格式的请求转换为标准 messages 数组后内部转发到 /v1/chat/completions
+const protocolBridge = require('./routes/protocolBridge');
+app.use(protocolBridge);
 
 // 新增：人类直接调用工具的端点
 app.post('/v1/human/tool', async (req, res) => {
@@ -1523,12 +1365,7 @@ app.post('/v1/human/tool', async (req, res) => {
         if (clientIp && clientIp.substr(0, 7) === "::ffff:") {
             clientIp = clientIp.substr(7);
         }
-        const result = await pluginManager.processToolCall(
-            requestedToolName,
-            parsedToolArgs,
-            clientIp,
-            { requestSource: 'human-tool-route' }
-        );
+        const result = await pluginManager.processToolCall(requestedToolName, parsedToolArgs, clientIp, 'human/tool');
 
         // processToolCall 的结果已经是正确的对象格式
         res.status(200).json(result);
@@ -1550,129 +1387,23 @@ app.post('/v1/human/tool', async (req, res) => {
 });
 
 
-async function handleDiaryFromAIResponse(responseText) {
-    let fullAiResponseTextForDiary = '';
-    let successfullyParsedForDiary = false;
-    if (!responseText || typeof responseText !== 'string' || responseText.trim() === "") {
-        return;
-    }
-    const lines = responseText.trim().split('\n');
-    const looksLikeSSEForDiary = lines.some(line => line.startsWith('data: '));
-    if (looksLikeSSEForDiary) {
-        let sseContent = '';
-        for (const line of lines) {
-            if (line.startsWith('data: ')) {
-                const jsonData = line.substring(5).trim();
-                if (jsonData === '[DONE]') continue;
-                try {
-                    const parsedData = JSON.parse(jsonData);
-                    const contentChunk = parsedData.choices?.[0]?.delta?.content || parsedData.choices?.[0]?.message?.content || '';
-                    if (contentChunk) sseContent += contentChunk;
-                } catch (e) { /* ignore */ }
-            }
-        }
-        if (sseContent) {
-            fullAiResponseTextForDiary = sseContent;
-            successfullyParsedForDiary = true;
-        }
-    }
-    if (!successfullyParsedForDiary) {
-        try {
-            const parsedJson = JSON.parse(responseText);
-            const jsonContent = parsedJson.choices?.[0]?.message?.content;
-            if (jsonContent && typeof jsonContent === 'string') {
-                fullAiResponseTextForDiary = jsonContent;
-                successfullyParsedForDiary = true;
-            }
-        } catch (e) { /* ignore */ }
-    }
-    if (!successfullyParsedForDiary && !looksLikeSSEForDiary) {
-        fullAiResponseTextForDiary = responseText;
-    }
-
-    if (fullAiResponseTextForDiary.trim()) {
-        const dailyNoteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/s;
-        const match = fullAiResponseTextForDiary.match(dailyNoteRegex);
-        if (match && match[1]) {
-            const noteBlockContent = match[1].trim();
-            if (DEBUG_MODE) console.log('[handleDiaryFromAIResponse] Found structured daily note block.');
-
-            const maidMatch = noteBlockContent.match(/^\s*Maid:\s*(.+?)$/m);
-            const dateMatch = noteBlockContent.match(/^\s*Date:\s*(.+?)$/m);
-
-            const maidName = maidMatch ? maidMatch[1].trim() : null;
-            const dateString = dateMatch ? dateMatch[1].trim() : null;
-
-            let contentText = null;
-            const contentMatch = noteBlockContent.match(/^\s*Content:\s*([\s\S]*)$/m);
-            if (contentMatch) {
-                contentText = contentMatch[1].trim();
-            }
-
-            if (maidName && dateString && contentText) {
-                const diaryPayload = { maidName, dateString, contentText };
-                try {
-                    if (DEBUG_MODE) console.log('[handleDiaryFromAIResponse] Calling DailyNoteWrite plugin with payload:', diaryPayload);
-                    // pluginManager.executePlugin is expected to handle JSON stringification if the plugin expects a string
-                    // and to parse the JSON response from the plugin.
-                    // The third argument to executePlugin in Plugin.js is inputData, which can be a string or object.
-                    // For stdio, it's better to stringify here.
-                    const pluginResult = await pluginManager.executePlugin("DailyNoteWrite", JSON.stringify(diaryPayload));
-                    // pluginResult is the direct parsed JSON object from the DailyNoteWrite plugin's stdout.
-                    // Example success: { status: "success", message: "Diary saved to /path/to/your/file.txt" }
-                    // Example error:   { status: "error", message: "Error details" }
-
-                    if (pluginResult && pluginResult.status === "success" && pluginResult.message) {
-                        const dailyNoteWriteResponse = pluginResult; // Use pluginResult directly
-
-                        if (DEBUG_MODE) console.log(`[handleDiaryFromAIResponse] DailyNoteWrite plugin reported success: ${dailyNoteWriteResponse.message}`);
-
-                        let filePath = '';
-                        const successMessage = dailyNoteWriteResponse.message; // e.g., "Diary saved to /path/to/file.txt"
-                        const pathMatchMsg = /Diary saved to (.*)/;
-                        const matchedPath = successMessage.match(pathMatchMsg);
-                        if (matchedPath && matchedPath[1]) {
-                            filePath = matchedPath[1];
-                        }
-
-                        const notification = {
-                            type: 'daily_note_created',
-                            data: {
-                                maidName: diaryPayload.maidName,
-                                dateString: diaryPayload.dateString,
-                                filePath: filePath,
-                                status: 'success',
-                                message: `日记 '${filePath || '未知路径'}' 已为 '${diaryPayload.maidName}' (${diaryPayload.dateString}) 创建成功。`
-                            }
-                        };
-                        webSocketServer.broadcast(notification, 'VCPLog');
-                        if (DEBUG_MODE) console.log('[handleDiaryFromAIResponse] Broadcasted daily_note_created notification:', notification);
-
-                    } else if (pluginResult && pluginResult.status === "error") {
-                        // Handle errors reported by the plugin's JSON response
-                        console.error(`[handleDiaryFromAIResponse] DailyNoteWrite plugin reported an error:`, pluginResult.message || pluginResult);
-                    } else {
-                        // Handle cases where pluginResult is null, or status is not "success"/"error", or message is missing on success.
-                        console.error(`[handleDiaryFromAIResponse] DailyNoteWrite plugin returned an unexpected response structure or failed:`, pluginResult);
-                    }
-                } catch (pluginError) {
-                    // This catches errors from pluginManager.executePlugin itself (e.g., process spawn error, timeout)
-                    console.error('[handleDiaryFromAIResponse] Error executing DailyNoteWrite plugin:', pluginError.message, pluginError.stack);
-                }
-            } else {
-                console.error('[handleDiaryFromAIResponse] Could not extract Maid, Date, or Content from daily note block:', { maidName, dateString, contentText: contentText?.substring(0, 50) });
-            }
-        }
-    }
-}
-
 // --- Admin API Router (Moved to routes/adminPanelRoutes.js) ---
+
+// Define dailyNoteRootPath here as it's needed by the adminPanelRoutes module
+// and was previously defined within the moved block.
+const dailyNoteRootPath = process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(__dirname, 'dailynote');
+const knowledgeRootPath = process.env.TDB_KNOWLEDGE_ROOT_PATH
+    ? (path.isAbsolute(process.env.TDB_KNOWLEDGE_ROOT_PATH)
+        ? process.env.TDB_KNOWLEDGE_ROOT_PATH
+        : path.resolve(__dirname, process.env.TDB_KNOWLEDGE_ROOT_PATH))
+    : path.join(__dirname, 'knowledge');
 
 // Import and use the admin panel routes, passing the getter for currentServerLogPath
 const adminPanelRoutes = require('./routes/adminPanelRoutes')(
     DEBUG_MODE,
     dailyNoteRootPath,
     pluginManager,
+    knowledgeRootPath,
     logger.getServerLogPath, // Pass the getter function
     knowledgeBaseManager, // Pass the knowledgeBaseManager instance
     AGENT_DIR, // Pass the Agent directory path
@@ -1689,59 +1420,86 @@ const adminPanelRoutes = require('./routes/adminPanelRoutes')(
     modelRedirectHandler,
     apiUrl,
     apiKey,
-    __dirname
+    tdbKnowledgeManager
 );
 
 // 新增：引入 VCP 论坛 API 路由
 const forumApiRoutes = require('./routes/forumApi');
-// 引入 ChannelHub 路由
-const channelHubAdminRoutes = require('./routes/admin/channelHub');
-const channelHubInternalRoutes = require('./routes/internal/channelHub');
-// 引入图片评分管理 API 路由
-const imageRatingApiRoutes = require('./routes/image-rating-api');
 
 // --- End Admin API Router ---
 
 // 新增：异步插件回调路由
 const VCP_ASYNC_RESULTS_DIR = path.join(__dirname, 'VCPAsyncResults');
 
-async function ensureAsyncResultsDir() {
-    try {
-        await fs.mkdir(VCP_ASYNC_RESULTS_DIR, { recursive: true });
-    } catch (error) {
-        console.error(`[ServerSetup] 创建 VCPAsyncResults 目录失败: ${VCP_ASYNC_RESULTS_DIR}`, error);
-    }
-}
-
 app.post('/plugin-callback/:pluginName/:taskId', async (req, res) => {
     const { pluginName, taskId } = req.params;
-    const callbackData = req.body; // 这是插件回调时发送的 JSON 数据
+    const callbackData = req.body;
+
+    const authorization = authorizeCallback({
+        authorization: req.headers.authorization,
+        serverKey,
+        pluginName,
+        taskId
+    });
+    if (!authorization.allowed) {
+        const statusCode = authorization.statusCode || 401;
+        console.warn(JSON.stringify({
+            event: 'plugin_callback_rejected',
+            pluginName,
+            reason: authorization.reason,
+            statusCode,
+            compatibility: getCallbackCompatibilityMetrics()
+        }));
+        return res.status(statusCode).json({
+            status: 'error',
+            error: statusCode === 400 ? 'Invalid callback identifier' : 'Unauthorized'
+        });
+    }
 
     if (DEBUG_MODE) {
         console.log(`[Server] Received callback for plugin: ${pluginName}, taskId: ${taskId}`);
         console.log(`[Server] Callback data:`, JSON.stringify(callbackData, null, 2));
     }
 
-    // 1. Save callback data to a file
-    await ensureAsyncResultsDir();
-    const resultFilePath = path.join(VCP_ASYNC_RESULTS_DIR, `${pluginName}-${taskId}.json`);
-    try {
-        await fs.writeFile(resultFilePath, JSON.stringify(callbackData, null, 2), 'utf-8');
-        if (DEBUG_MODE) console.log(`[Server Callback] Saved async result for ${pluginName}-${taskId} to ${resultFilePath}`);
-    } catch (fileError) {
-        console.error(`[Server Callback] Error saving async result file for ${pluginName}-${taskId}:`, fileError);
-        // Continue with WebSocket push even if file saving fails for now
-    }
-
+    // A manifest must exist before the callback is acknowledged or written.
+    // This prevents arbitrary valid-looking plugin names from becoming a file
+    // creation primitive, including during the legacy compatibility window.
     const pluginManifest = pluginManager.getPlugin(pluginName);
-
     if (!pluginManifest) {
         console.error(`[Server Callback] Plugin manifest not found for: ${pluginName}`);
-        // Still attempt to acknowledge the callback if possible, but log error
-        return res.status(404).json({ status: "error", message: "Plugin not found, but callback noted." });
+        return res.status(404).json({ status: 'error', message: 'Plugin not found.' });
     }
 
-    // 2. WebSocket push (existing logic)
+    let resultFilePath;
+    try {
+        resultFilePath = resolveCallbackResultPath(VCP_ASYNC_RESULTS_DIR, pluginName, taskId);
+        await atomicWriteJson(resultFilePath, callbackData);
+        if (DEBUG_MODE) {
+            console.log(`[Server Callback] Saved async result for ${pluginName}-${taskId} to ${resultFilePath}`);
+        }
+    } catch (fileError) {
+        const statusCode = fileError.code === 'INVALID_CALLBACK_IDENTIFIER'
+            || fileError.code === 'CALLBACK_PATH_ESCAPE'
+            ? 400
+            : 500;
+        console.error(`[Server Callback] Failed to persist callback for ${pluginName}-${taskId}:`, fileError);
+        return res.status(statusCode).json({
+            status: 'error',
+            message: statusCode === 400 ? 'Invalid callback path.' : 'Failed to persist callback.'
+        });
+    }
+
+    if (authorization.deprecated) {
+        console.warn(JSON.stringify({
+            event: 'deprecated_unauthenticated_plugin_callback',
+            pluginName,
+            taskId,
+            deadline: authorization.deadline,
+            count: getCallbackCompatibilityMetrics().accepted
+        }));
+    }
+
+    // WebSocket notification is emitted only after the durable atomic rename.
     if (pluginManifest.webSocketPush && pluginManifest.webSocketPush.enabled) {
         const targetClientType = pluginManifest.webSocketPush.targetClientType || null;
         const wsMessage = {
@@ -1756,342 +1514,89 @@ app.post('/plugin-callback/:pluginName/:taskId', async (req, res) => {
         console.log(`[Server Callback] WebSocket push not configured or disabled for plugin: ${pluginName}`);
     }
 
-    res.status(200).json({ status: "success", message: "Callback received and processed" });
+    res.status(200).json({
+        status: 'success',
+        message: 'Callback received and processed',
+        authMode: authorization.mode
+    });
 });
-
-const {
-    AI_IMAGE_SECRETLESS_TRIAL_FIXTURES,
-} = require('./modules/aiImageJennTrialFixtures');
-const {
-    serumBottleSecretless: serverSerumBottleSecretless,
-    runtimeToReviewV2Trial001: serverRuntimeToReviewV2Trial001,
-    runtimeToReviewV2Trial002: serverRuntimeToReviewV2Trial002,
-} = AI_IMAGE_SECRETLESS_TRIAL_FIXTURES;
-const {
-    mode: SERUM_BOTTLE_SECRETLESS_AUTHORIZER_MODE,
-    activationId: SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID,
-    pipelineId: SERUM_BOTTLE_SECRETLESS_EXACT_PIPELINE_ID,
-    receiptRef: SERUM_BOTTLE_SECRETLESS_EXACT_RECEIPT_REF,
-    artifactRecordRef: SERUM_BOTTLE_SECRETLESS_EXACT_ARTIFACT_RECORD_REF,
-    outputDirectoryRef: SERUM_BOTTLE_SECRETLESS_EXACT_OUTPUT_DIRECTORY_REF,
-    authorizedRouteIds: SERUM_BOTTLE_SECRETLESS_AUTHORIZED_ROUTE_ID_LIST,
-} = serverSerumBottleSecretless;
-const {
-    mode: R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE,
-    activationId: R2R_V2_TRIAL_001_EXACT_ACTIVATION_ID,
-    pipelineId: R2R_V2_TRIAL_001_EXACT_PIPELINE_ID,
-    receiptRef: R2R_V2_TRIAL_001_EXACT_RECEIPT_REF,
-    artifactRecordRef: R2R_V2_TRIAL_001_EXACT_ARTIFACT_RECORD_REF,
-    outputDirectoryRef: R2R_V2_TRIAL_001_EXACT_OUTPUT_DIRECTORY_REF,
-    routeId: R2R_V2_TRIAL_001_ROUTE_ID,
-} = serverRuntimeToReviewV2Trial001;
-const {
-    mode: R2R_V2_TRIAL_002_SECRETLESS_AUTHORIZER_MODE,
-    activationId: R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID,
-    pipelineId: R2R_V2_TRIAL_002_EXACT_PIPELINE_ID,
-    receiptRef: R2R_V2_TRIAL_002_EXACT_RECEIPT_REF,
-    artifactRecordRef: R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF,
-    outputDirectoryRef: R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF,
-    routeId: R2R_V2_TRIAL_002_ROUTE_ID,
-} = serverRuntimeToReviewV2Trial002;
-const SERUM_BOTTLE_SECRETLESS_AUTHORIZED_ROUTE_IDS = new Set(
-    SERUM_BOTTLE_SECRETLESS_AUTHORIZED_ROUTE_ID_LIST
-);
-const SERUM_BOTTLE_SECRETLESS_AUTHORIZER_FORBIDDEN_KEYS = new Set([
-    'adminusername',
-    'adminpassword',
-    'basicauthheader',
-    'authorizationheader',
-    'authorization',
-    'basicauth',
-    'auth',
-    'bearertoken',
-    'token',
-    'secretenvvarvalue',
-    'apikey',
-    'accesstoken',
-    'refreshtoken',
-    'password',
-    'cookie',
-    'headers',
-]);
-
-function normalizeSerumBottleSecretlessAuthorizerKey(key) {
-    return String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function containsSerumBottleSecretlessForbiddenAuthorizerKey(value) {
-    if (!value || typeof value !== 'object') {
-        return false;
-    }
-
-    if (Array.isArray(value)) {
-        return value.some((item) => containsSerumBottleSecretlessForbiddenAuthorizerKey(item));
-    }
-
-    return Object.entries(value).some(([key, nestedValue]) => (
-        SERUM_BOTTLE_SECRETLESS_AUTHORIZER_FORBIDDEN_KEYS.has(
-            normalizeSerumBottleSecretlessAuthorizerKey(key)
-        ) ||
-        containsSerumBottleSecretlessForbiddenAuthorizerKey(nestedValue)
-    ));
-}
-
-function hasSerumBottleSecretlessExactBudget(budget = {}) {
-    return (
-        budget.maxProviderCalls === 1 &&
-        budget.maxPluginCalls === 1 &&
-        budget.maxApiCalls === 1 &&
-        budget.maxImages === 1 &&
-        budget.retryAllowed === false
-    );
-}
-
-function isNonEmptyString(value) {
-    return typeof value === 'string' && value.trim() !== '';
-}
-
-async function authorizeSerumBottleSecretlessExecution(request = {}) {
-    if (request && request.mode === R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE) {
-        return authorizeRuntimeToReviewV2Trial001SecretlessExecution(request);
-    }
-    if (request && request.mode === R2R_V2_TRIAL_002_SECRETLESS_AUTHORIZER_MODE) {
-        return authorizeRuntimeToReviewV2Trial002SecretlessExecution(request);
-    }
-
-    if (
-        !request ||
-        typeof request !== 'object' ||
-        containsSerumBottleSecretlessForbiddenAuthorizerKey(request) ||
-        request.mode !== SERUM_BOTTLE_SECRETLESS_AUTHORIZER_MODE ||
-        request.activationPackageId !== SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID ||
-        request.taskId !== SERUM_BOTTLE_SECRETLESS_EXACT_ACTIVATION_ID ||
-        request.pipelineId !== SERUM_BOTTLE_SECRETLESS_EXACT_PIPELINE_ID ||
-        !SERUM_BOTTLE_SECRETLESS_AUTHORIZED_ROUTE_IDS.has(request.routeId) ||
-        request.receiptRef !== SERUM_BOTTLE_SECRETLESS_EXACT_RECEIPT_REF ||
-        request.artifactRecordRef !== SERUM_BOTTLE_SECRETLESS_EXACT_ARTIFACT_RECORD_REF ||
-        request.outputDirectoryRef !== SERUM_BOTTLE_SECRETLESS_EXACT_OUTPUT_DIRECTORY_REF ||
-        !hasSerumBottleSecretlessExactBudget(request.budget) ||
-        !isNonEmptyString(request.receiptRef) ||
-        !isNonEmptyString(request.artifactRecordRef) ||
-        !isNonEmptyString(request.nonSecretPayloadHash)
-    ) {
-        return { ok: false };
-    }
-
-    const authorizationSeed = JSON.stringify({
-        mode: request.mode,
-        activationPackageId: request.activationPackageId,
-        routeId: request.routeId,
-        taskId: request.taskId || null,
-        pipelineId: request.pipelineId || null,
-        receiptRef: request.receiptRef,
-        artifactRecordRef: request.artifactRecordRef,
-        outputDirectoryRef: request.outputDirectoryRef,
-        nonSecretPayloadHash: request.nonSecretPayloadHash,
-        budget: request.budget,
-    });
-
-    return {
-        ok: true,
-        operatorId: 'vcptoolbox-serum-bottle-secretless-internal',
-        authorizationId: `serum-bottle-secretless-${crypto
-            .createHash('sha256')
-            .update(authorizationSeed)
-            .digest('hex')
-            .slice(0, 24)}`,
-        receiptId: request.receiptRef,
-    };
-}
-
-async function authorizeRuntimeToReviewV2Trial001SecretlessExecution(request = {}) {
-    if (
-        !request ||
-        typeof request !== 'object' ||
-        containsSerumBottleSecretlessForbiddenAuthorizerKey(request) ||
-        request.mode !== R2R_V2_TRIAL_001_SECRETLESS_AUTHORIZER_MODE ||
-        request.activationPackageId !== R2R_V2_TRIAL_001_EXACT_ACTIVATION_ID ||
-        request.taskId !== R2R_V2_TRIAL_001_EXACT_ACTIVATION_ID ||
-        request.pipelineId !== R2R_V2_TRIAL_001_EXACT_PIPELINE_ID ||
-        request.routeId !== R2R_V2_TRIAL_001_ROUTE_ID ||
-        request.receiptRef !== R2R_V2_TRIAL_001_EXACT_RECEIPT_REF ||
-        request.artifactRecordRef !== R2R_V2_TRIAL_001_EXACT_ARTIFACT_RECORD_REF ||
-        request.outputDirectoryRef !== R2R_V2_TRIAL_001_EXACT_OUTPUT_DIRECTORY_REF ||
-        !hasSerumBottleSecretlessExactBudget(request.budget) ||
-        !isNonEmptyString(request.nonSecretPayloadHash)
-    ) {
-        return { ok: false };
-    }
-
-    const authorizationSeed = JSON.stringify({
-        mode: request.mode,
-        activationPackageId: request.activationPackageId,
-        routeId: request.routeId,
-        taskId: request.taskId || null,
-        pipelineId: request.pipelineId || null,
-        receiptRef: request.receiptRef,
-        artifactRecordRef: request.artifactRecordRef,
-        outputDirectoryRef: request.outputDirectoryRef,
-        nonSecretPayloadHash: request.nonSecretPayloadHash,
-        budget: request.budget,
-    });
-
-    return {
-        ok: true,
-        operatorId: 'vcptoolbox-r2r-v2-trial-001-secretless-internal',
-        authorizationId: `r2r-v2-trial-001-secretless-${crypto
-            .createHash('sha256')
-            .update(authorizationSeed)
-            .digest('hex')
-            .slice(0, 24)}`,
-        receiptId: request.receiptRef,
-    };
-}
-
-async function authorizeRuntimeToReviewV2Trial002SecretlessExecution(request = {}) {
-    if (
-        !request ||
-        typeof request !== 'object' ||
-        containsSerumBottleSecretlessForbiddenAuthorizerKey(request) ||
-        request.mode !== R2R_V2_TRIAL_002_SECRETLESS_AUTHORIZER_MODE ||
-        request.activationPackageId !== R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID ||
-        request.taskId !== R2R_V2_TRIAL_002_EXACT_ACTIVATION_ID ||
-        request.pipelineId !== R2R_V2_TRIAL_002_EXACT_PIPELINE_ID ||
-        request.routeId !== R2R_V2_TRIAL_002_ROUTE_ID ||
-        request.receiptRef !== R2R_V2_TRIAL_002_EXACT_RECEIPT_REF ||
-        request.artifactRecordRef !== R2R_V2_TRIAL_002_EXACT_ARTIFACT_RECORD_REF ||
-        request.outputDirectoryRef !== R2R_V2_TRIAL_002_EXACT_OUTPUT_DIRECTORY_REF ||
-        !hasSerumBottleSecretlessExactBudget(request.budget) ||
-        !isNonEmptyString(request.nonSecretPayloadHash)
-    ) {
-        return { ok: false };
-    }
-
-    const authorizationSeed = JSON.stringify({
-        mode: request.mode,
-        activationPackageId: request.activationPackageId,
-        routeId: request.routeId,
-        taskId: request.taskId || null,
-        pipelineId: request.pipelineId || null,
-        receiptRef: request.receiptRef,
-        artifactRecordRef: request.artifactRecordRef,
-        outputDirectoryRef: request.outputDirectoryRef,
-        nonSecretPayloadHash: request.nonSecretPayloadHash,
-        budget: request.budget,
-    });
-
-    return {
-        ok: true,
-        operatorId: 'vcptoolbox-r2r-v2-trial-002-secretless-internal',
-        authorizationId: `r2r-v2-trial-002-secretless-${crypto
-            .createHash('sha256')
-            .update(authorizationSeed)
-            .digest('hex')
-            .slice(0, 24)}`,
-        receiptId: request.receiptRef,
-    };
-}
-
-
 async function initialize() {
+    console.log('开始初始化工具调用记录存储...');
+    toolCallRecordStore.initialize();
+    console.log('工具调用记录存储初始化完成。');
+
     console.log('开始初始化向量数据库...');
-    await knowledgeBaseManager.initialize(); // 在加载插件之前启动，确保服务就绪
+    try {
+        await knowledgeBaseManager.initialize(); // 在加载插件之前启动，确保服务就绪
+        const rustDiagnostics = typeof knowledgeBaseManager.getRustDiagnostics === 'function'
+            ? knowledgeBaseManager.getRustDiagnostics()
+            : { available: true };
+        runtimeHealth.setComponent(
+            'rust',
+            rustDiagnostics.available === false ? 'failed' : 'ready',
+            rustDiagnostics,
+            true
+        );
+        runtimeHealth.setComponent('sqlite', 'ready', {
+            health: knowledgeBaseManager.dbHealthState || 'healthy'
+        }, true);
+    } catch (error) {
+        runtimeHealth.setComponent('rust', 'failed', { error: error.message }, true);
+        runtimeHealth.setComponent('sqlite', 'failed', { error: error.message }, true);
+        throw error;
+    }
     console.log('向量数据库初始化完成。');
+
+    console.log('开始初始化 TDB 冷知识库...');
+    await tdbKnowledgeManager.initialize();
+    if (tdbKnowledgeManager.recovery) {
+        recoveryOperatorServer = await require('./modules/tdbRecovery/operator-server').start(tdbKnowledgeManager.recovery);
+    }
+    console.log('TDB 冷知识库初始化完成。');
 
     pluginManager.setProjectBasePath(__dirname);
     pluginManager.setVectorDBManager(knowledgeBaseManager); // 注入 knowledgeBaseManager
+    pluginManager.setTdbKnowledgeManager(tdbKnowledgeManager); // 注入冷知识库管理器
     await dynamicToolRegistry.initialize({
         pluginManager,
         projectBasePath: __dirname,
         debugMode: DEBUG_MODE
     });
+    // Runtime V2 generations capture host dependencies during prepare/start.
+    // Inject the stable WebSocket bridge before the first generation is built.
+    pluginManager.setWebSocketServer(webSocketServer);
 
     console.log('开始加载插件...');
-    await pluginManager.loadPlugins();
+    try {
+        await pluginManager.loadPlugins();
+        runtimeHealth.setComponent('plugins', 'ready', {
+            generation: pluginManager.getRuntimeStatus?.().generation || null
+        }, true);
+        refreshPythonRuntimeHealth();
+    } catch (error) {
+        runtimeHealth.setComponent('plugins', 'failed', { error: error.message }, true);
+        throw error;
+    }
     console.log('插件加载完成。');
 
     console.log('开始初始化服务类插件...');
     // --- 关键顺序调整 ---
     // 必须先将 WebSocketServer 实例注入到 PluginManager，
     // 这样在 initializeServices 内部才能正确地为 VCPLog 等插件注入广播函数。
-    pluginManager.setWebSocketServer(webSocketServer);
-
     await pluginManager.initializeServices(app, adminPanelRoutes, __dirname);
-    const {
-      createAiImageAgentsRouter,
-      createSerumBottleSecretlessInternalRouter,
-    } = require('./routes/admin/aiImageAgents');
-    const enableAiImageAgentsRoute = process.env.ENABLE_AI_IMAGE_AGENTS_ROUTE === 'true';
-    const routeOptions = {
-      auditFilePath: path.join(__dirname, 'state', 'ai-image-pipelines', 'audit.jsonl'),
-      enableSerumBottleSecretlessInternalRoute: enableAiImageAgentsRoute,
-      enableRuntimeToReviewTrialInternalRoutes: enableAiImageRuntimeToReviewTrialRoutes,
-      pluginManager,
-      requireNativeDoubaoSecretlessRuntimeDelegate: true,
-      enableAiImageRealExecution: process.env.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true',
-      enableNativeDoubaoSecretlessRuntimeDelegate:
-        process.env.ENABLE_NATIVE_DOUBAO_SECRETLESS_RUNTIME_DELEGATE === 'true',
-      authorizeSerumBottleSecretlessExecution,
-    };
-    const {
-      createNativeImageDelegateRegistry,
-      registerSerumBottleSecretlessDoubaoDelegate,
-    } = require('./modules/nativeImageDelegateRegistry');
-    routeOptions.nativeImageDelegateRegistry = createNativeImageDelegateRegistry();
-
-    if (process.env.ENABLE_AI_IMAGE_REAL_EXECUTION === 'true') {
-      const {
-        createNativeDoubaoSecretlessRuntimeDelegate,
-      } = require('./modules/nativeDoubaoSecretlessRuntimeDelegate');
-
-      if (process.env.ENABLE_NATIVE_DOUBAO_SECRETLESS_RUNTIME_DELEGATE === 'true') {
-        const nativeDoubaoSecretlessRuntimeDelegate = createNativeDoubaoSecretlessRuntimeDelegate({
-          enabled: true,
-          pluginManager,
-          requestIp: '127.0.0.1',
-          bridgeId: 'server_ai_image_agents_native_doubao_secretless_runtime_delegate',
-        });
-        routeOptions.nativeDoubaoSecretlessRuntimeDelegate = nativeDoubaoSecretlessRuntimeDelegate;
-        registerSerumBottleSecretlessDoubaoDelegate(
-          routeOptions.nativeImageDelegateRegistry,
-          nativeDoubaoSecretlessRuntimeDelegate,
-          { enabled: true }
-        );
-        console.log('[server] AI Image Agent real execution ENABLED (native Doubao secretless delegate injected)');
-      } else {
-        console.warn('[server] AI Image Agent real execution requested but native Doubao secretless delegate is disabled; route remains fail-closed');
-      }
-    }
-
-    if (enableAiImageAgentsRoute) {
-      app.use('/admin_api/ai-image-agents', createAiImageAgentsRouter(routeOptions));
-    }
-
-    // The secretless route keeps only its HEAD health surface loopback-only.
-    // Real POST execution must pass the existing bearer middleware above before
-    // the exact activation and delegate gates are evaluated.
-    if (routeOptions.enableSerumBottleSecretlessInternalRoute === true) {
-      app.use(
-        '/internal/ai-image-agents',
-        createSerumBottleSecretlessInternalRouter(routeOptions)
-      );
-    }
-
+    pluginManager.startPluginWatcher();
     // 在所有服务插件都注册完路由后，再将 adminApiRouter 挂载到主 app 上
     app.use('/admin_api', adminPanelRoutes);
     // 挂载 VCP 论坛 API 路由
     app.use('/admin_api/forum', forumApiRoutes);
-    // 挂载 ChannelHub 路由
-app.use("/api/image-rating", imageRatingApiRoutes);
-    app.use('/admin_api/channelHub', channelHubAdminRoutes.router);
-    app.use('/internal/channelHub', channelHubInternalRoutes.router);
-    console.log('服务类插件初始化完成，管理面板 API 路由、VCP 论坛 API 路由和 ChannelHub 路由已挂载。');
+    console.log('服务类插件初始化完成，管理面板 API 路由和 VCP 论坛 API 路由已挂载。');
 
     // --- 新增：通用依赖注入 ---
     // 在所有服务都初始化完毕后，再执行依赖注入，确保 VCPLog 等服务已准备就绪。
     try {
         const dependencies = {
             knowledgeBaseManager,
+            tdbKnowledgeManager,
             vcpLogFunctions: pluginManager.getVCPLogFunctions()
         };
         if (DEBUG_MODE) console.log('[Server] Injecting dependencies into plugins...');
@@ -2205,80 +1710,97 @@ async function startServer() {
     // 🌟 关键修复：在监听端口前完成所有初始化
     await initialize(); // This loads plugins and initializes services
 
-    // --- 新增：初始化 ChannelHub ---
-    console.log('[Server] 正在初始化 ChannelHub...');
-    const channelHub = new ChannelHubService({
-        config: {
-            baseDir: process.env.CHANNELHUB_BASE_DIR || __dirname,
-            debugMode: DEBUG_MODE,
-            // 这里可以继续扩展 config.env 中的其他参数
-        },
-        logger: console,
-        chatCompletionHandler: chatCompletionHandler,
-        pluginManager: pluginManager
-    });
-    await channelHub.initialize();
-    app.set('channelHub', channelHub);
-
-    // 注入路由依赖
-    channelHubAdminRoutes.initialize(channelHub);
-    channelHubInternalRoutes.initialize({ channelHubService: channelHub });
-
-    console.log('[Server] ChannelHub 初始化完成并已挂载依赖。');
-
     // 🌟 核心网络优化：100% 确保首请求的 node-fetch ESM 模块热启动，消除冷启动导致的延迟和上游挂断风险
     console.log('[Server] 正在预热 node-fetch ESM 模块...');
     await import('node-fetch');
     console.log('[Server] node-fetch 模块预热完毕，准备处理请求。');
 
-    server = app.listen(port, () => {
-        console.log(`中间层服务器正在监听端口 ${port}`);
-        console.log(`API 服务器地址: ${apiUrl}`);
+    server = bindHost ? app.listen(port, bindHost) : app.listen(port);
 
-        server.on('connection', (socket) => {
-            trackedSockets.add(socket);
+    server.on('connection', (socket) => {
+        trackedSockets.add(socket);
 
-            socket.on('close', () => {
-                trackedSockets.delete(socket);
-                activeHttpRequests.delete(socket);
-            });
+        socket.on('close', () => {
+            trackedSockets.delete(socket);
+            activeHttpRequests.delete(socket);
         });
-
-        server.on('request', (req, res) => {
-            if (req.socket) {
-                activeHttpRequests.add(req.socket);
-                res.on('finish', () => {
-                    activeHttpRequests.delete(req.socket);
-                });
-                res.on('close', () => {
-                    activeHttpRequests.delete(req.socket);
-                });
-            }
-        });
-
-        // Initialize the new WebSocketServer
-        if (DEBUG_MODE) console.log('[Server] Initializing WebSocketServer...');
-        const vcpKeyValue = pluginManager.getResolvedPluginConfigValue('VCPLog', 'VCP_Key') || process.env.VCP_Key;
-        webSocketServer.initialize(server, { debugMode: DEBUG_MODE, vcpKey: vcpKeyValue });
-
-        // --- 注入依赖 ---
-        webSocketServer.setPluginManager(pluginManager);
-
-        // 初始化 FileFetcherServer
-        FileFetcherServer.initialize(webSocketServer);
-
-        if (DEBUG_MODE) console.log('[Server] WebSocketServer, PluginManager, and FileFetcherServer have been interconnected.');
     });
-}
 
+    server.on('request', (req, res) => {
+        if (req.socket) {
+            activeHttpRequests.add(req.socket);
+            res.on('finish', () => {
+                activeHttpRequests.delete(req.socket);
+            });
+            res.on('close', () => {
+                activeHttpRequests.delete(req.socket);
+            });
+        }
+    });
+
+    await new Promise((resolve, reject) => {
+        const onError = error => {
+            server.off('listening', onListening);
+            reject(error);
+        };
+        const onListening = () => {
+            server.off('error', onError);
+            resolve();
+        };
+        server.once('error', onError);
+        server.once('listening', onListening);
+    });
+
+    console.log(`中间层服务器正在监听 ${bindHost || '0.0.0.0'}:${port}`);
+    console.log(`API 服务器地址: ${apiUrl}`);
+
+    // WebSocket and file-fetch bridges are required runtime components. They
+    // are attached before readiness and before sd_notify(READY=1).
+    if (DEBUG_MODE) console.log('[Server] Initializing WebSocketServer...');
+    const vcpKeyValue = pluginManager.getResolvedPluginConfigValue('VCPLog', 'VCP_Key') || process.env.VCP_Key;
+    const distributedMusicPlaylistSyncEnabled = (process.env.DISTRIBUTED_MUSIC_PLAYLIST_SYNC_ENABLED || 'false').toLowerCase() === 'true';
+    const webSocketHeartbeatEnabled = (process.env.WEBSOCKET_HEARTBEAT_ENABLED || 'false').toLowerCase() === 'true';
+    try {
+        webSocketServer.initialize(server, {
+            debugMode: DEBUG_MODE,
+            vcpKey: vcpKeyValue,
+            distributedMusicPlaylistSyncEnabled,
+            heartbeatEnabled: webSocketHeartbeatEnabled,
+            heartbeatIntervalMs: process.env.WEBSOCKET_HEARTBEAT_INTERVAL_MS
+        });
+        webSocketServer.setPluginManager(pluginManager);
+        FileFetcherServer.initialize(webSocketServer);
+        runtimeHealth.setComponent('websocket', 'ready', null, true);
+    } catch (error) {
+        runtimeHealth.setComponent('websocket', 'failed', { error: error.message }, true);
+        throw error;
+    }
+
+    runtimeHealth.setComponent('http', 'ready', {
+        host: bindHost || '0.0.0.0',
+        port: Number(port)
+    }, true);
+    runtimeHealth.setPhase('ready');
+    const generation = pluginManager.getRuntimeStatus?.().generation || 'legacy';
+    if (runtimeHealth.isReady()) {
+        await systemdNotifier.ready(`VCPToolBox generation ${generation} ready`);
+    } else {
+        await systemdNotifier.status(`VCPToolBox generation ${generation} is not ready`);
+        console.warn('[Server] HTTP listener is live, but required runtime components are not ready.');
+    }
+    if (DEBUG_MODE) console.log('[Server] WebSocketServer, PluginManager, and FileFetcherServer have been interconnected.');
+}
 startServer().catch(err => {
+    runtimeHealth.setPhase('failed');
     console.error('[Server] Failed to start server:', err);
     process.exit(1);
 });
-
-
 async function gracefulShutdown(exitCode = 0, reason = 'signal') {
     if (shutdownPromise) {
+        if (exitCode !== 0) {
+            lastShutdownExitCode = exitCode;
+            shutdownReason = reason;
+        }
         console.log(`[Server] gracefulShutdown already in progress. Reusing existing shutdown promise. Current state: ${serverLifecycleState}`);
         return shutdownPromise;
     }
@@ -2287,6 +1809,9 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
     shutdownReason = reason;
     shutdownStartedAt = Date.now();
     serverLifecycleState = SERVER_LIFECYCLE.DRAINING;
+    runtimeHealth.setPhase('draining');
+    systemdNotifier.stopping(`VCPToolBox stopping: ${reason}`)
+        .catch(error => console.warn(`[SystemdNotify] STOPPING notification failed: ${error.message}`));
 
     console.log(`[Server] Initiating graceful shutdown. reason=${reason}, exitCode=${exitCode}`);
     console.log(`[Server][ShutdownTrace] Phase 0/10 - shutdown requested. activeRequests=${activeRequests.size}`);
@@ -2294,12 +1819,17 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
     forceShutdownTimer = setTimeout(() => {
         console.error('[Server] Graceful shutdown timed out. Forcing process exit.');
         serverLifecycleState = SERVER_LIFECYCLE.EXITING;
-        process.exit(exitCode);
+        process.exit(lastShutdownExitCode);
     }, 60000);
     forceShutdownTimer.unref();
 
     shutdownPromise = (async () => {
         try {
+            if (recoveryOperatorServer) {
+                await recoveryOperatorServer.close();
+                recoveryOperatorServer = null;
+            }
+
             if (webSocketServer && typeof webSocketServer.beginDrain === 'function') {
                 console.log(`[Server][ShutdownTrace] Phase 1/10 - begin WebSocket drain`);
                 console.log('[Server] Draining WebSocket upgrade handling...');
@@ -2310,11 +1840,12 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
             }
 
             console.log(`[Server][ShutdownTrace] Phase 2/10 - closing HTTP server listener`);
-            const httpServerClosePromise = closeHttpServerGracefully();
-            console.log(`[Server][ShutdownTrace] Phase 2/10 - HTTP server listener drain initiated. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
+            await closeHttpServerGracefully();
+            console.log(`[Server][ShutdownTrace] Phase 2/10 - HTTP server listener closed. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
 
-            console.log(`[Server][ShutdownTrace] Phase 3/10 - waiting active requests to drain (initial=${activeRequests.size})`);
-            const drainedNaturally = await waitForActiveRequestsToDrain(30000);
+            const requestDrainTimeoutMs = exitCode === 0 ? 20000 : 5000;
+            console.log(`[Server][ShutdownTrace] Phase 3/10 - waiting active requests to drain (initial=${activeRequests.size}, timeoutMs=${requestDrainTimeoutMs})`);
+            const drainedNaturally = await waitForActiveRequestsToDrain(requestDrainTimeoutMs);
             console.log(`[Server][ShutdownTrace] Phase 3/10 - drain wait result=${drainedNaturally}, remaining=${activeRequests.size}`);
 
             if (!drainedNaturally) {
@@ -2323,13 +1854,18 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
                 await abortAllActiveRequests('服务正在重启，当前请求已被服务器安全中止。');
                 const drainedAfterAbort = await waitForActiveRequestsToDrain(5000);
                 console.log(`[Server][ShutdownTrace] Phase 4/10 - abort complete. drainedAfterAbort=${drainedAfterAbort}, remaining=${activeRequests.size}`);
+                if (!drainedAfterAbort) {
+                    server?.closeAllConnections?.();
+                }
             } else {
                 console.log(`[Server][ShutdownTrace] Phase 4/10 - abort skipped, no remaining active requests`);
             }
-
-            console.log(`[Server][ShutdownTrace] Phase 4/10 - awaiting HTTP server close completion`);
-            await httpServerClosePromise;
-            console.log(`[Server][ShutdownTrace] Phase 4/10 - HTTP server listener closed. trackedSockets=${trackedSockets.size}, activeHttpRequests=${activeHttpRequests.size}`);
+            if (httpServerClosePromise) {
+                await Promise.race([
+                    httpServerClosePromise,
+                    new Promise(resolve => setTimeout(resolve, 2000))
+                ]);
+            }
 
             serverLifecycleState = SERVER_LIFECYCLE.SHUTTING_DOWN;
             console.log(`[Server][ShutdownTrace] Phase 5/10 - lifecycle switched to SHUTTING_DOWN`);
@@ -2359,6 +1895,31 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
                 console.log(`[Server][ShutdownTrace] Phase 8/10 - pluginManager shutdown skipped`);
             }
 
+            if (toolCallRecordStore) {
+                console.log(`[Server][ShutdownTrace] Phase 8/10 - toolCallRecordStore.shutdown start`);
+                await toolCallRecordStore.shutdown();
+                console.log(`[Server][ShutdownTrace] Phase 8/10 - toolCallRecordStore.shutdown done`);
+            }
+
+            try {
+                const browserRuntimeManager = require('./modules/browserRuntimeManager.js');
+                if (typeof browserRuntimeManager.shutdown === 'function') {
+                    console.log('[Server][ShutdownTrace] Phase 8/10 - browserRuntimeManager.shutdown start');
+                    await browserRuntimeManager.shutdown();
+                    console.log('[Server][ShutdownTrace] Phase 8/10 - browserRuntimeManager.shutdown done');
+                }
+            } catch (browserShutdownError) {
+                console.error('[Server] Browser runtime shutdown failed:', browserShutdownError);
+            }
+
+            if (tdbKnowledgeManager) {
+                console.log(`[Server][ShutdownTrace] Phase 9/10 - tdbKnowledgeManager.shutdown start`);
+                await tdbKnowledgeManager.shutdown();
+                console.log(`[Server][ShutdownTrace] Phase 9/10 - tdbKnowledgeManager.shutdown done`);
+            } else {
+                console.log(`[Server][ShutdownTrace] Phase 9/10 - tdbKnowledgeManager shutdown skipped`);
+            }
+
             if (knowledgeBaseManager) {
                 console.log(`[Server][ShutdownTrace] Phase 9/10 - knowledgeBaseManager.shutdown start`);
                 await knowledgeBaseManager.shutdown();
@@ -2382,16 +1943,20 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
             } else {
                 console.log(`[Server][ShutdownTrace] Phase 10/10 - log stream close skipped`);
             }
+        } catch (shutdownError) {
+            console.error(`[Server] Graceful shutdown phase failed (${reason}):`, shutdownError);
+            lastShutdownExitCode = exitCode === 0 ? 1 : exitCode;
         } finally {
             if (forceShutdownTimer) {
                 clearTimeout(forceShutdownTimer);
                 forceShutdownTimer = null;
             }
             serverLifecycleState = SERVER_LIFECYCLE.EXITING;
+            runtimeHealth.setPhase('exiting');
         }
 
-        console.log(`[Server][ShutdownTrace] Final - process.exit(${exitCode})`);
-        process.exit(exitCode);
+        console.log(`[Server][ShutdownTrace] Final - process.exit(${lastShutdownExitCode})`);
+        process.exit(lastShutdownExitCode);
     })();
 
     return shutdownPromise;
@@ -2400,7 +1965,8 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
 process.on('SIGINT', () => gracefulShutdown(0, 'SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown(0, 'SIGTERM'));
 
-// 新增：捕获未处理的异常，防止服务器崩溃
+// A process that crossed an uncaught exception boundary may have corrupted
+// in-memory state. Drain briefly and exit non-zero so systemd can restart it.
 process.on('uncaughtException', (error) => {
     console.error('[CRITICAL] Uncaught Exception detected:', error.message);
     console.error('[CRITICAL] Stack trace:', error.stack);
@@ -2417,26 +1983,34 @@ process.on('uncaughtException', (error) => {
         }
     }
 
-    // 不要立即退出，让服务器继续运行
-    console.log('[CRITICAL] Server will continue running despite the exception.');
+    gracefulShutdown(1, 'uncaught_exception').catch(shutdownError => {
+        logger.originalConsoleError('[CRITICAL] Fatal shutdown failed:', shutdownError);
+        process.exit(1);
+    });
 });
 
-// 新增：捕获未处理的 Promise 拒绝
+// Unhandled rejections are treated as fatal for the same reason. Expected
+// cancellation paths must handle their own rejection at the call site.
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('[WARNING] Unhandled Promise Rejection at:', promise);
-    console.error('[WARNING] Reason:', reason);
+    console.error('[CRITICAL] Unhandled Promise Rejection at:', promise);
+    console.error('[CRITICAL] Reason:', reason);
 
     // 记录到日志文件
     const serverLogWriteStream = logger.getLogWriteStream();
     if (serverLogWriteStream && !serverLogWriteStream.destroyed) {
         try {
             serverLogWriteStream.write(
-                `[${dayjs().tz(DEFAULT_TIMEZONE).format('YYYY-MM-DD HH:mm:ss Z')}] [WARNING] Unhandled Promise Rejection: ${reason}\n`
+                `[${dayjs().tz(DEFAULT_TIMEZONE).format('YYYY-MM-DD HH:mm:ss Z')}] [CRITICAL] Unhandled Promise Rejection: ${reason}\n`
             );
         } catch (e) {
-            console.error('[WARNING] Failed to write rejection to log:', e.message);
+            console.error('[CRITICAL] Failed to write rejection to log:', e.message);
         }
     }
+
+    gracefulShutdown(1, 'unhandled_rejection').catch(shutdownError => {
+        logger.originalConsoleError('[CRITICAL] Fatal rejection shutdown failed:', shutdownError);
+        process.exit(1);
+    });
 });
 
 // Ensure log stream is flushed on uncaught exceptions or synchronous exit, though less reliable

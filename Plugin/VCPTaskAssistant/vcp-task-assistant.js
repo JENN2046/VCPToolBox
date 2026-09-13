@@ -1,11 +1,11 @@
 // vcp-task-assistant.js — VCP任务派发中心 (hybridservice)
 
-const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 const schedule = require('node-schedule');
 const ForumEngine = require('./lib/forum-engine');
+const agentAssistant = require('../AgentAssistant/AgentAssistant.js');
 
 const DATA_FILE = path.join(__dirname, 'task-center-data.json');
 const MIN_INTERVAL_MINUTES = 10;
@@ -22,7 +22,9 @@ let DEBUG_MODE = false;
 
 let taskCenterData = createDefaultData();
 let activeTimers = new Map();
+const activeTaskExecutions = new Set();
 let forumEngine = null;
+let runtimeStopping = false;
 
 function createDefaultData() {
     return {
@@ -226,58 +228,34 @@ function renderPromptTemplate(template, replacements) {
 
 const WAKEUP_TIMEOUT_MS = 180000; // 3分钟超时，防止无限挂起
 
-function wakeUpAgent(agentName, prompt, dispatchConfig = {}) {
-    return new Promise((resolve, reject) => {
-        if (!VCP_KEY) return reject(new Error('VCP Key 未配置'));
+async function wakeUpAgent(agentName, prompt, dispatchConfig = {}) {
+    // inject_tools 功能已禁用：Agent 自身已拥有完整工具集，无需通过任务中心额外注入
+    const maid = String(dispatchConfig.maid || 'VCP系统').trim() || 'VCP系统';
+    const temporaryContact = dispatchConfig.temporaryContact !== false ? 'true' : undefined;
+    const taskDelegation = dispatchConfig.taskDelegation ? 'true' : undefined;
 
-        // inject_tools 功能已禁用：Agent 自身已拥有完整工具集，无需通过任务中心额外注入
-        const maid = String(dispatchConfig.maid || 'VCP系统').trim() || 'VCP系统';
-        const temporaryContact = dispatchConfig.temporaryContact !== false ? 'true' : 'false';
-        const taskDelegation = dispatchConfig.taskDelegation ? 'true' : 'false';
-
-        const requestBody = `<<<[TOOL_REQUEST]>>>
-maid:「始」${maid}「末」,
-tool_name:「始」AgentAssistant「末」,
-agent_name:「始」${agentName}「末」,
-prompt:「始」${prompt}「末」,
-temporary_contact:「始」${temporaryContact}「末」,
-task_delegation:「始」${taskDelegation}「末」,
-<<<[END_TOOL_REQUEST]>>>`;
-
-        const options = {
-            hostname: '127.0.0.1',
-            port: VCP_PORT,
-            path: '/v1/human/tool',
-            method: 'POST',
-            timeout: WAKEUP_TIMEOUT_MS,
-            headers: {
-                'Content-Type': 'text/plain;charset=UTF-8',
-                'Authorization': `Bearer ${VCP_KEY}`,
-                'Content-Length': Buffer.byteLength(requestBody)
-            }
-        };
-
-        const req = http.request(options, (res) => {
-            let responseBody = '';
-            res.on('data', chunk => {
-                responseBody += chunk.toString();
-            });
-            res.on('end', () => {
-                resolve({
-                    status: res.statusCode,
-                    body: responseBody
-                });
-            });
-        });
-
-        req.on('timeout', () => {
-            req.destroy();
+    const timeoutPromise = new Promise((_, reject) => {
+        const timer = setTimeout(() => {
             reject(new Error(`唤醒Agent超时 (${WAKEUP_TIMEOUT_MS / 1000}s): ${agentName}`));
-        });
-        req.on('error', e => reject(new Error(`唤醒Agent失败: ${e.message}`)));
-        req.write(requestBody);
-        req.end();
+        }, WAKEUP_TIMEOUT_MS);
+        if (timer.unref) timer.unref();
     });
+
+    const result = await Promise.race([
+        agentAssistant.processToolCall({
+            agent_name: agentName,
+            prompt,
+            maid,
+            temporary_contact: temporaryContact,
+            task_delegation: taskDelegation
+        }),
+        timeoutPromise
+    ]);
+
+    return {
+        status: 200,
+        body: result
+    };
 }
 
 async function buildTaskPrompt(task) {
@@ -302,7 +280,7 @@ function appendHistory(record) {
     taskCenterData.history = taskCenterData.history.slice(-maxHistory);
 }
 
-async function executeTask(taskId, triggerSource = 'scheduler') {
+async function executeTaskInternal(taskId, triggerSource = 'scheduler') {
     if (!taskCenterData.globalEnabled && triggerSource === 'scheduler') {
         return { skipped: true, reason: 'global-disabled' };
     }
@@ -507,6 +485,16 @@ async function executeTask(taskId, triggerSource = 'scheduler') {
     }
 }
 
+async function executeTask(taskId, triggerSource = 'scheduler') {
+    const execution = executeTaskInternal(taskId, triggerSource);
+    activeTaskExecutions.add(execution);
+    try {
+        return await execution;
+    } finally {
+        activeTaskExecutions.delete(execution);
+    }
+}
+
 function clearTaskTimer(taskId) {
     const timer = activeTimers.get(taskId);
     if (timer) {
@@ -595,11 +583,13 @@ function scheduleTask(task) {
                     console.error(`[TaskAssistant] interval-scheduler 执行失败 (${task.id}):`, e.message);
                 }
                 // 无论任务成功与否，都继续调度下一轮
-                const againTime = new Date(Date.now() + intervalMs);
-                const nextJob = schedule.scheduleJob(againTime, runAndReschedule);
-                activeTimers.set(task.id, nextJob);
-                task.runtime.nextRunTime = againTime.toISOString();
-                broadcastStatusUpdate();
+                if (!runtimeStopping) {
+                    const againTime = new Date(Date.now() + intervalMs);
+                    const nextJob = schedule.scheduleJob(againTime, runAndReschedule);
+                    activeTimers.set(task.id, nextJob);
+                    task.runtime.nextRunTime = againTime.toISOString();
+                    broadcastStatusUpdate();
+                }
             });
             task.runtime.nextRunTime = nextTime.toISOString();
         } else if (mode === 'cron') {
@@ -809,7 +799,8 @@ async function triggerTask(taskId) {
     };
 }
 
-function initialize(config) {
+async function initialize(config) {
+    runtimeStopping = false;
     VCP_PORT = config.PORT || '8080';
     VCP_KEY = config.Key || '';
     PROJECT_BASE_PATH = config.PROJECT_BASE_PATH || '';
@@ -817,20 +808,36 @@ function initialize(config) {
 
     forumEngine = new ForumEngine(PROJECT_BASE_PATH);
 
-    console.log(`[TaskAssistant] 初始化 | PORT=${VCP_PORT} | Key=${VCP_KEY ? 'FOUND' : 'NOT FOUND'}`);
-    loadData()
-        .then(() => rebuildScheduler())
-        .then(() => {
-            console.log(`[TaskAssistant] 初始化完成 | 全局开关: ${taskCenterData.globalEnabled} | 任务数: ${taskCenterData.tasks.length} | 活跃定时器: ${activeTimers.size}`);
-        })
-        .catch(error => {
-            console.error('[TaskAssistant] 初始化失败:', error.message);
-        });
+    console.log(`[TaskAssistant] 初始化 | PORT=${VCP_PORT} | Key=${VCP_KEY ? 'FOUND' : 'NOT FOUND'} | AgentAssistant=direct-call`);
+    await loadData();
+    await rebuildScheduler();
+    console.log(`[TaskAssistant] 初始化完成 | 全局开关: ${taskCenterData.globalEnabled} | 任务数: ${taskCenterData.tasks.length} | 活跃定时器: ${activeTimers.size}`);
 }
 
-function shutdown() {
+function getReloadBlockers() {
+    if (activeTaskExecutions.size === 0) return [];
+    return [{
+        type: 'active_task_dispatch',
+        count: activeTaskExecutions.size,
+        message: `${activeTaskExecutions.size} task dispatch(es) are still running.`
+    }];
+}
+
+function health() {
+    return {
+        status: runtimeStopping ? 'stopped' : 'ready',
+        activeTimers: activeTimers.size,
+        activeExecutions: activeTaskExecutions.size
+    };
+}
+
+async function shutdown() {
     console.log('[TaskAssistant] 正在关闭...');
+    runtimeStopping = true;
     stopAllTimers();
+    if (activeTaskExecutions.size > 0) {
+        await Promise.allSettled(Array.from(activeTaskExecutions));
+    }
 }
 
 async function processToolCall(args) {
@@ -867,6 +874,8 @@ async function processToolCall(args) {
 module.exports = {
     initialize,
     shutdown,
+    health,
+    getReloadBlockers,
     processToolCall,
     getConfig,
     getStatus,

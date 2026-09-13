@@ -36,27 +36,21 @@ function normalizeForIgnore(text) {
 }
 
 /**
- * Copy array-level metadata attached by preprocessors when this module returns a new array.
+ * Copy non-enumerable array metadata produced by upstream preprocessors.
+ * OneRing attaches __oneRingMeta to the messages array itself; roleDivider may
+ * return a new array, so metadata must be preserved explicitly.
  */
 function copyArrayMetadata(source, target) {
-    if (!Array.isArray(source) || !Array.isArray(target)) {
-        return target;
-    }
+    if (!Array.isArray(source) || !Array.isArray(target)) return target;
 
-    for (const key of Reflect.ownKeys(source)) {
-        if (key === 'length' || (typeof key === 'string' && /^\d+$/.test(key))) {
-            continue;
-        }
-
+    for (const key of Object.getOwnPropertyNames(source)) {
+        if (/^(?:length|\d+)$/.test(key)) continue;
         const descriptor = Object.getOwnPropertyDescriptor(source, key);
-        if (!descriptor) {
-            continue;
-        }
-
+        if (!descriptor) continue;
         try {
             Object.defineProperty(target, key, descriptor);
-        } catch (error) {
-            // Metadata preservation is best-effort and must not affect role splitting.
+        } catch (e) {
+            // Keep role divider pure and non-fatal; metadata is best-effort.
         }
     }
 
@@ -104,11 +98,10 @@ function processSingleMessage(message, { ignoreList = [], switches = { system: t
     let currentTextBuffer = "";
     let cursor = 0;
 
-    // Identify protected blocks: TOOL_REQUEST and DailyNote
+    // Identify protected TOOL_REQUEST blocks.
     const protectedBlocks = [];
     const blockMarkers = [
-        { start: '<<<[TOOL_REQUEST]>>>', end: '<<<[END_TOOL_REQUEST]>>>' },
-        { start: '<<<DailyNoteStart>>>', end: '<<<DailyNoteEnd>>>' }
+        { start: '<<<[TOOL_REQUEST]>>>', end: '<<<[END_TOOL_REQUEST]>>>' }
     ];
 
     for (const marker of blockMarkers) {

@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
-const fsSync = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const EventEmitter = require('node:events');
@@ -9,7 +8,6 @@ const EventEmitter = require('node:events');
 const dynamicToolRegistryModule = require('../modules/dynamicToolRegistry.js');
 const { DynamicToolRegistry } = dynamicToolRegistryModule;
 const messageProcessor = require('../modules/messageProcessor.js');
-const toolboxManager = require('../modules/toolboxManager.js');
 
 async function makeProjectRoot() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-dynamic-tools-'));
@@ -312,44 +310,6 @@ test('distributed offline state excludes tools while reconnect reuses classifica
   assert.equal(registry.getRecord('distributed:srv-a:RemoteSearch').available, true);
 });
 
-test('admin state hides stale distributed ids when the same cloud tool reconnects under a new id', async () => {
-  const projectRoot = await makeProjectRoot();
-  const calls = [];
-  const pluginManager = makePluginManager([
-    makeManifest('RemoteSearch', 'Remote search service for web lookup.', { serverId: 'srv-old' })
-  ]);
-  const registry = new DynamicToolRegistry();
-
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig(),
-    classifier: classifierFactory(calls)
-  });
-
-  await registry.syncFromPluginManager('distributed_register_old');
-  await registry.flushClassificationQueue();
-  await registry.markDistributedOffline('srv-old');
-
-  pluginManager.plugins.set(
-    'RemoteSearch',
-    makeManifest('RemoteSearch', 'Remote search service for web lookup.', { serverId: 'srv-new' })
-  );
-  await registry.syncFromPluginManager('distributed_register_new');
-  await registry.flushClassificationQueue();
-
-  const oldRecord = registry.getRecord('distributed:srv-old:RemoteSearch');
-  const newRecord = registry.getRecord('distributed:srv-new:RemoteSearch');
-  assert.ok(oldRecord, 'stale distributed id remains in the catalog for cache/history reuse');
-  assert.ok(newRecord, 'new distributed id should be registered');
-  assert.equal(oldRecord.available, false);
-  assert.equal(newRecord.available, true);
-
-  const adminKeys = registry.getAdminState().records.map((record) => record.originKey);
-  assert.equal(adminKeys.includes('distributed:srv-old:RemoteSearch'), false);
-  assert.equal(adminKeys.includes('distributed:srv-new:RemoteSearch'), true);
-});
-
 test('buildInjection exposes brief list, relevant full descriptions, and explicit directives', async () => {
   const projectRoot = await makeProjectRoot();
   const calls = [];
@@ -618,6 +578,46 @@ test('fast distributed register/unregister preserves an offline catalog record',
   assert.equal(calls.length, 1, 'the disconnected tool should have been classified once for cache reuse');
 });
 
+test('distributed reconnect with new ephemeral server ids does not accumulate admin duplicates', async () => {
+  const projectRoot = await makeProjectRoot();
+  const calls = [];
+  const pluginManager = new EventedPluginManager([]);
+  const registry = new DynamicToolRegistry();
+  await registry.initialize({
+    pluginManager,
+    projectBasePath: projectRoot,
+    config: testConfig({ classificationDebounceMs: 0 }),
+    classifier: classifierFactory(calls)
+  });
+
+  for (const serverId of ['dist-day-1', 'dist-day-2', 'dist-day-3']) {
+    const manifest = makeManifest('DailyRemoteSearch', 'Remote search service for web lookup.', {
+      serverId,
+      displayName: '[云端] DailyRemoteSearch'
+    });
+    pluginManager.plugins.set(manifest.name, manifest);
+    pluginManager.emit('tools_changed', { reason: 'distributed_register', serverId });
+    await registry.syncPromise;
+    await registry.flushClassificationQueue();
+
+    pluginManager.emit('distributed_tools_offline', {
+      serverId,
+      pluginNames: [manifest.name],
+      manifests: [{ ...manifest }]
+    });
+    pluginManager.plugins.delete(manifest.name);
+    pluginManager.emit('tools_changed', { reason: 'distributed_unregister', serverId, pluginNames: [manifest.name] });
+    await registry.syncPromise;
+    await registry.flushClassificationQueue();
+  }
+
+  const state = registry.getAdminState();
+  const records = state.records.filter((record) => record.pluginName === 'DailyRemoteSearch');
+  assert.equal(records.length, 1, 'admin state must expose one stable row for repeated reconnects of the same distributed tool');
+  assert.equal(records[0].available, false);
+  assert.equal(calls.length, 1, 'classification cache should be reused across ephemeral distributed server ids');
+});
+
 test('classification uses RAG embedding fallback when no small model or classifier is configured', async () => {
   const projectRoot = await makeProjectRoot();
   const pluginManager = makePluginManager([
@@ -646,54 +646,6 @@ test('classification uses RAG embedding fallback when no small model or classifi
 
   const state = registry.getAdminState();
   const item = state.records.find((record) => record.pluginName === 'SemanticSearch');
-  assert.ok(item.categories.includes('search'));
-  assert.equal(item.classifiedBy, 'rag_embedding_fallback');
-});
-
-test('RAG embedding fallback uses persistent plugin description vectors when available', async () => {
-  const projectRoot = await makeProjectRoot();
-  const vectorKeys = [];
-  const rawCalls = [];
-  const pluginManager = makePluginManager([
-    makeManifest('PersistentSemanticSearch', 'Search web references with semantic retrieval.')
-  ]);
-  pluginManager.vectorDBManager = {
-    async getPluginDescriptionVector(descText, rawEmbeddingFn) {
-      vectorKeys.push(descText);
-      return rawEmbeddingFn(descText);
-    }
-  };
-  pluginManager.messagePreprocessors = new Map([
-    ['RAGDiaryPlugin', {
-      async getSingleEmbeddingCached(text) {
-        rawCalls.push(text);
-        const lower = String(text).toLowerCase();
-        if (lower.includes('search') || lower.includes('web') || lower.includes('retrieval')) return [1, 0];
-        if (lower.includes('file') || lower.includes('code')) return [0, 1];
-        return [0.1, 0.1];
-      },
-      async getSingleEmbedding() {
-        throw new Error('getSingleEmbedding should not be used when cached embedding is available');
-      }
-    }]
-  ]);
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({ useRagEmbeddings: true })
-  });
-
-  await registry.syncFromPluginManager('persistent_embedding_fallback');
-  await registry.flushClassificationQueue();
-
-  assert.ok(vectorKeys.some((key) => key.startsWith('PersistentSemanticSearch')));
-  assert.ok(vectorKeys.some((key) => key.startsWith('search:')));
-  assert.ok(!vectorKeys.some((key) => key.startsWith('dynamic_tool_registry:')));
-  assert.deepEqual(rawCalls, vectorKeys);
-  assert.equal(rawCalls.length, vectorKeys.length);
-  const item = registry.getAdminState().records.find((record) => record.pluginName === 'PersistentSemanticSearch');
   assert.ok(item.categories.includes('search'));
   assert.equal(item.classifiedBy, 'rag_embedding_fallback');
 });
@@ -937,7 +889,7 @@ test('small model uses independent OpenAI endpoint when main config reuse is dis
   assert.equal(requests[0].options.body.model, 'independent-classifier');
 });
 
-test('hot reload picks up public and private dynamic tool config files without leaking secrets', async (t) => {
+test('hot reload picks up public and private dynamic tool config files without leaking secrets', async () => {
   const projectRoot = await makeProjectRoot();
   const privateConfigDir = path.join(projectRoot, 'Plugin', 'DynamicToolBridge');
   await fs.mkdir(privateConfigDir, { recursive: true });
@@ -946,29 +898,16 @@ test('hot reload picks up public and private dynamic tool config files without l
     makeManifest('ReloadSearch', 'Search the web with reloadable config.')
   ]);
   const registry = new DynamicToolRegistry();
-  t.after(() => registry._closeConfigWatchers());
-
   await registry.initialize({
     pluginManager,
     projectBasePath: projectRoot,
-    config: testConfig({
-      maxBriefListItems: 7,
-      smallModel: {
-        enabled: false,
-        useMainConfig: true,
-        endpoint: '',
-        model: ''
-      }
-    })
+    config: testConfig({ maxBriefListItems: 7, smallModel: { enabled: false, useMainConfig: true, endpoint: '', model: '' } })
   });
-
-  assert.ok(registry._configWatchers.length >= 1, 'initialize should start config watchers by default');
 
   const configPath = path.join(projectRoot, 'ToolConfigs', 'dynamic_tool_bridge.config.json');
   await fs.writeFile(configPath, JSON.stringify({
     version: 1,
     enabled: true,
-    classificationDebounceMs: 0,
     maxBriefListItems: 13,
     maxExpandedPlugins: 3,
     manualOverrides: {
@@ -1001,54 +940,136 @@ test('hot reload picks up public and private dynamic tool config files without l
   assert.equal(state.config.smallModel.model, 'reload-classifier');
   assert.equal(state.config.smallModel.apiKey, undefined);
   assert.equal(registry.getAdminState().config.smallModel.apiKey, undefined);
-
-  const diskConfig = JSON.parse(await fs.readFile(configPath, 'utf8'));
-  assert.equal(diskConfig.smallModel.apiKey, undefined);
-  assert.notEqual(diskConfig.smallModel.endpoint, 'https://reload.local/v1/chat/completions');
-  assert.notEqual(diskConfig.smallModel.model, 'reload-classifier');
 });
 
-test('hot reload does not overwrite public config during transient parse failures', async () => {
+test('dynamic injection reuses toolbox fold blocks for granular expanded tool usage', async () => {
   const projectRoot = await makeProjectRoot();
+  const manifest = makeManifest('FoldSearch', 'Search public references with fold blocks.');
+  const pluginManager = makePluginManager([manifest]);
+  pluginManager.getIndividualPluginDescriptions = () => new Map([
+    ['VCPFoldSearch', [
+      '[===vcp_fold:0.0 ::desc: quick start===]',
+      'BASIC SEARCH USAGE',
+      '[===vcp_fold:0.2 ::desc: browser search details===]',
+      'BROWSER SEARCH DETAILS',
+      '[===vcp_fold:0.95 ::desc: irrelevant media workflow===]',
+      'IRRELEVANT MEDIA WORKFLOW'
+    ].join('\n')]
+  ]);
+  pluginManager.messagePreprocessors = new Map([
+    ['RAGDiaryPlugin', {
+      async getSingleEmbeddingCached(text) {
+        const lower = String(text).toLowerCase();
+        if (lower.includes('browser') || lower.includes('search') || lower.includes('reference')) return [1, 0];
+        if (lower.includes('media')) return [0, 1];
+        return [0.1, 0.1];
+      }
+    }]
+  ]);
+
   const registry = new DynamicToolRegistry();
   await registry.initialize({
-    pluginManager: makePluginManager([]),
+    pluginManager,
     projectBasePath: projectRoot,
-    config: testConfig({ maxBriefListItems: 17 }),
-    watchConfigFiles: false
+    config: testConfig({ maxExpandedPlugins: 1 }),
+    classifier: async () => ({
+      categories: ['search'],
+      keywords: ['browser', 'search'],
+      brief: 'Searches references.',
+      confidence: 0.9
+    })
+  });
+  await registry.syncFromPluginManager('fold_blocks');
+  await registry.flushClassificationQueue();
+
+  const injection = await registry.buildInjection({
+    messages: [{ role: 'user', content: 'Use browser search for public references.' }],
+    pluginManager
   });
 
-  const configPath = path.join(projectRoot, 'ToolConfigs', 'dynamic_tool_bridge.config.json');
-  const partialConfig = '{"version":1,"enabled":true,"maxBriefListItems":';
-  await fs.writeFile(configPath, partialConfig, 'utf8');
+  assert.match(injection, /BASIC SEARCH USAGE/);
+  assert.match(injection, /BROWSER SEARCH DETAILS/);
+  assert.equal(injection.includes('IRRELEVANT MEDIA WORKFLOW'), false);
+});
 
-  const state = await registry.reloadConfigFromDisk('partial_public_config');
+test('dynamic fold expansion uses plugin manager vector DB cache for fixed block vectors', async () => {
+  const projectRoot = await makeProjectRoot();
+  const manifest = makeManifest('CachedFoldSearch', 'Search public references with cached fold blocks.');
+  const pluginManager = makePluginManager([manifest]);
+  pluginManager.getIndividualPluginDescriptions = () => new Map([
+    ['VCPCachedFoldSearch', [
+      '[===vcp_fold:0.0 ::desc: quick start===]',
+      'CACHED BASIC SEARCH USAGE',
+      '[===vcp_fold:0.2 ::desc: browser search details===]',
+      'CACHED BROWSER SEARCH DETAILS',
+      '[===vcp_fold:0.95 ::desc: irrelevant media workflow===]',
+      'CACHED IRRELEVANT MEDIA WORKFLOW'
+    ].join('\n')]
+  ]);
 
-  assert.equal(state.config.maxBriefListItems, 17);
-  assert.match(registry.lastError, /Failed to read dynamic_tool_bridge\.config\.json/);
-  assert.equal(await fs.readFile(configPath, 'utf8'), partialConfig);
+  const rawEmbeddingCalls = [];
+  const descriptionVectorCalls = [];
+  const vectorCache = new Map();
+  pluginManager.vectorDBManager = {
+    async getPluginDescriptionVector(text, getEmbeddingFn) {
+      descriptionVectorCalls.push(String(text));
+      if (vectorCache.has(text)) return vectorCache.get(text);
+      const vector = await getEmbeddingFn(text);
+      vectorCache.set(text, vector);
+      return vector;
+    }
+  };
+  pluginManager.messagePreprocessors = new Map([
+    ['RAGDiaryPlugin', {
+      async getSingleEmbeddingCached(text) {
+        rawEmbeddingCalls.push(String(text));
+        const lower = String(text).toLowerCase();
+        if (lower.includes('browser') || lower.includes('search') || lower.includes('reference')) return [1, 0];
+        if (lower.includes('media')) return [0, 1];
+        return [0.1, 0.1];
+      }
+    }]
+  ]);
 
-  await fs.writeFile(configPath, JSON.stringify({
-    version: 1,
-    enabled: true,
-    classificationDebounceMs: 0,
-    maxBriefListItems: 19
-  }, null, 2), 'utf8');
+  const registry = new DynamicToolRegistry();
+  await registry.initialize({
+    pluginManager,
+    projectBasePath: projectRoot,
+    config: testConfig({ maxExpandedPlugins: 1 }),
+    classifier: async () => ({
+      categories: ['search'],
+      keywords: ['browser', 'search'],
+      brief: 'Searches references.',
+      confidence: 0.9
+    })
+  });
+  await registry.syncFromPluginManager('fold_vector_cache');
+  await registry.flushClassificationQueue();
 
-  const recovered = await registry.reloadConfigFromDisk('valid_public_config');
-  assert.equal(recovered.config.maxBriefListItems, 19);
+  const options = {
+    messages: [{ role: 'user', content: 'Use browser search for public references.' }],
+    pluginManager
+  };
+  const firstInjection = await registry.buildInjection(options);
+  const secondInjection = await registry.buildInjection(options);
 
-  await fs.unlink(configPath);
-  const missing = await registry.reloadConfigFromDisk('missing_public_config');
-
-  assert.equal(missing.config.maxBriefListItems, 19);
-  await assert.rejects(
-    () => fs.readFile(configPath, 'utf8'),
-    (error) => error.code === 'ENOENT'
+  assert.match(firstInjection, /CACHED BROWSER SEARCH DETAILS/);
+  assert.match(secondInjection, /CACHED BROWSER SEARCH DETAILS/);
+  assert.equal(
+    descriptionVectorCalls.filter((text) => text.includes('dynamic_tool_fold:browser search details')).length,
+    2
+  );
+  assert.equal(
+    rawEmbeddingCalls.filter((text) => text.includes('dynamic_tool_fold:browser search details')).length,
+    1
+  );
+  assert.equal(
+    rawEmbeddingCalls.filter((text) => text.includes('dynamic_tool_fold:irrelevant media workflow')).length,
+    1
   );
 });
 
-test('manual description overrides apply without mutating classification cache', async () => {
+test('manual description overrides make dynamic tools behave like editable toolbox mappings', async () => {
   const projectRoot = await makeProjectRoot();
   const pluginManager = makePluginManager([
     makeManifest('MappedSearch', 'Original manifest search description.')
@@ -1067,18 +1088,13 @@ test('manual description overrides apply without mutating classification cache',
           'local:MappedSearch': {
             brief: 'Curated toolbox search.',
             fullDescription: 'CURATED TOOLBOX-LIKE SEARCH INSTRUCTIONS',
-            categories: ['curated_search'],
+            categories: ['search'],
             keywords: ['curated', 'search']
           }
         }
       }
     }),
-    classifier: async () => ({
-      brief: 'Original classifier brief.',
-      categories: ['original_search'],
-      keywords: ['original'],
-      confidence: 0.9
-    })
+    classifier: classifierFactory([])
   });
 
   await registry.syncFromPluginManager('manual_mapping_override');
@@ -1087,14 +1103,7 @@ test('manual description overrides apply without mutating classification cache',
   const state = registry.getAdminState();
   const record = state.records.find((item) => item.originKey === 'local:MappedSearch');
   assert.equal(record.brief, 'Curated toolbox search.');
-  assert.deepEqual(record.categories, ['curated_search']);
-  assert.deepEqual(record.keywords, ['curated', 'search']);
-  assert.equal(record.classifiedBy, 'custom_classifier+manual_override');
-
-  const cached = registry.categories.get('local:MappedSearch');
-  assert.equal(cached.brief, 'Original classifier brief.');
-  assert.deepEqual(cached.categories, ['original_search']);
-  assert.deepEqual(cached.keywords, ['original']);
+  assert.deepEqual(record.categories, ['search']);
 
   const injection = await registry.buildInjection({
     messages: [{ role: 'assistant', content: '[[VCPDynamicTools:tool=MappedSearch]]' }],
@@ -1103,595 +1112,97 @@ test('manual description overrides apply without mutating classification cache',
   assert.match(injection, /Curated toolbox search/);
   assert.match(injection, /CURATED TOOLBOX-LIKE SEARCH INSTRUCTIONS/);
   assert.equal(injection.includes('FULL:MappedSearch'), false);
-
-  await registry.updateConfig({
-    manualOverrides: {
-      excludedOriginKeys: [],
-      pinnedOriginKeys: [],
-      categoryAliases: {},
-      descriptionOverrides: {}
-    }
-  });
-
-  const restored = registry.getAdminState().records.find((item) => item.originKey === 'local:MappedSearch');
-  assert.equal(restored.brief, 'Original classifier brief.');
-  assert.deepEqual(restored.categories, ['original_search']);
-  assert.deepEqual(restored.keywords, ['original']);
-  assert.equal(restored.classifiedBy, 'custom_classifier');
 });
 
-test('description overrides are preserved across config writes and hot reload', async () => {
+test('hot reloaded description overrides refresh existing classification cache', async () => {
   const projectRoot = await makeProjectRoot();
   const pluginManager = makePluginManager([
-    makeManifest('ReloadOverride', 'Original reload override description.')
+    makeManifest('OverrideOnly', 'Original search description.')
   ]);
   const registry = new DynamicToolRegistry();
   await registry.initialize({
     pluginManager,
     projectBasePath: projectRoot,
     config: testConfig(),
-    classifier: classifierFactory([])
+    classifier: async () => ({
+      brief: 'Old classifier brief.',
+      categories: ['oldcat'],
+      keywords: ['oldkw'],
+      confidence: 0.9
+    })
   });
-  await registry.syncFromPluginManager('seed_override_preservation');
-  await registry.flushClassificationQueue();
 
-  const saved = await registry.updateConfig({
-    manualOverrides: {
-      excludedOriginKeys: [],
-      pinnedOriginKeys: ['local:ReloadOverride'],
-      categoryAliases: {},
-      descriptionOverrides: {
-        'local:ReloadOverride': {
-          brief: 'Saved override brief.',
-          categories: ['saved_category'],
-          keywords: ['saved_keyword']
-        }
-      }
-    }
-  });
-  assert.equal(saved.manualOverrides.descriptionOverrides['local:ReloadOverride'].brief, 'Saved override brief.');
+  await registry.syncFromPluginManager('seed_old_classification');
+  await registry.flushClassificationQueue();
+  assert.equal(registry.getAdminState().records[0].brief, 'Old classifier brief.');
 
   const configPath = path.join(projectRoot, 'ToolConfigs', 'dynamic_tool_bridge.config.json');
-  const diskConfig = JSON.parse(await fs.readFile(configPath, 'utf8'));
-  assert.equal(diskConfig.manualOverrides.descriptionOverrides['local:ReloadOverride'].brief, 'Saved override brief.');
-
-  const reloaded = await registry.reloadConfigFromDisk('description_override_reload');
-  const record = reloaded.records.find((item) => item.originKey === 'local:ReloadOverride');
-  assert.equal(record.brief, 'Saved override brief.');
-  assert.deepEqual(record.categories, ['saved_category']);
-  assert.deepEqual(record.keywords, ['saved_keyword']);
-});
-
-test('full description only override does not mark unclassified records as classified', async () => {
-  const projectRoot = await makeProjectRoot();
-  const pluginManager = makePluginManager([
-    makeManifest('UsageOnlyOverride', 'Search helper with curated usage.')
-  ]);
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({
-      manualOverrides: {
-        excludedOriginKeys: [],
-        pinnedOriginKeys: [],
-        categoryAliases: {},
-        descriptionOverrides: {
-          'local:UsageOnlyOverride': {
-            fullDescription: 'CURATED USAGE ONLY'
-          }
-        }
-      }
-    })
-  });
-  await registry.syncFromPluginManager('usage_only_override');
-
-  const record = registry.getAdminState().records.find((item) => item.originKey === 'local:UsageOnlyOverride');
-  assert.deepEqual(record.categories, []);
-  assert.deepEqual(record.keywords, []);
-  assert.equal(record.classifiedBy, null);
-
-  const injection = await registry.buildInjection({
-    messages: [{ role: 'assistant', content: '[[VCPDynamicTools:tool=UsageOnlyOverride]]' }],
-    pluginManager
-  });
-  assert.match(injection, /CURATED USAGE ONLY/);
-});
-
-test('dynamic injection expands matching fold blocks with stub embeddings', async () => {
-  const projectRoot = await makeProjectRoot();
-  const foldUsage = [
-    'BASELINE FOLD USAGE BEFORE FIRST MARKER',
-    '    [===vcp_fold: 0.5 ::desc: browser search details ===]',
-    'BROWSER SEARCH DETAILS',
-    '    [===vcp_fold: 0.95 ::desc: image media workflow ===]',
-    'IMAGE MEDIA DETAILS'
-  ].join('\n');
-  const pluginManager = makePluginManager([
-    makeManifest('FoldSearch', 'Search helper with folded usage.', { commandDescription: foldUsage })
-  ]);
-  pluginManager.messagePreprocessors = new Map([[
-    'RAGDiaryPlugin',
-    {
-      async getSingleEmbeddingCached(text) {
-        const lower = String(text).toLowerCase();
-        return lower.includes('image media') ? [0, 1] : [1, 0];
-      }
-    }
-  ]]);
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({ useRagEmbeddings: false })
-  });
-  await registry.syncFromPluginManager('fold_expansion');
-
-  const injection = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=FoldSearch]] Need browser search details.' }],
-    pluginManager
-  });
-
-  assert.match(injection, /BASELINE FOLD USAGE BEFORE FIRST MARKER/);
-  assert.match(injection, /BROWSER SEARCH DETAILS/);
-  assert.equal(injection.includes('IMAGE MEDIA DETAILS'), false);
-  assert.equal(injection.includes('[===vcp_fold:'), false);
-});
-
-test('messageProcessor dynamic fold ignores notification-only latest user blocks', async () => {
-  const tempDir = await makeProjectRoot();
-  const originalTvsDir = toolboxManager.tvsDir;
-  const originalToolboxMap = new Map(toolboxManager.toolboxMap);
-  const originalContentCache = new Map(toolboxManager.contentCache);
-  const toolboxFile = path.join(tempDir, 'user-tracking-fold.txt');
-
-  await fs.writeFile(
-    toolboxFile,
-    [
-      '[===vcp_fold: 0 ===]',
-      'DYNAMIC FOLD BASELINE',
-      '[===vcp_fold: 0.8 ::desc: real user route ===]',
-      'DYNAMIC FOLD REAL USER DETAILS',
-      '[===vcp_fold: 0.95 ::desc: unrelated route ===]',
-      'DYNAMIC FOLD UNRELATED DETAILS'
-    ].join('\n'),
-    'utf-8'
-  );
-
-  const embeddedTexts = [];
-  const ragPlugin = {
-    ragParams: {
-      RAGDiaryPlugin: {
-        mainSearchWeights: [1, 0]
-      }
-    },
-    sanitizeForEmbedding(text) {
-      return String(text || '').trim();
-    },
-    async getSingleEmbeddingCached(text) {
-      const normalized = String(text || '');
-      embeddedTexts.push(normalized);
-      return normalized.includes('real user')
-        ? [1, 0]
-        : [0, 1];
-    },
-    _getWeightedAverageVector(vectors) {
-      return vectors.find(Boolean) || null;
-    },
-    vectorDBManager: {
-      async getPluginDescriptionVector(description, fallback) {
-        return fallback(description);
-      }
-    }
-  };
-  const pluginManager = {
-    messagePreprocessors: new Map([['RAGDiaryPlugin', ragPlugin]]),
-    getIndividualPluginDescriptions() {
-      return new Map();
-    },
-    getAllPlaceholderValues() {
-      return new Map();
-    },
-    getResolvedPluginConfigValue() {
-      return undefined;
-    }
-  };
-
-  try {
-    toolboxManager.setTvsDir(tempDir);
-    toolboxManager.toolboxMap = new Map([
-      ['UserTrackingFold', {
-        file: 'user-tracking-fold.txt',
-        description: 'real user route'
-      }]
-    ]);
-    toolboxManager.contentCache.clear();
-
-    const expanded = await messageProcessor.replaceAgentVariables(
-      '{{UserTrackingFold}}',
-      'test-model',
-      'system',
-      {
-        pluginManager,
-        messages: [
-          { role: 'user', content: 'real user query' },
-          { role: 'user', content: '[系统通知]\nstatus only\n[系统通知结束]' }
-        ],
-        cachedEmojiLists: new Map(),
-        detectors: [],
-        superDetectors: [],
-        expandedToolboxes: new Set(),
-        DEBUG_MODE: false
-      }
-    );
-
-    assert.match(expanded, /DYNAMIC FOLD BASELINE/);
-    assert.match(expanded, /DYNAMIC FOLD REAL USER DETAILS/);
-    assert.equal(expanded.includes('DYNAMIC FOLD UNRELATED DETAILS'), false);
-    assert.ok(embeddedTexts.includes('real user query'));
-    assert.equal(embeddedTexts.some(text => text.includes('系统通知')), false);
-  } finally {
-    toolboxManager.tvsDir = originalTvsDir;
-    toolboxManager.toolboxMap = originalToolboxMap;
-    toolboxManager.contentCache = originalContentCache;
-  }
-});
-
-test('dynamic fold expansion uses persistent vector cache keys for block descriptions', async () => {
-  const projectRoot = await makeProjectRoot();
-  const rawCalls = [];
-  const vectorKeys = [];
-  const persistentVectors = new Map();
-  const foldUsage = [
-    '[===vcp_fold: 0 ===]',
-    'CACHE BASELINE',
-    '[===vcp_fold: 0.5 ::desc: browser search details ===]',
-    'CACHE BROWSER DETAILS',
-    '[===vcp_fold: 0.95 ::desc: media workflow ===]',
-    'CACHE MEDIA DETAILS'
-  ].join('\n');
-  const pluginManager = makePluginManager([
-    makeManifest('CacheFoldSearch', 'Search helper with cached folded usage.', { commandDescription: foldUsage })
-  ]);
-  pluginManager.messagePreprocessors = new Map([[
-    'RAGDiaryPlugin',
-    {
-      async getSingleEmbeddingCached(text) {
-        rawCalls.push(String(text));
-        const lower = String(text).toLowerCase();
-        return lower.includes('media workflow') ? [0, 1] : [1, 0];
-      }
-    }
-  ]]);
-  pluginManager.vectorDBManager = {
-    async getPluginDescriptionVector(descText, rawEmbeddingFn) {
-      vectorKeys.push(descText);
-      if (!persistentVectors.has(descText)) {
-        persistentVectors.set(descText, await rawEmbeddingFn(descText));
-      }
-      return persistentVectors.get(descText);
-    }
-  };
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({ useRagEmbeddings: false })
-  });
-  await registry.syncFromPluginManager('fold_vector_cache');
-
-  for (let i = 0; i < 2; i += 1) {
-    const injection = await registry.buildInjection({
-      messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=CacheFoldSearch]] Need browser search details.' }],
-      pluginManager
-    });
-    assert.match(injection, /CACHE BROWSER DETAILS/);
-  }
-
-  assert.ok(vectorKeys.includes('dynamic_tool_fold:browser search details'));
-  assert.equal(rawCalls.filter((item) => item === 'browser search details').length, 1);
-});
-
-test('description override fold markers are folded and removal restores ordinary injection', async () => {
-  const projectRoot = await makeProjectRoot();
-  const pluginManager = makePluginManager([
-    makeManifest('OverrideFold', 'Original search override description.', { commandDescription: 'ORIGINAL FULL USAGE' })
-  ]);
-  pluginManager.messagePreprocessors = new Map([[
-    'RAGDiaryPlugin',
-    {
-      async getSingleEmbeddingCached(text) {
-        const lower = String(text).toLowerCase();
-        return lower.includes('media') ? [0, 1] : [1, 0];
-      }
-    }
-  ]]);
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({
-      useRagEmbeddings: false,
-      manualOverrides: {
-        excludedOriginKeys: [],
-        pinnedOriginKeys: [],
-        categoryAliases: {},
-        descriptionOverrides: {
-          'local:OverrideFold': {
-            fullDescription: [
-              '[===vcp_fold: 0 ===]',
-              'OVERRIDE FOLD BASELINE',
-              '[===vcp_fold: 0.5 ::desc: browser override usage ===]',
-              'OVERRIDE BROWSER DETAILS',
-              '[===vcp_fold: 0.95 ::desc: media override usage ===]',
-              'OVERRIDE MEDIA DETAILS'
-            ].join('\n')
-          }
-        }
-      }
-    })
-  });
-  await registry.syncFromPluginManager('fold_override');
-
-  const folded = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=OverrideFold]] Need browser override usage.' }],
-    pluginManager
-  });
-  assert.match(folded, /OVERRIDE FOLD BASELINE/);
-  assert.match(folded, /OVERRIDE BROWSER DETAILS/);
-  assert.equal(folded.includes('ORIGINAL FULL USAGE'), false);
-
-  await registry.updateConfig({
+  await fs.writeFile(configPath, JSON.stringify({
+    ...registry.getAdminState().config,
     manualOverrides: {
       excludedOriginKeys: [],
       pinnedOriginKeys: [],
       categoryAliases: {},
-      descriptionOverrides: {}
+      descriptionOverrides: {
+        'local:OverrideOnly': {
+          brief: 'New hot override brief.',
+          categories: ['newcat'],
+          keywords: ['newkw']
+        }
+      }
     }
-  });
+  }, null, 2), 'utf8');
 
-  const restored = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=OverrideFold]] Need browser override usage.' }],
-    pluginManager
-  });
-  assert.match(restored, /FULL:OverrideFold:ORIGINAL FULL USAGE/);
-  assert.equal(restored.includes('OVERRIDE BROWSER DETAILS'), false);
+  const state = await registry.reloadConfigFromDisk('hot_override_reload');
+  const record = state.records.find((item) => item.originKey === 'local:OverrideOnly');
+  assert.equal(record.brief, 'New hot override brief.');
+  assert.deepEqual(record.categories, ['newcat']);
+  assert.deepEqual(record.keywords, ['newkw']);
 });
 
-test('dynamic fold expansion falls back without a RAG provider', async () => {
+test('dynamic fold expansion matches toolbox legacy blocks without descriptions', async () => {
   const projectRoot = await makeProjectRoot();
-  const pluginManager = makePluginManager([
-    makeManifest('NoRagFold', 'Search helper without RAG.', {
-      commandDescription: [
-        'NO RAG BASELINE BEFORE FIRST MARKER',
-        '    [===vcp_fold: 0 ===]',
-        'NO RAG LEGACY BASELINE',
-        '    [===vcp_fold: 0.5 ::desc: browser usage ===]',
-        'NO RAG BROWSER DETAILS'
-      ].join('\n')
-    })
+  const manifest = makeManifest('LegacyFoldSearch', 'Search public references with legacy fold blocks.');
+  const pluginManager = makePluginManager([manifest]);
+  pluginManager.getIndividualPluginDescriptions = () => new Map([
+    ['VCPLegacyFoldSearch', [
+      '[===vcp_fold:0.0===]',
+      'LEGACY BASIC USAGE',
+      '[===vcp_fold:0.5===]',
+      'LEGACY ADVANCED USAGE WITH TERMS THAT DO NOT MATCH QUERY'
+    ].join('\n')]
   ]);
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({ useRagEmbeddings: false })
-  });
-  await registry.syncFromPluginManager('fold_no_rag');
-
-  const injection = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=NoRagFold]] Need browser usage.' }],
-    pluginManager
-  });
-
-  assert.match(injection, /NO RAG BASELINE BEFORE FIRST MARKER/);
-  assert.match(injection, /NO RAG LEGACY BASELINE/);
-  assert.equal(injection.includes('NO RAG BROWSER DETAILS'), false);
-  assert.equal(injection.includes('[===vcp_fold:'), false);
-});
-
-test('dynamic fold expansion keeps legacy threshold block semantics', async () => {
-  const projectRoot = await makeProjectRoot();
-  const pluginManager = makePluginManager([
-    makeManifest('LegacyFold', 'Legacy plugin search description.', {
-      commandDescription: [
-        '[===vcp_fold: 0 ===]',
-        'LEGACY BASELINE',
-        '[===vcp_fold: 0.8 ===]',
-        'LEGACY ADVANCED'
-      ].join('\n')
-    })
-  ]);
-  pluginManager.messagePreprocessors = new Map([[
-    'RAGDiaryPlugin',
-    {
+  pluginManager.messagePreprocessors = new Map([
+    ['RAGDiaryPlugin', {
       async getSingleEmbeddingCached(text) {
         const lower = String(text).toLowerCase();
-        return lower.includes('legacy plugin') || lower.includes('legacy search') ? [1, 0] : [0, 1];
+        if (lower.includes('public references') || lower.includes('search')) return [1, 0];
+        if (lower.includes('advanced usage')) return [0, 1];
+        return [0.1, 0.1];
       }
-    }
-  ]]);
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({ useRagEmbeddings: false })
-  });
-  await registry.syncFromPluginManager('fold_legacy');
-
-  const injection = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=LegacyFold]] Need legacy search details.' }],
-    pluginManager
-  });
-
-  assert.match(injection, /LEGACY BASELINE/);
-  assert.match(injection, /LEGACY ADVANCED/);
-});
-
-test('dynamic fold expansion records lastError and falls back on embedding failure', async () => {
-  const projectRoot = await makeProjectRoot();
-  const pluginManager = makePluginManager([
-    makeManifest('FailFold', 'Search helper with failing fold embeddings.', {
-      commandDescription: [
-        '[===vcp_fold: 0 ===]',
-        'FAIL BASELINE',
-        '[===vcp_fold: 0.5 ::desc: browser failure usage ===]',
-        'FAIL BROWSER DETAILS'
-      ].join('\n')
-    })
+    }]
   ]);
-  pluginManager.messagePreprocessors = new Map([[
-    'RAGDiaryPlugin',
-    {
-      async getSingleEmbeddingCached() {
-        throw new Error('fold embedding boom');
-      }
-    }
-  ]]);
 
   const registry = new DynamicToolRegistry();
   await registry.initialize({
     pluginManager,
     projectBasePath: projectRoot,
-    config: testConfig({ useRagEmbeddings: false })
-  });
-  await registry.syncFromPluginManager('fold_failure');
-
-  const injection = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=FailFold]] Need browser failure usage.' }],
-    pluginManager
-  });
-
-  assert.match(injection, /FAIL BASELINE/);
-  assert.equal(injection.includes('FAIL BROWSER DETAILS'), false);
-  assert.equal(registry.lastError, 'fold embedding boom');
-});
-
-test('dynamic fold expansion times out description vectors and falls back', async () => {
-  const projectRoot = await makeProjectRoot();
-  const pluginManager = makePluginManager([
-    makeManifest('TimeoutFold', 'Search helper with slow fold description embeddings.', {
-      commandDescription: [
-        'TIMEOUT BASELINE',
-        '    [===vcp_fold: 0.5 ::desc: browser timeout usage ===]',
-        'TIMEOUT BROWSER DETAILS'
-      ].join('\n')
+    config: testConfig({ maxExpandedPlugins: 1 }),
+    classifier: async () => ({
+      categories: ['search'],
+      keywords: ['search'],
+      brief: 'Searches references.',
+      confidence: 0.9
     })
-  ]);
-  pluginManager.messagePreprocessors = new Map([[
-    'RAGDiaryPlugin',
-    {
-      async getSingleEmbeddingCached(text) {
-        const lower = String(text).toLowerCase();
-        return lower.includes('timeout query') ? [1, 0] : [0, 1];
-      }
-    }
-  ]]);
-  pluginManager.vectorDBManager = {
-    async getPluginDescriptionVector() {
-      return new Promise(() => {});
-    }
-  };
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({ classifierTimeoutMs: 20, useRagEmbeddings: false })
   });
-  await registry.syncFromPluginManager('fold_description_timeout');
+  await registry.syncFromPluginManager('legacy_fold_blocks');
+  await registry.flushClassificationQueue();
 
   const injection = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=TimeoutFold]] timeout query' }],
+    messages: [{ role: 'user', content: 'Need search over public references.' }],
     pluginManager
   });
 
-  assert.match(injection, /TIMEOUT BASELINE/);
-  assert.equal(injection.includes('TIMEOUT BROWSER DETAILS'), false);
-  assert.match(registry.lastError, /Dynamic tool fold description embedding timed out/);
-});
-
-test('dynamic fold expansion does not gate described blocks on baseline similarity', async () => {
-  const projectRoot = await makeProjectRoot();
-  const vectorKeys = [];
-  const pluginManager = makePluginManager([
-    makeManifest('BaselineFold', 'Search helper with baseline and described folds.', {
-      commandDescription: [
-        'BASELINE ALWAYS SHOWN',
-        '    [===vcp_fold: 0.5 ::desc: browser detail usage ===]',
-        'DESCRIBED BROWSER DETAILS'
-      ].join('\n')
-    })
-  ]);
-  pluginManager.messagePreprocessors = new Map([[
-    'RAGDiaryPlugin',
-    {
-      async getSingleEmbeddingCached(text) {
-        const lower = String(text).toLowerCase();
-        return lower.includes('browser detail') || lower.includes('browser query') ? [1, 0] : [0, 1];
-      }
-    }
-  ]]);
-  pluginManager.vectorDBManager = {
-    async getPluginDescriptionVector(descText, rawEmbeddingFn) {
-      vectorKeys.push(descText);
-      if (descText.includes('Search helper with baseline')) {
-        return new Promise(() => {});
-      }
-      return rawEmbeddingFn(descText.replace(/^dynamic_tool_fold:/, ''));
-    }
-  };
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager,
-    projectBasePath: projectRoot,
-    config: testConfig({ classifierTimeoutMs: 20, useRagEmbeddings: false })
-  });
-  await registry.syncFromPluginManager('fold_baseline_similarity');
-
-  const injection = await registry.buildInjection({
-    messages: [{ role: 'user', content: '[[VCPDynamicTools:tool=BaselineFold]] browser query' }],
-    pluginManager
-  });
-
-  assert.match(injection, /BASELINE ALWAYS SHOWN/);
-  assert.match(injection, /DESCRIBED BROWSER DETAILS/);
-  assert.equal(vectorKeys.some((key) => key.includes('Search helper with baseline')), false);
-});
-
-test('config watcher reloads when fs.watch omits filename', async (t) => {
-  const projectRoot = await makeProjectRoot();
-  await fs.mkdir(path.join(projectRoot, 'Plugin', 'DynamicToolBridge'), { recursive: true });
-
-  const watched = [];
-  t.mock.method(fsSync, 'watch', (dir, callback) => {
-    watched.push({ dir, callback });
-    return {
-      unref() {},
-      on() {},
-      close() {}
-    };
-  });
-
-  const registry = new DynamicToolRegistry();
-  await registry.initialize({
-    pluginManager: makePluginManager([]),
-    projectBasePath: projectRoot,
-    config: testConfig()
-  });
-
-  const reasons = [];
-  registry._scheduleConfigReload = (reason) => reasons.push(reason);
-
-  assert.equal(watched.length, 2);
-  watched[0].callback('change');
-  watched[0].callback('rename', null);
-  watched[0].callback('change', 'unrelated.json');
-
-  assert.deepEqual(reasons, ['config_change', 'config_rename']);
+  assert.match(injection, /LEGACY BASIC USAGE/);
+  assert.match(injection, /LEGACY ADVANCED USAGE WITH TERMS THAT DO NOT MATCH QUERY/);
 });

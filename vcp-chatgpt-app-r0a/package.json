@@ -1,0 +1,23 @@
+{
+  "name": "vcp-chatgpt-app-r0a",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "R0-A: ChatGPT/Codex MCP server that connects directly to VCPToolBox :6005.",
+  "scripts": {
+    "start": "node --env-file=.env src/server.mjs",
+    "start:plain": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "e2e:mock": "node scripts/e2e-mock.mjs",
+    "smoke:vcp": "node --env-file=.env scripts/smoke-vcp.mjs",
+    "smoke:mcp": "node --env-file=.env scripts/smoke-mcp.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "express": "5.2.1",
+    "zod": "3.25.26"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}

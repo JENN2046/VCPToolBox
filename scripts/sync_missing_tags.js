@@ -4,14 +4,11 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
-
-const repoRoot = path.resolve(__dirname, '..');
-
-require('dotenv').config({ path: path.join(repoRoot, 'config.env') });
+require('dotenv').config();
 
 const config = {
-    rootPath: process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(repoRoot, 'dailynote'),
-    storePath: process.env.KNOWLEDGEBASE_STORE_PATH || path.join(repoRoot, 'VectorStore'),
+    rootPath: process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(__dirname, 'dailynote'),
+    storePath: process.env.KNOWLEDGEBASE_STORE_PATH || path.join(__dirname, 'VectorStore'),
     ignoreFolders: (process.env.IGNORE_FOLDERS || 'VCP论坛').split(',').map(f => f.trim()).filter(Boolean),
     syncDir: '已整理',
     syncFileName: 'missing_tags_sync.md'
@@ -44,7 +41,7 @@ async function walkDir(dir, isRoot = false) {
     for (const file of list) {
         const fullPath = path.join(dir, file);
         const stat = await fs.stat(fullPath);
-
+        
         if (stat.isDirectory()) {
             // 过滤逻辑：1. 隐藏文件夹 2. 同步专用文件夹 3. IGNORE_FOLDERS (全局)
             if (file.startsWith('.') || file === config.syncDir) continue;
@@ -62,7 +59,7 @@ async function walkDir(dir, isRoot = false) {
 
 async function main() {
     console.log('--- 🔍 缺失标签扫描同步工具 ---');
-
+    
     const dbPath = path.join(config.storePath, 'knowledge_base.sqlite');
     if (!fsSync.existsSync(dbPath)) {
         console.error('❌ 数据库不存在');
@@ -90,7 +87,7 @@ async function main() {
         console.log(`[2/3] 提取到 ${foundTags.size} 个唯一标签，正在对比数据库...`);
         const missingTags = [];
         const checkStmt = db.prepare("SELECT id FROM tags WHERE name = ?");
-
+        
         for (const tag of foundTags) {
             const row = checkStmt.get(tag);
             if (!row) {

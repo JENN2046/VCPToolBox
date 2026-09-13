@@ -12,8 +12,6 @@ export interface PluginHubSummary {
 
 export interface RecentPluginVisitItem {
   pluginName: string;
-  pluginRootId?: string;
-  pluginSource?: string;
   label: string;
   icon: string;
 }
@@ -28,8 +26,6 @@ export interface PluginHubRecord {
   enabled: boolean;
   isDistributed: boolean;
   isPinned: boolean;
-  runtimeTrustWarningLabel: string;
-  runtimeTrustWarningTitle: string;
   searchText: string;
 }
 
@@ -65,18 +61,6 @@ function summarizePluginDescription(
   }
 
   return `${graphemes.slice(0, maxLength).join("").trimEnd()}…`;
-}
-
-function getRuntimeTrustWarningLabel(plugin: PluginInfo): string {
-  return plugin.runtimeTrust?.warningCode === "external_process_not_untrusted_sandbox"
-    ? "可信外部进程"
-    : "";
-}
-
-function getRuntimeTrustWarningTitle(plugin: PluginInfo): string {
-  return plugin.runtimeTrust?.warningCode === "external_process_not_untrusted_sandbox"
-    ? "外部插件环境变量已收窄，但仍是本机子进程，不是文件系统或进程沙箱。"
-    : "";
 }
 
 function comparePluginHubRecords(
@@ -136,8 +120,6 @@ export function buildPluginHubRecords(
       enabled: plugin.enabled,
       isDistributed: Boolean(plugin.isDistributed),
       isPinned: pinnedPluginNameSet.has(pluginName),
-      runtimeTrustWarningLabel: getRuntimeTrustWarningLabel(plugin),
-      runtimeTrustWarningTitle: getRuntimeTrustWarningTitle(plugin),
       searchText: normalizeText([pluginName, displayName, description].join(" ")),
     };
   });
@@ -181,40 +163,25 @@ export function summarizePluginHubRecords(
 
 export function buildRecentPluginVisitItems(
   recentVisits: readonly RecentVisit[],
-  records: readonly PluginHubRecord[],
+  recordMap: ReadonlyMap<string, PluginHubRecord>,
   limit = 6
 ): RecentPluginVisitItem[] {
-  const seenPluginTargets = new Set<string>();
+  const seenPluginNames = new Set<string>();
   const result: RecentPluginVisitItem[] = [];
 
   for (const visit of recentVisits) {
-    if (!visit.pluginName) {
+    if (!visit.pluginName || seenPluginNames.has(visit.pluginName)) {
       continue;
     }
 
-    const targetKey = [
-      visit.pluginName,
-      visit.pluginRootId || "",
-      visit.pluginSource || "",
-    ].join(":");
-    if (seenPluginTargets.has(targetKey)) {
-      continue;
-    }
-
-    const record = records.find((item) =>
-      item.pluginName === visit.pluginName &&
-      (!visit.pluginRootId || item.plugin.pluginRootId === visit.pluginRootId) &&
-      (!visit.pluginSource || item.plugin.pluginSource === visit.pluginSource)
-    );
+    const record = recordMap.get(visit.pluginName);
     if (!record) {
       continue;
     }
 
-    seenPluginTargets.add(targetKey);
+    seenPluginNames.add(visit.pluginName);
     result.push({
       pluginName: record.pluginName,
-      pluginRootId: record.plugin.pluginRootId,
-      pluginSource: record.plugin.pluginSource,
       label: record.displayName,
       icon: record.icon,
     });

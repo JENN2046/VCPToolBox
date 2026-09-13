@@ -1,5 +1,6 @@
 {
   "name": "VCPLog",
+  "runtimeLifecycle": 2,
   "displayName": "VCP 日志推送插件",
   "version": "1.0.0",
   "description": "通过 WebSocket 推送 VCP 调用信息，并记录日志。",

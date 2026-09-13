@@ -1,30 +1,15 @@
 // routes/specialModelRouter.js
 const express = require('express');
 const dotenv = require('dotenv');
+const { resolveMainApiKey, resolveMainApiUrl } = require('../modules/upstreamConfig.js');
 
 dotenv.config({ path: 'config.env' });
 
 const router = express.Router();
-const API_URL = process.env.API_URL;
-const API_KEY = process.env.API_Key;
+const API_URL = resolveMainApiUrl().value;
+const API_KEY = resolveMainApiKey().value;
 const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
-const http = require('http');
-const https = require('https');
-
-// 🌟 核心网络优化：引入防御性长连接池 (Keep-Alive Pool)
-const agentOptions = {
-  keepAlive: true,
-  keepAliveMsecs: 1000,
-  freeSocketTimeout: 8000,
-  scheduling: 'lifo',
-  maxSockets: 10000
-};
-const keepAliveHttpAgent = new http.Agent(agentOptions);
-const keepAliveHttpsAgent = new https.Agent(agentOptions);
-
-const getFetchAgent = function(_parsedURL) {
-  return _parsedURL.protocol === 'http:' ? keepAliveHttpAgent : keepAliveHttpsAgent;
-};
+const { getFetchAgent } = require('../modules/networkAgent.js');
 
 const WHITELIST_IMAGE_MODELS = (process.env.WhitelistImageModel || '').split(',').map(m => m.trim()).filter(Boolean);
 const WHITELIST_EMBEDDING_MODELS = (process.env.WhitelistEmbeddingModel || '').split(',').map(m => m.trim()).filter(Boolean);

@@ -1,19 +1,17 @@
 // rebuild_vector_indexes.js
 // Description: A utility script to safely delete and rebuild all Vexus vector indexes from the SQLite database.
 // This is the most reliable way to fix "ghost ID" issues and ensure data synchronization.
-// Usage: node scripts/rebuild_vector_indexes.js
+// Usage: node rebuild_vector_indexes.js
 
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
 
-const repoRoot = path.resolve(__dirname, '..');
-
 // 尝试加载 Rust Vexus 引擎
 let VexusIndex;
 try {
-    const vexusModule = require(path.join(repoRoot, 'rust-vexus-lite'));
+    const vexusModule = require('../rust-vexus-lite');
     VexusIndex = vexusModule.VexusIndex;
     console.log('[RepairScript] 🦀 Vexus-Lite Rust engine loaded');
 } catch (e) {
@@ -22,7 +20,7 @@ try {
 }
 
 const config = {
-    storePath: path.join(repoRoot, 'VectorStore'),
+    storePath: path.join(__dirname, '..', 'VectorStore'),
     dbName: 'knowledge_base.sqlite',
     // ⚠️ 确保这个维度与您的模型和配置一致
     dimension: parseInt(process.env.VECTORDB_DIMENSION) || 3072,
@@ -72,7 +70,7 @@ async function main() {
             const diaryName = diary.diary_name;
             const safeName = crypto.createHash('md5').update(diaryName).digest('hex');
             const idxPath = path.join(config.storePath, `index_diary_${safeName}.usearch`);
-
+            
             console.log(`  -> Rebuilding index for diary: "${diaryName}"...`);
             const idx = new VexusIndex(config.dimension, 50000); // 使用默认容量
             const count = await idx.recoverFromSqlite(dbPath, 'chunks', diaryName);

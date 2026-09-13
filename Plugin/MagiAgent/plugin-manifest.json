@@ -1,6 +1,7 @@
 {
   "manifestVersion": "1.0.0",
   "name": "MagiAgent",
+  "runtimeLifecycle": 2,
   "version": "1.0.0",
   "displayName": "Magi三贤者会议系统",
   "description": "一个模拟EVA三贤人系统的混合插件，可以召开Magi会议讨论复杂问题，并支持异步查询。",

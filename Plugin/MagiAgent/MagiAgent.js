@@ -2,11 +2,6 @@ const fs = require('fs/promises');
 const path = require('path');
 const dotenv = require('dotenv');
 const axios = require('axios');
-const {
-    buildLocalPluginCallbackBaseUrl,
-    createSignedPluginCallbackUrl,
-    redactPluginCallbackUrlForLog
-} = require('../../modules/pluginCallbackAuth');
 // 在 CJS 环境中，__dirname 是全局可用的。
 
 // --- 全局变量和配置 ---
@@ -17,8 +12,20 @@ let sendVcpLog; // 用于发送VCPLog通知的函数
 const meetingsDir = path.join(__dirname, 'meetings');
 const magiArtPath = path.join(__dirname, 'magiAI.txt');
 let meetings = {}; // 会议数据的内存缓存
+const activeMeetingTasks = new Map();
+const activeMeetingControllers = new Map();
+let runtimeInitialized = false;
 // --- 辅助函数 ---
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms, signal) => new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+        return reject(signal.reason || Object.assign(new Error('Meeting aborted.'), { code: 'ABORT_ERR' }));
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(signal.reason || Object.assign(new Error('Meeting aborted.'), { code: 'ABORT_ERR' }));
+    }, { once: true });
+});
 // --- 核心插件接口 (由VCP服务器调用) ---
 /**
  * 初始化函数，在VCP服务器加载插件时调用一次
@@ -26,7 +33,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
  * @param {object} services - VCP主服务器提供的服务函数
  */
 async function initialize(config, services) { // 移除了 export
-    sendVcpLog = services.sendVcpLog; // 从主服务获取VCPLog发送函数
+    sendVcpLog = services?.sendVcpLog
+        || services?.vcpLogFunctions?.pushVcpLog
+        || null;
     try {
         // 主动读取主服务器根目录的config.env
         const rootEnvPath = path.resolve(__dirname, '../../config.env');
@@ -47,10 +56,14 @@ async function initialize(config, services) { // 移除了 export
         const pluginEnvContent = await fs.readFile(pluginEnvPath, 'utf-8');
         pluginConfig = dotenv.parse(pluginEnvContent);
         await fs.mkdir(meetingsDir, { recursive: true }); // 确保会议目录存在
+        meetings = {};
         await loadMeetingsFromFiles();
+        runtimeInitialized = true;
         console.log('[MagiAgent] Plugin initialized successfully by reading root config.');
     } catch (error) {
+        runtimeInitialized = false;
         console.error('[MagiAgent] Error during initialization:', error);
+        throw error;
     }
 }
 /**
@@ -126,15 +139,23 @@ async function handleStartMeeting(params) {
     };
     await saveMeetingToFile(meetings[meetingId]);
     // 异步执行会议，不阻塞返回
-    conductMagiDiscussion(meetingId).catch(async err => {
+    const controller = new AbortController();
+    activeMeetingControllers.set(meetingId, controller);
+    const task = conductMagiDiscussion(meetingId, controller.signal).catch(async err => {
         console.error(`[MagiAgent] Background meeting task for ${meetingId} failed:`, err);
         const meeting = meetings[meetingId];
-        meeting.status = 'failed';
-        meeting.error = err.message;
-        await saveMeetingToFile(meeting);
+        if (meeting) {
+            meeting.status = controller.signal.aborted ? 'cancelled' : 'failed';
+            meeting.error = err.message;
+            await saveMeetingToFile(meeting);
+        }
         // 发送失败回调通知
-        await sendCompletionCallback(meeting);
+        if (meeting) await sendCompletionCallback(meeting);
+    }).finally(() => {
+        activeMeetingTasks.delete(meetingId);
+        activeMeetingControllers.delete(meetingId);
     });
+    activeMeetingTasks.set(meetingId, task);
     if (String(wait_for_result).toLowerCase() === 'true') {
         // 同步等待模式
         await new Promise(resolve => {
@@ -173,8 +194,9 @@ async function handleQueryMeeting(params) {
     }
 }
 // --- Magi 会议核心流程 ---
-async function conductMagiDiscussion(meetingId) {
+async function conductMagiDiscussion(meetingId, signal) {
     const meeting = meetings[meetingId];
+    signal?.throwIfAborted?.();
     const maidname = meeting.maidname;
     const systemPrompt = pluginConfig['MAGI_SYSTEM_PROMPT'].replace(/{{MAIDNAME}}/g, maidname);
     const magiModels = [
@@ -185,6 +207,7 @@ async function conductMagiDiscussion(meetingId) {
     let activeModels = [...magiModels];
     let fullDiscussion = `会议主题: ${meeting.topic}\n\n`;
     for (let round = 0; round < meeting.rounds && activeModels.length > 1; round++) {
+        signal?.throwIfAborted?.();
         const roundHeader = `\n--- 第 ${round + 1} 轮讨论 ---\n`;
         fullDiscussion += roundHeader;
         
@@ -200,7 +223,7 @@ async function conductMagiDiscussion(meetingId) {
             };
             let response;
             try {
-                response = await callLanguageModel(modelConfig, meeting.topic, fullDiscussion, systemPrompt);
+                response = await callLanguageModel(modelConfig, meeting.topic, fullDiscussion, systemPrompt, signal);
             } catch (error) {
                 console.error(`[MagiAgent] Skipping model ${model.name} for round ${round + 1} due to persistent API failure.`);
                 const failureNotice = `${modelConfig.header}\n[系统通告: ${model.name} 在本轮未能成功响应，已临时跳过。]\n`;
@@ -229,7 +252,7 @@ async function conductMagiDiscussion(meetingId) {
         prompt: pluginConfig['Magi_Summarize_Model_PROMPT'].replace(/{{MAIDNAME}}/g, maidname),
         footer: pluginConfig['Magi_Summarize_Model_Footer']
     };
-    const summary = await callLanguageModel(summaryConfig, meeting.topic, fullDiscussion);
+    const summary = await callLanguageModel(summaryConfig, meeting.topic, fullDiscussion, undefined, signal);
     meeting.summary = `${summary}\n\n${summaryConfig.footer}`;
     meeting.resolved = true; // 假设只要能出总结就是解决了
     meeting.status = 'completed';
@@ -241,10 +264,7 @@ async function conductMagiDiscussion(meetingId) {
     await sendCompletionCallback(meeting);
 }
 async function sendCompletionCallback(meeting) {
-    const callbackBaseUrl =
-        serverConfig.CALLBACK_BASE_URL ||
-        buildLocalPluginCallbackBaseUrl(serverConfig.PORT || process.env.PORT || process.env.SERVER_PORT);
-    if (!callbackBaseUrl) {
+    if (!serverConfig.CALLBACK_BASE_URL) {
         console.error(`[MagiAgent] CALLBACK_BASE_URL not configured. Cannot send completion notification for meeting ${meeting.id}.`);
         if (sendVcpLog) {
              sendVcpLog({
@@ -255,13 +275,7 @@ async function sendCompletionCallback(meeting) {
         }
         return;
     }
-    const callbackUrl = createSignedPluginCallbackUrl({
-        baseUrl: callbackBaseUrl,
-        pluginName: 'MagiAgent',
-        taskId: meeting.id,
-        secret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || serverConfig.PLUGIN_CALLBACK_SECRET || serverConfig.Key
-    });
-    const logCallbackUrl = redactPluginCallbackUrlForLog(callbackUrl);
+    const callbackUrl = `${serverConfig.CALLBACK_BASE_URL}/MagiAgent/${meeting.id}`;
     try {
         const resultPayload = await formatMeetingResult(meeting);
         const callbackPayload = {
@@ -271,9 +285,12 @@ async function sendCompletionCallback(meeting) {
             message: resultPayload.result,
             ...(meeting.status === 'failed' && { reason: meeting.error })
         };
-        console.log(`[MagiAgent] Sending completion callback for meeting ${meeting.id} to ${logCallbackUrl}`);
+        console.log(`[MagiAgent] Sending completion callback for meeting ${meeting.id} to ${callbackUrl}`);
         await axios.post(callbackUrl, callbackPayload, {
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                ...(serverConfig.Key ? { Authorization: `Bearer ${serverConfig.Key}` } : {})
+            }
         });
         console.log(`[MagiAgent] Callback for meeting ${meeting.id} sent successfully.`);
     } catch (error) {
@@ -281,7 +298,7 @@ async function sendCompletionCallback(meeting) {
     }
 }
 // --- AI 模型调用 ---
-async function callLanguageModel(config, topic, history, systemPrompt) {
+async function callLanguageModel(config, topic, history, systemPrompt, signal) {
     const finalSystemPrompt = `${systemPrompt}\n\n${config.prompt}`;
     const messages = [
         { role: 'system', content: finalSystemPrompt },
@@ -292,6 +309,7 @@ async function callLanguageModel(config, topic, history, systemPrompt) {
     const maxRetries = 3;
     let lastError = null;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        signal?.throwIfAborted?.();
         try {
             const response = await axios.post(
                 `${serverConfig.API_URL}/v1/chat/completions`,
@@ -306,7 +324,8 @@ async function callLanguageModel(config, topic, history, systemPrompt) {
                     headers: {
                         'Authorization': `Bearer ${serverConfig.API_Key}`,
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    signal
                 }
             );
             return response.data.choices[0].message.content.trim();
@@ -318,7 +337,7 @@ async function callLanguageModel(config, topic, history, systemPrompt) {
                 break; // 对于 4xx 类的客户端错误, 不进行重试
             }
             console.warn(`[MagiAgent] API call attempt ${attempt} for model ${config.model} failed. Retrying in ${attempt * 2}s...`, error.message);
-            await delay(attempt * 2000); // 采用指数退避策略 (2s, 4s, 6s)
+            await delay(attempt * 2000, signal); // 采用指数退避策略 (2s, 4s, 6s)
         }
     }
     console.error(`[MagiAgent] API call to model ${config.model} failed after ${maxRetries} attempts:`, lastError.response ? lastError.response.data : lastError.message);
@@ -404,8 +423,40 @@ async function generateMarkdownReport(meeting) {
     return report;
 }
 
+function health() {
+    return {
+        status: runtimeInitialized ? 'ready' : 'stopped',
+        activeMeetings: activeMeetingTasks.size
+    };
+}
+
+function getReloadBlockers() {
+    return Array.from(activeMeetingTasks.keys()).map(meetingId => ({
+        type: 'active_magi_meeting',
+        id: meetingId,
+        status: meetings[meetingId]?.status || 'running'
+    }));
+}
+
+async function shutdown() {
+    runtimeInitialized = false;
+    for (const [meetingId, controller] of activeMeetingControllers) {
+        const error = Object.assign(
+            new Error(`Magi meeting ${meetingId} cancelled by runtime shutdown.`),
+            { code: 'RUNTIME_SHUTDOWN' }
+        );
+        controller.abort(error);
+    }
+    await Promise.allSettled(Array.from(activeMeetingTasks.values()));
+    activeMeetingTasks.clear();
+    activeMeetingControllers.clear();
+}
+
 // 核心导出，供 CJS 加载器使用
 module.exports = {
     initialize,
-    processToolCall
+    processToolCall,
+    shutdown,
+    health,
+    getReloadBlockers
 };

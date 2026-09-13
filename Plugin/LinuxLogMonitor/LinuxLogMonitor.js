@@ -15,7 +15,7 @@
  */
 
 const path = require('path');
-const { buildLocalPluginCallbackBaseUrl } = require('../../modules/pluginCallbackAuth');
+const util = require('util');
 
 // 加载配置
 require('dotenv').config({ path: path.join(__dirname, 'config.env') });
@@ -26,18 +26,34 @@ const MonitorManager = require('./core/MonitorManager');
 
 // 环境变量
 const DEBUG_MODE = (process.env.DebugMode || 'false').toLowerCase() === 'true';
-const CALLBACK_BASE_URL =
-    process.env.CALLBACK_BASE_URL ||
-    buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
-    `http://localhost:${process.env.SERVER_PORT || 5000}`;
+const CALLBACK_BASE_URL = process.env.CALLBACK_BASE_URL || `http://localhost:${process.env.SERVER_PORT || 5000}`;
 const PLUGIN_NAME = 'LinuxLogMonitor';
 
-let directManager = null;
-let directManagerInitPromise = null;
-let directManagerTransitionPromise = null;
-let directManagerMode = null;
 let pluginConfig = {};
-let monitorManagerFactory = createMonitorManager;
+let serviceManager = null;
+let serviceInitPromise = null;
+let serviceInitMode = null;
+let loggerModule = null;
+
+function isServerLoggerActive() {
+    try {
+        loggerModule = loggerModule || require('../../modules/logger');
+        return Boolean(
+            loggerModule.originalConsoleError &&
+            console.error !== loggerModule.originalConsoleError
+        );
+    } catch (_) {
+        return false;
+    }
+}
+
+function writeInfoLog(...args) {
+    if (isServerLoggerActive()) {
+        console.info(...args);
+        return;
+    }
+    process.stderr.write(`${util.format(...args)}\n`);
+}
 
 /**
  * 格式化 VCP 标准响应
@@ -64,7 +80,7 @@ function formatVCPResponse(status, data = null, error = null) {
  */
 function debugLog(msg, ...args) {
     if (DEBUG_MODE) {
-        console.error(`[${PLUGIN_NAME}][Debug] ${msg}`, ...args);
+        writeInfoLog(`[${PLUGIN_NAME}][Debug] ${msg}`, ...args);
     }
 }
 
@@ -72,111 +88,49 @@ function debugLog(msg, ...args) {
  * 信息日志
  */
 function infoLog(msg, ...args) {
-    console.error(`[${PLUGIN_NAME}] ${msg}`, ...args);
+    writeInfoLog(`[${PLUGIN_NAME}] ${msg}`, ...args);
 }
 
-function resolveDebugMode(config = {}) {
-    if (typeof config.DebugMode === 'boolean') {
-        return config.DebugMode;
-    }
-    if (typeof config.DebugMode === 'string') {
-        return config.DebugMode.toLowerCase() === 'true';
-    }
-    return DEBUG_MODE;
-}
-
-function createMonitorManager() {
+function createManager() {
     return new MonitorManager({
-        callbackBaseUrl:
-            pluginConfig.CALLBACK_BASE_URL ||
-            CALLBACK_BASE_URL ||
-            buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT),
-        callbackAuthSecret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key,
+        callbackBaseUrl: pluginConfig.CALLBACK_BASE_URL || CALLBACK_BASE_URL,
         pluginName: PLUGIN_NAME,
-        debug: resolveDebugMode(pluginConfig)
+        debug: pluginConfig.DebugMode ?? DEBUG_MODE,
+        callbackBearerToken: process.env.Key || process.env.VCP_CALLBACK_BEARER_TOKEN || pluginConfig.Key
     });
 }
 
-function getDirectServiceEnvFromGlobals() {
-    const serviceEnv = {};
-    if (typeof global.__vcp_log_monitor_sock === 'string' && global.__vcp_log_monitor_sock) {
-        serviceEnv.LOG_MONITOR_SOCK = global.__vcp_log_monitor_sock;
-    }
-    if (typeof global.__vcp_log_monitor_token === 'string' && global.__vcp_log_monitor_token) {
-        serviceEnv.LOG_MONITOR_TOKEN = global.__vcp_log_monitor_token;
-    }
-    if (typeof global.__vcp_ssh_manager_sock === 'string' && global.__vcp_ssh_manager_sock) {
-        serviceEnv.SSH_MANAGER_SOCK = global.__vcp_ssh_manager_sock;
-    }
-    if (typeof global.__vcp_ssh_manager_token === 'string' && global.__vcp_ssh_manager_token) {
-        serviceEnv.SSH_MANAGER_TOKEN = global.__vcp_ssh_manager_token;
-    }
-    return serviceEnv;
+async function initializeServiceManager(mode) {
+    serviceManager = createManager();
+    serviceInitMode = mode;
+    serviceInitPromise = serviceManager.init({ mode });
+    await serviceInitPromise;
+    serviceInitPromise = null;
+    return serviceManager;
 }
 
-function withDirectServiceEnv(fn) {
-    const serviceEnv = getDirectServiceEnvFromGlobals();
-    const { runWithLogMonitorServiceEnv } = require('../../modules/LogMonitor');
-    const { runWithSSHManagerServiceEnv } = require('../../modules/SSHManager');
-    return runWithLogMonitorServiceEnv(serviceEnv, () =>
-        runWithSSHManagerServiceEnv(serviceEnv, fn)
-    );
-}
-
-async function initializeDirectManager(mode) {
-    directManager = monitorManagerFactory();
-    directManagerMode = mode;
-    directManagerInitPromise = withDirectServiceEnv(() => Promise.resolve(directManager.init({ mode })))
-        .then(() => {
-            directManagerInitPromise = null;
-            return directManager;
-        })
-        .catch(error => {
-            directManager = null;
-            directManagerMode = null;
-            directManagerInitPromise = null;
-            throw error;
-        });
-    return directManagerInitPromise;
-}
-
-async function ensureDirectManager(mode = 'readonly') {
-    if (directManagerInitPromise) {
-        await directManagerInitPromise;
+async function ensureServiceManager(mode = 'readonly') {
+    if (serviceInitPromise) {
+        await serviceInitPromise;
+        serviceInitPromise = null;
     }
 
-    if (directManagerTransitionPromise) {
-        return directManagerTransitionPromise;
+    if (!serviceManager) {
+        return initializeServiceManager(mode);
     }
 
-    if (!directManager) {
-        return initializeDirectManager(mode);
+    if (mode === 'full' && serviceInitMode !== 'full') {
+        await serviceManager.stopAll();
+        serviceManager = null;
+        serviceInitMode = null;
+        return initializeServiceManager('full');
     }
 
-    if (mode === 'full' && directManagerMode !== 'full') {
-        if (!directManagerTransitionPromise) {
-            directManagerTransitionPromise = (async () => {
-                if (directManagerMode === 'full') {
-                    return directManager;
-                }
-                if (directManager) {
-                    await directManager.stopAll();
-                }
-                directManager = null;
-                directManagerMode = null;
-                return initializeDirectManager('full');
-            })().finally(() => {
-                directManagerTransitionPromise = null;
-            });
-        }
-        return directManagerTransitionPromise;
-    }
-
-    return directManager;
+    return serviceManager;
 }
 
 async function createCliManager(command) {
-    const manager = createMonitorManager();
+    const manager = createManager();
     const initMode = getInitMode(command);
     debugLog(`初始化模式: ${initMode}`);
     await manager.init({ mode: initMode });
@@ -226,34 +180,30 @@ async function dispatchCommand(manager, args, options = {}) {
 
 async function initialize(config = {}) {
     pluginConfig = config || {};
-    await ensureDirectManager('readonly');
+    debugLog('初始化 hybridservice/direct 插件...');
+    // Runtime V2 restarts a generation only after the prior manager has
+    // stopped. Full mode rehydrates persisted monitor tasks so a successful
+    // reload does not silently leave durable monitors dormant.
+    await ensureServiceManager('full');
 }
 
 async function processToolCall(args = {}) {
-    return withDirectServiceEnv(async () => {
-        const command = args.command || args.action;
-        const manager = await ensureDirectManager(command === 'start' ? 'full' : 'readonly');
-        const response = await dispatchCommand(manager, args, {
-            direct: true,
-            serviceMode: directManagerMode
-        });
-        return unwrapVCPResponse(response);
+    const command = args.command || args.action;
+    const manager = await ensureServiceManager(command === 'start' ? 'full' : 'readonly');
+    const response = await dispatchCommand(manager, args, {
+        direct: true,
+        serviceMode: serviceInitMode
     });
+    return unwrapVCPResponse(response);
 }
 
-async function shutdown(options = {}) {
-    const reason = typeof options === 'string' ? options : options.reason;
-    if (reason === 'reload') {
-        return;
-    }
+async function shutdown() {
+    if (!serviceManager) return;
 
-    if (!directManager) return;
-
-    await directManager.stopAll();
-    directManager = null;
-    directManagerInitPromise = null;
-    directManagerTransitionPromise = null;
-    directManagerMode = null;
+    await serviceManager.suspendAll();
+    serviceManager = null;
+    serviceInitPromise = null;
+    serviceInitMode = null;
 }
 
 /**
@@ -419,10 +369,14 @@ async function handleStop(manager, args) {
  * 处理 status 命令 - 查询状态
  * 使用 'readonly' 模式，从状态文件读取，不启动任务
  */
-async function handleStatus(manager, args) {
+async function handleStatus(manager, args, options = {}) {
     try {
+        if (options.direct && options.serviceMode === 'full') {
+            return formatVCPResponse('success', manager.getStatus(), null);
+        }
+
         // 使用 getStatusFromFile 从文件读取状态
-        // 而不是 getStatus()，以保持 UDS/proxy-backed 查询路径。
+        // 而不是 getStatus()，因为当前进程没有运行中的任务
         const status = await manager.getStatusFromFile();
         return formatVCPResponse('success', status, null);
     } catch (error) {
@@ -575,31 +529,18 @@ async function handleLogStats(manager, args) {
     }
 }
 
-function resetForTests() {
-    directManager = null;
-    directManagerInitPromise = null;
-    directManagerTransitionPromise = null;
-    directManagerMode = null;
-    pluginConfig = {};
-    monitorManagerFactory = createMonitorManager;
-}
-
-function setMonitorManagerFactoryForTests(factory) {
-    monitorManagerFactory = factory || createMonitorManager;
-}
-
 module.exports = {
     initialize,
     processToolCall,
     shutdown,
-    _private: {
+    health: () => ({
+        status: serviceManager ? 'ready' : 'stopped',
+        mode: serviceInitMode
+    }),
+    getReloadBlockers: () => [],
+    _internal: {
         dispatchCommand,
-        ensureDirectManager,
-        getInitMode,
-        getDirectServiceEnvFromGlobals,
-        resetForTests,
-        withDirectServiceEnv,
-        setMonitorManagerFactoryForTests
+        ensureServiceManager
     }
 };
 

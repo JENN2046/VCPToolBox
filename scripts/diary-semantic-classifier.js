@@ -10,7 +10,7 @@
  * 4. 自动更新数据库及重建向量索引
  * 
  * 使用方法：
- * node scripts/diary-semantic-classifier.js --source "小吉的知识" --categories "分类1,分类2" --filter "小吉的" --dry-run
+ * node diary-semantic-classifier.js --source "小吉的知识" --categories "分类1,分类2" --filter "小吉的" --dry-run
  */
 
 const fs = require('fs');
@@ -21,31 +21,29 @@ const dotenv = require('dotenv');
 const { program } = require('commander');
 const crypto = require('crypto');
 
-const ROOT_DIR = path.join(__dirname, '..');
-
 // 尝试加载 Rust Vexus 引擎 (用于重建索引)
 let VexusIndex;
 try {
-    const vexusModule = require(path.join(ROOT_DIR, 'rust-vexus-lite'));
+    const vexusModule = require('./rust-vexus-lite');
     VexusIndex = vexusModule.VexusIndex;
 } catch (e) {
     console.warn('[Warning] Vexus-Lite engine not found. Index rebuilding might fail.');
 }
 
 // 加载环境变量
-dotenv.config({ path: path.join(ROOT_DIR, 'config.env') });
+dotenv.config({ path: path.join(__dirname, 'config.env') });
 
 // 引入 Embedding 工具
-const { getEmbeddingsBatch } = require(path.join(ROOT_DIR, 'EmbeddingUtils'));
+const { getEmbeddingsBatch } = require('./EmbeddingUtils');
 
 // 配置
 const config = {
-    storePath: process.env.KNOWLEDGEBASE_STORE_PATH || path.join(ROOT_DIR, 'VectorStore'),
-    rootPath: process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(ROOT_DIR, 'dailynote'),
+    storePath: process.env.KNOWLEDGEBASE_STORE_PATH || path.join(__dirname, 'VectorStore'),
+    rootPath: process.env.KNOWLEDGEBASE_ROOT_PATH || path.join(__dirname, 'dailynote'),
     dbName: 'knowledge_base.sqlite',
     dimension: parseInt(process.env.VECTORDB_DIMENSION) || 3072,
-    apiKey: process.env.EMBEDDING_API_KEY || process.env.API_Key,
-    apiUrl: process.env.EMBEDDING_API_URL || process.env.API_URL,
+    apiKey: process.env.API_Key,
+    apiUrl: process.env.API_URL,
     model: process.env.WhitelistEmbeddingModel || 'google/gemini-embedding-001'
 };
 
@@ -304,7 +302,7 @@ async function main() {
                         console.error(`  ❌ Failed to rebuild index for ${diaryName}:`, e.message);
                     }
                 } else {
-                    console.warn(`  ⚠️ Vexus-Lite not loaded, cannot rebuild index for ${diaryName}. Please run scripts/rebuild_vector_indexes.js manually.`);
+                    console.warn(`  ⚠️ Vexus-Lite not loaded, cannot rebuild index for ${diaryName}. Please run rebuild_vector_indexes.js manually.`);
                 }
             }
         } else if (isDryRun) {

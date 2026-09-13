@@ -1,21 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 const chokidar = require('chokidar');
-const {
-    normalizeToolApprovalConfig,
-    validateToolApprovalConfig
-} = require('./toolApprovalConfigSchema');
-const {
-    getAliasesForCanonical,
-    resolveToolIdentity
-} = require('./toolIdentityResolver');
 
 const toolMarkerFuzzyMatcher = require('./vcpLoop/toolMarkerFuzzyMatcher');
 
 class ToolApprovalManager {
     constructor(configPath) {
         this.configPath = configPath;
-        this.config = normalizeToolApprovalConfig();
+        this.config = {
+            enabled: false,
+            timeoutMinutes: 5,
+            approveAll: false,
+            approvalList: [],
+            fuzzyToolMatching: false,
+            privacyProtection: {
+                enabled: false
+            }
+        };
         this.watcher = null;
         this.loadConfig();
         this.startWatching();
@@ -25,12 +26,18 @@ class ToolApprovalManager {
         try {
             if (fs.existsSync(this.configPath)) {
                 const content = fs.readFileSync(this.configPath, 'utf8');
-                const rawConfig = JSON.parse(content);
-                const validation = validateToolApprovalConfig(rawConfig);
-                if (!validation.valid) {
-                    console.warn(`[ToolApprovalManager] Invalid config values detected, falling back to normalized defaults where needed: ${validation.errors.join('; ')}`);
-                }
-                this.config = normalizeToolApprovalConfig(rawConfig);
+                const loadedConfig = JSON.parse(content);
+                this.config = {
+                    enabled: Boolean(loadedConfig.enabled),
+                    timeoutMinutes: loadedConfig.timeoutMinutes || 5,
+                    approveAll: Boolean(loadedConfig.approveAll),
+                    approvalList: Array.isArray(loadedConfig.approvalList) ? loadedConfig.approvalList : [],
+                    fuzzyToolMatching: Boolean(loadedConfig.fuzzyToolMatching),
+                    debugMode: Boolean(loadedConfig.debugMode),
+                    privacyProtection: (loadedConfig.privacyProtection && typeof loadedConfig.privacyProtection === 'object')
+                        ? { ...loadedConfig.privacyProtection, enabled: loadedConfig.privacyProtection.enabled === true }
+                        : { enabled: false }
+                };
                 this.applyRuntimeConfig();
                 console.log(`[ToolApprovalManager] Configuration loaded from ${this.configPath}`);
                 if (this.config.debugMode) {
@@ -134,35 +141,12 @@ class ToolApprovalManager {
         };
     }
 
-    getApprovalMatchToolNames(identity) {
-        const names = [
-            identity.requestedToolName,
-            identity.canonicalToolName,
-            ...getAliasesForCanonical(identity.canonicalToolName),
-            ...(Array.isArray(identity.aliases) ? identity.aliases : [])
-        ];
-
-        return [...new Set(names.filter(Boolean))];
-    }
-
-    getApprovalDecision(toolName, toolArgs = {}, options = {}) {
-        const pluginRegistry = options && typeof options.has === 'function'
-            ? options
-            : options.pluginRegistry;
-        const identity = resolveToolIdentity({
-            requestedToolName: toolName,
-            toolArgs,
-            pluginRegistry
-        });
-
+    getApprovalDecision(toolName, toolArgs = {}) {
         const defaultDecision = {
             requiresApproval: false,
             notifyAiOnReject: true,
             matchedRule: null,
-            matchedCommand: null,
-            requestedToolName: identity.requestedToolName,
-            canonicalToolName: identity.canonicalToolName,
-            wasAlias: identity.wasAlias
+            matchedCommand: null
         };
 
         if (!this.config.enabled) {
@@ -175,10 +159,7 @@ class ToolApprovalManager {
                 requiresApproval: true,
                 notifyAiOnReject: true,
                 matchedRule: '__APPROVE_ALL__',
-                matchedCommand: null,
-                requestedToolName: identity.requestedToolName,
-                canonicalToolName: identity.canonicalToolName,
-                wasAlias: identity.wasAlias
+                matchedCommand: null
             };
         }
 
@@ -188,7 +169,6 @@ class ToolApprovalManager {
             .filter(Boolean);
 
         const commands = this.extractCommands(toolArgs);
-        const matchToolNames = this.getApprovalMatchToolNames(identity);
         let bestMatch = null;
 
         const considerMatch = (rule, specificity, matchedCommand = null) => {
@@ -212,16 +192,14 @@ class ToolApprovalManager {
         };
 
         for (const rule of parsedRules) {
-            for (const matchToolName of matchToolNames) {
-                if (rule.baseRule === matchToolName) {
-                    considerMatch(rule, 1, null);
-                }
+            if (rule.baseRule === toolName) {
+                considerMatch(rule, 1, null);
+            }
 
-                for (const command of commands) {
-                    const commandRule = `${matchToolName}:${command}`;
-                    if (rule.baseRule === commandRule) {
-                        considerMatch(rule, 2, command);
-                    }
+            for (const command of commands) {
+                const commandRule = `${toolName}:${command}`;
+                if (rule.baseRule === commandRule) {
+                    considerMatch(rule, 2, command);
                 }
             }
         }
@@ -234,10 +212,7 @@ class ToolApprovalManager {
                 requiresApproval: true,
                 notifyAiOnReject: bestMatch.notifyAiOnReject,
                 matchedRule: bestMatch.rawRule,
-                matchedCommand: bestMatch.matchedCommand || null,
-                requestedToolName: identity.requestedToolName,
-                canonicalToolName: identity.canonicalToolName,
-                wasAlias: identity.wasAlias
+                matchedCommand: bestMatch.matchedCommand || null
             };
         }
 
@@ -249,18 +224,23 @@ class ToolApprovalManager {
         return defaultDecision;
     }
 
-    shouldApprove(toolName, toolArgs = {}, options = {}) {
-        return this.getApprovalDecision(toolName, toolArgs, options).requiresApproval;
+    shouldApprove(toolName, toolArgs = {}) {
+        return this.getApprovalDecision(toolName, toolArgs).requiresApproval;
     }
 
     getTimeoutMs() {
-        return this.config.timeoutMinutes * 60 * 1000;
+        return (this.config.timeoutMinutes || 5) * 60 * 1000;
     }
 
-    shutdown() {
-        if (this.watcher) {
-            this.watcher.close();
-            this.watcher = null;
+    getPrivacyProtectionConfig() {
+        return this.config.privacyProtection || { enabled: false };
+    }
+
+    async shutdown() {
+        const watcher = this.watcher;
+        this.watcher = null;
+        if (watcher) {
+            await watcher.close();
         }
     }
 }

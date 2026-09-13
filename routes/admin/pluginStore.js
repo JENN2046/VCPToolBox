@@ -16,24 +16,16 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const dns = require('dns').promises;
 const net = require('net');
-const { Transform } = require('stream');
 
 const multer = require('multer');
-const extract = require('extract-zip');
 const tar = require('tar');
-const {
-    createPluginRootResolver,
-    discoverLegacyManifestRecordsFromRoot,
-    isManagedPathInsideRoot,
-    isPathInsideRootByRealpath,
-    pathKey,
-    toRootRelativeDisplayPath,
-} = require('../../modules/pluginRootResolver');
+const { extractZipSafely } = require('../../modules/safeZipExtractor');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PLUGIN_DIR = path.join(ROOT, 'Plugin');
 const TMP_DIR = path.join(ROOT, 'tmp');
 const UPLOAD_DIR = path.join(TMP_DIR, 'uploads');
+const BACKUP_DIR = path.join(PLUGIN_DIR, '.backup');
 const SOURCES_FILE = path.join(ROOT, 'pluginStoreSources.json');
 
 const MANIFEST_NAME = 'plugin-manifest.json';
@@ -43,26 +35,11 @@ const BUILTIN_SOURCES = [];
 
 // Safety limits
 const FETCH_TIMEOUT_MS = 20_000;
-const MAX_PLUGIN_STORE_REDIRECTS = 5;
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_UPLOAD_FILES = 2000;
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
-const MAX_REMOTE_DOWNLOAD_BYTES = 200 * 1024 * 1024;
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 const SAFE_PLUGIN_NAME_RE = /^[A-Za-z0-9._-]+$/;
-const NPM_LIFECYCLE_SCRIPT_NAMES = [
-    'preinstall',
-    'install',
-    'postinstall',
-    'prepublish',
-    'preprepare',
-    'prepare',
-    'postprepare',
-    'prepack',
-    'postpack',
-];
-const NPM_LIFECYCLE_SCRIPT_CONFIRMATION = 'ALLOW_NPM_LIFECYCLE_SCRIPTS';
-const ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV = 'ENABLE_PLUGIN_STORE_DIRECT_DOWNLOAD_URL_INSTALL';
 
 // =============================================================================
 // Utilities
@@ -98,14 +75,6 @@ function newId(prefix = 'id') {
     return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
 }
 
-async function cleanupUploadedFiles(files = []) {
-    for (const file of files) {
-        if (file?.path) {
-            await fsp.rm(file.path, { force: true }).catch(() => {});
-        }
-    }
-}
-
 // Walk a directory to find the first folder containing plugin-manifest.json
 async function findManifestRoot(dir, depth = 0) {
     if (depth > 4) return null;
@@ -136,20 +105,16 @@ async function moveDir(src, dst) {
 
 // Safe path join against a base dir; rejects traversal
 function safeJoin(base, rel) {
-    const normalized = path.normalize(String(rel || ''));
-    if (!normalized || path.isAbsolute(normalized)) {
-        throw new Error(`Unsafe path: ${rel}`);
-    }
+    const normalized = path.normalize(rel).replace(/^(\.\.[\\/])+/, '');
     const target = path.resolve(base, normalized);
-    const resolvedBase = path.resolve(base);
-    if (target !== resolvedBase && !target.startsWith(resolvedBase + path.sep)) {
+    if (!target.startsWith(path.resolve(base))) {
         throw new Error(`Unsafe path: ${rel}`);
     }
     return target;
 }
 
 // Validate plugin name: only safe chars, no dot prefix, no Windows reserved names.
-// Prevents a malicious manifest from redirecting the install target outside a managed root.
+// Prevents a malicious manifest from redirecting the install target outside PLUGIN_DIR.
 function assertSafePluginName(name) {
     if (typeof name !== 'string') {
         throw new Error('plugin-manifest.json 的 name 字段必须是字符串');
@@ -169,263 +134,14 @@ function assertSafePluginName(name) {
     return trimmed;
 }
 
-function createRootResolver() {
-    return createPluginRootResolver({
-        projectRoot: ROOT,
-        coreLegacyRoot: PLUGIN_DIR,
-    });
-}
-
-async function resolveStoreInstallRoot() {
-    return createRootResolver().getPluginStoreInstallRoot();
-}
-
-function displayPathFor(rootInfo, targetPath) {
-    return toRootRelativeDisplayPath(rootInfo, targetPath);
-}
-
-function resolvePluginTarget(rootInfo, safeName) {
-    const target = path.resolve(rootInfo.rootPath, safeName);
-    const base = path.resolve(rootInfo.rootPath);
+// Resolve target dir under PLUGIN_DIR and ensure no traversal.
+function resolvePluginTarget(safeName) {
+    const target = path.resolve(PLUGIN_DIR, safeName);
+    const base = path.resolve(PLUGIN_DIR);
     if (target !== base && !target.startsWith(base + path.sep)) {
         throw new Error(`插件目标路径越界：${safeName}`);
     }
     return target;
-}
-
-async function assertManagedTarget(rootInfo, targetPath, { existing = false, code = 'plugin_store_target_outside_root' } = {}) {
-    const insideRoot = existing
-        ? await isPathInsideRootByRealpath(targetPath, rootInfo.rootPath)
-        : await isManagedPathInsideRoot(targetPath, rootInfo.rootPath);
-    if (!insideRoot) {
-        const error = new Error('Plugin Store target is outside the managed root.');
-        error.code = code;
-        throw error;
-    }
-}
-
-async function resolveBackupTarget(rootInfo, safeName, action) {
-    const backupRoot = path.join(rootInfo.rootPath, '.backup');
-    const backupPath = path.join(backupRoot, `${safeName}-${action}-${Date.now()}`);
-    await assertManagedTarget(rootInfo, backupRoot, { code: 'plugin_store_backup_root_outside_root' });
-    await assertManagedTarget(rootInfo, backupPath, { code: 'plugin_store_backup_target_outside_root' });
-    return { backupRoot, backupPath };
-}
-
-function replaceKnownPath(text, targetPath, label) {
-    if (!targetPath) return text;
-    const escaped = path.resolve(targetPath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return text.replace(new RegExp(escaped, 'gi'), label);
-}
-
-function scrubPluginStoreLog(line) {
-    let text = String(line || '');
-    text = text.replace(/\b(https?:\/\/)([^@\s/?#]+)@/gi, '$1[credentials]@');
-    text = text.replace(/([?&](?:access_token|api[_-]?key|apikey|auth|authorization|bearer|cookie|key|password|passwd|secret|session|token)=)[^&\s]+/gi, '$1[redacted]');
-    text = text.replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]');
-    text = text.replace(/\b(Authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
-    text = text.replace(/\b((?:access_token|api[_-]?key|apikey|auth|authorization|cookie|password|passwd|secret|session|token)\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
-
-    text = replaceKnownPath(text, UPLOAD_DIR, '[tmp]/uploads');
-    text = replaceKnownPath(text, TMP_DIR, '[tmp]');
-    text = replaceKnownPath(text, PLUGIN_DIR, '[core]');
-    text = replaceKnownPath(text, ROOT, '[repo]');
-    text = text.replace(/[A-Za-z]:[\\/][^\s"'<>|)]+/g, '[path]');
-    text = text.replace(/(^|[\s("'=])\/(?:[^/\s"'<>|)]+\/)+[^/\s"'<>|)]*/g, '$1[path]');
-    return text;
-}
-
-function safeErrorMessage(error) {
-    if (!error) return 'UNKNOWN';
-    return scrubPluginStoreLog(error.message || String(error));
-}
-
-const DEFAULT_PLUGIN_INSTALL_ENV_KEYS = new Set([
-    'PATH',
-    'Path',
-    'HOME',
-    'USERPROFILE',
-    'TEMP',
-    'TMP',
-    'TMPDIR',
-    'SystemRoot',
-    'windir',
-    'ComSpec',
-    'NO_COLOR',
-    'CI',
-]);
-
-const PLUGIN_INSTALL_ENV_DENY_PATTERNS = [
-    /admin.*pass/i,
-    /password|passwd|pwd/i,
-    /secret/i,
-    /token/i,
-    /api[_-]?key|apikey/i,
-    /authorization|bearer/i,
-    /cookie|session/i,
-    /credential/i,
-    /private[_-]?key/i,
-    /github_token|gh_token/i,
-    /openai|anthropic|gemini|google|azure|aws|s3|slack|discord|telegram|dingtalk|feishu|wecom/i,
-    /(^|[_-])key($|[_-])/i,
-];
-
-function isPluginInstallEnvKeyDenied(key) {
-    return PLUGIN_INSTALL_ENV_DENY_PATTERNS.some(pattern => pattern.test(String(key || '')));
-}
-
-function parsePluginInstallEnvAllowlist(baseEnv = {}, options = {}) {
-    const raw = options.allowlist !== undefined
-        ? options.allowlist
-        : baseEnv.VCP_PLUGIN_STORE_INSTALL_ENV_ALLOWLIST;
-    if (Array.isArray(raw)) {
-        return raw.map(item => String(item || '').trim()).filter(Boolean);
-    }
-    if (typeof raw === 'string') {
-        return raw.split(',').map(item => item.trim()).filter(Boolean);
-    }
-    return [];
-}
-
-function buildPluginInstallEnv(baseEnv = process.env, options = {}) {
-    const env = {};
-    const allowedKeys = new Set(DEFAULT_PLUGIN_INSTALL_ENV_KEYS);
-    for (const key of parsePluginInstallEnvAllowlist(baseEnv, options)) {
-        if (!key.includes('*')) {
-            allowedKeys.add(key);
-        }
-    }
-
-    for (const key of allowedKeys) {
-        if (!Object.prototype.hasOwnProperty.call(baseEnv, key)) continue;
-        if (isPluginInstallEnvKeyDenied(key)) continue;
-        const value = baseEnv[key];
-        if (value === undefined || value === null) continue;
-        env[key] = String(value);
-    }
-    return env;
-}
-
-function truncateScriptPreview(command) {
-    const normalized = String(command || '').replace(/\s+/g, ' ').trim();
-    if (normalized.length <= 120) return normalized;
-    return `${normalized.slice(0, 117)}...`;
-}
-
-async function inspectPackageLifecycleScripts(cwd) {
-    const packagePath = path.join(cwd, 'package.json');
-    try {
-        const raw = await fsp.readFile(packagePath, 'utf-8');
-        const hash = crypto.createHash('sha256').update(raw).digest('hex');
-        const parsed = JSON.parse(raw);
-        const scripts = parsed && typeof parsed.scripts === 'object' && !Array.isArray(parsed.scripts)
-            ? parsed.scripts
-            : {};
-        const lifecycleScripts = NPM_LIFECYCLE_SCRIPT_NAMES
-            .filter(name => typeof scripts[name] === 'string' && scripts[name].trim())
-            .map(name => ({
-                name,
-                commandPreview: truncateScriptPreview(scripts[name])
-            }));
-        return { hash, lifecycleScripts };
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            return { hash: null, lifecycleScripts: [] };
-        }
-        throw error;
-    }
-}
-
-function logPackageLifecycleDecision(task, metadata, { allowLifecycleScripts, cwdDisplay }) {
-    if (metadata.hash) {
-        pushLog(task, `[package] package.json sha256=${metadata.hash}`);
-    }
-    if (!metadata.lifecycleScripts.length) {
-        pushLog(task, '[package] 未检测到 npm lifecycle scripts');
-        return;
-    }
-
-    const summary = metadata.lifecycleScripts
-        .map(script => `${script.name}="${script.commandPreview}"`)
-        .join('; ');
-    pushLog(task, `[package] npm lifecycle scripts: ${summary}`);
-    if (allowLifecycleScripts) {
-        pushLog(task, `[warn] npm lifecycle scripts 已被显式允许执行  (target: ${cwdDisplay})`);
-    } else {
-        pushLog(task, '[safety] npm lifecycle scripts 默认禁用（--ignore-scripts）');
-    }
-}
-
-function readBooleanLike(value) {
-    return value === true || value === 'true';
-}
-
-function resolveLifecycleScriptApproval(body = {}) {
-    const allowLifecycleScripts = readBooleanLike(body.allowLifecycleScripts);
-    if (!allowLifecycleScripts) {
-        return { ok: true, allowLifecycleScripts: false };
-    }
-
-    const confirmation = String(
-        body.lifecycleScriptsConfirmation ||
-        body.confirmLifecycleScripts ||
-        ''
-    ).trim();
-
-    if (confirmation !== NPM_LIFECYCLE_SCRIPT_CONFIRMATION) {
-        return {
-            ok: false,
-            status: 400,
-            code: 'plugin_store_lifecycle_scripts_confirmation_required',
-            error: `allowLifecycleScripts requires lifecycleScriptsConfirmation=${NPM_LIFECYCLE_SCRIPT_CONFIRMATION}`,
-        };
-    }
-
-    return { ok: true, allowLifecycleScripts: true };
-}
-
-function isDirectDownloadUrlInstallRequest(body = {}) {
-    return Boolean(body.downloadUrl);
-}
-
-function isMixedDownloadUrlInstallRequest(body = {}) {
-    return Boolean(body.downloadUrl && (body.githubUrl || body.sourceId || body.pluginName));
-}
-
-function resolveDirectDownloadUrlInstallPolicy(body = {}, env = process.env) {
-    if (isMixedDownloadUrlInstallRequest(body)) {
-        return {
-            ok: false,
-            status: 400,
-            code: 'plugin_store_download_url_mixed_target_unsupported',
-            error: 'downloadUrl installs must not be mixed with sourceId/pluginName or githubUrl targets',
-        };
-    }
-
-    if (!isDirectDownloadUrlInstallRequest(body)) {
-        return { ok: true };
-    }
-
-    if (env && env[ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV] === 'true') {
-        return { ok: true };
-    }
-
-    return {
-        ok: false,
-        status: 403,
-        code: 'plugin_store_direct_download_url_disabled',
-        error: `Direct Plugin Store downloadUrl installs require ${ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV}=true`,
-    };
-}
-
-function resolveSourcePluginInstallTarget(target) {
-    if (target?.downloadUrl) {
-        return { kind: 'download', downloadUrl: target.downloadUrl };
-    }
-    if (target?.github) {
-        return { kind: 'github', github: target.github };
-    }
-    return { kind: 'missing' };
 }
 
 // Walk an extracted tree and refuse symlinks or entries whose realpath escapes base.
@@ -451,134 +167,64 @@ async function assertSafeExtractedTree(baseDir) {
     await walk(baseDir);
 }
 
-function createPluginStorePolicyError(code, message) {
-    const error = new Error(message);
-    error.code = code;
-    return error;
-}
-
-function isRedirectStatus(status) {
-    return [301, 302, 303, 307, 308].includes(Number(status));
-}
-
-function getHeaderValue(headers, name) {
-    if (!headers) return null;
-    if (typeof headers.get === 'function') return headers.get(name);
-    const target = String(name).toLowerCase();
-    for (const [key, value] of Object.entries(headers)) {
-        if (String(key).toLowerCase() === target) return value;
-    }
-    return null;
-}
-
-function createRemoteDownloadLimitError(limitBytes) {
-    return createPluginStorePolicyError(
-        'plugin_store_remote_download_too_large',
-        `远程插件下载超过大小上限（${limitBytes} bytes）`
-    );
-}
-
-function parseContentLength(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const parsed = Number.parseInt(String(value), 10);
-    if (!Number.isSafeInteger(parsed) || parsed < 0) {
-        throw createPluginStorePolicyError('plugin_store_remote_content_length_invalid', '远程插件 Content-Length 无效');
-    }
-    return parsed;
-}
-
-function createDownloadByteLimitStream(limitBytes) {
-    let total = 0;
-    return new Transform({
-        transform(chunk, encoding, callback) {
-            total += Buffer.byteLength(chunk);
-            if (total > limitBytes) {
-                callback(createRemoteDownloadLimitError(limitBytes));
-                return;
-            }
-            callback(null, chunk);
-        }
-    });
-}
-
 // SSRF guard: reject private / loopback / link-local / multicast targets.
 function isPrivateIp(ip) {
     if (!ip) return true;
     const family = net.isIP(ip);
     if (family === 4) {
         const parts = ip.split('.').map(Number);
-        if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) {
-            return true;
-        }
-        const [a, b, c] = parts;
+        const [a, b] = parts;
         if (a === 0 || a === 10 || a === 127) return true;
-        if (a === 100 && b >= 64 && b <= 127) return true; // carrier-grade NAT
         if (a === 169 && b === 254) return true;
         if (a === 172 && b >= 16 && b <= 31) return true;
-        if (a === 192 && b === 0) return true;
         if (a === 192 && b === 168) return true;
-        if (a === 198 && (b === 18 || b === 19)) return true; // benchmark networks
-        if (a === 198 && b === 51 && c === 100) return true; // documentation
-        if (a === 203 && b === 0 && c === 113) return true; // documentation
         if (a >= 224) return true; // multicast + reserved
         return false;
     }
     if (family === 6) {
         const lower = ip.toLowerCase();
         if (lower === '::' || lower === '::1') return true;
+        if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA
+        if (lower.startsWith('fe80')) return true; // link-local
         const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
         if (mapped) return isPrivateIp(mapped[1]);
-        const firstHextet = Number.parseInt(lower.split(':')[0] || '0', 16);
-        if (Number.isNaN(firstHextet)) return true;
-        if ((firstHextet & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
-        if ((firstHextet & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
-        if ((firstHextet & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local
-        if ((firstHextet & 0xff00) === 0xff00) return true; // ff00::/8 multicast
-        if (/^2001:0?db8:/i.test(lower)) return true; // documentation
-        if (/^2001:0{1,4}:/i.test(lower)) return true; // Teredo
-        if (lower.startsWith('2002:')) return true; // 6to4
         return false;
     }
     return true; // not a valid IP literal -> be conservative
 }
 
-async function assertPublicHost(urlStr, options = {}) {
+async function assertPublicHost(urlStr) {
     let u;
     try { u = new URL(urlStr); } catch {
-        throw createPluginStorePolicyError('plugin_store_url_invalid', '非法 URL');
+        throw new Error(`非法 URL: ${urlStr}`);
     }
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        throw createPluginStorePolicyError('plugin_store_url_protocol_blocked', '仅允许 http/https URL');
+        throw new Error(`仅允许 http/https，当前：${u.protocol}`);
     }
     const host = u.hostname;
     const lowered = host.toLowerCase();
-    if (!lowered) {
-        throw createPluginStorePolicyError('plugin_store_url_missing_host', 'URL 缺少 host');
-    }
+    if (!lowered) throw new Error(`URL 缺少 host: ${urlStr}`);
     if (lowered === 'localhost' || lowered.endsWith('.localhost')) {
-        throw createPluginStorePolicyError('plugin_store_url_localhost_blocked', '禁止访问 localhost');
+        throw new Error(`禁止访问 localhost: ${host}`);
     }
     // If host is already an IP literal, check directly. Otherwise resolve DNS.
     if (net.isIP(host)) {
         if (isPrivateIp(host)) {
-            throw createPluginStorePolicyError('plugin_store_url_private_host_blocked', '禁止访问非公网地址');
+            throw new Error(`禁止访问内网地址：${host}`);
         }
         return;
     }
-    const lookup = options.lookup || dns.lookup;
     try {
-        const records = await lookup(host, { all: true });
-        if (!Array.isArray(records) || records.length === 0) {
-            throw createPluginStorePolicyError('plugin_store_url_dns_failed', 'URL host DNS 解析失败');
-        }
+        const records = await dns.lookup(host, { all: true });
         for (const r of records) {
             if (isPrivateIp(r.address)) {
-                throw createPluginStorePolicyError('plugin_store_url_private_dns_blocked', 'URL host 解析到非公网地址，已拦截');
+                throw new Error(`目标主机 ${host} 解析到内网地址 ${r.address}，已拦截`);
             }
         }
     } catch (err) {
-        if (err && err.code && String(err.code).startsWith('plugin_store_url_')) throw err;
-        throw createPluginStorePolicyError('plugin_store_url_dns_failed', 'URL host DNS 解析失败');
+        if (err && typeof err.message === 'string' && err.message.includes('禁止访问')) throw err;
+        if (err && typeof err.message === 'string' && err.message.includes('拦截')) throw err;
+        // DNS failure -> let fetch itself error out downstream
     }
 }
 
@@ -588,59 +234,17 @@ function githubAuthHeaders() {
 }
 
 async function fetchWithGuard(url, opts = {}) {
-    const {
-        timeout,
-        maxRedirects = MAX_PLUGIN_STORE_REDIRECTS,
-        fetchImpl = fetch,
-        lookup,
-        ...fetchOptions
-    } = opts;
+    await assertPublicHost(url);
     const controller = new AbortController();
-    const timeoutMs = typeof timeout === 'number' ? timeout : FETCH_TIMEOUT_MS;
+    const timeoutMs = typeof opts.timeout === 'number' ? opts.timeout : FETCH_TIMEOUT_MS;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        let currentUrl = String(url);
-        let method = fetchOptions.method;
-        let body = fetchOptions.body;
-
-        for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
-            await assertPublicHost(currentUrl, { lookup });
-            const isGithubApi = /^https:\/\/api\.github\.com\//i.test(currentUrl);
-            const headers = {
-                ...(fetchOptions.headers || {}),
-                ...(isGithubApi ? githubAuthHeaders() : {}),
-            };
-            const response = await fetchImpl(currentUrl, {
-                ...fetchOptions,
-                method,
-                body,
-                headers,
-                redirect: 'manual',
-                signal: controller.signal
-            });
-
-            if (!isRedirectStatus(response.status)) return response;
-
-            const location = getHeaderValue(response.headers, 'location');
-            if (!location) return response;
-            if (redirectCount >= maxRedirects) {
-                throw createPluginStorePolicyError('plugin_store_url_redirect_limit', 'URL redirect 次数过多');
-            }
-
-            try {
-                currentUrl = new URL(location, currentUrl).toString();
-            } catch {
-                throw createPluginStorePolicyError('plugin_store_url_redirect_invalid', 'URL redirect location 无效');
-            }
-
-            const methodName = String(method || 'GET').toUpperCase();
-            if (response.status === 303 && methodName !== 'GET' && methodName !== 'HEAD') {
-                method = 'GET';
-                body = undefined;
-            }
-        }
-
-        throw createPluginStorePolicyError('plugin_store_url_redirect_limit', 'URL redirect 次数过多');
+        const isGithubApi = /^https:\/\/api\.github\.com\//i.test(url);
+        const headers = {
+            ...(opts.headers || {}),
+            ...(isGithubApi ? githubAuthHeaders() : {}),
+        };
+        return await fetch(url, { ...opts, headers, signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }
@@ -680,19 +284,14 @@ function createTask() {
 }
 
 function pushLog(task, line) {
-    const safeLine = scrubPluginStoreLog(line);
-    task.logs.push(safeLine);
-    task.bus.emit('log', safeLine);
-}
-
-function pushDownloadLog(task, rawUrl) {
-    pushLog(task, `[download] ${redactSourceUrl(rawUrl)}`);
+    task.logs.push(line);
+    task.bus.emit('log', line);
 }
 
 function finishTask(task, status, message) {
     task.status = status;
-    task.message = scrubPluginStoreLog(message);
-    task.bus.emit('end', { status, message: task.message });
+    task.message = message;
+    task.bus.emit('end', { status, message });
 }
 
 // =============================================================================
@@ -744,51 +343,6 @@ function normalizeSourceUrl(type, rawUrl) {
     } catch {
         return input;
     }
-}
-
-function redactSourceUrl(rawUrl) {
-    const input = String(rawUrl || '').trim();
-    if (!input) return '';
-    try {
-        const u = new URL(input);
-        if (u.username || u.password) {
-            u.username = u.username ? '[credentials]' : '';
-            u.password = '';
-        }
-        for (const key of Array.from(u.searchParams.keys())) {
-            if (/(access_token|api[_-]?key|apikey|auth|authorization|bearer|cookie|key|password|passwd|secret|session|token)/i.test(key)) {
-                u.searchParams.set(key, '[redacted]');
-            }
-        }
-        return u.toString();
-    } catch {
-        return scrubPluginStoreLog(input);
-    }
-}
-
-function sanitizeSourceForApi(source) {
-    if (!source || typeof source !== 'object') return source;
-    const redactedUrl = redactSourceUrl(source.url);
-    const { url, ...safeSource } = source;
-    return {
-        ...safeSource,
-        displayUrl: redactedUrl,
-        redactedUrl
-    };
-}
-
-function sanitizeSourcesForApi(sources) {
-    return (Array.isArray(sources) ? sources : []).map(sanitizeSourceForApi);
-}
-
-function sanitizePluginItemForApi(plugin) {
-    if (!plugin || typeof plugin !== 'object') return plugin;
-    const { downloadUrl, ...safePlugin } = plugin;
-    return safePlugin;
-}
-
-function sanitizePluginItemsForApi(plugins) {
-    return (Array.isArray(plugins) ? plugins : []).map(sanitizePluginItemForApi);
 }
 
 function sourceFingerprint(source) {
@@ -1212,7 +766,7 @@ async function listPluginsFromGithubSource(source) {
     return [{
         name: `${parsed.owner}/${parsed.repo}`,
         displayName: `${parsed.repo} (GitHub)`,
-        description: `GitHub 仓库 ${redactSourceUrl(source.url)}`,
+        description: `GitHub 仓库 ${source.url}`,
         version: branch,
         author: parsed.owner,
         icon: 'hub',
@@ -1234,146 +788,24 @@ async function listPluginsFromSource(source) {
     return [];
 }
 
-async function scanInstalledRecordsFromRoot(rootInfo) {
-    const result = await discoverLegacyManifestRecordsFromRoot(rootInfo);
-    return {
-        records: result.records.map(record => ({
-            name: String(record.name || '').trim(),
-            version: typeof record.manifest?.version === 'string' ? record.manifest.version.trim() : '',
-            source: record.source === 'external' ? 'external' : 'core',
-            rootId: record.rootId || null,
-            rootInfo,
-            pluginPath: record.pluginPath,
-            displayPath: record.displayPath,
-            enabled: record.enabled,
-            pathKey: record.pathKey || pathKey(record.pluginPath),
-        })).filter(record => record.name),
-        diagnostics: result.diagnostics || [],
-    };
-}
-
-async function buildInstalledIndex() {
-    const resolver = createRootResolver();
-    const snapshot = await resolver.getPluginRootSnapshot();
-    const roots = [
-        snapshot.coreLegacyRoot,
-        ...(snapshot.externalLegacyRoots || []),
-    ].filter(Boolean);
-    const records = [];
-    const diagnostics = [...(snapshot.diagnostics || [])];
-
-    for (const rootInfo of roots) {
-        const scanned = await scanInstalledRecordsFromRoot(rootInfo);
-        records.push(...scanned.records);
-        diagnostics.push(...scanned.diagnostics);
-    }
-
-    const byName = new Map();
-    for (const record of records) {
-        if (!byName.has(record.name)) byName.set(record.name, []);
-        byName.get(record.name).push(record);
-    }
-
-    const preferred = new Map();
-    for (const [name, matches] of byName.entries()) {
-        const coreMatch = matches.find(record => record.source === 'core');
-        const selected = coreMatch || matches[0];
-        if (matches.length > 1) {
-            const duplicateCode = coreMatch
-                ? 'core_priority_external_duplicate_ignored'
-                : 'external_duplicate_ignored';
-            selected.conflictReason = duplicateCode;
-            for (const record of matches) {
-                if (record !== selected) {
-                    record.ignored = true;
-                    record.conflictReason = duplicateCode;
-                }
-            }
-        }
-        preferred.set(name, selected);
-    }
-
-    return { byName, preferred, records, diagnostics };
-}
-
-function toInstalledApiFields(record) {
-    if (!record) return {};
-    return {
-        installedVersion: record.version || undefined,
-        installedSource: record.source,
-        installedRootId: record.rootId,
-        installedDisplayPath: record.displayPath,
-        conflictReason: record.conflictReason || undefined,
-    };
-}
-
-function getUninstallCriteria(body = {}) {
-    const installedSource = body.installedSource === 'external' || body.installedSource === 'core'
-        ? body.installedSource
-        : null;
-    const installedRootId = typeof body.installedRootId === 'string' && body.installedRootId.trim()
-        ? body.installedRootId.trim()
-        : null;
-    return { installedSource, installedRootId };
-}
-
-function resolveUninstallTarget(installedIndex, safeName, criteria = {}) {
-    let matches = installedIndex.byName.get(safeName) || [];
-    if (criteria.installedSource) {
-        matches = matches.filter(record => record.source === criteria.installedSource);
-    }
-    if (criteria.installedRootId) {
-        matches = matches.filter(record => record.rootId === criteria.installedRootId);
-    }
-    if (matches.length === 0) return null;
-    if (matches.length > 1) {
-        const error = new Error('Plugin uninstall target is ambiguous. Provide installedSource and installedRootId.');
-        error.code = 'EAMBIGUOUS';
-        error.candidates = matches.map(record => ({
-            installedSource: record.source,
-            installedRootId: record.rootId,
-            installedDisplayPath: record.displayPath,
-        }));
-        throw error;
-    }
-    return matches[0];
-}
-
 // =============================================================================
 // Install pipeline
 // =============================================================================
 
-async function runNpmInstall(cwd, task, rootInfo, options = {}) {
-    const cwdDisplay = rootInfo ? displayPathFor(rootInfo, cwd) : cwd;
-    const rootLabel = rootInfo
-        ? `${rootInfo.source || 'unknown'}:${rootInfo.rootId || 'unknown'}`
-        : 'unknown';
-    const allowLifecycleScripts = options.allowLifecycleScripts === true;
-    const npmArgs = [
-        'install',
-        ...(allowLifecycleScripts ? [] : ['--ignore-scripts']),
-        '--omit=dev',
-        '--no-audit',
-        '--no-fund',
-    ];
-    const metadata = await inspectPackageLifecycleScripts(cwd);
-    pushLog(task, `[package] install target=${cwdDisplay}; root=${rootLabel}`);
-    logPackageLifecycleDecision(task, metadata, { allowLifecycleScripts, cwdDisplay });
-    pushLog(task, `$ npm ${npmArgs.join(' ')}  (cwd: ${cwdDisplay})`);
-
+function runNpmInstall(cwd, task) {
     return new Promise((resolve) => {
+        pushLog(task, `$ npm install --omit=dev  (cwd: ${cwd})`);
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        const spawnImpl = options.spawn || spawn;
-        const child = spawnImpl(npmCmd, npmArgs, {
+        const child = spawn(npmCmd, ['install', '--omit=dev', '--no-audit', '--no-fund'], {
             cwd,
-            env: buildPluginInstallEnv(options.baseEnv || process.env, options.envOptions || {}),
+            env: { ...process.env },
             windowsHide: true,
         });
         child.stdout.on('data', d => pushLog(task, d.toString()));
         child.stderr.on('data', d => pushLog(task, d.toString()));
         child.on('error', err => {
-            pushLog(task, `[error] ${safeErrorMessage(err)}`);
-            resolve({ ok: false, error: safeErrorMessage(err) });
+            pushLog(task, `[error] ${err.message}`);
+            resolve({ ok: false, error: err.message });
         });
         child.on('close', code => {
             pushLog(task, `[npm exit ${code}]`);
@@ -1382,58 +814,33 @@ async function runNpmInstall(cwd, task, rootInfo, options = {}) {
     });
 }
 
-async function installFromDir(sourceDir, task, { force = false, pluginManager, allowLifecycleScripts = false } = {}) {
+async function installFromDir(sourceDir, task, { force = false, pluginManager } = {}) {
     const root = await findManifestRoot(sourceDir);
     if (!root) throw new Error('未找到 plugin-manifest.json，无法识别插件');
     const manifest = JSON.parse(await fsp.readFile(path.join(root, MANIFEST_NAME), 'utf-8'));
     if (!manifest.name) throw new Error('plugin-manifest.json 缺少 name 字段');
 
     const safeName = assertSafePluginName(manifest.name);
-    const installRoot = await resolveStoreInstallRoot();
-    const target = resolvePluginTarget(installRoot, safeName);
-    await assertManagedTarget(installRoot, target, { code: 'plugin_store_install_target_outside_root' });
-
-    if (installRoot.source === 'external') {
-        const coreRootInfo = {
-            source: 'core',
-            rootId: 'core:legacy',
-            rootPath: PLUGIN_DIR,
-            displayPath: 'Plugin',
-        };
-        const coreTarget = resolvePluginTarget(coreRootInfo, safeName);
-        if (await pathExists(coreTarget)) {
-            const err = new Error(`Core plugin ${safeName} already exists; external install cannot overwrite core plugin.`);
-            err.code = 'ECORECONFLICT';
-            throw err;
-        }
-    }
+    const target = resolvePluginTarget(safeName);
 
     if (await pathExists(target)) {
-        await assertManagedTarget(installRoot, target, {
-            existing: true,
-            code: 'plugin_store_existing_target_outside_root'
-        });
         if (!force) {
             const err = new Error(`插件目录 ${safeName} 已存在`);
             err.code = 'EEXIST';
             throw err;
         }
-        const { backupRoot, backupPath } = await resolveBackupTarget(installRoot, safeName, 'backup');
-        await ensureDir(backupRoot);
-        pushLog(task, `[backup] ${displayPathFor(installRoot, target)} -> ${displayPathFor(installRoot, backupPath)}`);
+        await ensureDir(BACKUP_DIR);
+        const backupPath = path.join(BACKUP_DIR, `${safeName}-${Date.now()}`);
+        pushLog(task, `[backup] ${target} -> ${backupPath}`);
         await moveDir(target, backupPath);
     }
 
-    pushLog(task, `[copy] ${root} -> ${displayPathFor(installRoot, target)}`);
+    pushLog(task, `[copy] ${root} -> ${target}`);
     await moveDir(root, target);
-    await assertManagedTarget(installRoot, target, {
-        existing: true,
-        code: 'plugin_store_installed_target_outside_root'
-    });
 
     // npm install if package.json exists
     if (await pathExists(path.join(target, 'package.json'))) {
-        const result = await runNpmInstall(target, task, installRoot, { allowLifecycleScripts });
+        const result = await runNpmInstall(target, task);
         if (!result.ok) {
             pushLog(task, `[warn] npm install 失败，插件已安装但依赖可能不完整。请手动处理。`);
         }
@@ -1448,40 +855,16 @@ async function installFromDir(sourceDir, task, { force = false, pluginManager, a
             pushLog(task, '[reload] 插件已热加载');
         }
     } catch (err) {
-        pushLog(task, `[warn] 热加载失败: ${safeErrorMessage(err)}`);
+        pushLog(task, `[warn] 热加载失败: ${err.message}`);
     }
 
-    return {
-        name: safeName,
-        displayName: manifest.displayName || safeName,
-        installRoot: installRoot.source,
-        installedRootId: installRoot.rootId,
-        installedDisplayPath: displayPathFor(installRoot, target),
-    };
+    return { name: safeName, displayName: manifest.displayName || safeName };
 }
 
-async function downloadToFile(url, destFile, options = {}) {
-    const limitBytes = Number.isSafeInteger(options.maxBytes) && options.maxBytes > 0
-        ? options.maxBytes
-        : MAX_REMOTE_DOWNLOAD_BYTES;
-    const res = await fetchWithGuard(url, options.fetchOptions || {});
+async function downloadToFile(url, destFile) {
+    const res = await fetchWithGuard(url);
     if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}: ${url}`);
-    const contentLength = parseContentLength(getHeaderValue(res.headers, 'content-length'));
-    if (contentLength !== null && contentLength > limitBytes) {
-        await fsp.rm(destFile, { force: true }).catch(() => {});
-        throw createRemoteDownloadLimitError(limitBytes);
-    }
-
-    try {
-        await pipeline(
-            res.body,
-            createDownloadByteLimitStream(limitBytes),
-            fs.createWriteStream(destFile, { flags: 'wx' })
-        );
-    } catch (error) {
-        await fsp.rm(destFile, { force: true }).catch(() => {});
-        throw error;
-    }
+    await pipeline(res.body, fs.createWriteStream(destFile));
 }
 
 async function installFromArchive(archivePath, task, options, archiveNameHint = '') {
@@ -1497,7 +880,11 @@ async function installFromArchive(archivePath, task, options, archiveNameHint = 
     try {
         pushLog(task, `[extract:${format}] ${archivePath} -> ${workDir}`);
         if (format === 'zip') {
-            await extract(archivePath, { dir: workDir });
+            await extractZipSafely(archivePath, workDir, {
+                maxEntries: MAX_UPLOAD_FILES,
+                maxTotalSize: MAX_UPLOAD_BYTES,
+                maxEntrySize: MAX_UPLOAD_BYTES,
+            });
         } else {
             await tar.x({
                 file: archivePath,
@@ -1517,14 +904,18 @@ async function installFromGithub(parsed, task, options) {
     const zipUrl = `https://codeload.github.com/${parsed.owner}/${parsed.repo}/zip/refs/heads/${branch}`;
     const zipPath = path.join(TMP_DIR, `gh-${parsed.owner}-${parsed.repo}-${Date.now()}.zip`);
     await ensureDir(TMP_DIR);
-    pushDownloadLog(task, zipUrl);
+    pushLog(task, `[download] ${zipUrl}`);
     await downloadToFile(zipUrl, zipPath);
     try {
         // If a subpath was given, extract then narrow down
         const workDir = path.join(TMP_DIR, `extract-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`);
         await ensureDir(workDir);
         try {
-            await extract(zipPath, { dir: workDir });
+            await extractZipSafely(zipPath, workDir, {
+                maxEntries: MAX_UPLOAD_FILES,
+                maxTotalSize: MAX_UPLOAD_BYTES,
+                maxEntrySize: MAX_UPLOAD_BYTES,
+            });
             await assertSafeExtractedTree(workDir);
             let searchRoot = workDir;
             if (parsed.subpath) {
@@ -1547,7 +938,7 @@ async function installFromGithub(parsed, task, options) {
 // Router
 // =============================================================================
 
-function createPluginStoreRouter(options) {
+module.exports = function (options) {
     const router = express.Router();
     const { pluginManager } = options;
 
@@ -1571,9 +962,9 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.get('/plugin-store/sources', async (req, res) => {
         try {
-            res.json({ sources: sanitizeSourcesForApi(await loadSources()) });
+            res.json({ sources: await loadSources() });
         } catch (err) {
-            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
+            res.status(500).json({ error: err.message });
         }
     });
 
@@ -1592,14 +983,14 @@ function createPluginStoreRouter(options) {
             if (duplicate) {
                 return res.status(409).json({
                     error: `源已存在：${duplicate.name}`,
-                    source: sanitizeSourceForApi(duplicate),
+                    source: duplicate,
                 });
             }
             const entry = next;
             await saveUserSources([...existing.filter(s => !s.builtin), entry]);
-            res.json({ source: sanitizeSourceForApi(entry) });
+            res.json({ source: entry });
         } catch (err) {
-            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
+            res.status(500).json({ error: err.message });
         }
     });
 
@@ -1612,7 +1003,7 @@ function createPluginStoreRouter(options) {
             await saveUserSources(list.filter(s => s.id !== req.params.id));
             res.json({ ok: true });
         } catch (err) {
-            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
+            res.status(500).json({ error: err.message });
         }
     });
 
@@ -1621,9 +1012,25 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.get('/plugin-store', async (req, res) => {
         try {
-            const installRoot = await resolveStoreInstallRoot();
             const sources = await loadSources();
-            const installed = await buildInstalledIndex();
+            const installed = new Map();
+            try {
+                const entries = await fsp.readdir(PLUGIN_DIR, { withFileTypes: true });
+                for (const e of entries) {
+                    if (!e.isDirectory()) continue;
+                    const m1 = path.join(PLUGIN_DIR, e.name, MANIFEST_NAME);
+                    const m2 = m1 + BLOCKED_EXT;
+                    try {
+                        const content = await fsp.readFile(await pathExists(m1) ? m1 : m2, 'utf-8');
+                        const mf = JSON.parse(content);
+                        if (mf.name) {
+                            installed.set(mf.name, {
+                                version: typeof mf.version === 'string' ? mf.version.trim() : '',
+                            });
+                        }
+                    } catch {}
+                }
+            } catch {}
 
             // Fetch all sources in parallel so one slow source doesn't block the rest.
             const results = await Promise.allSettled(
@@ -1636,9 +1043,11 @@ function createPluginStoreRouter(options) {
                 const source = sources[idx];
                 if (result.status === 'fulfilled') {
                     for (const p of result.value) {
-                        const local = installed.preferred.get(p.name);
+                        const local = installed.get(p.name);
                         p.installed = !!local;
-                        Object.assign(p, toInstalledApiFields(local));
+                        if (local?.version) {
+                            p.installedVersion = local.version;
+                        }
                         if (p.installed && p.version && local?.version) {
                             p.updateAvailable = isRemoteVersionNewer(p.version, local.version);
                         } else {
@@ -1650,25 +1059,13 @@ function createPluginStoreRouter(options) {
                     const reason = result.reason;
                     errors.push({
                         sourceId: source.id,
-                        error: safeErrorMessage(reason),
+                        error: reason && reason.message ? reason.message : String(reason),
                     });
                 }
             });
-            res.json({
-                plugins: sanitizePluginItemsForApi(all),
-                total: all.length,
-                sources: sanitizeSourcesForApi(sources),
-                errors,
-                installMode: installRoot.mode,
-                diagnostics: installed.diagnostics.map(item => ({
-                    level: item.level || 'warn',
-                    code: item.code || 'unknown',
-                    rootId: item.rootId || null,
-                    message: item.message || null,
-                })),
-            });
+            res.json({ plugins: all, total: all.length, sources, errors });
         } catch (err) {
-            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
+            res.status(500).json({ error: err.message });
         }
     });
 
@@ -1677,23 +1074,6 @@ function createPluginStoreRouter(options) {
     // ---------------------------------------------------------------------
     router.post('/plugin-store/install', async (req, res) => {
         const { sourceId, pluginName, githubUrl, downloadUrl, force } = req.body || {};
-        const directDownloadPolicy = resolveDirectDownloadUrlInstallPolicy(req.body || {});
-        if (!directDownloadPolicy.ok) {
-            return res.status(directDownloadPolicy.status).json({
-                error: directDownloadPolicy.error,
-                code: directDownloadPolicy.code,
-                requiredEnv: ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
-            });
-        }
-        const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
-        if (!lifecycleApproval.ok) {
-            return res.status(lifecycleApproval.status).json({
-                error: lifecycleApproval.error,
-                code: lifecycleApproval.code,
-                requiredConfirmation: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
-            });
-        }
-        const { allowLifecycleScripts } = lifecycleApproval;
         const task = createTask();
 
         // Respond early so client can subscribe to logs
@@ -1706,15 +1086,15 @@ function createPluginStoreRouter(options) {
                 if (githubUrl) {
                     const parsed = parseGithubUrl(githubUrl);
                     if (!parsed) throw new Error('无效的 GitHub URL');
-                    await installFromGithub(parsed, task, { force, pluginManager, allowLifecycleScripts });
+                    await installFromGithub(parsed, task, { force, pluginManager });
                 } else if (downloadUrl) {
                     const archiveNameHint = archiveNameHintFromUrl(downloadUrl);
                     const archivePath = path.join(TMP_DIR, `dl-${Date.now()}`);
                     await ensureDir(TMP_DIR);
-                    pushDownloadLog(task, downloadUrl);
+                    pushLog(task, `[download] ${downloadUrl}`);
                     await downloadToFile(downloadUrl, archivePath);
                     try {
-                        await installFromArchive(archivePath, task, { force, pluginManager, allowLifecycleScripts }, archiveNameHint);
+                        await installFromArchive(archivePath, task, { force, pluginManager }, archiveNameHint);
                     } finally {
                         await fsp.rm(archivePath, { force: true }).catch(() => {});
                     }
@@ -1725,20 +1105,19 @@ function createPluginStoreRouter(options) {
                     const plugins = await listPluginsFromSource(source);
                     const target = plugins.find(p => p.name === pluginName);
                     if (!target) throw new Error(`源中未找到插件 ${pluginName}`);
-                    const installTarget = resolveSourcePluginInstallTarget(target);
-                    if (installTarget.kind === 'download') {
-                        const archiveNameHint = archiveNameHintFromUrl(installTarget.downloadUrl);
+                    if (target.github) {
+                        await installFromGithub(target.github, task, { force, pluginManager });
+                    } else if (target.downloadUrl) {
+                        const archiveNameHint = archiveNameHintFromUrl(target.downloadUrl);
                         const archivePath = path.join(TMP_DIR, `dl-${Date.now()}`);
                         await ensureDir(TMP_DIR);
-                        pushDownloadLog(task, installTarget.downloadUrl);
-                        await downloadToFile(installTarget.downloadUrl, archivePath);
+                        pushLog(task, `[download] ${target.downloadUrl}`);
+                        await downloadToFile(target.downloadUrl, archivePath);
                         try {
-                            await installFromArchive(archivePath, task, { force, pluginManager, allowLifecycleScripts }, archiveNameHint);
+                            await installFromArchive(archivePath, task, { force, pluginManager }, archiveNameHint);
                         } finally {
                             await fsp.rm(archivePath, { force: true }).catch(() => {});
                         }
-                    } else if (installTarget.kind === 'github') {
-                        await installFromGithub(installTarget.github, task, { force, pluginManager, allowLifecycleScripts });
                     } else {
                         throw new Error('插件条目缺少 downloadUrl 或 GitHub 信息');
                     }
@@ -1748,9 +1127,8 @@ function createPluginStoreRouter(options) {
 
                 finishTask(task, 'success', '安装完成');
             } catch (err) {
-                const isConflict = err.code === 'EEXIST' || err.code === 'ECORECONFLICT';
-                pushLog(task, `[fatal] ${safeErrorMessage(err)}`);
-                finishTask(task, isConflict ? 'conflict' : 'error', safeErrorMessage(err));
+                pushLog(task, `[fatal] ${err.message}`);
+                finishTask(task, err.code === 'EEXIST' ? 'conflict' : 'error', err.message);
             }
         })();
     });
@@ -1766,20 +1144,15 @@ function createPluginStoreRouter(options) {
             }
 
             const safeName = assertSafePluginName(pluginName);
-            const installedIndex = await buildInstalledIndex();
-            const targetRecord = resolveUninstallTarget(installedIndex, safeName, getUninstallCriteria(req.body));
+            const target = resolvePluginTarget(safeName);
 
-            if (!targetRecord || !(await pathExists(targetRecord.pluginPath))) {
+            if (!(await pathExists(target))) {
                 return res.status(404).json({ error: `插件 ${safeName} 不存在` });
             }
 
-            await assertManagedTarget(targetRecord.rootInfo, targetRecord.pluginPath, {
-                existing: true,
-                code: 'plugin_store_uninstall_target_outside_root'
-            });
-            const { backupRoot, backupPath } = await resolveBackupTarget(targetRecord.rootInfo, safeName, 'removed');
-            await ensureDir(backupRoot);
-            await moveDir(targetRecord.pluginPath, backupPath);
+            await ensureDir(BACKUP_DIR);
+            const backupPath = path.join(BACKUP_DIR, `${safeName}-removed-${Date.now()}`);
+            await moveDir(target, backupPath);
 
             if (pluginManager?.loadPlugins) {
                 try {
@@ -1787,7 +1160,7 @@ function createPluginStoreRouter(options) {
                 } catch (reloadErr) {
                     return res.status(500).json({
                         error: '插件目录已移除，但热加载失败',
-                        details: safeErrorMessage(reloadErr),
+                        details: reloadErr.message,
                     });
                 }
             }
@@ -1795,20 +1168,10 @@ function createPluginStoreRouter(options) {
             res.json({
                 ok: true,
                 message: `插件 ${safeName} 已卸载`,
-                backupPath: displayPathFor(targetRecord.rootInfo, backupPath),
-                installedSource: targetRecord.source,
-                installedRootId: targetRecord.rootId,
+                backupPath: path.relative(ROOT, backupPath),
             });
         } catch (err) {
-            if (err.code === 'EAMBIGUOUS') {
-                return res.status(409).json({
-                    error: safeErrorMessage(err),
-                    code: 'ambiguous_plugin_uninstall_target',
-                    requiresInstalledRoot: true,
-                    candidates: err.candidates || [],
-                });
-            }
-            res.status(500).json({ error: safeErrorMessage(err), code: err.code || undefined });
+            res.status(500).json({ error: err.message });
         }
     });
 
@@ -1818,16 +1181,6 @@ function createPluginStoreRouter(options) {
     router.post('/plugin-store/upload', upload.array('files'), async (req, res) => {
         const files = req.files || [];
         const force = req.body.force === 'true' || req.body.force === true;
-        const lifecycleApproval = resolveLifecycleScriptApproval(req.body || {});
-        if (!lifecycleApproval.ok) {
-            await cleanupUploadedFiles(files);
-            return res.status(lifecycleApproval.status).json({
-                error: lifecycleApproval.error,
-                code: lifecycleApproval.code,
-                requiredConfirmation: NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
-            });
-        }
-        const { allowLifecycleScripts } = lifecycleApproval;
         const relPaths = (() => {
             const v = req.body.relPaths;
             if (!v) return [];
@@ -1845,7 +1198,7 @@ function createPluginStoreRouter(options) {
 
                 // Case 1: single archive
                 if (files.length === 1 && isSupportedArchiveName(files[0].originalname)) {
-                    await installFromArchive(files[0].path, task, { force, pluginManager, allowLifecycleScripts }, files[0].originalname);
+                    await installFromArchive(files[0].path, task, { force, pluginManager }, files[0].originalname);
                 } else {
                     if (files.length === 1) {
                         const rel = String(relPaths[0] || files[0].originalname || '');
@@ -1868,20 +1221,21 @@ function createPluginStoreRouter(options) {
                                 await fsp.rm(f.path, { force: true });
                             });
                         }
-                        await installFromDir(workDir, task, { force, pluginManager, allowLifecycleScripts });
+                        await installFromDir(workDir, task, { force, pluginManager });
                     } finally {
                         await fsp.rm(workDir, { recursive: true, force: true }).catch(() => {});
                     }
                 }
 
                 // Cleanup any leftover uploads
-                await cleanupUploadedFiles(files);
+                for (const f of files) {
+                    await fsp.rm(f.path, { force: true }).catch(() => {});
+                }
 
                 finishTask(task, 'success', '安装完成');
             } catch (err) {
-                const isConflict = err.code === 'EEXIST' || err.code === 'ECORECONFLICT';
-                pushLog(task, `[fatal] ${safeErrorMessage(err)}`);
-                finishTask(task, isConflict ? 'conflict' : 'error', safeErrorMessage(err));
+                pushLog(task, `[fatal] ${err.message}`);
+                finishTask(task, err.code === 'EEXIST' ? 'conflict' : 'error', err.message);
             }
         })();
     });
@@ -1937,27 +1291,4 @@ function createPluginStoreRouter(options) {
     });
 
     return router;
-}
-
-module.exports = createPluginStoreRouter;
-module.exports._test = {
-    ENABLE_DIRECT_DOWNLOAD_URL_INSTALL_ENV,
-    NPM_LIFECYCLE_SCRIPT_CONFIRMATION,
-    assertPublicHost,
-    buildPluginInstallEnv,
-    cleanupUploadedFiles,
-    downloadToFile,
-    fetchWithGuard,
-    isPrivateIp,
-    MAX_REMOTE_DOWNLOAD_BYTES,
-    redactSourceUrl,
-    resolveDirectDownloadUrlInstallPolicy,
-    resolveLifecycleScriptApproval,
-    resolveSourcePluginInstallTarget,
-    runNpmInstall,
-    scrubPluginStoreLog,
-    sanitizeSourceForApi,
-    sanitizeSourcesForApi,
-    sanitizePluginItemForApi,
-    sanitizePluginItemsForApi,
 };

@@ -14,13 +14,20 @@ class SemanticGroupManager {
         this.groupsFilePath = path.join(__dirname, 'semantic_groups.json');
         this.vectorsDirPath = path.join(__dirname, 'semantic_vectors');
         this.editFilePath = path.join(__dirname, 'semantic_groups.edit.json');
-        this.initialize();
+        this.initialized = false;
     }
 
     async initialize() {
+        if (this.initialized) return;
         await fs.mkdir(this.vectorsDirPath, { recursive: true });
         await this.synchronizeFromEditFile();
         await this.loadGroups();
+        this.initialized = true;
+    }
+
+    shutdown() {
+        this.groupVectorCache.clear();
+        this.initialized = false;
     }
 
     async synchronizeFromEditFile() {

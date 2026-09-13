@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "transport": "existing WebSocket; additive message types",
+  "request": {
+    "type": "tool_approval_request",
+    "data_fields": [
+      "requestId",
+      "toolName",
+      "maid",
+      "args",
+      "timestamp",
+      "approvalTtlMs",
+      "protocolVersion",
+      "createdAt",
+      "expiresAt",
+      "argsDigest"
+    ],
+    "broadcast_visibility": "unchanged generic VCPLog"
+  },
+  "response": {
+    "type": "tool_approval_response",
+    "required": [
+      "requestId",
+      "approved:boolean"
+    ],
+    "optional": [
+      "reason:string <=1000",
+      "protocolVersion:1",
+      "argsDigest:exact"
+    ],
+    "legacy_unversioned_admin": "accepted with same host human connection requirement",
+    "caller_surface": "ignored, never used as authority"
+  },
+  "ack": {
+    "type": "tool_approval_ack",
+    "fields": [
+      "protocolVersion",
+      "requestId",
+      "outcome",
+      "terminalState",
+      "terminalAt when terminal"
+    ],
+    "outcomes": [
+      "ACCEPTED",
+      "ALREADY_TERMINAL",
+      "REQUEST_EXPIRED",
+      "REQUEST_UNKNOWN",
+      "CLIENT_NOT_AUTHORIZED",
+      "INVALID_RESPONSE",
+      "TARGET_MISMATCH",
+      "INTERNAL_ERROR"
+    ],
+    "meaning": "Only host decision acceptance, not downstream execution success"
+  },
+  "terminal": {
+    "type": "tool_approval_terminal",
+    "data_fields": [
+      "protocolVersion",
+      "requestId",
+      "terminalState",
+      "terminalAt",
+      "expiresAt",
+      "clientSurface when valid human responded"
+    ],
+    "recipients": "OPEN host-attested human sockets",
+    "delivery": "best effort, one logical event per transition; sync recovers missed delivery"
+  },
+  "sync": {
+    "request_type": "tool_approval_sync",
+    "request_data": {
+      "protocolVersion": 1
+    },
+    "response_type": "tool_approval_snapshot",
+    "success_fields": [
+      "protocolVersion",
+      "outcome=SYNCED",
+      "serverTime",
+      "active",
+      "terminal"
+    ],
+    "active_fields": [
+      "requestId",
+      "toolName",
+      "command",
+      "matchedRule",
+      "args",
+      "argsDigest",
+      "createdAt",
+      "expiresAt",
+      "state=PENDING"
+    ],
+    "rejected_outcomes": [
+      "CLIENT_NOT_AUTHORIZED",
+      "INVALID_RESPONSE"
+    ],
+    "scope": "single current Admin authority realm; no future multi-tenant implication"
+  },
+  "future_client_surfaces": [
+    "admin_panel",
+    "vcp_chat",
+    "vcp_mobile"
+  ],
+  "production_admitted_surfaces": [
+    "admin_panel"
+  ],
+  "capability": {
+    "ttl_ms": 60000,
+    "connection_ttl_ms": 900000,
+    "entropy_bytes": 32,
+    "single_connection": true,
+    "receipt_ttl_ms": 60000
+  },
+  "secrets_in_ack_terminal_sync": false
+}

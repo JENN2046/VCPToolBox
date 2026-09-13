@@ -1,0 +1,134 @@
+{
+  "protocolVersion": 1,
+  "configuration": [
+    "HUMAN_CLIENT_HOST_ORIGIN",
+    "HUMAN_CLIENT_ADMIN_ORIGIN",
+    "TRUSTED_CLIENT_AUTHORITY_ROOT",
+    "TRUSTED_CLIENT_ANCHOR_ROOT"
+  ],
+  "missingOrInvalid": "Origins absent -> ADMISSION_DISABLED; authority pair missing/mismatch -> TRUSTED_CLIENT_RECOVERY_LOCKDOWN",
+  "pathRules": "Case-sensitive exact path, no percent-encoded aliases/query, exact fixed production surface; unsupported Mobile route rejects",
+  "client": [
+    {
+      "method": "POST",
+      "path": "/human-client/v1/vcp-chat/enrollments",
+      "body": [
+        "protocolVersion=1",
+        "publicKeySpki",
+        "clientLabel?"
+      ],
+      "authority": "none; bounded start only"
+    },
+    {
+      "method": "GET",
+      "path": "/human-client/v1/vcp-chat/enrollments/:id",
+      "authority": "public safe status only"
+    },
+    {
+      "method": "POST",
+      "path": "/human-client/v1/vcp-chat/enrollments/:id/claim",
+      "body": [
+        "nonceId",
+        "signature"
+      ],
+      "authority": "Admin-approved exact enrollment + private key proof"
+    },
+    {
+      "method": "POST",
+      "path": "/human-client/v1/vcp-chat/sessions/:id/nonces",
+      "body": [
+        "purpose=capability-mint|self-revoke"
+      ],
+      "authority": "public lookup is insufficient; issues bounded proof challenge only"
+    },
+    {
+      "method": "POST",
+      "path": "/human-client/v1/vcp-chat/sessions/:id/capability",
+      "body": [
+        "nonceId",
+        "signature"
+      ],
+      "authority": "exact active key-bound proof"
+    },
+    {
+      "method": "POST",
+      "path": "/human-client/v1/vcp-chat/sessions/:id/revoke",
+      "body": [
+        "nonceId",
+        "signature"
+      ],
+      "authority": "self-revoke domain proof"
+    },
+    {
+      "method": "POST",
+      "path": "/human-client/v1/vcp-chat/clients/:id/session-challenges",
+      "body": [],
+      "authority": "durable enrollment lookup + current admission; returns public one-use session proof challenge only"
+    },
+    {
+      "method": "POST",
+      "path": "/human-client/v1/vcp-chat/clients/:id/sessions",
+      "body": [
+        "nonceId",
+        "signature"
+      ],
+      "authority": "fresh session-authenticate PoP + current durable enrollment/admission; no human ceremony"
+    }
+  ],
+  "admin": [
+    {
+      "method": "GET",
+      "path": "/admin_api/human-client/enrollments/:id",
+      "authority": "existing Admin; no approval on GET"
+    },
+    {
+      "method": "POST",
+      "path": "/admin_api/human-client/enrollments/:id/decision",
+      "body": [
+        "csrf",
+        "decision=approve|deny"
+      ],
+      "authority": "existing Admin + configured Admin Origin + resource/principal-bound one-use CSRF"
+    },
+    {
+      "method": "GET",
+      "path": "/admin_api/human-client/sessions",
+      "authority": "existing Admin; safe HTML session listing"
+    },
+    {
+      "method": "POST",
+      "path": "/admin_api/human-client/sessions/:id/revoke",
+      "body": [
+        "csrf"
+      ],
+      "authority": "existing Admin + configured Admin Origin + resource/principal-bound CSRF"
+    }
+  ],
+  "websocket": {
+    "path": "/VCPlog/vcp-chat-approval",
+    "capabilityHeader": "X-VCP-Human-Capability",
+    "query": "forbidden",
+    "initialState": "PENDING_CHANNEL_PROOF",
+    "hostChallenge": "human_channel_challenge",
+    "clientProof": "human_channel_proof data={nonceId,signature}",
+    "ready": "human_channel_ready confirms cryptographic channel binding only; TEST_ONLY and PRODUCTION_DISABLED cannot submit human decisions",
+    "maxPayload": 8192
+  },
+  "safeErrors": [
+    "ADMISSION_DISABLED",
+    "INVALID_ENROLLMENT",
+    "ENROLLMENT_EXPIRED",
+    "ENROLLMENT_NOT_APPROVED",
+    "PROOF_INVALID",
+    "PROOF_EXPIRED",
+    "PROOF_REPLAYED",
+    "SESSION_UNKNOWN",
+    "SESSION_EXPIRED",
+    "SESSION_REVOKED",
+    "CAPACITY_REACHED",
+    "CLIENT_NOT_AUTHORIZED",
+    "SURFACE_NOT_ADMITTED",
+    "TRUSTED_CLIENT_RECOVERY_LOCKDOWN"
+  ],
+  "adminIdentity": "Session listing now lists durable identity with orthogonal current-admission/session states; revoke CSRF bound to clientEnrollmentId"
+}

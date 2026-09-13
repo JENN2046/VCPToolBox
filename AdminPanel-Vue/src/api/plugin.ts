@@ -5,12 +5,8 @@ import {
 import type {
   PluginInfo,
   PluginListResponse,
+  PluginReadmeResponse,
 } from "@/types/api.plugin";
-
-export interface PluginTargetCriteria {
-  pluginRootId?: string;
-  pluginSource?: string;
-}
 
 const DEFAULT_READ_UI_OPTIONS: RequestUiOptions = { showLoader: false };
 
@@ -33,17 +29,6 @@ function normalizePluginList(response: PluginListResponse | PluginInfo[]): Plugi
 function invalidatePluginListCache(): void {
   pluginListCache = null;
   pluginListInflight = null;
-}
-
-function withTargetCriteria<TBody extends Record<string, unknown>>(
-  body: TBody,
-  targetCriteria?: PluginTargetCriteria
-): TBody & PluginTargetCriteria {
-  return {
-    ...body,
-    ...(targetCriteria?.pluginRootId ? { pluginRootId: targetCriteria.pluginRootId } : {}),
-    ...(targetCriteria?.pluginSource ? { pluginSource: targetCriteria.pluginSource } : {}),
-  };
 }
 
 export const pluginApi = {
@@ -81,18 +66,29 @@ export const pluginApi = {
     return pluginListInflight;
   },
 
+  async getPluginReadme(
+    pluginName: string,
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<PluginReadmeResponse> {
+    return requestWithUi<PluginReadmeResponse>(
+      {
+        url: `/admin_api/plugins/${encodeURIComponent(pluginName)}/readme`,
+      },
+      uiOptions
+    );
+  },
+
   async savePluginConfig(
     pluginName: string,
     content: string,
-    uiOptions: RequestUiOptions = {},
-    targetCriteria?: PluginTargetCriteria
+    uiOptions: RequestUiOptions = {}
   ): Promise<void> {
     try {
       await requestWithUi(
         {
           url: `/admin_api/plugins/${encodeURIComponent(pluginName)}/config`,
           method: "POST",
-          body: withTargetCriteria({ content }, targetCriteria),
+          body: { content },
         },
         uiOptions
       );
@@ -104,15 +100,14 @@ export const pluginApi = {
   async togglePlugin(
     pluginName: string,
     enable: boolean,
-    uiOptions: RequestUiOptions = {},
-    targetCriteria?: PluginTargetCriteria
+    uiOptions: RequestUiOptions = {}
   ): Promise<{ success: boolean; message?: string }> {
     try {
       return await requestWithUi(
         {
           url: `/admin_api/plugins/${encodeURIComponent(pluginName)}/toggle`,
           method: "POST",
-          body: withTargetCriteria({ enable }, targetCriteria),
+          body: { enable },
         },
         uiOptions
       );
@@ -125,14 +120,13 @@ export const pluginApi = {
     pluginName: string,
     commandIdentifier: string,
     description: string,
-    uiOptions: RequestUiOptions = {},
-    targetCriteria?: PluginTargetCriteria
+    uiOptions: RequestUiOptions = {}
   ): Promise<void> {
     await requestWithUi(
       {
         url: `/admin_api/plugins/${encodeURIComponent(pluginName)}/commands/${encodeURIComponent(commandIdentifier)}/description`,
         method: "POST",
-        body: withTargetCriteria({ description }, targetCriteria),
+        body: { description },
       },
       uiOptions
     );

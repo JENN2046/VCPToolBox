@@ -121,13 +121,13 @@ function initialize(config) {
     }
 }
 
-function registerRoutes(app, config, projectBasePath) {
+async function registerRoutes(app, config, projectBasePath) {
     // serverInstance = app; //不再需要
     if (!pluginConfigInstance) pluginConfigInstance = config;
     // if (!vcpKey) vcpKey = config.VCP_Key; //不再需要
 
     const pluginBasePath = path.join(projectBasePath, 'Plugin', 'VCPLog');
-    ensureLogDirAndFile(pluginBasePath); // 初始化日志目录和文件
+    await ensureLogDirAndFile(pluginBasePath); // 初始化日志目录和文件
 
     // WebSocket 服务器的创建和管理已移至 WebSocketServer.js
     // attachWebSocketServer 方法也不再需要
@@ -151,6 +151,9 @@ async function shutdown() {
     //     // ...
     // }
     await writeToLog('VCPLog plugin shutdown.');
+    broadcastVCPInfoFunction = null;
+    pluginConfigInstance = null;
+    logFilePath = null;
 }
 
 module.exports = {

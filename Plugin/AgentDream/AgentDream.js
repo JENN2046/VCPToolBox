@@ -38,6 +38,7 @@ let dreamWaveEngine = null;
 
 // --- 自动做梦调度状态 ---
 let dreamSchedulerTimer = null;
+let activeSchedulerRun = null;
 const SCHEDULER_CHECK_INTERVAL_MS = 15 * 60 * 1000; // 每15分钟检查一次
 const lastDreamTimestamps = new Map(); // agentName -> timestamp(ms)
 const DREAM_STATE_FILE = 'dream_schedule_state.json';
@@ -106,11 +107,29 @@ function initialize(config, dependencies) {
 /**
  * 关闭梦系统
  */
-function shutdown() {
+async function shutdown() {
     _stopDreamScheduler();
+    if (activeSchedulerRun) {
+        await activeSchedulerRun;
+    }
     _saveDreamState();
     dreamContexts.clear();
     console.log('[AgentDream] Shutdown complete.');
+}
+
+function getReloadBlockers() {
+    return isDreamingInProgress ? [{
+        type: 'active_dream',
+        message: 'The automatic dream scheduler is still processing an agent.'
+    }] : [];
+}
+
+function health() {
+    return {
+        status: 'ready',
+        schedulerActive: Boolean(dreamSchedulerTimer),
+        dreamInProgress: isDreamingInProgress
+    };
 }
 
 /**
@@ -720,20 +739,12 @@ function _broadcastDream(type, agentName, dreamId, data) {
     };
 
     try {
-        // 动态获取最新的 pushVcpInfo (类似 AA 插件的做法)
-        const pluginManager = require('../../Plugin.js');
-        const freshVcpLogFunctions = pluginManager.getVCPLogFunctions();
-        if (freshVcpLogFunctions && typeof freshVcpLogFunctions.pushVcpInfo === 'function') {
-            freshVcpLogFunctions.pushVcpInfo(broadcastData);
+        if (typeof pushVcpInfo === 'function') {
+            pushVcpInfo(broadcastData);
             if (DEBUG_MODE) console.error(`[AgentDream] Broadcast: ${type} for ${agentName}`);
         }
     } catch (e) {
-        // 初始注入的 fallback
-        try {
-            pushVcpInfo(broadcastData);
-        } catch (e2) {
-            if (DEBUG_MODE) console.error('[AgentDream] Broadcast failed:', e2.message);
-        }
+        if (DEBUG_MODE) console.error('[AgentDream] Broadcast failed:', e.message);
     }
 }
 
@@ -764,9 +775,14 @@ function _startDreamScheduler() {
     }
 
     dreamSchedulerTimer = setInterval(() => {
-        _checkAndTriggerDreams().catch(err => {
-            console.error('[AgentDream] ❌ Scheduler error:', err.message);
-        });
+        if (activeSchedulerRun) return;
+        activeSchedulerRun = _checkAndTriggerDreams()
+            .catch(err => {
+                console.error('[AgentDream] ❌ Scheduler error:', err.message);
+            })
+            .finally(() => {
+                activeSchedulerRun = null;
+            });
     }, SCHEDULER_CHECK_INTERVAL_MS);
 
     // 让定时器不阻止进程退出
@@ -963,6 +979,8 @@ function _saveDreamState() {
 module.exports = {
     initialize,
     shutdown,
+    health,
+    getReloadBlockers,
     processToolCall,
     // 暴露给外部调度系统使用
     triggerDream,

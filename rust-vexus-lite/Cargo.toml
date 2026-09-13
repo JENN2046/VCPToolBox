@@ -17,12 +17,22 @@ tokio = { version = "1", features = ["full"] }
 # 序列化（bincode替代JSON）
 bincode = "1.3"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.21"
+sha2 = "0.10"
+flate2 = "1.0"
 
-# HNSW向量索引
-usearch = "2.8"
+# HNSW向量索引。禁用 usearch 默认的 SimSIMD 多指令集编译：
+# Bullseye 的 GCC 10 无法解析其 AVX512-FP16 内建函数。usearch 自身仍
+# 提供可移植距离实现，且这样产出的 GNU addon 才能稳定维持 GLIBC 2.31
+# 基线；musl 产物也复用同一份确定性特性集合。
+usearch = { version = "2.8", default-features = false, features = ["fp16lib"] }
 
 # 哈希Map优化
 hashbrown = "0.14"
+
+# RiverMemo Topology V3 候选级并行计算
+rayon = "1.10"
 
 # 线性代数 (用于 SVD)
 nalgebra = "0.32"

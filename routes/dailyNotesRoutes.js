@@ -4,13 +4,43 @@ const path = require('path');
 const { Worker } = require('worker_threads');
 
 /**
- * 日记本管理模块 (安全加固版)
- * @param {string} dailyNoteRootPath 日记本根目录
+ * 日记/知识库文件管理模块 (安全加固版)
+ * @param {string} dailyNoteRootPath 根目录（日记根目录或 knowledge 根目录）
  * @param {boolean} DEBUG_MODE 是否开启调试模式
+ * @param {{ allowedExtensions?: string, ignoredFolders?: string, resourceLabel?: string }} options 资源配置
  * @returns {express.Router}
  */
-module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
+module.exports = function (dailyNoteRootPath, DEBUG_MODE, options = {}) {
     const router = express.Router();
+    const resourceLabel = options.resourceLabel || '日记';
+    const allowedExtensions = (options.allowedExtensions || 'md,txt')
+        .split(',')
+        .map(ext => ext.trim().replace(/^\./, '').toLowerCase())
+        .filter(Boolean);
+    const allowedExtensionsParam = allowedExtensions.join(',');
+    const ignoredFoldersParam = options.ignoredFolders || 'VectorStore,DebugLog';
+    const runExternalFileMutation = typeof options.runExternalFileMutation === 'function'
+        ? options.runExternalFileMutation
+        : null;
+
+    /**
+     * 在知识库协调器可用时，将文件落盘、SQLite 摄取和 Rust 索引更新
+     * 纳入主进程的单一 FIFO；普通文件目录仍可独立使用本路由。
+     *
+     * waitForIndex=false 只影响 HTTP 返回时机：文件提交后即可响应，
+     * 协调器的内部尾队列仍会继续等待索引同步完成。
+     */
+    function executeFileMutation(operationName, operation, libraries = []) {
+        if (options.canonicalRoot) {
+            return require("../modules/tdbRecovery/writer-marker").coordinate(options.canonicalRoot, libraries, operation);
+        }
+        if (!runExternalFileMutation) return operation();
+        return runExternalFileMutation(
+            `${resourceLabel}Admin:${operationName}:${Date.now()}`,
+            operation,
+            { waitForIndex: false }
+        );
+    }
 
     // ══════════════════════════════════════════════════
     //  搜索配置
@@ -246,8 +276,8 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
             preview_length: SEARCH_CONFIG.PREVIEW_LENGTH,
             root_path: path.resolve(dailyNoteRootPath),
             max_results: SEARCH_CONFIG.MAX_RESULTS,
-            ignored_folders: "VectorStore,DebugLog",
-            allowed_extensions: "md,txt"
+            ignored_folders: ignoredFoldersParam,
+            allowed_extensions: allowedExtensionsParam
         };
 
         return new Promise((resolve, reject) => {
@@ -393,7 +423,8 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
                     foldersToSearch.push({ name: dir.name, path: fullPath, depth: dir.depth + 1 });
                 } else if (entry.isFile()) {
                     const lower = entry.name.toLowerCase();
-                    if (lower.endsWith('.txt') || lower.endsWith('.md')) {
+                    const ext = path.extname(lower).replace('.', '');
+                    if (allowedExtensions.length === 0 || allowedExtensions.includes(ext)) {
                         try {
                             const stats = await fs.stat(fullPath);
                             if (stats.size <= SEARCH_CONFIG.MAX_FILE_SIZE) {
@@ -668,10 +699,10 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
 
             await fs.access(specificFolderPath);
             const files = await fs.readdir(specificFolderPath);
-            const noteFiles = files.filter(file =>
-                file.toLowerCase().endsWith('.txt') ||
-                file.toLowerCase().endsWith('.md')
-            );
+            const noteFiles = files.filter(file => {
+                const ext = path.extname(file).replace('.', '').toLowerCase();
+                return allowedExtensions.length === 0 || allowedExtensions.includes(ext);
+            });
 
             const notes = await Promise.all(noteFiles.map(async (file) => {
                 const filePath = path.join(specificFolderPath, file);
@@ -758,10 +789,23 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
         }
 
         try {
-            await fs.mkdir(targetFolderPath, { recursive: true });
-            await fs.writeFile(filePath, content, 'utf-8');
-            dirCache.invalidate(targetFolderPath);
-            res.json({ message: 'Saved successfully' });
+            const result = await executeFileMutation(
+                `save:${folderName}/${fileName}`,
+                async () => {
+                    await fs.mkdir(targetFolderPath, { recursive: true });
+                    await fs.writeFile(filePath, content, 'utf-8');
+                    dirCache.invalidate(targetFolderPath);
+                    return {
+                        status: 'success',
+                        mutationPaths: {
+                            upserts: [filePath],
+                            deletes: [],
+                        },
+                        response: { message: 'Saved successfully' },
+                    };
+                }
+            , [folderName]);
+            res.json(result.response);
         } catch (error) {
             res.status(500).json({ error: 'Failed to save file', details: error.message });
         }
@@ -787,48 +831,75 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
         }
 
         try {
-            await fs.mkdir(targetFolderPath, { recursive: true });
-            dirCache.invalidate(targetFolderPath);
-            for (const note of sourceNotes) {
-                if (note.folder.includes('..') || note.file.includes('..')) {
-                    results.errors.push({ note: `${note.folder}/${note.file}`, error: 'Invalid path' });
-                    continue;
-                }
+            const result = await executeFileMutation(
+                `move:${sourceNotes.length}:${targetFolder}`,
+                async () => {
+                    const upserts = [];
+                    const deletes = [];
+                    await fs.mkdir(targetFolderPath, { recursive: true });
+                    dirCache.invalidate(targetFolderPath);
+                    for (const note of sourceNotes) {
+                        if (
+                            !note
+                            || typeof note.folder !== 'string'
+                            || typeof note.file !== 'string'
+                            || note.folder.includes('..')
+                            || note.file.includes('..')
+                        ) {
+                            results.errors.push({
+                                note: `${note?.folder || ''}/${note?.file || ''}`,
+                                error: 'Invalid path'
+                            });
+                            continue;
+                        }
 
-                const sourceFilePath = path.join(dailyNoteRootPath, note.folder, note.file);
-                const destinationFilePath = path.join(targetFolderPath, note.file);
+                        const sourceFilePath = path.join(dailyNoteRootPath, note.folder, note.file);
+                        const destinationFilePath = path.join(targetFolderPath, note.file);
 
-                if (!isPathSafe(sourceFilePath, dailyNoteRootPath) || !isPathSafe(destinationFilePath, dailyNoteRootPath)) {
-                    results.errors.push({ note: `${note.folder}/${note.file}`, error: 'Invalid path' });
-                    continue;
-                }
+                        if (!isPathSafe(sourceFilePath, dailyNoteRootPath) || !isPathSafe(destinationFilePath, dailyNoteRootPath)) {
+                            results.errors.push({ note: `${note.folder}/${note.file}`, error: 'Invalid path' });
+                            continue;
+                        }
 
-                try {
-                    await fs.access(sourceFilePath);
-                    try {
-                        await fs.access(destinationFilePath);
-                        results.errors.push({
-                            note: `${note.folder}/${note.file}`,
-                            error: `File already exists at destination '${targetFolder}/${note.file}'. Move aborted for this file.`
-                        });
-                        continue;
-                    } catch {
-                        // 目标不存在，可以移动
+                        try {
+                            await fs.access(sourceFilePath);
+                            try {
+                                await fs.access(destinationFilePath);
+                                results.errors.push({
+                                    note: `${note.folder}/${note.file}`,
+                                    error: `File already exists at destination '${targetFolder}/${note.file}'. Move aborted for this file.`
+                                });
+                                continue;
+                            } catch {
+                                // 目标不存在，可以移动
+                            }
+
+                            await fs.rename(sourceFilePath, destinationFilePath);
+                            dirCache.invalidate(path.dirname(sourceFilePath));
+                            upserts.push(destinationFilePath);
+                            deletes.push(sourceFilePath);
+                            results.moved.push(`${note.folder}/${note.file} to ${targetFolder}/${note.file}`);
+                        } catch (error) {
+                            if (error.code === 'ENOENT') {
+                                results.errors.push({ note: `${note.folder}/${note.file}`, error: 'Source file not found.' });
+                            } else {
+                                results.errors.push({ note: `${note.folder}/${note.file}`, error: error.message });
+                            }
+                        }
                     }
-                    
-                    await fs.rename(sourceFilePath, destinationFilePath);
-                    dirCache.invalidate(path.dirname(sourceFilePath));
-                    results.moved.push(`${note.folder}/${note.file} to ${targetFolder}/${note.file}`);
-                } catch (error) {
-                    if (error.code === 'ENOENT') {
-                        results.errors.push({ note: `${note.folder}/${note.file}`, error: 'Source file not found.' });
-                    } else {
-                        results.errors.push({ note: `${note.folder}/${note.file}`, error: error.message });
-                    }
+                    const message = `Moved ${results.moved.length} note(s). ${results.errors.length > 0 ? `Encountered ${results.errors.length} error(s).` : ''}`;
+                    return {
+                        status: results.errors.length > 0 ? 'partial' : 'success',
+                        mutationPaths: { upserts, deletes },
+                        response: {
+                            message,
+                            moved: results.moved,
+                            errors: results.errors,
+                        },
+                    };
                 }
-            }
-            const message = `Moved ${results.moved.length} note(s). ${results.errors.length > 0 ? `Encountered ${results.errors.length} error(s).` : ''}`;
-            res.json({ message, moved: results.moved, errors: results.errors });
+            , [targetFolder, ...sourceNotes.map(note => note?.folder).filter(Boolean)]);
+            res.json(result.response);
         } catch (error) {
             res.status(500).json({ error: 'Move operation failed', details: error.message });
         }
@@ -842,22 +913,50 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
         }
 
         const results = { deleted: [], errors: [] };
-        for (const note of notesToDelete) {
-            const filePath = path.join(dailyNoteRootPath, note.folder, note.file);
-            if (!isPathSafe(filePath, dailyNoteRootPath)) {
-                results.errors.push({ note: `${note.folder}/${note.file}`, error: 'Invalid path' });
-                continue;
-            }
+        try {
+            const result = await executeFileMutation(
+                `delete-batch:${notesToDelete.length}`,
+                async () => {
+                    const deletes = [];
+                    for (const note of notesToDelete) {
+                        if (
+                            !note
+                            || typeof note.folder !== 'string'
+                            || typeof note.file !== 'string'
+                        ) {
+                            results.errors.push({
+                                note: `${note?.folder || ''}/${note?.file || ''}`,
+                                error: 'Invalid path'
+                            });
+                            continue;
+                        }
 
-            try {
-                await fs.unlink(filePath);
-                dirCache.invalidate(path.dirname(filePath));
-                results.deleted.push(`${note.folder}/${note.file}`);
-            } catch (error) {
-                results.errors.push({ note: `${note.folder}/${note.file}`, error: error.message });
-            }
+                        const filePath = path.join(dailyNoteRootPath, note.folder, note.file);
+                        if (!isPathSafe(filePath, dailyNoteRootPath)) {
+                            results.errors.push({ note: `${note.folder}/${note.file}`, error: 'Invalid path' });
+                            continue;
+                        }
+
+                        try {
+                            await fs.unlink(filePath);
+                            dirCache.invalidate(path.dirname(filePath));
+                            deletes.push(filePath);
+                            results.deleted.push(`${note.folder}/${note.file}`);
+                        } catch (error) {
+                            results.errors.push({ note: `${note.folder}/${note.file}`, error: error.message });
+                        }
+                    }
+                    return {
+                        status: results.errors.length > 0 ? 'partial' : 'success',
+                        mutationPaths: { upserts: [], deletes },
+                        response: results,
+                    };
+                }
+            , notesToDelete.map(note => note?.folder).filter(Boolean));
+            res.json(result.response);
+        } catch (error) {
+            res.status(500).json({ error: 'Delete operation failed', details: error.message });
         }
-        res.json(results);
     });
 
     // POST /folder/delete - 删除空文件夹
@@ -871,20 +970,37 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE) {
         }
 
         try {
-            await fs.access(targetFolderPath);
-            
-            const files = await fs.readdir(targetFolderPath);
-            if (files.length > 0) {
-                return res.status(400).json({
-                    error: `Folder '${folderName}' is not empty.`,
-                    message: '为了安全起见，非空文件夹禁止删除。请先删除或移动其中的所有内容。'
-                });
-            }
-            
-            await fs.rmdir(targetFolderPath);
-            dirCache.invalidate(dailyNoteRootPath);
-            dirCache.invalidate(targetFolderPath);
-            res.json({ message: `Empty folder '${folderName}' has been deleted successfully.` });
+            const result = await executeFileMutation(
+                `delete-folder:${folderName}`,
+                async () => {
+                    await fs.access(targetFolderPath);
+
+                    const files = await fs.readdir(targetFolderPath);
+                    if (files.length > 0) {
+                        return {
+                            status: 'rejected',
+                            responseStatus: 400,
+                            response: {
+                                error: `Folder '${folderName}' is not empty.`,
+                                message: '为了安全起见，非空文件夹禁止删除。请先删除或移动其中的所有内容。'
+                            },
+                        };
+                    }
+
+                    await fs.rmdir(targetFolderPath);
+                    dirCache.invalidate(dailyNoteRootPath);
+                    dirCache.invalidate(targetFolderPath);
+                    return {
+                        status: 'success',
+                        mutationPaths: { upserts: [], deletes: [] },
+                        responseStatus: 200,
+                        response: {
+                            message: `Empty folder '${folderName}' has been deleted successfully.`
+                        },
+                    };
+                }
+            , [folderName]);
+            res.status(result.responseStatus).json(result.response);
         } catch (error) {
             if (error.code === 'ENOENT') {
                 res.status(404).json({ error: `Folder '${folderName}' not found.` });

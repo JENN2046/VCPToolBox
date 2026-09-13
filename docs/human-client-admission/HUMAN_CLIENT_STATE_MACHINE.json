@@ -1,0 +1,51 @@
+{
+  "protocolVersion": 1,
+  "enrollment": [
+    "UNENROLLED",
+    "PENDING_ENROLLMENT",
+    "ENROLLED",
+    "REVOKED"
+  ],
+  "currentAdmission": [
+    "UNKNOWN",
+    "ADMITTED",
+    "DENIED",
+    "SUSPENDED"
+  ],
+  "session": [
+    "DISCONNECTED",
+    "AUTHENTICATING",
+    "AUTHENTICATED"
+  ],
+  "activation": [
+    "TEST_ONLY",
+    "PRODUCTION_DISABLED",
+    "PRODUCTION_ADMITTED"
+  ],
+  "catalog": {
+    "vcp_chat.c1.fixture": "TEST_ONLY",
+    "vcp_chat.c2": "PRODUCTION_DISABLED"
+  },
+  "ceremony": {
+    "PENDING_HUMAN": [
+      "APPROVED_WAITING_PROOF",
+      "DENIED",
+      "EXPIRED"
+    ],
+    "APPROVED_WAITING_PROOF": [
+      "CLAIMED",
+      "EXPIRED"
+    ],
+    "CLAIMED": [],
+    "DENIED": [],
+    "EXPIRED": []
+  },
+  "identityLifetime": "durable, not time-limited",
+  "sessionLifetime": "absolute <=8h; fresh key proof after loss, no human re-enrollment",
+  "channel": "PENDING_CHANNEL_PROOF -> CRYPTOGRAPHICALLY_BOUND; production human admission separately mandatory",
+  "continuityFailure": "TRUSTED_CLIENT_RECOVERY_LOCKDOWN, no automatic repair",
+  "revocation": "persist enrollment REVOKED before retiring future participation; no receipt mutation",
+  "receipt": "unchanged shared H1/S2-A lifecycle after acceptance",
+  "mobile": "NOT_ADMITTED",
+  "production": "NOT_DEPLOYED / PRODUCTION_DISABLED"
+}

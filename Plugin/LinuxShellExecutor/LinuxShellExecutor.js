@@ -32,7 +32,9 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const crypto = require('crypto');
+const util = require('util');
 const { createSanitizedUserCommandEnv } = require('../../modules/sensitiveEnv');
 
 // 加载配置
@@ -48,25 +50,45 @@ const isDebugMode = () => {
     return debugMode && debugMode.toLowerCase() === 'true';
 };
 
-function parseBooleanValue(value) {
-    if (value === true || value === false) return value;
-    if (typeof value === 'number') return value !== 0;
-    if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
-        if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
-        if (['false', '0', 'no', 'n', 'off', ''].includes(normalized)) return false;
+let loggerModule = null;
+
+function isServerLoggerActive() {
+    try {
+        loggerModule = loggerModule || require('../../modules/logger');
+        return Boolean(
+            loggerModule.originalConsoleError &&
+            console.error !== loggerModule.originalConsoleError
+        );
+    } catch (_) {
+        return false;
     }
-    return false;
 }
 
-function resolveAdminAuthCode(context = {}) {
-    if (context && typeof context.decryptedAuthCode === 'string' && context.decryptedAuthCode) {
-        return context.decryptedAuthCode;
+function logInfo(...args) {
+    if (isServerLoggerActive()) {
+        console.info(...args);
+        return;
     }
-    if (typeof process.env.DECRYPTED_AUTH_CODE === 'string' && process.env.DECRYPTED_AUTH_CODE) {
-        return process.env.DECRYPTED_AUTH_CODE;
+    process.stderr.write(`${util.format(...args)}\n`);
+}
+
+function logWarn(...args) {
+    if (isServerLoggerActive()) {
+        console.warn(...args);
+        return;
     }
-    return null;
+    process.stderr.write(`${util.format(...args)}\n`);
+}
+
+function logDebug(...args) {
+    if (!isDebugMode()) {
+        return;
+    }
+    logInfo(...args);
+}
+
+function logDiagInfo(...args) {
+    logDebug(...args);
 }
 
 // 加载白名单配置
@@ -75,9 +97,9 @@ let whitelistLoadError = null;
 try {
     whitelist = require('./whitelist.json');
     // 诊断日志：记录 whitelist 加载状态
-    console.error(`[LinuxShellExecutor][DIAG] whitelist.json 加载成功`);
-    console.error(`[LinuxShellExecutor][DIAG] forbiddenCharacters: ${JSON.stringify(whitelist.globalRestrictions?.forbiddenCharacters || [])}`);
-    console.error(`[LinuxShellExecutor][DIAG] commands 数量: ${Object.keys(whitelist.commands || {}).length}`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] whitelist.json 加载成功`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] forbiddenCharacters: ${JSON.stringify(whitelist.globalRestrictions?.forbiddenCharacters || [])}`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] commands 数量: ${Object.keys(whitelist.commands || {}).length}`);
 } catch (e) {
     whitelistLoadError = e.message;
     whitelist = { commands: {}, globalRestrictions: {} };
@@ -91,8 +113,8 @@ let graylist;
 let graylistLoadError = null;
 try {
     graylist = require('./graylist.json');
-    console.error(`[LinuxShellExecutor][DIAG] graylist.json 加载成功`);
-    console.error(`[LinuxShellExecutor][DIAG] graylist commands 数量: ${Object.keys(graylist.commands || {}).length}`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] graylist.json 加载成功`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] graylist commands 数量: ${Object.keys(graylist.commands || {}).length}`);
 } catch (e) {
     graylistLoadError = e.message;
     graylist = { commands: {}, globalRestrictions: {} };
@@ -104,8 +126,8 @@ let securityLevelsConfig;
 let securityLevelsLoadError = null;
 try {
     securityLevelsConfig = require('./securityLevels.json');
-    console.error(`[LinuxShellExecutor][DIAG] securityLevels.json 加载成功`);
-    console.error(`[LinuxShellExecutor][DIAG] 安全级别: ${Object.keys(securityLevelsConfig.securityLevels || {}).join(', ')}`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] securityLevels.json 加载成功`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] 安全级别: ${Object.keys(securityLevelsConfig.securityLevels || {}).join(', ')}`);
 } catch (e) {
     securityLevelsLoadError = e.message;
     securityLevelsConfig = { securityLevels: {}, pipeRules: {}, redirectRules: {} };
@@ -117,31 +139,65 @@ let presetsConfig;
 let presetsLoadError = null;
 try {
     presetsConfig = require('./presets.json');
-    console.error(`[LinuxShellExecutor][DIAG] presets.json 加载成功`);
-    console.error(`[LinuxShellExecutor][DIAG] 预设命令数量: ${Object.keys(presetsConfig.presets || {}).length}`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] presets.json 加载成功`);
+    logDiagInfo(`[LinuxShellExecutor][DIAG] 预设命令数量: ${Object.keys(presetsConfig.presets || {}).length}`);
 } catch (e) {
     presetsLoadError = e.message;
     presetsConfig = { presets: {}, categories: {} };
     console.error(`[LinuxShellExecutor][DIAG][ERROR] presets.json 加载失败: ${e.message}`);
 }
 
-// 加载主机配置
-let hostsConfig;
-try {
-    hostsConfig = require('./hosts.json');
-} catch (e) {
-    hostsConfig = { 
-        hosts: { 
-            local: { 
-                name: '本地执行', 
-                type: 'local', 
-                enabled: true, 
-                securityLevel: 'standard' 
-            } 
-        }, 
+const HOSTS_CONFIG_PATH = path.join(__dirname, 'hosts.json');
+const DEFAULT_HOSTS_TEMPLATE_MD5 = 'b1d6472eba3a65b9354a096ce21d3f3e';
+
+function createLocalOnlyHostsConfig() {
+    return {
+        hosts: {
+            local: {
+                name: '本地执行',
+                type: 'local',
+                enabled: true,
+                securityLevel: 'standard'
+            }
+        },
         defaultHost: 'local',
         globalSettings: {}
     };
+}
+
+function calculateHostsConfigMd5() {
+    try {
+        return crypto
+            .createHash('md5')
+            .update(fsSync.readFileSync(HOSTS_CONFIG_PATH))
+            .digest('hex');
+    } catch (e) {
+        return null;
+    }
+}
+
+function getDefaultHostsTemplateStatus() {
+    if (!hostsConfigIsDefaultTemplate) return null;
+    return {
+        disabled: true,
+        md5: hostsConfigMd5,
+        reason: 'hosts.json 仍为仓库默认模板，SSH 远程执行功能未启动；请先写入真实主机配置。'
+    };
+}
+
+// 加载主机配置
+let hostsConfig;
+let hostsConfigMd5 = calculateHostsConfigMd5();
+let hostsConfigIsDefaultTemplate = hostsConfigMd5 === DEFAULT_HOSTS_TEMPLATE_MD5;
+try {
+    hostsConfig = hostsConfigIsDefaultTemplate
+        ? createLocalOnlyHostsConfig()
+        : require('./hosts.json');
+    if (hostsConfigIsDefaultTemplate) {
+        logWarn(`[LinuxShellExecutor] hosts.json MD5=${hostsConfigMd5}，仍为默认模板，SSH 远程执行功能已禁用。`);
+    }
+} catch (e) {
+    hostsConfig = createLocalOnlyHostsConfig();
 }
 
 // 确保连接池配置包含默认值
@@ -163,6 +219,10 @@ let sshLastLoadAttemptAt = 0;
 const SSH_RETRY_INTERVAL_MS = 3000;
 
 function getSSHManager() {
+    if (hostsConfigIsDefaultTemplate) {
+        sshLoadError = 'hosts.json 仍为仓库默认模板，SSH 远程执行功能未启动。';
+        return null;
+    }
     // 负面记忆修复：允许在短冷却后自动重试加载共享模块
     if (sshLoadError) {
         const now = Date.now();
@@ -186,7 +246,7 @@ function getSSHManager() {
                 console.error('[LinuxShellExecutor][ERROR] 共享 SSH 模块初始化失败:', sshLoadError);
                 return null;
             }
-            console.error('[LinuxShellExecutor] 已成功连接至全局共享 SSHManager 模块');
+            logInfo('[LinuxShellExecutor] 已成功连接至全局共享 SSHManager 模块');
         } catch (e) {
             sshLoadError = e.message;
             console.error('[LinuxShellExecutor][ERROR] 共享 SSH 模块加载失败:', e.message);
@@ -199,6 +259,27 @@ function getSSHManager() {
 
 function getSSHLoadError() {
     return sshLoadError;
+}
+
+function parseBooleanValue(value) {
+    if (value === true || value === false) return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'n', 'off', ''].includes(normalized)) return false;
+    }
+    return false;
+}
+
+function resolveAdminAuthCode(context = {}) {
+    if (context && typeof context.decryptedAuthCode === 'string' && context.decryptedAuthCode) {
+        return context.decryptedAuthCode;
+    }
+    if (typeof process.env.DECRYPTED_AUTH_CODE === 'string' && process.env.DECRYPTED_AUTH_CODE) {
+        return process.env.DECRYPTED_AUTH_CODE;
+    }
+    return null;
 }
 
 // ============================================
@@ -264,12 +345,23 @@ class WhitelistValidator {
         this.commands = whitelist.commands || {};
         this.globalRestrictions = whitelist.globalRestrictions || {};
     }
-    
+
+    /**
+     * 检查命令是否在白名单中
+     * @returns {object} { inWhitelist: boolean, cmdConfig?: object, parsedCommand?: object }
+     */
+    check(command) {
+        const parsed = this.parseCommand(command);
+        const cmdConfig = this.commands[parsed.command];
+        if (!cmdConfig) return { inWhitelist: false };
+        return { inWhitelist: true, cmdConfig, parsedCommand: parsed };
+    }
+
     validate(command) {
         // 诊断日志：记录验证开始
-        console.error(`[LinuxShellExecutor][DIAG] WhitelistValidator.validate() 被调用`);
-        console.error(`[LinuxShellExecutor][DIAG] 命令: "${command.substring(0, 100)}${command.length > 100 ? '...' : ''}"`);
-        console.error(`[LinuxShellExecutor][DIAG] globalRestrictions: ${JSON.stringify(this.globalRestrictions)}`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] WhitelistValidator.validate() 被调用`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] 命令: "${command.substring(0, 100)}${command.length > 100 ? '...' : ''}"`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] globalRestrictions: ${JSON.stringify(this.globalRestrictions)}`);
         
         // 全局长度检查
         const maxLen = this.globalRestrictions.maxCommandLength || 1000;
@@ -290,12 +382,12 @@ class WhitelistValidator {
         // 禁止字符检查（非管道命令）
         const forbiddenChars = this.globalRestrictions.forbiddenCharacters || [];
         // 诊断日志：记录禁止字符列表
-        console.error(`[LinuxShellExecutor][DIAG] forbiddenChars 数组长度: ${forbiddenChars.length}`);
-        console.error(`[LinuxShellExecutor][DIAG] forbiddenChars 内容: ${JSON.stringify(forbiddenChars)}`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] forbiddenChars 数组长度: ${forbiddenChars.length}`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] forbiddenChars 内容: ${JSON.stringify(forbiddenChars)}`);
         
         for (const char of forbiddenChars) {
             if (command.includes(char)) {
-                console.error(`[LinuxShellExecutor][DIAG] 检测到禁止字符: "${char}"`);
+                logDiagInfo(`[LinuxShellExecutor][DIAG] 检测到禁止字符: "${char}"`);
                 return {
                     passed: false,
                     reason: `命令包含禁止字符: "${char}"`,
@@ -304,7 +396,7 @@ class WhitelistValidator {
                 };
             }
         }
-        console.error(`[LinuxShellExecutor][DIAG] 禁止字符检查通过`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] 禁止字符检查通过`);
         
         // 解析命令
         const parsed = this.parseCommand(command);
@@ -344,7 +436,40 @@ class WhitelistValidator {
                 }
             }
         }
-        
+
+        // 子命令约束：如果 allowedArgs 包含非flag项（如 systemctl 的 status、docker 的 ps），
+        // 则第一个位置参数必须匹配，否则拒绝（降级到灰名单需验证码）
+        const subcommandArgs = (cmdConfig.allowedArgs || []).filter(a => !a.startsWith('-'));
+        if (subcommandArgs.length > 0 && parsed.paths.length > 0) {
+            const positionalStr = parsed.paths.join(' ');
+            const matchedSubcommand = subcommandArgs.some(sc => positionalStr === sc || positionalStr.startsWith(sc + ' '));
+            if (!matchedSubcommand) {
+                return {
+                    passed: false,
+                    reason: `子命令 "${parsed.paths[0]}" 不被允许用于 "${parsed.command}"`,
+                    layer: 'whitelist',
+                    severity: 'medium'
+                };
+            }
+        }
+
+        // 查询约束：如果配置了 allowedQueries（如 mysql -e），-e 内容必须匹配允许的查询
+        if (cmdConfig.allowedQueries && cmdConfig.allowedQueries.length > 0) {
+            const hasExecuteFlag = parsed.args.some(a => a.startsWith('-e'));
+            if (hasExecuteFlag) {
+                const commandUpper = command.toUpperCase();
+                const queryMatched = cmdConfig.allowedQueries.some(q => commandUpper.includes(q.toUpperCase()));
+                if (!queryMatched) {
+                    return {
+                        passed: false,
+                        reason: `查询不在允许的查询列表中`,
+                        layer: 'whitelist',
+                        severity: 'medium'
+                    };
+                }
+            }
+        }
+
         return { passed: true, parsedCommand: parsed };
     }
     
@@ -540,19 +665,19 @@ class GraylistValidator {
      * @returns {object} { inGraylist: boolean, cmdConfig?: object, riskLevel?: string }
      */
     check(command) {
-        console.error(`[LinuxShellExecutor][DIAG] GraylistValidator.check() 被调用`);
-        console.error(`[LinuxShellExecutor][DIAG] 命令: "${command.substring(0, 100)}${command.length > 100 ? '...' : ''}"`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] GraylistValidator.check() 被调用`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] 命令: "${command.substring(0, 100)}${command.length > 100 ? '...' : ''}"`);
         
         // 解析命令获取基础命令名
         const parsed = this.parseCommand(command);
         const cmdConfig = this.commands[parsed.command];
         
         if (!cmdConfig) {
-            console.error(`[LinuxShellExecutor][DIAG] 命令 "${parsed.command}" 不在灰名单中`);
+            logDiagInfo(`[LinuxShellExecutor][DIAG] 命令 "${parsed.command}" 不在灰名单中`);
             return { inGraylist: false };
         }
         
-        console.error(`[LinuxShellExecutor][DIAG] 命令 "${parsed.command}" 在灰名单中，风险级别: ${cmdConfig.riskLevel}`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] 命令 "${parsed.command}" 在灰名单中，风险级别: ${cmdConfig.riskLevel}`);
         return {
             inGraylist: true,
             cmdConfig,
@@ -565,7 +690,7 @@ class GraylistValidator {
      * 验证灰名单命令的参数和路径
      */
     validate(command) {
-        console.error(`[LinuxShellExecutor][DIAG] GraylistValidator.validate() 被调用`);
+        logDiagInfo(`[LinuxShellExecutor][DIAG] GraylistValidator.validate() 被调用`);
         
         // 全局长度检查
         const maxLen = this.globalRestrictions.maxCommandLength || 2000;
@@ -801,6 +926,52 @@ class SecurityLevelValidator {
         this.globalSettings = config.globalSettings || {};}
     
     /**
+     * Strip quoted content for safe pattern matching.
+     * Replaces characters inside single/double quotes with underscores so that
+     * pipe symbols (|), redirects (><), etc. inside quoted strings do not
+     * trigger false positives in security checks.
+     * Example: grep "Error:|init" f.log  =>  grep "_________" f.log
+     */
+    _stripQuotedContent(str) {
+        let result = '';
+        let inSingle = false;
+        let inDouble = false;
+        let escaped = false;
+        for (let i = 0; i < str.length; i++) {
+            const c = str[i];
+            if (escaped) { result += '_'; escaped = false; continue; }
+            if (c === '\\' && (inSingle || inDouble)) { result += '_'; escaped = true; continue; }
+            if (c === "'" && !inDouble) { inSingle = !inSingle; result += c; continue; }
+            if (c === '"' && !inSingle) { inDouble = !inDouble; result += c; continue; }
+            result += (inSingle || inDouble) ? '_' : c;
+        }
+        return result;
+    }
+
+    /**
+     * Split a string by delimiter while respecting single/double-quoted sections.
+     * Prevents grep "a|b" from being split into two segments at the | inside quotes.
+     */
+    _splitUnquoted(str, delimiter) {
+        const parts = [];
+        let current = '';
+        let inSingle = false;
+        let inDouble = false;
+        let escaped = false;
+        for (let i = 0; i < str.length; i++) {
+            const c = str[i];
+            if (escaped) { current += c; escaped = false; continue; }
+            if (c === '\\' && (inSingle || inDouble)) { current += c; escaped = true; continue; }
+            if (c === "'" && !inDouble) { inSingle = !inSingle; current += c; continue; }
+            if (c === '"' && !inSingle) { inDouble = !inDouble; current += c; continue; }
+            if (!inSingle && !inDouble && c === delimiter) { parts.push(current); current = ''; continue; }
+            current += c;
+        }
+        parts.push(current);
+        return parts;
+    }
+
+    /**
      * 获取命令的安全级别
      */
     getCommandLevel(command) {
@@ -826,16 +997,17 @@ class SecurityLevelValidator {
     }
     
     /**
-     * 验证完整命令（包括管道和重定向）
+     * 检查特殊操作符（普适硬护栏，不可通过授权码绕过）
+     * 检查分号(semicolon)、后台执行(backgroundAmp)、子shell(subshell)
+     * 允许 && 和 ||
      */
-    validate(command) {
-        // ROB-02: 验证特殊操作符
+    checkSpecialOperators(command) {
         for (const [opName, opConfig] of Object.entries(this.specialOperators)) {
             if (opConfig.allowed === false) {
                 let pattern;
                 switch(opName) {
                     case 'semicolon': pattern = /;/; break;
-                    case 'backgroundAmp': pattern = /&(?![&>])/; break; // 排除 && 和重定向 &>
+                    case 'backgroundAmp': pattern = /(?<!&)&(?![&>])/; break;
                     case 'subshell': pattern = /\$\(|\`/; break;
                     default: continue;
                 }
@@ -843,15 +1015,30 @@ class SecurityLevelValidator {
                     return {
                         passed: false,
                         reason: `检测到禁止的特殊操作符: ${opName} (${opConfig.reason})`,
-                        layer: 'securityLevel', severity: 'critical'
+                        opName,
+                        layer: 'securityLevel',
+                        severity: 'critical'
                     };
                 }
             }
         }
+        return { passed: true };
+    }
 
-        const hasRedirect = /[><]/.test(command);
-        const hasPipe = command.includes('|');
-        let segments = hasPipe ? command.split('|').map(s => s.trim()).filter(s => s.length > 0) : [command.trim()];
+    /**
+     * 验证完整命令（包括管道和重定向）
+     */
+    validate(command) {
+        // ROB-02: 验证特殊操作符（委托给 checkSpecialOperators）
+        const specialOpResult = this.checkSpecialOperators(command);
+        if (!specialOpResult.passed) return specialOpResult;
+
+        // Quote-aware pipe/redirect detection: ignore | and > inside quoted strings
+        // e.g. grep "Error:|Warning:" file.log should NOT be treated as a pipeline
+        const strippedForOp = this._stripQuotedContent(command);
+        const hasRedirect = /[><]/.test(strippedForOp);
+        const hasPipe = strippedForOp.includes('|');
+        let segments = hasPipe ? this._splitUnquoted(command, '|').map(s => s.trim()).filter(s => s.length > 0) : [command.trim()];
         
         let highestRiskLevel = 'read';
         const levelPriority = { 'read': 0, 'safe': 1, 'write': 2, 'danger': 3, 'unknown': 4 };
@@ -1354,7 +1541,6 @@ class SandboxManager {
             '--ro-bind', '/usr', '/usr',
             '--ro-bind', '/bin', '/bin',
             '--ro-bind', '/lib', '/lib',
-            '--symlink', 'usr/lib', '/lib',
             '--proc', '/proc',
             '--dev', '/dev',
             '--tmpfs', '/tmp',
@@ -1370,23 +1556,31 @@ class SandboxManager {
             args.splice(6, 0, '--ro-bind', '/lib64', '/lib64');
         } catch (e) {}
         
-        return this.spawnWithTimeout('bwrap', args, options.timeout, options.signal);
+        const bubblewrapEnv = createSanitizedUserCommandEnv({
+            PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+            LANG: process.env.LANG || 'C.UTF-8',
+            HOME: '/tmp',
+            TMPDIR: '/tmp'
+        });
+        return this.spawnWithTimeout('bwrap', args, options.timeout, options.signal, bubblewrapEnv);
     }
     
-    spawnWithTimeout(cmd, args, timeout, signal) {
+    spawnWithTimeout(cmd, args, timeout, signal, childEnv = createSanitizedUserCommandEnv()) {
         return new Promise((resolve, reject) => {
             if (signal?.aborted) {
                 return reject(signal.reason instanceof Error ? signal.reason : new Error('命令执行已取消'));
             }
+
             let stdout = '';
             let stderr = '';
             let settled = false;
             
             const child = spawn(cmd, args, {
                 stdio: ['pipe', 'pipe', 'pipe'],
-                env: createSanitizedUserCommandEnv()
+                env: childEnv,
+                detached: process.platform !== 'win32'
             });
-            
+
             const cleanup = () => {
                 clearTimeout(timeoutId);
                 if (signal && abortHandler) {
@@ -1405,17 +1599,24 @@ class SandboxManager {
                 cleanup();
                 resolve(result);
             };
-            const killChild = () => {
+            const killChildTree = () => {
+                if (process.platform !== 'win32' && child.pid) {
+                    try {
+                        process.kill(-child.pid, 'SIGKILL');
+                        return;
+                    } catch (_) {}
+                }
                 try {
                     child.kill('SIGKILL');
                 } catch (_) {}
             };
             const abortHandler = () => {
-                killChild();
+                killChildTree();
                 rejectOnce(signal.reason instanceof Error ? signal.reason : new Error('命令执行已取消'));
             };
+
             const timeoutId = setTimeout(() => {
-                killChild();
+                killChildTree();
                 rejectOnce(new Error(`命令执行超时 (${timeout}ms)`));
             }, timeout);
             if (signal) {
@@ -1450,8 +1651,8 @@ class RlimitManager {
             cpu: parseInt(process.env.RLIMIT_CPU) || 30,           // CPU 时间（秒）
             fsize: parseInt(process.env.RLIMIT_FSIZE) || 10485760, // 文件大小（字节，10MB）
             nproc: parseInt(process.env.RLIMIT_NPROC) || 10,       // 最大进程数
-            nofile: parseInt(process.env.RLIMIT_NOFILE) || 64,     // 最大文件描述符
-            as: parseInt(process.env.RLIMIT_AS) || 536870912       // 虚拟内存（字节，512MB）
+            nofile: parseInt(process.env.RLIMIT_NOFILE) || 0,      // 最大文件描述符（0=继承系统默认，通常为1024）
+            as: parseInt(process.env.RLIMIT_AS) || 0               // 虚拟内存（0=不限制；512MB 默认值会导致 Node.js V8 OOM）
         };
         
         this.enabled = process.env.ENABLE_RLIMIT !== 'false';
@@ -1469,16 +1670,26 @@ class RlimitManager {
         // ulimit 参数说明：
         // -t: CPU 时间（秒）
         // -f: 文件大小（块，1块=512字节，所以需要除以512）
-        // -u: 用户进程数
         // -n: 文件描述符数
         // -v: 虚拟内存（KB）
+        // 注意：不设置 -u (nproc)。ulimit -u 限制的是当前用户的全局进程数，
+        // 当 VCP 系统已运行大量进程时（通常 100+），设为 10 会导致所有后续
+        // fork() 立即失败，报 "Resource temporarily unavailable"。
         const parts = [
             `-t ${this.limits.cpu}`,
             `-f ${Math.floor(this.limits.fsize / 512)}`,
-            `-u ${this.limits.nproc}`,
             `-n ${this.limits.nofile}`,
             `-v ${Math.floor(this.limits.as / 1024)}`
         ];
+        // nofile=0 → 继承父进程限制（系统默认通常为1024）
+        if (this.limits.nofile > 0) {
+            parts.push(`-n ${this.limits.nofile}`);
+        }
+        // as=0 → 不限制虚拟内存。Node.js V8 启动需要约 4GB 虚拟地址空间，
+        // 512MB 默认值会触发 "Fatal process out of memory: SegmentedTable::InitializeTable"
+        if (this.limits.as > 0) {
+            parts.push(`-v ${Math.floor(this.limits.as / 1024)}`);
+        }
         
         return `ulimit ${parts.join(' ')} 2>/dev/null; `;
     }
@@ -1646,7 +1857,7 @@ class LinuxShellExecutor {
         
         this.securityLevels = {
             basic: ['blacklist'],
-            standard: ['blacklist', 'whitelist', 'sandbox'],
+            standard: ['blacklist', 'whitelist', 'ast', 'sandbox'],
             high: ['blacklist', 'whitelist', 'ast', 'sandbox'],
             maximum: ['blacklist', 'whitelist', 'ast', 'sandbox', 'audit']
         };
@@ -1971,19 +2182,14 @@ class LinuxShellExecutor {
         // MEU-4: 初始化监控管理器（逻辑注入方案）
         try {
             const MonitorManager = require('../LinuxLogMonitor/core/MonitorManager');
-            const { buildLocalPluginCallbackBaseUrl } = require('../../modules/pluginCallbackAuth');
             this.monitorManager = new MonitorManager({
-                callbackBaseUrl:
-                    process.env.CALLBACK_BASE_URL ||
-                    buildLocalPluginCallbackBaseUrl(process.env.SERVER_PORT || process.env.PORT) ||
-                    `http://localhost:${process.env.SERVER_PORT || 5000}`,
-                callbackAuthSecret: process.env.CALLBACK_AUTH_SECRET || process.env.PLUGIN_CALLBACK_SECRET || process.env.Key,
+                callbackBaseUrl: process.env.CALLBACK_BASE_URL || `http://localhost:${process.env.SERVER_PORT || 5000}`,
                 pluginName: 'LinuxShellExecutor',
                 debug: isDebugMode()
             });
             // 以只读模式初始化（用于信号发送和状态查询）
             await this.monitorManager.init({ mode: 'readonly' });
-            console.error('[LinuxShellExecutor] MonitorManager 逻辑注入成功');
+            logInfo('[LinuxShellExecutor] MonitorManager 逻辑注入成功');
         } catch (e) {
             console.error('[LinuxShellExecutor] MonitorManager 注入失败，长待机功能受限:', e.message);
         }
@@ -2051,7 +2257,12 @@ class LinuxShellExecutor {
         const hostId = options.hostId;
         const logFollowCommand = this._classifyLogFollowCommand(command);
         const isLongRunning = options.isLongRunning === true || Boolean(logFollowCommand);
-        const bypassWhitelist = options.bypassWhitelist === true;
+        // 认证上下文：authCode=正确的验证码, requireAdmin=用户提交的验证码, doubleConfirm=二次确认标志
+        // bypassWhitelist 已废弃：灰名单现在在 execute() 内强制要求验证码，不再被授权跳过
+        const authCode = options.authCode || null;
+        const requireAdmin = options.requireAdmin;
+        const doubleConfirm = options.doubleConfirm === true;
+        const authOk = Boolean(authCode && requireAdmin && String(requireAdmin) === authCode);
 
         // v1.1.5: 自动应用静默化补丁
         const patchedCommand = this._patchCommandForNonInteractive(command);
@@ -2119,6 +2330,20 @@ class LinuxShellExecutor {
                 return this._buildPrivilegeEscalationResponse(command, privilegeEscalation);
             }
 
+            // 特殊操作符硬护栏（普适，不可通过授权码绕过）
+            const specialOpResult = this.securityLevelValidator.checkSpecialOperators(command);
+            auditEntry.layers.push({ name: 'specialOperators', result: specialOpResult });
+            if (!specialOpResult.passed) {
+                auditEntry.status = 'blocked';
+                auditEntry.reason = specialOpResult.reason;
+                auditEntry.layer = 'securityLevel';
+                auditEntry.severity = 'critical';
+                if (enabledLayers.includes('audit')) {
+                    await this.auditLogger.log(auditEntry);
+                }
+                throw new Error(`[安全分级] ${specialOpResult.reason}。该操作不可通过授权码绕过。`);
+            }
+
             // 第一层：黑名单过滤
             if (enabledLayers.includes('blacklist')) {
                 const blacklistResult = this.blacklistFilter.check(command);
@@ -2137,48 +2362,122 @@ class LinuxShellExecutor {
             
             // 第二层：白名单/灰名单验证
             // 诊断日志：记录安全层配置
-            console.error(`[LinuxShellExecutor][DIAG] securityLevel: ${securityLevel}`);
-            console.error(`[LinuxShellExecutor][DIAG] enabledLayers: ${JSON.stringify(enabledLayers)}`);
-            console.error(`[LinuxShellExecutor][DIAG] whitelist 层是否启用: ${enabledLayers.includes('whitelist')}`);
+            logDiagInfo(`[LinuxShellExecutor][DIAG] securityLevel: ${securityLevel}`);
+            logDiagInfo(`[LinuxShellExecutor][DIAG] enabledLayers: ${JSON.stringify(enabledLayers)}`);
+            logDiagInfo(`[LinuxShellExecutor][DIAG] whitelist 层是否启用: ${enabledLayers.includes('whitelist')}`);
             
-            if (enabledLayers.includes('whitelist') && !isPresetCommand && !bypassWhitelist) {
-                // 预设命令或管理员授权逃逸跳过白名单验证
-                console.error(`[LinuxShellExecutor][DIAG] ${isPresetCommand ? '预设命令' : '授权逃逸'}，跳过白名单验证`);
-                
-                // 先检查是否在灰名单中（灰名单命令已在 main() 中验证过权限）
+            if (enabledLayers.includes('whitelist') && !isPresetCommand) {
+                // 列表驱动验证：白名单(免费放行) → 灰名单(需验证码) → 未知(需验证码逃逸)
+
+                // 先检查白名单（免费放行，仅验证参数/路径）
+                const whitelistCheck = this.whitelistValidator.check(command);
                 const graylistCheck = this.graylistValidator.check(command);
-                
-                if (graylistCheck.inGraylist) {
-                    // 灰名单命令：使用灰名单验证（验证参数和路径）
-                    console.error(`[LinuxShellExecutor][DIAG] 命令在灰名单中，使用灰名单验证...`);
-                    const graylistResult = this.graylistValidator.validate(command);
-                    console.error(`[LinuxShellExecutor][DIAG] 灰名单验证结果: ${JSON.stringify(graylistResult)}`);
-                    auditEntry.layers.push({ name: 'graylist', result: graylistResult });
-                    if (!graylistResult.passed) {
-                        auditEntry.status = 'blocked';
-                        auditEntry.reason = graylistResult.reason;
-                        auditEntry.layer = 'graylist';
-                        auditEntry.severity = graylistResult.severity;
-                        if (enabledLayers.includes('audit')) {
-                            await this.auditLogger.log(auditEntry);
-                        }
-                        throw new Error(`[灰名单] ${graylistResult.reason}`);
-                    }
-                } else {
-                    // 白名单命令：使用白名单验证
-                    console.error(`[LinuxShellExecutor][DIAG] 开始白名单验证...`);
+
+                // 尝试白名单验证：通过则免费放行；失败则降级到灰名单/未知
+                let whitelistPassed = false;
+                let whitelistFailResult = null;
+
+                if (whitelistCheck.inWhitelist) {
+                    // 白名单命令：免费放行 + 参数/路径验证
+                    logDiagInfo(`[LinuxShellExecutor][DIAG] 开始白名单验证...`);
                     const whitelistResult = this.whitelistValidator.validate(command);
-                    console.error(`[LinuxShellExecutor][DIAG] 白名单验证结果: ${JSON.stringify(whitelistResult)}`);
+                    logDiagInfo(`[LinuxShellExecutor][DIAG] 白名单验证结果: ${JSON.stringify(whitelistResult)}`);
                     auditEntry.layers.push({ name: 'whitelist', result: whitelistResult });
-                    if (!whitelistResult.passed) {
+                    if (whitelistResult.passed) {
+                        whitelistPassed = true;
+                    } else {
+                        whitelistFailResult = whitelistResult;
+                    }
+                }
+
+                if (!whitelistPassed) {
+                    if (graylistCheck.inGraylist) {
+                        // 灰名单命令：需要管理员验证码 + 参数/路径验证
+                        const riskLevel = graylistCheck.riskLevel;
+                        const riskLevelConfig = this.graylistValidator.riskLevels[riskLevel] || {};
+                        const needsDoubleConfirm = riskLevelConfig.doubleConfirm === true;
+
+                        if (!authOk) {
+                            auditEntry.layers.push({ name: 'graylist', result: { passed: false, reason: '需要管理员验证码' } });
+                            auditEntry.status = 'blocked';
+                            auditEntry.reason = `灰名单命令需要管理员验证码`;
+                            auditEntry.layer = 'graylist';
+                            auditEntry.severity = 'high';
+                            if (enabledLayers.includes('audit')) {
+                                await this.auditLogger.log(auditEntry);
+                            }
+                            let authMsg;
+                            if (!requireAdmin) {
+                                authMsg = `[灰名单] 命令 "${graylistCheck.parsedCommand.command}" 需要管理员验证码（风险级别: ${riskLevel}）。请提供 requireAdmin 参数（6位验证码）。`;
+                            } else if (!authCode) {
+                                authMsg = `无法获取管理员验证码。请确保主服务器配置正确。`;
+                            } else {
+                                authMsg = `管理员验证码错误。`;
+                            }
+                            throw new Error(authMsg);
+                        }
+
+                        logDiagInfo(`[LinuxShellExecutor][DIAG] 命令在灰名单中，使用灰名单验证...`);
+                        const graylistResult = this.graylistValidator.validate(command);
+                        logDiagInfo(`[LinuxShellExecutor][DIAG] 灰名单验证结果: ${JSON.stringify(graylistResult)}`);
+                        auditEntry.layers.push({ name: 'graylist', result: graylistResult });
+                        if (!graylistResult.passed) {
+                            auditEntry.status = 'blocked';
+                            auditEntry.reason = graylistResult.reason;
+                            auditEntry.layer = 'graylist';
+                            auditEntry.severity = graylistResult.severity;
+                            if (enabledLayers.includes('audit')) {
+                                await this.auditLogger.log(auditEntry);
+                            }
+                            throw new Error(`[灰名单] ${graylistResult.reason}`);
+                        }
+
+                        // critical 风险级别（reboot/shutdown/init）需要二次确认
+                        if (needsDoubleConfirm && !doubleConfirm) {
+                            auditEntry.layers.push({ name: 'graylist', result: { passed: false, reason: '需要二次确认' } });
+                            auditEntry.status = 'blocked';
+                            auditEntry.reason = `高危操作需要二次确认`;
+                            auditEntry.layer = 'graylist';
+                            auditEntry.severity = 'critical';
+                            if (enabledLayers.includes('audit')) {
+                                await this.auditLogger.log(auditEntry);
+                            }
+                            throw new Error(`[灰名单] 高危操作需要二次确认！请同时提供 doubleConfirm: true 参数。\n命令: ${command}\n风险级别: ${riskLevel}`);
+                        }
+                    } else if (whitelistCheck.inWhitelist) {
+                        // 在白名单中但操作不允许，且不在灰名单中（如 cat /etc/shadow）
+                        // 不可通过授权码逃逸
                         auditEntry.status = 'blocked';
-                        auditEntry.reason = whitelistResult.reason;
+                        auditEntry.reason = whitelistFailResult.reason;
                         auditEntry.layer = 'whitelist';
-                        auditEntry.severity = whitelistResult.severity;
+                        auditEntry.severity = whitelistFailResult.severity;
                         if (enabledLayers.includes('audit')) {
                             await this.auditLogger.log(auditEntry);
                         }
-                        throw new Error(`[白名单] ${whitelistResult.reason}`);
+                        throw new Error(`[白名单] ${whitelistFailResult.reason}`);
+                    } else {
+                        // 不在任何名单中（未知命令）：需要管理员验证码逃逸
+                        if (!authOk) {
+                            auditEntry.layers.push({ name: 'securityLevel', result: { passed: false, reason: '命令不在任何名单中' } });
+                            auditEntry.status = 'blocked';
+                            auditEntry.reason = `命令不在任何名单中`;
+                            auditEntry.layer = 'securityLevel';
+                            auditEntry.severity = 'medium';
+                            if (enabledLayers.includes('audit')) {
+                                await this.auditLogger.log(auditEntry);
+                            }
+                            let authMsg;
+                            if (!requireAdmin) {
+                                authMsg = `[安全分级] 命令 "${extractBaseCommand(command)}" 不在任何名单中，如需执行请提供正确的管理员验证码。`;
+                            } else if (!authCode) {
+                                authMsg = `无法获取管理员验证码。请确保主服务器配置正确。`;
+                            } else {
+                                authMsg = `管理员验证码错误。`;
+                            }
+                            throw new Error(authMsg);
+                        }
+                        logWarn(`[LinuxShellExecutor] 未知命令 "${extractBaseCommand(command)}" 通过授权码逃逸`);
+                        auditEntry.layers.push({ name: 'securityLevel', result: { passed: true, reason: '未知命令通过授权码逃逸' } });
                     }
                 }
             }
@@ -2327,10 +2626,21 @@ class LinuxShellExecutor {
 }
 
 // ============================================
-// 混合插件 Direct / stdio 共用入口
+// 混合插件 Direct 入口
 // ============================================
+let pluginConfig = {};
 let directExecutor = null;
 let directExecutorInitPromise = null;
+
+function applyRuntimeConfig(config = {}) {
+    pluginConfig = config || {};
+    if (pluginConfig.PORT && !process.env.SERVER_PORT) {
+        process.env.SERVER_PORT = String(pluginConfig.PORT);
+    }
+    if (pluginConfig.PROJECT_BASE_PATH && !process.env.PROJECT_BASE_PATH) {
+        process.env.PROJECT_BASE_PATH = String(pluginConfig.PROJECT_BASE_PATH);
+    }
+}
 
 async function getExecutor() {
     if (directExecutor) return directExecutor;
@@ -2354,12 +2664,10 @@ function extractBaseCommand(cmd) {
     return firstPart.split(/\s+/)[0];
 }
 
-function getDebugLogs() {
-    const manager = getSSHManager();
-    return manager ? manager.getAndClearDebugLogs() : [];
-}
-
 function buildErrorResult(error) {
+    const manager = getSSHManager();
+    const debugLogs = manager ? manager.getAndClearDebugLogs() : [];
+
     let errorResult;
     if (error.status) {
         errorResult = {
@@ -2375,7 +2683,6 @@ function buildErrorResult(error) {
         };
     }
 
-    const debugLogs = getDebugLogs();
     if (isDebugMode() && debugLogs.length > 0) {
         errorResult.debugLogs = debugLogs;
     }
@@ -2388,6 +2695,8 @@ async function runToolCall(args = {}, options = {}) {
     const disconnectAfterCall = options.disconnectAfterCall === true;
 
     try {
+        logDebug(`[LinuxShellExecutor] 解析后的参数: ${JSON.stringify(args)}`);
+
         const isSpecialAction = ['listHosts', 'testConnection', 'getStatus', 'listPresets'].includes(args.action);
         let commandsToExecute = [];
         let isPresetExecution = false;
@@ -2395,7 +2704,9 @@ async function runToolCall(args = {}, options = {}) {
 
         if (!isSpecialAction && args.command) {
             if (executor.presetExecutor.isPresetCommand(args.command)) {
+                logDebug(`[LinuxShellExecutor] 检测到预设命令: ${args.command}`);
                 const parsed = executor.presetExecutor.parsePresetCommand(args.command);
+
                 if (!parsed.valid) {
                     throw new Error(`预设命令解析失败: ${parsed.error}`);
                 }
@@ -2413,6 +2724,8 @@ async function runToolCall(args = {}, options = {}) {
                     outputFormat: expanded.outputFormat,
                     timeout: expanded.timeout
                 };
+
+                logDebug(`[LinuxShellExecutor] 预设 "${expanded.presetName}" 展开为 ${commandsToExecute.length} 条命令`);
             } else {
                 commandsToExecute = [args.command];
             }
@@ -2420,76 +2733,61 @@ async function runToolCall(args = {}, options = {}) {
             for (const cmd of commandsToExecute) {
                 const privilegeEscalation = executor._detectPrivilegeEscalation(cmd);
                 if (privilegeEscalation) {
-                    return executor._buildPrivilegeEscalationResponse(cmd, privilegeEscalation);
+                    const result = executor._buildPrivilegeEscalationResponse(cmd, privilegeEscalation);
+                    logWarn(`[LinuxShellExecutor] 提权命令已在入口拦截: ${privilegeEscalation.command}`);
+                    return result;
                 }
             }
 
             if (isPresetExecution && presetInfo) {
                 const presetSecurityLevel = presetsConfig.presets[presetInfo.name]?.securityLevel || 'safe';
+                logDebug(`[LinuxShellExecutor] 预设 "${presetInfo.name}" 使用预定义安全级别: ${presetSecurityLevel}`);
+
                 if (presetSecurityLevel === 'write' || presetSecurityLevel === 'danger') {
                     const isDoubleConfirm = presetSecurityLevel === 'danger';
 
                     if (!args.requireAdmin) {
                         throw new Error(`预设 "${presetInfo.name}" 需要${isDoubleConfirm ? '二次' : ''}确认！\n安全级别: ${presetSecurityLevel.toUpperCase()}\n请提供 requireAdmin 参数（6位验证码）。`);
                     }
+
                     if (!authCode) {
                         throw new Error('无法获取管理员验证码。请确保主服务器配置正确。');
                     }
+
                     if (String(args.requireAdmin) !== authCode) {
                         throw new Error('管理员验证码错误。');
                     }
+
                     if (isDoubleConfirm && !args.doubleConfirm) {
                         throw new Error(`高危预设操作需要二次确认！请同时提供 doubleConfirm: true 参数。\n预设: ${presetInfo.name}\n风险级别: ${presetSecurityLevel}`);
                     }
-                }
-            } else {
-                for (const cmd of commandsToExecute) {
-                    const baseCommand = extractBaseCommand(cmd);
-                    const levelValidation = executor.securityLevelValidator.validate(cmd);
 
-                    if (!levelValidation.passed) {
-                        const isExecuteCommand = baseCommand === 'execute';
-                        if ((levelValidation.isUnknown || isExecuteCommand) && args.requireAdmin && authCode && String(args.requireAdmin) === authCode) {
-                            const astResult = executor.astAnalyzer.analyze(cmd);
-                            if (!astResult.passed) {
-                                const reasons = astResult.risks.map(r => r.description).join('; ');
-                                throw new Error(`[安全底线] 即使使用授权码，也禁止执行高危模式指令: ${reasons}`);
-                            }
-                        } else if (levelValidation.isUnknown || isExecuteCommand) {
-                            throw new Error(`[安全分级] ${levelValidation.reason}。如需强制执行，请提供正确的管理员验证码。`);
-                        } else {
-                            throw new Error(`[安全分级] ${levelValidation.reason}`);
-                        }
-                    }
-
-                    const { highestRiskLevel, requireConfirm } = levelValidation;
-                    if (requireConfirm) {
-                        const isDoubleConfirm = requireConfirm === 'double';
-                        if (!args.requireAdmin) {
-                            const confirmPrompt = executor.securityLevelValidator.generateConfirmPrompt(levelValidation, cmd);
-                            throw new Error(`${confirmPrompt.prompt}\n请提供 requireAdmin 参数（6位验证码）。`);
-                        }
-                        if (!authCode) {
-                            throw new Error('无法获取管理员验证码。请确保主服务器配置正确。');
-                        }
-                        if (String(args.requireAdmin) !== authCode) {
-                            throw new Error('管理员验证码错误。');
-                        }
-                        if (isDoubleConfirm && !args.doubleConfirm) {
-                            throw new Error(`高危操作需要二次确认！请同时提供 doubleConfirm: true 参数。\n命令: ${cmd}\n风险级别: ${highestRiskLevel}`);
-                        }
-                    }
+                    logDebug(`[LinuxShellExecutor] 预设 "${presetInfo.name}" 验证成功`);
+                } else {
+                    logDebug(`[LinuxShellExecutor] 预设 "${presetInfo.name}" 为 ${presetSecurityLevel} 级别，自动放行`);
                 }
             }
         }
 
         if (args.action === 'listHosts') {
-            return { hosts: executor.listHosts() };
+            logDebug('[LinuxShellExecutor] 开始处理 listHosts 命令...');
+            const result = { hosts: executor.listHosts() };
+            const templateStatus = getDefaultHostsTemplateStatus();
+            if (templateStatus) {
+                result.sshDisabled = templateStatus;
+            }
+            return result;
         }
 
         if (args.action === 'testConnection') {
-            const resultData = { ...await executor.testConnection(args.hostId || 'local') };
-            const debugLogs = getDebugLogs();
+            const testResult = await executor.testConnection(args.hostId || 'local');
+            const manager = getSSHManager();
+            const debugLogs = manager ? manager.getAndClearDebugLogs() : [];
+            const resultData = { ...testResult };
+            const templateStatus = getDefaultHostsTemplateStatus();
+            if (templateStatus) {
+                resultData.sshDisabled = templateStatus;
+            }
             if (isDebugMode() && debugLogs.length > 0) {
                 resultData.debugLogs = debugLogs;
             }
@@ -2497,7 +2795,12 @@ async function runToolCall(args = {}, options = {}) {
         }
 
         if (args.action === 'getStatus') {
-            return { connections: await executor.getConnectionStatus() };
+            const result = { connections: await executor.getConnectionStatus() };
+            const templateStatus = getDefaultHostsTemplateStatus();
+            if (templateStatus) {
+                result.sshDisabled = templateStatus;
+            }
+            return result;
         }
 
         if (args.action === 'listPresets') {
@@ -2517,7 +2820,7 @@ async function runToolCall(args = {}, options = {}) {
 
         for (let i = 0; i < commandsToExecute.length; i++) {
             const cmd = commandsToExecute[i];
-            console.error(`[LinuxShellExecutor][${requestId}] 执行命令 ${i + 1}/${commandsToExecute.length}: "${cmd.substring(0, 80)}..."`);
+            logInfo(`[LinuxShellExecutor][${requestId}] 执行命令 ${i + 1}/${commandsToExecute.length}: "${cmd.substring(0, 80)}..."`);
 
             const executeOptions = {
                 hostId: args.hostId,
@@ -2534,7 +2837,9 @@ async function runToolCall(args = {}, options = {}) {
                 disconnectOnCommandTimeout: args.disconnectOnCommandTimeout === undefined
                     ? undefined
                     : parseBooleanValue(args.disconnectOnCommandTimeout),
-                bypassWhitelist: Boolean(args.requireAdmin && authCode && String(args.requireAdmin) === authCode),
+                authCode: authCode,
+                requireAdmin: args.requireAdmin,
+                doubleConfirm: args.doubleConfirm,
                 signal: options.context?.signal
             };
             if (hasExplicitUsePool) {
@@ -2544,7 +2849,9 @@ async function runToolCall(args = {}, options = {}) {
             }
 
             const execResult = await executor.execute(cmd, executeOptions);
+
             if (execResult.status && execResult.status !== 'success') {
+                logWarn(`[LinuxShellExecutor][${requestId}] 收到特殊返回状态: ${execResult.status}`);
                 return execResult;
             }
 
@@ -2589,6 +2896,11 @@ async function runToolCall(args = {}, options = {}) {
             formattedResult.executionType = (hostsConfig.hosts[formattedResult.hostId] || {}).type || 'local';
         }
 
+        logInfo(`[LinuxShellExecutor][${requestId}] 命令执行完成，输出长度: ${formattedResult.output?.length || 0} bytes`);
+        if (formattedResult.truncated) {
+            logWarn(`[LinuxShellExecutor][${requestId}] 输出已截断: ${formattedResult.originalLines} -> ${formattedResult.truncatedAt} 行`);
+        }
+
         return formattedResult;
     } finally {
         if (disconnectAfterCall) {
@@ -2597,18 +2909,13 @@ async function runToolCall(args = {}, options = {}) {
     }
 }
 
-async function initialize() {
+async function initialize(config = {}) {
+    applyRuntimeConfig(config);
+    logInfo('[LinuxShellExecutor] 初始化 hybrid direct 插件...');
     await getExecutor();
 }
 
 async function processToolCall(args = {}, context = {}) {
-    if (!context || typeof context.decryptedAuthCode !== 'string' || !context.decryptedAuthCode) {
-        throw new Error(JSON.stringify({
-            status: 'error',
-            error: 'LinuxShellExecutor direct calls require PluginManager admin authentication context.'
-        }));
-    }
-
     try {
         return await runToolCall(args, { context, disconnectAfterCall: false });
     } catch (error) {
@@ -2638,7 +2945,7 @@ async function readStdinWithTimeout(timeoutMs = 5000) {
         process.stdin.on('data', chunk => {
             clearTimeout(inputTimeout);
             input += chunk;
-            console.error(`[LinuxShellExecutor] 收到输入: ${input.substring(0, 100)}...`);
+            logDebug(`[LinuxShellExecutor] 收到输入: ${input.substring(0, 100)}...`);
         });
 
         process.stdin.on('end', () => {
@@ -2649,19 +2956,22 @@ async function readStdinWithTimeout(timeoutMs = 5000) {
 }
 
 async function main() {
-    console.error('[LinuxShellExecutor] 插件启动...');
+    logInfo('[LinuxShellExecutor] 插件启动...');
     try {
         const input = await readStdinWithTimeout();
-        console.error('[LinuxShellExecutor] 输入结束，开始处理...');
+        logInfo('[LinuxShellExecutor] 输入结束，开始处理...');
         const args = JSON.parse(input);
         const result = await runToolCall(args, { disconnectAfterCall: true });
         if (result.status && result.status !== 'success') {
             console.log(JSON.stringify({ status: result.status, result }));
             return;
         }
-        console.log(JSON.stringify({ status: 'success', result }));
+        const finalResult = { status: 'success', result };
+        logDebug(`[LinuxShellExecutor] 准备输出 JSON (${JSON.stringify(finalResult).length} bytes)`);
+        console.log(JSON.stringify(finalResult));
     } catch (error) {
-        console.log(JSON.stringify(buildErrorResult(error)));
+        const errorResult = buildErrorResult(error);
+        console.log(JSON.stringify(errorResult));
         process.exitCode = error.status ? 0 : 1;
     }
 }
@@ -2670,12 +2980,7 @@ module.exports = {
     initialize,
     processToolCall,
     shutdown,
-    runToolCall,
-    _private: {
-        LinuxShellExecutor,
-        parseBooleanValue,
-        resolveAdminAuthCode
-    }
+    runToolCall
 };
 
 if (require.main === module) {

@@ -1,87 +1,51 @@
-const fs = require("fs");
-const path = require("path");
+// EmbeddingUtils.js
+const fs = require('fs').promises;
+const path = require('path');
 const { get_encoding } = require("@dqbd/tiktoken");
-
 const encoding = get_encoding("cl100k_base");
+const { getFetchAgent } = require('./modules/networkAgent.js');
 
+// 配置
 const embeddingMaxToken = parseInt(process.env.WhitelistEmbeddingModelMaxToken, 10) || 8000;
 const safeMaxTokens = Math.floor(embeddingMaxToken * 0.85);
-const MAX_BATCH_ITEMS = 100;
-const DEFAULT_CONCURRENCY = Math.max(1, parseInt(process.env.TAG_VECTORIZE_CONCURRENCY, 10) || 5);
-const REQUEST_TIMEOUT_MS = Math.max(1000, parseInt(process.env.EMBEDDING_REQUEST_TIMEOUT_MS, 10) || 30000);
-const FALLBACK_STATS_PATH = path.join(__dirname, "state", "embedding-fallback-stats.json");
+const MAX_BATCH_ITEMS = parseInt(process.env.EMBEDDING_MAX_BATCH_ITEMS, 10) || 32; // Embedding 单批最大条数，可通过 env 控制
+const DEFAULT_CONCURRENCY = parseInt(process.env.TAG_VECTORIZE_CONCURRENCY) || 5; // 🌟 读取并发配置
+const EMBEDDING_AUDIT_LOG_ENABLED = String(process.env.EMBEDDING_AUDIT_LOG_ENABLED || 'false').toLowerCase() === 'true';
+const EMBEDDING_AUDIT_LOG_DIR = path.join(__dirname, 'DebugLog');
+const EMBEDDING_AUDIT_LOG_FILE = path.join(EMBEDDING_AUDIT_LOG_DIR, 'embeddinglog');
 
-const fallbackStats = {
-    totalFallbackHits: 0,
-    recentFallbackHitCount: 0,
-    lastFallbackAt: null,
-    lastPrimaryError: null,
-    lastFallbackBackend: null,
-    lastFallbackModel: null,
-};
+/**
+ * 将成功向量化的原文写入独立审计日志。
+ * 日志写入失败不会影响正常的向量化流程，也不会进入服务器日志系统。
+ */
+async function _writeEmbeddingAuditLog(texts) {
+    if (!EMBEDDING_AUDIT_LOG_ENABLED || !texts || texts.length === 0) return;
 
-function hydrateFallbackStatsFromDisk() {
+    const records = texts.map(content => JSON.stringify({
+        timestamp: new Date().toISOString(),
+        content
+    })).join('\n') + '\n';
+
     try {
-        if (!fs.existsSync(FALLBACK_STATS_PATH)) return;
-        const raw = fs.readFileSync(FALLBACK_STATS_PATH, "utf8");
-        if (!raw.trim()) return;
-        const parsed = JSON.parse(raw);
-        Object.assign(fallbackStats, {
-            totalFallbackHits: parsed.totalFallbackHits || 0,
-            recentFallbackHitCount: parsed.recentFallbackHitCount || 0,
-            lastFallbackAt: parsed.lastFallbackAt || null,
-            lastPrimaryError: parsed.lastPrimaryError || null,
-            lastFallbackBackend: parsed.lastFallbackBackend === "fallback" ? "fallback" : null,
-            lastFallbackModel: parsed.lastFallbackModel || null,
-        });
-    } catch (error) {
-        console.warn(`[Embedding] Failed to hydrate fallback stats: ${error.message}`);
+        await fs.mkdir(EMBEDDING_AUDIT_LOG_DIR, { recursive: true });
+        await fs.appendFile(EMBEDDING_AUDIT_LOG_FILE, records, 'utf8');
+    } catch (_) {
+        // 开发审计日志不得影响向量服务，也不转发到服务器日志。
     }
 }
 
-function persistFallbackStats() {
-    try {
-        fs.mkdirSync(path.dirname(FALLBACK_STATS_PATH), { recursive: true });
-        fs.writeFileSync(FALLBACK_STATS_PATH, JSON.stringify(fallbackStats, null, 2));
-    } catch (error) {
-        console.warn(`[Embedding] Failed to persist fallback stats: ${error.message}`);
-    }
-}
-
-function recordFallbackHit(backend, primaryError) {
-    fallbackStats.totalFallbackHits += 1;
-    fallbackStats.recentFallbackHitCount += 1;
-    fallbackStats.lastFallbackAt = new Date().toISOString();
-    fallbackStats.lastPrimaryError = primaryError ? primaryError.message : null;
-    fallbackStats.lastFallbackBackend = backend?.name === "fallback" ? "fallback" : null;
-    fallbackStats.lastFallbackModel = backend?.model || null;
-    persistFallbackStats();
-}
-
-function getEmbeddingFallbackStats() {
-    return {
-        ...fallbackStats,
-        statsFile: path.join("state", "embedding-fallback-stats.json"),
-    };
-}
-
-hydrateFallbackStatsFromDisk();
-
-function trimTrailingSlashes(url) {
-    return typeof url === "string" ? url.replace(/\/+$/, "") : url;
-}
-
-function splitModelList(value) {
-    return String(value || "")
+function _splitModelList(value) {
+    return String(value || '')
         .split(/[,，]/)
-        .map((model) => model.trim())
+        .map(model => model.trim())
         .filter(Boolean);
 }
 
-function getEmbeddingModelCandidates(config = {}) {
+function _getEmbeddingModelCandidates(config = {}) {
     const candidates = [];
+
     const addModel = (model) => {
-        const normalized = String(model || "").trim();
+        const normalized = String(model || '').trim();
         if (normalized && !candidates.includes(normalized)) {
             candidates.push(normalized);
         }
@@ -92,193 +56,143 @@ function getEmbeddingModelCandidates(config = {}) {
     if (Array.isArray(config.modelBackups)) {
         config.modelBackups.forEach(addModel);
     } else if (config.modelBackups) {
-        splitModelList(config.modelBackups).forEach(addModel);
+        _splitModelList(config.modelBackups).forEach(addModel);
     }
 
-    splitModelList(process.env.EmbeddingModelBackups).forEach(addModel);
-    for (let i = 1; i <= 9; i += 1) {
+    _splitModelList(process.env.EmbeddingModelBackups).forEach(addModel);
+
+    for (let i = 1; i <= 9; i++) {
         addModel(process.env[`EmbeddingModelBackup${i}`]);
     }
-    splitModelList(process.env.EmbeddingModelBackup).forEach(addModel);
 
-    return candidates.length > 0 ? candidates : ["google/gemini-embedding-001"];
+    // 兼容用户误把多个备援写进单个变量的情况。
+    _splitModelList(process.env.EmbeddingModelBackup).forEach(addModel);
+
+    return candidates.length > 0 ? candidates : ['google/gemini-embedding-001'];
 }
 
-function buildEmbeddingBackends(config) {
-    const backends = [];
-    const primaryUrl = trimTrailingSlashes(config.apiUrl);
-    const primaryModelCandidates = getEmbeddingModelCandidates(config);
-
-    if (primaryUrl) {
-        backends.push({
-            name: "primary",
-            apiUrl: primaryUrl,
-            apiKey: config.apiKey,
-            model: primaryModelCandidates[0],
-            modelCandidates: primaryModelCandidates,
-        });
-    }
-
-    const fallbackUrl = trimTrailingSlashes(process.env.EMBEDDING_FALLBACK_API_URL);
-    if (fallbackUrl) {
-        const fallbackModel = process.env.EMBEDDING_FALLBACK_MODEL || config.model || primaryModelCandidates[0];
-        const fallbackKey = process.env.EMBEDDING_FALLBACK_API_KEY || config.apiKey;
-        const fallbackModelCandidates = splitModelList(process.env.EMBEDDING_FALLBACK_MODEL_BACKUPS);
-        if (fallbackModel && !fallbackModelCandidates.includes(fallbackModel)) {
-            fallbackModelCandidates.unshift(fallbackModel);
-        }
-        const duplicate = backends.some((item) => {
-            const itemModels = item.modelCandidates || [item.model];
-            return item.apiUrl === fallbackUrl && fallbackModelCandidates.some((model) => itemModels.includes(model));
-        });
-        if (!duplicate) {
-            backends.push({
-                name: "fallback",
-                apiUrl: fallbackUrl,
-                apiKey: fallbackKey,
-                model: fallbackModelCandidates[0],
-                modelCandidates: fallbackModelCandidates,
-            });
-        }
-    }
-
-    return backends;
-}
-
-function hasEmbeddingBackend(config) {
-    return buildEmbeddingBackends(config).length > 0;
-}
-
+/**
+ * 内部函数：发送单个批次
+ */
 async function _sendBatch(batchTexts, config, batchNumber) {
-    const { default: fetch } = await import("node-fetch");
-    const modelCandidates = Array.isArray(config.modelCandidates) && config.modelCandidates.length > 0
-        ? config.modelCandidates
-        : getEmbeddingModelCandidates({ model: config.model, modelBackups: config.modelBackups });
-    const retryAttempts = modelCandidates.length > 1 ? 1 : 3;
+    const { default: fetch } = await import('node-fetch');
+    const modelCandidates = _getEmbeddingModelCandidates(config);
     const baseDelay = 1000;
-    let lastError = null;
 
-    for (let modelIndex = 0; modelIndex < modelCandidates.length; modelIndex += 1) {
-        const model = modelCandidates[modelIndex];
+    for (let attempt = 1; attempt <= modelCandidates.length; attempt++) {
+        const model = modelCandidates[attempt - 1];
+        try {
+            const requestUrl = `${config.apiUrl}/v1/embeddings`;
+            const requestBody = { model, input: batchTexts };
+            const requestHeaders = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` };
 
-        for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
-            try {
-                const requestUrl = `${config.apiUrl}/v1/embeddings`;
-                const requestBody = { model, input: batchTexts };
-                const requestHeaders = { "Content-Type": "application/json" };
-                if (config.apiKey) {
-                    requestHeaders.Authorization = `Bearer ${config.apiKey}`;
+            const response = await fetch(requestUrl, {
+                method: 'POST',
+                headers: requestHeaders,
+                agent: getFetchAgent,
+                body: JSON.stringify(requestBody)
+            });
+
+            const responseBodyText = await response.text();
+
+            if (!response.ok) {
+                if (response.status === 429) {
+                    const waitTime = Math.min(5000 * attempt, 15000);
+                    console.warn(`[Embedding] Batch ${batchNumber} model "${model}" rate limited (429). Switching fallback in ${waitTime / 1000}s...`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    continue;
                 }
-
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-                let response;
-                try {
-                    response = await fetch(requestUrl, {
-                        method: "POST",
-                        headers: requestHeaders,
-                        body: JSON.stringify(requestBody),
-                        signal: controller.signal,
-                    });
-                } finally {
-                    clearTimeout(timeout);
-                }
-
-                const responseBodyText = await response.text();
-
-                if (!response.ok) {
-                    if (response.status === 429) {
-                        const waitTime = Math.min(5000 * (modelIndex + 1), 15000);
-                        lastError = new Error(`API Error 429: ${responseBodyText.substring(0, 500)}`);
-                        console.warn(`[Embedding] Batch ${batchNumber} model "${model}" rate limited (429). Switching fallback in ${waitTime / 1000}s...`);
-                        await new Promise((resolve) => setTimeout(resolve, waitTime));
-                        break;
-                    }
-                    throw new Error(`API Error ${response.status}: ${responseBodyText.substring(0, 500)}`);
-                }
-
-                let data;
-                try {
-                    data = JSON.parse(responseBodyText);
-                } catch (parseError) {
-                    console.error(`[Embedding] JSON Parse Error for Batch ${batchNumber}:`);
-                    console.error(`Response (first 500 chars): ${responseBodyText.substring(0, 500)}`);
-                    throw new Error(`Failed to parse API response as JSON: ${parseError.message}`);
-                }
-
-                if (!data) {
-                    throw new Error("API returned empty/null response");
-                }
-
-                if (data.error) {
-                    const errorMsg = data.error.message || JSON.stringify(data.error);
-                    const errorCode = data.error.code || response.status;
-                    console.error(`[Embedding] API Error for Batch ${batchNumber}:`);
-                    console.error(`  Error Code: ${errorCode}`);
-                    console.error(`  Error Message: ${errorMsg}`);
-                    console.error(`  Hint: Check if embedding model "${model}" is available on your API server`);
-                    throw new Error(`API Error ${errorCode}: ${errorMsg}`);
-                }
-
-                if (!data.data) {
-                    console.error(`[Embedding] Missing 'data' field in response for Batch ${batchNumber}`);
-                    console.error(`Response keys: ${Object.keys(data).join(", ")}`);
-                    console.error(`Response preview: ${JSON.stringify(data).substring(0, 500)}`);
-                    throw new Error("Invalid API response structure: missing 'data' field");
-                }
-
-                if (!Array.isArray(data.data)) {
-                    console.error(`[Embedding] 'data' field is not an array for Batch ${batchNumber}`);
-                    console.error(`data type: ${typeof data.data}`);
-                    console.error(`data value: ${JSON.stringify(data.data).substring(0, 200)}`);
-                    throw new Error("Invalid API response structure: 'data' is not an array");
-                }
-
-                if (data.data.length === 0) {
-                    console.warn(`[Embedding] Warning: Batch ${batchNumber} returned empty embeddings array`);
-                }
-
-                return data.data.sort((a, b) => a.index - b.index).map((item) => item.embedding);
-            } catch (error) {
-                lastError = error;
-                if (error.name === "AbortError") {
-                    console.warn(`[Embedding] Batch ${batchNumber}, Model "${model}" timed out after ${REQUEST_TIMEOUT_MS}ms`);
-                }
-                console.warn(`[Embedding] Batch ${batchNumber}, Model "${model}" failed (${modelIndex + 1}/${modelCandidates.length}): ${error.message}`);
-                if (attempt === retryAttempts) break;
-                await new Promise((resolve) => setTimeout(resolve, baseDelay * Math.pow(2, attempt)));
+                throw new Error(`API Error ${response.status}: ${responseBodyText.substring(0, 500)}`);
             }
+
+            let data;
+            try {
+                data = JSON.parse(responseBodyText);
+            } catch (parseError) {
+                console.error(`[Embedding] JSON Parse Error for Batch ${batchNumber}:`);
+                console.error(`Response (first 500 chars): ${responseBodyText.substring(0, 500)}`);
+                throw new Error(`Failed to parse API response as JSON: ${parseError.message}`);
+            }
+
+            // 增强的响应结构验证和详细错误信息
+            if (!data) {
+                throw new Error(`API returned empty/null response`);
+            }
+
+            // 检查是否是错误响应
+            if (data.error) {
+                const errorMsg = data.error.message || JSON.stringify(data.error);
+                const errorCode = data.error.code || response.status;
+                console.error(`[Embedding] API Error for Batch ${batchNumber}:`);
+                console.error(`  Error Code: ${errorCode}`);
+                console.error(`  Error Message: ${errorMsg}`);
+                console.error(`  Hint: Check if embedding model "${model}" is available on your API server`);
+                throw new Error(`API Error ${errorCode}: ${errorMsg}`);
+            }
+
+            if (!data.data) {
+                console.error(`[Embedding] Missing 'data' field in response for Batch ${batchNumber}`);
+                console.error(`Response keys: ${Object.keys(data).join(', ')}`);
+                console.error(`Response preview: ${JSON.stringify(data).substring(0, 500)}`);
+                throw new Error(`Invalid API response structure: missing 'data' field`);
+            }
+
+            if (!Array.isArray(data.data)) {
+                console.error(`[Embedding] 'data' field is not an array for Batch ${batchNumber}`);
+                console.error(`data type: ${typeof data.data}`);
+                console.error(`data value: ${JSON.stringify(data.data).substring(0, 200)}`);
+                throw new Error(`Invalid API response structure: 'data' is not an array`);
+            }
+
+            if (data.data.length === 0) {
+                console.warn(`[Embedding] Warning: Batch ${batchNumber} returned empty embeddings array`);
+            }
+
+            const sortedData = data.data.sort((a, b) => a.index - b.index);
+            const successfullyVectorizedTexts = sortedData
+                .filter(item => item && item.embedding && Number.isInteger(item.index) && item.index >= 0 && item.index < batchTexts.length)
+                .map(item => batchTexts[item.index]);
+
+            await _writeEmbeddingAuditLog(successfullyVectorizedTexts);
+
+            // 简单的 Log，证明并发正在跑
+            // console.log(`[Embedding] ✅ Batch ${batchNumber} completed (${batchTexts.length} items) via ${model}.`);
+
+            return sortedData.map(item => item.embedding);
+
+        } catch (e) {
+            console.warn(`[Embedding] Batch ${batchNumber}, Model "${model}" failed (${attempt}/${modelCandidates.length}): ${e.message}`);
+            if (attempt === modelCandidates.length) throw e;
+            await new Promise(r => setTimeout(r, baseDelay * attempt));
         }
     }
-
-    throw lastError || new Error("all embedding model candidates failed");
 }
 
+/**
+ * 🚀 终极版：并发批量获取 Embeddings
+ * 🛡️ 核心保证：返回数组长度 === 输入 texts 长度，跳过/失败的位置填 null
+ */
 async function getEmbeddingsBatch(texts, config) {
     if (!texts || texts.length === 0) return [];
 
-    const embeddingBackends = buildEmbeddingBackends(config);
-    if (embeddingBackends.length === 0) {
-        throw new Error("No embedding backend configured");
-    }
-
-    const batches = [];
+    // 1. ⚡️ 第一步：纯 CPU 操作，先把所有文本切分成 Batches
+    //    同时记录每个文本在原始数组中的索引，以便后续对齐
+    const batches = [];         // 每个元素: { texts: string[], originalIndices: number[] }
     let currentBatchTexts = [];
     let currentBatchIndices = [];
     let currentBatchTokens = 0;
-    const oversizeIndices = new Set();
+    const oversizeIndices = new Set(); // 记录被跳过的超长文本位置
 
     for (let i = 0; i < texts.length; i++) {
         const text = texts[i];
         const textTokens = encoding.encode(text).length;
         if (textTokens > safeMaxTokens) {
-            console.warn(`[Embedding] Text at index ${i} exceeds token limit (${textTokens} > ${safeMaxTokens}), skipping.`);
+            console.warn(`[Embedding] ⚠️ Text at index ${i} exceeds token limit (${textTokens} > ${safeMaxTokens}), skipping.`);
             oversizeIndices.add(i);
-            continue;
+            continue; // Skip oversize，但记录位置
         }
 
-        const isTokenFull = currentBatchTexts.length > 0 && currentBatchTokens + textTokens > safeMaxTokens;
+        const isTokenFull = currentBatchTexts.length > 0 && (currentBatchTokens + textTokens > safeMaxTokens);
         const isItemFull = currentBatchTexts.length >= MAX_BATCH_ITEMS;
 
         if (isTokenFull || isItemFull) {
@@ -292,74 +206,63 @@ async function getEmbeddingsBatch(texts, config) {
             currentBatchTokens += textTokens;
         }
     }
-
     if (currentBatchTexts.length > 0) {
         batches.push({ texts: currentBatchTexts, originalIndices: currentBatchIndices });
     }
 
     if (oversizeIndices.size > 0) {
-        console.warn(`[Embedding] ${oversizeIndices.size} texts skipped due to token limit.`);
+        console.warn(`[Embedding] ⚠️ ${oversizeIndices.size} texts skipped due to token limit.`);
     }
     console.log(`[Embedding] Prepared ${batches.length} batches from ${texts.length} texts. Executing with concurrency: ${DEFAULT_CONCURRENCY}...`);
 
-    const batchResults = new Array(batches.length);
-    let cursor = 0;
+    // 2. 🌊 第二步：并发执行器
+    const batchResults = new Array(batches.length); // 预分配结果数组，保证顺序
+    let cursor = 0; // 当前处理到的批次索引
 
-    const worker = async () => {
+    // 定义 Worker：只要队列里还有任务，就不断抢任务做
+    const worker = async (workerId) => {
         while (true) {
+            // 🔒 获取任务索引 (原子操作模拟)
             const batchIndex = cursor++;
-            if (batchIndex >= batches.length) break;
+            if (batchIndex >= batches.length) break; // 没任务了，下班
 
             const batch = batches[batchIndex];
             try {
-                let vectors = null;
-                let lastError = null;
-
-                for (const backend of embeddingBackends) {
-                    try {
-                        if (backend.name !== "primary") {
-                            console.warn(`[Embedding] Batch ${batchIndex + 1} switching to fallback backend (${backend.model})`);
-                        }
-                        vectors = await _sendBatch(batch.texts, backend, batchIndex + 1);
-                        if (backend.name !== "primary") {
-                            recordFallbackHit(backend, lastError);
-                        }
-                        break;
-                    } catch (error) {
-                        lastError = error;
-                        console.warn(`[Embedding] Batch ${batchIndex + 1} ${backend.name} backend failed: ${error.message}`);
-                    }
-                }
-
-                if (!vectors) throw lastError || new Error("all embedding backends failed");
-
+                // 执行请求 (Batch ID 从 1 开始显示)
                 batchResults[batchIndex] = {
-                    vectors,
-                    originalIndices: batch.originalIndices,
+                    vectors: await _sendBatch(batch.texts, config, batchIndex + 1),
+                    originalIndices: batch.originalIndices
                 };
-            } catch (error) {
-                console.error(`[Embedding] Batch ${batchIndex + 1} failed permanently: ${error.message}`);
+            } catch (e) {
+                // 🛡️ 不再让单个 batch 失败导致整个 Promise.all 崩溃
+                // 而是记录失败，对应位置将填 null
+                console.error(`[Embedding] ❌ Batch ${batchIndex + 1} failed permanently: ${e.message}`);
                 batchResults[batchIndex] = {
-                    vectors: null,
+                    vectors: null, // 标记为失败
                     originalIndices: batch.originalIndices,
-                    error: error.message,
+                    error: e.message
                 };
             }
         }
     };
 
+    // 启动 N 个 Worker
     const workers = [];
     for (let i = 0; i < DEFAULT_CONCURRENCY; i++) {
-        workers.push(worker());
+        workers.push(worker(i));
     }
+
+    // 等待所有 Worker 下班
     await Promise.all(workers);
 
-    const finalResults = new Array(texts.length).fill(null);
+    // 3. 📦 第三步：按原始索引回填结果，保证 output.length === input.length
+    const finalResults = new Array(texts.length).fill(null); // 默认全部为 null
     let successCount = 0;
     let failCount = 0;
 
     for (const result of batchResults) {
         if (!result || !result.vectors) {
+            // 整个 batch 失败，对应位置保持 null
             if (result) failCount += result.originalIndices.length;
             continue;
         }
@@ -370,19 +273,22 @@ async function getEmbeddingsBatch(texts, config) {
         });
     }
 
-    failCount += oversizeIndices.size;
+    failCount += oversizeIndices.size; // 超长文本也算失败
+
     if (failCount > 0) {
-        console.warn(`[Embedding] Results: ${successCount} succeeded, ${failCount} failed/skipped out of ${texts.length} total.`);
+        console.warn(`[Embedding] ⚠️ Results: ${successCount} succeeded, ${failCount} failed/skipped out of ${texts.length} total.`);
     }
 
-    return finalResults;
+    return finalResults; // 🛡️ 长度严格等于 texts.length，失败位置为 null
 }
 
+/**
+ * 余弦相似度计算（公共版本）
+ * 供 toolExecutor / messageProcessor / 其他模块复用
+ */
 function cosineSimilarity(a, b) {
     if (!a || !b || a.length !== b.length) return 0;
-    let dot = 0;
-    let normA = 0;
-    let normB = 0;
+    let dot = 0, normA = 0, normB = 0;
     for (let i = 0; i < a.length; i++) {
         dot += a[i] * b[i];
         normA += a[i] * a[i];
@@ -391,4 +297,4 @@ function cosineSimilarity(a, b) {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
-module.exports = { getEmbeddingsBatch, cosineSimilarity, getEmbeddingFallbackStats, hasEmbeddingBackend };
+module.exports = { getEmbeddingsBatch, cosineSimilarity };

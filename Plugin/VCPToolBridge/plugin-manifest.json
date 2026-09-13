@@ -1,5 +1,6 @@
 {
   "name": "VCPToolBridge",
+  "runtimeLifecycle": 2,
   "displayName": "VCP 工具桥接器",
   "description": "提供 VCP 原生工具向外部（如 AIO Hub）导出的桥接能力，支持元数据同步与远程执行。",
   "version": "1.0.0",

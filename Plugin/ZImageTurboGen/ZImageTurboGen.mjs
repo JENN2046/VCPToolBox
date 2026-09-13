@@ -1,14 +1,9 @@
 #!/usr/bin/env node
-import dns from 'dns/promises';
 import fs from 'fs/promises';
-import http from 'http';
-import https from 'https';
-import net from 'net';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fetch, { FormData } from 'node-fetch';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { fileURLToPath } from 'url';
 
 // --- Configuration ---
 const API_KEY = process.env.ZIMAGE_API_KEY || "apikey(填自己的密钥)";
@@ -23,385 +18,32 @@ const HTTP_PROXY = process.env.HTTP_PROXY || process.env.http_proxy || process.e
 const API_ENDPOINT = 'https://ai.gitee.com/v1/images/generations';
 const EDIT_API_ENDPOINT = 'https://ai.gitee.com/v1/async/images/edits';
 const TASK_API_ENDPOINT = 'https://ai.gitee.com/v1/task';
-const MAX_INPUT_IMAGE_SIZE = 10 * 1024 * 1024;
-const ZIMAGE_INPUT_IMAGE_ROOT = path.resolve(PROJECT_BASE_PATH || process.cwd(), 'image');
-const IMAGE_EXT_MIME = new Map([
-    ['.png', 'image/png'],
-    ['.jpg', 'image/jpeg'],
-    ['.jpeg', 'image/jpeg'],
-    ['.webp', 'image/webp'],
-    ['.gif', 'image/gif']
-]);
-const IMAGE_MIME_EXT = new Map([
-    ['image/png', 'png'],
-    ['image/jpeg', 'jpg'],
-    ['image/webp', 'webp'],
-    ['image/gif', 'gif']
-]);
 
 // --- Proxy Setup ---
 const proxyAgent = HTTP_PROXY ? new HttpsProxyAgent(HTTP_PROXY) : null;
 
-function isPathInside(childPath, parentPath) {
-    const relative = path.relative(parentPath, childPath);
-    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function isBlockedIPv4Address(ip) {
-    const parts = ip.split('.').map(part => Number(part));
-    if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) {
-        return false;
-    }
-
-    const [a, b] = parts;
-    return a === 0
-        || a === 10
-        || a === 127
-        || (a === 169 && b === 254)
-        || (a === 172 && b >= 16 && b <= 31)
-        || (a === 192 && b === 168);
-}
-
-function normalizeHostnameForIpCheck(hostname) {
-    return String(hostname || '')
-        .trim()
-        .toLowerCase()
-        .replace(/^\[|\]$/g, '')
-        .replace(/%25.+$/g, '')
-        .replace(/%.+$/g, '');
-}
-
-function expandIpv6Address(ip) {
-    let address = normalizeHostnameForIpCheck(ip);
-    if (!address || !address.includes(':')) return null;
-
-    const dottedIpv4Match = address.match(/(.+:)(\d{1,3}(?:\.\d{1,3}){3})$/);
-    if (dottedIpv4Match) {
-        const parts = dottedIpv4Match[2].split('.').map(part => Number(part));
-        if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) {
-            return null;
-        }
-        const high = ((parts[0] << 8) | parts[1]).toString(16);
-        const low = ((parts[2] << 8) | parts[3]).toString(16);
-        address = `${dottedIpv4Match[1]}${high}:${low}`;
-    }
-
-    const sections = address.split('::');
-    if (sections.length > 2) return null;
-
-    const left = sections[0] ? sections[0].split(':').filter(Boolean) : [];
-    const right = sections.length === 2 && sections[1] ? sections[1].split(':').filter(Boolean) : [];
-    const missing = 8 - left.length - right.length;
-    if (missing < 0 || (sections.length === 1 && missing !== 0)) return null;
-
-    const hextets = [
-        ...left,
-        ...Array(sections.length === 2 ? missing : 0).fill('0'),
-        ...right
-    ];
-    if (hextets.length !== 8) return null;
-
-    const parsed = hextets.map(part => {
-        if (!/^[0-9a-f]{1,4}$/i.test(part)) return NaN;
-        return parseInt(part, 16);
-    });
-
-    return parsed.every(part => Number.isInteger(part) && part >= 0 && part <= 0xffff) ? parsed : null;
-}
-
-function extractIPv4FromIPv6(ip) {
-    const hextets = expandIpv6Address(ip);
-    if (!hextets) return null;
-
-    const prefixIsZero = hextets.slice(0, 5).every(part => part === 0);
-    const isMapped = prefixIsZero && hextets[5] === 0xffff;
-    if (!isMapped) return null;
-
-    const high = hextets[6];
-    const low = hextets[7];
-    return [
-        (high >> 8) & 0xff,
-        high & 0xff,
-        (low >> 8) & 0xff,
-        low & 0xff
-    ].join('.');
-}
-
-function isBlockedIPv6Address(ip) {
-    const hextets = expandIpv6Address(ip);
-    if (!hextets) return false;
-
-    const mappedIPv4 = extractIPv4FromIPv6(ip);
-    if (mappedIPv4) {
-        return isBlockedIPv4Address(mappedIPv4);
-    }
-
-    const first = hextets[0];
-    const isUnspecified = hextets.every(part => part === 0);
-    return isUnspecified
-        || (hextets.slice(0, 7).every(part => part === 0) && hextets[7] === 1)
-        || (first & 0xfe00) === 0xfc00
-        || (first & 0xffc0) === 0xfe80;
-}
-
-function isBlockedLocalHostname(hostname) {
-    const normalized = normalizeHostnameForIpCheck(hostname);
-    if (!normalized) return false;
-
-    if (normalized === 'localhost'
-        || normalized.endsWith('.localhost')
-        || normalized.endsWith('.local')) {
-        return true;
-    }
-
-    const ipVersion = net.isIP(normalized);
-    if (ipVersion === 4) {
-        return isBlockedIPv4Address(normalized);
-    }
-    if (ipVersion === 6) {
-        return isBlockedIPv6Address(normalized);
-    }
-
-    return false;
-}
-
-async function assertImageInputHostnameIsSafe(parsedUrl) {
-    if (isAllowedVcpImageServerUrl(parsedUrl)) {
-        return null;
-    }
-
-    const hostname = normalizeHostnameForIpCheck(parsedUrl.hostname);
-    if (!hostname) {
-        throw new Error("Plugin Error: Image input URL must include a hostname.");
-    }
-
-    if (isBlockedLocalHostname(hostname)) {
-        throw new Error("Plugin Error: 不允许指向本机、链路本地或私有网段地址的图片输入。");
-    }
-
-    if (net.isIP(hostname)) return null;
-
-    let records;
-    try {
-        records = await dns.lookup(hostname, { all: true, verbatim: true });
-    } catch (error) {
-        throw new Error(`Plugin Error: Failed to resolve input image hostname: ${hostname}. ${error.message}`);
-    }
-
-    if (!Array.isArray(records) || records.length === 0) {
-        throw new Error(`Plugin Error: Failed to resolve input image hostname: ${hostname}.`);
-    }
-
-    const blockedRecord = records.find(record => record && isBlockedLocalHostname(record.address));
-    if (blockedRecord) {
-        throw new Error("Plugin Error: 不允许解析到本机、链路本地或私有网段地址的图片输入。");
-    }
-
-    return records[0];
-}
-
 function shouldBypassProxy(url) {
     try {
         const { hostname } = new URL(url);
-        return isBlockedLocalHostname(hostname);
+        return hostname === 'localhost'
+            || hostname === '127.0.0.1'
+            || hostname === '::1'
+            || hostname.startsWith('10.')
+            || hostname.startsWith('192.168.')
+            || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
     } catch {
         return false;
     }
 }
 
-function createPinnedLookup(lookupAddress) {
-    if (!lookupAddress?.address || !lookupAddress?.family) {
-        return undefined;
+async function fetchWithProxy(url, options = {}) {
+    if (proxyAgent && !shouldBypassProxy(url)) {
+        return fetch(url, { ...options, agent: proxyAgent });
     }
-
-    return (_hostname, _options, callback) => {
-        callback(null, lookupAddress.address, lookupAddress.family);
-    };
-}
-
-function getFetchAgent(parsedUrl, lookupAddress = null) {
-    const pinnedLookup = createPinnedLookup(lookupAddress);
-    if (pinnedLookup) {
-        const agentOptions = { lookup: pinnedLookup };
-        return parsedUrl.protocol === 'https:'
-            ? new https.Agent(agentOptions)
-            : new http.Agent(agentOptions);
-    }
-
-    if (proxyAgent && !shouldBypassProxy(parsedUrl.href)) {
-        return proxyAgent;
-    }
-
-    return undefined;
-}
-
-async function fetchWithProxy(url, options = {}, lookupAddress = null) {
-    const parsedUrl = new URL(url);
-    const agent = getFetchAgent(parsedUrl, lookupAddress);
-    return fetch(url, agent ? { ...options, agent } : options);
+    return fetch(url, options);
 }
 
 // --- Helper Functions ---
-
-function resolveImageInputUrl(rawUrl, baseUrl = undefined) {
-    const parsedUrl = new URL(rawUrl, baseUrl);
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        throw new Error("Plugin Error: Only HTTP(S) image input URLs are supported.");
-    }
-    if (isAllowedVcpImageServerUrl(parsedUrl)) {
-        return parsedUrl;
-    }
-    if (isBlockedLocalHostname(parsedUrl.hostname)) {
-        throw new Error("Plugin Error: 不允许指向本机、链路本地或私有网段地址的图片输入。");
-    }
-    return parsedUrl;
-}
-
-function safeDecodePathname(pathname) {
-    try {
-        return decodeURIComponent(pathname);
-    } catch {
-        return pathname;
-    }
-}
-
-function getAllowedVcpImageServerOrigins() {
-    const origins = new Set();
-
-    if (VAR_HTTP_URL && SERVER_PORT) {
-        try {
-            const localUrl = new URL(VAR_HTTP_URL);
-            if (localUrl.protocol === 'http:' || localUrl.protocol === 'https:') {
-                localUrl.port = SERVER_PORT;
-                origins.add(localUrl.origin);
-            }
-        } catch {
-            // Ignore malformed optional URL configuration.
-        }
-    }
-
-    if (VAR_HTTPS_URL) {
-        try {
-            const publicUrl = new URL(VAR_HTTPS_URL);
-            if (publicUrl.protocol === 'http:' || publicUrl.protocol === 'https:') {
-                origins.add(publicUrl.origin);
-            }
-        } catch {
-            // Ignore malformed optional URL configuration.
-        }
-    }
-
-    return origins;
-}
-
-function isAllowedVcpImageServerUrl(parsedUrl) {
-    if (!parsedUrl || !IMAGESERVER_IMAGE_KEY) return false;
-
-    const decodedPath = safeDecodePathname(parsedUrl.pathname);
-    if (!decodedPath.startsWith(`/pw=${IMAGESERVER_IMAGE_KEY}/images/`)) {
-        return false;
-    }
-
-    return getAllowedVcpImageServerOrigins().has(parsedUrl.origin);
-}
-
-function normalizeImageMimeType(mimeType, source = 'image input') {
-    const normalized = String(mimeType || '').split(';')[0].trim().toLowerCase();
-    if (!IMAGE_MIME_EXT.has(normalized)) {
-        throw new Error(`Plugin Error: ${source} must be a PNG, JPEG, WEBP, or GIF image.`);
-    }
-    return normalized;
-}
-
-function bufferToImageDataUri(buffer, mimeType, source = 'image input') {
-    if (!Buffer.isBuffer(buffer)) {
-        throw new Error(`Plugin Error: Invalid ${source} buffer.`);
-    }
-    if (buffer.length > MAX_INPUT_IMAGE_SIZE) {
-        throw new Error(`Plugin Error: ${source} exceeds ${MAX_INPUT_IMAGE_SIZE} bytes.`);
-    }
-    const normalizedMime = normalizeImageMimeType(mimeType, source);
-    return `data:${normalizedMime};base64,${buffer.toString('base64')}`;
-}
-
-function normalizeDataUriInput(input) {
-    const match = input.match(/^data:(image\/[^;]+);base64,([\s\S]+)$/);
-    if (!match) {
-        throw new Error("Plugin Error: Invalid image data URI.");
-    }
-    const mimeType = normalizeImageMimeType(match[1], 'image data URI');
-    const base64 = match[2].replace(/\s/g, '');
-    const estimatedBytes = Math.floor((base64.length * 3) / 4);
-    if (estimatedBytes > MAX_INPUT_IMAGE_SIZE) {
-        throw new Error(`Plugin Error: image data URI exceeds ${MAX_INPUT_IMAGE_SIZE} bytes.`);
-    }
-    return `data:${mimeType};base64,${base64}`;
-}
-
-async function readResponseBodyWithLimit(response, maxBytes, source = 'response body') {
-    const body = response.body;
-    if (!body) {
-        throw new Error(`Plugin Error: ${source} is missing a response body.`);
-    }
-
-    const chunks = [];
-    let totalBytes = 0;
-
-    try {
-        for await (const chunk of body) {
-            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            totalBytes += buffer.length;
-            if (totalBytes > maxBytes) {
-                if (typeof body.destroy === 'function') {
-                    body.destroy();
-                } else if (typeof body.cancel === 'function') {
-                    await body.cancel().catch(() => {});
-                }
-                throw new Error(`Plugin Error: ${source} exceeds ${maxBytes} bytes.`);
-            }
-            chunks.push(buffer);
-        }
-    } catch (error) {
-        if (typeof body.destroy === 'function' && !body.destroyed) {
-            body.destroy();
-        }
-        throw error;
-    }
-
-    return Buffer.concat(chunks, totalBytes);
-}
-
-async function fetchRemoteImageInput(rawUrl, redirectCount = 0) {
-    if (redirectCount > 5) {
-        throw new Error("Plugin Error: 图片下载重定向次数过多。");
-    }
-
-    const parsedUrl = resolveImageInputUrl(rawUrl);
-    const lookupAddress = await assertImageInputHostnameIsSafe(parsedUrl);
-    const response = await fetchWithProxy(parsedUrl.href, {
-        redirect: 'manual',
-        signal: AbortSignal.timeout(60000),
-    }, lookupAddress);
-
-    if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-        const redirectUrl = resolveImageInputUrl(response.headers.get('location'), parsedUrl.href);
-        return fetchRemoteImageInput(redirectUrl.href, redirectCount + 1);
-    }
-
-    if (!response.ok) {
-        const errorBody = await response.text().catch(() => '');
-        throw new Error(`Plugin Error: Failed to download input image from URL: ${parsedUrl.href}. HTTP ${response.status}. ${errorBody}`);
-    }
-
-    const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
-    if (contentLength > MAX_INPUT_IMAGE_SIZE) {
-        throw new Error(`Plugin Error: remote image input exceeds ${MAX_INPUT_IMAGE_SIZE} bytes.`);
-    }
-
-    const mimeType = normalizeImageMimeType(response.headers.get('content-type') || '', 'remote image input');
-    const buffer = await readResponseBodyWithLimit(response, MAX_INPUT_IMAGE_SIZE, 'remote image input');
-    return bufferToImageDataUri(buffer, mimeType, 'remote image input');
-}
 
 function parseImageArrayInput(value) {
     if (Array.isArray(value)) return value.filter(Boolean);
@@ -488,8 +130,10 @@ function isValidArgs(args) {
 }
 
 async function processApiRequest(rawArgs) {
+    // 解析 showbase64 参数，默认为 false
+    const showBase64 = rawArgs.showbase64 === 'true' || rawArgs.showbase64 === true;
+
     const args = normalizeArgs(rawArgs);
-    const showBase64 = args.showbase64 === true || args.showbase64 === 'true' || args.showBase64 === true || args.showBase64 === 'true';
 
     if (!PROJECT_BASE_PATH || !SERVER_PORT || !IMAGESERVER_IMAGE_KEY || !VAR_HTTP_URL) {
         throw new Error("Plugin Error: Missing one or more required environment variables (PROJECT_BASE_PATH, SERVER_PORT, etc).");
@@ -666,19 +310,22 @@ async function processApiRequest(rawArgs) {
         }
     ];
 
+    // 只有当 showbase64 为 true 时才添加 base64 图片数据
     if (showBase64) {
+        const base64Image = imageBuffer.toString('base64');
         content.push({
             type: 'image_url',
             image_url: {
-                url: `data:${imageMimeType};base64,${imageBuffer.toString('base64')}`
+                url: `data:${imageMimeType};base64,${base64Image}`
             }
         });
     }
 
     return {
-        content,
+        content: content,
         details: {
-            url: accessibleImageUrl
+            url: accessibleImageUrl,
+            showBase64: showBase64
         }
     };
 }
@@ -689,12 +336,10 @@ function dataUriToBlob(dataUri, index) {
         throw new Error("Plugin Error: Invalid image data URI.");
     }
 
-    const mimeType = normalizeImageMimeType(match[1], 'image data URI');
+    const mimeType = match[1];
     const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
-    if (buffer.length > MAX_INPUT_IMAGE_SIZE) {
-        throw new Error(`Plugin Error: image data URI exceeds ${MAX_INPUT_IMAGE_SIZE} bytes.`);
-    }
-    const extension = IMAGE_MIME_EXT.get(mimeType) || 'png';
+    const extMap = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+    const extension = extMap[mimeType] || 'png';
     return {
         blob: new Blob([buffer], { type: mimeType }),
         filename: `input_${index + 1}.${extension}`
@@ -708,34 +353,33 @@ async function imageInputToDataUri(imageInput) {
 
     const input = imageInput.trim();
     if (input.startsWith('data:image/')) {
-        return normalizeDataUriInput(input);
+        return input;
     }
 
     if (input.startsWith('http://') || input.startsWith('https://')) {
-        return fetchRemoteImageInput(input);
+        const response = await fetchWithProxy(input, {
+            signal: AbortSignal.timeout(60000),
+        });
+        if (!response.ok) {
+            const errorBody = await response.text().catch(() => '');
+            throw new Error(`Plugin Error: Failed to download input image from URL: ${input}. HTTP ${response.status}. ${errorBody}`);
+        }
+        const arrayBuf = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuf);
+        const mimeType = response.headers.get('content-type') || 'image/png';
+        return `data:${mimeType};base64,${buffer.toString('base64')}`;
     }
 
     if (input.startsWith('file://')) {
         try {
+            const { fileURLToPath } = await import('url');
             const filePath = fileURLToPath(input);
-            const resolved = path.resolve(filePath);
-            if (!isPathInside(resolved, ZIMAGE_INPUT_IMAGE_ROOT)) {
-                throw new Error("Plugin Error: 本地图片路径仅允许位于项目 image/ 目录下。");
-            }
-            const stat = await fs.stat(resolved);
-            if (!stat.isFile()) {
-                throw new Error("Plugin Error: Local image input must be a file.");
-            }
-            if (stat.size > MAX_INPUT_IMAGE_SIZE) {
-                throw new Error(`Plugin Error: local image input exceeds ${MAX_INPUT_IMAGE_SIZE} bytes.`);
-            }
-            const ext = path.extname(resolved).toLowerCase();
-            const mimeType = IMAGE_EXT_MIME.get(ext);
-            if (!mimeType) {
-                throw new Error("Plugin Error: Local image input must be a PNG, JPEG, WEBP, or GIF file.");
-            }
-            const buffer = await fs.readFile(resolved);
-            return bufferToImageDataUri(buffer, mimeType, 'local image input');
+            const buffer = await fs.readFile(filePath);
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+                ext === '.webp' ? 'image/webp' :
+                    ext === '.gif' ? 'image/gif' : 'image/png';
+            return `data:${mimeType};base64,${buffer.toString('base64')}`;
         } catch (e) {
             if (e.code === 'ENOENT' || e.code === 'ERR_INVALID_FILE_URL_PATH') {
                 const structuredError = new Error(`File not found locally, requesting remote fetch for: ${input}`);
@@ -749,12 +393,7 @@ async function imageInputToDataUri(imageInput) {
 
     // Bare base64 compatibility.
     if (/^[A-Za-z0-9+/=\s]+$/.test(input) && input.length > 100) {
-        const base64 = input.replace(/\s/g, '');
-        const estimatedBytes = Math.floor((base64.length * 3) / 4);
-        if (estimatedBytes > MAX_INPUT_IMAGE_SIZE) {
-            throw new Error(`Plugin Error: raw base64 image input exceeds ${MAX_INPUT_IMAGE_SIZE} bytes.`);
-        }
-        return `data:image/png;base64,${base64}`;
+        return `data:image/png;base64,${input.replace(/\s/g, '')}`;
     }
 
     throw new Error("Plugin Error: Unsupported image input. Please use image data URI, HTTP(S) URL, file:// URL, or raw base64.");
@@ -793,7 +432,7 @@ async function pollEditTask(taskId) {
     throw new Error(`Task polling timed out after ${maxAttempts} attempts.`);
 }
 
-async function processEditRequest(args, showBase64 = false) {
+async function processEditRequest(args, showBase64) {
     const dataUris = [];
     for (const imageInput of args.images) {
         dataUris.push(await imageInputToDataUri(imageInput));
@@ -801,7 +440,7 @@ async function processEditRequest(args, showBase64 = false) {
 
     const formData = new FormData();
     const editSize = args.size || args.resolution || '2048x2048';
-    const editModel = args.model || args.edit_model || 'LongCat-Image-Edit';
+    const editModel = args.model || args.edit_model || 'Qwen-Image-Edit-2511';
 
     formData.append('model', editModel);
     formData.append('prompt', args.prompt);
@@ -810,7 +449,7 @@ async function processEditRequest(args, showBase64 = false) {
     formData.append('user', args.user || 'VCPToolBox');
     formData.append('n', String(Math.min(Math.max(parseInt(args.n || args.count || '1', 10) || 1, 1), 1)));
     formData.append('response_format', args.response_format || 'b64_json');
-    formData.append('num_inference_steps', String(Math.max(4, Math.min(25, parseInt(args.num_inference_steps, 10) || 4))));
+    formData.append('num_inference_steps', String(Math.max(4, Math.min(50, parseInt(args.num_inference_steps, 10) || 4))));
     formData.append('seed', String(parseInt(args.seed, 10) || 0));
     formData.append('guidance_scale', String(parseFloat(args.guidance_scale) || 1));
     formData.append('negative_prompt', typeof args.negative_prompt === 'string' ? args.negative_prompt : '');
@@ -897,21 +536,24 @@ async function processEditRequest(args, showBase64 = false) {
         }
     ];
 
+    // 只有当 showbase64 为 true 时才添加 base64 图片数据
     if (showBase64) {
+        const base64Image = imageBuffer.toString('base64');
         content.push({
             type: 'image_url',
             image_url: {
-                url: `data:${imageMimeType};base64,${imageBuffer.toString('base64')}`
+                url: `data:${imageMimeType};base64,${base64Image}`
             }
         });
     }
 
     return {
-        content,
+        content: content,
         details: {
             url: accessibleImageUrl,
             taskId,
-            mode: dataUris.length > 1 ? 'compose' : 'edit'
+            mode: dataUris.length > 1 ? 'compose' : 'edit',
+            showBase64: showBase64
         }
     };
 }

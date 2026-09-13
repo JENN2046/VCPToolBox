@@ -25,7 +25,7 @@ def process_timeline_file(input_path, output_path):
         with open(output_path, 'w', encoding='utf-8') as f:
             character_name = data.get('character', '未知角色')
             last_updated = data.get('lastUpdated', '未知')
-
+            
             # 写入文件头信息
             f.write(f"# {character_name}的时间线\n")
             f.write(f"> 最后更新: {last_updated}\n")
@@ -36,11 +36,11 @@ def process_timeline_file(input_path, output_path):
                 for entry in entries[date]:
                     summary = entry.get('summary', '无有效总结').strip().rstrip('。<')
                     f.write(f"- {summary}\n")
-
+                
                 # 在日期块之间添加一个空行以提高可读性，但最后一个块后面不加
                 if i < len(sorted_dates) - 1:
                     f.write("\n")
-
+        
         print(f"成功处理 '{input_path}' -> '{output_path}'")
 
     except FileNotFoundError:
@@ -77,7 +77,7 @@ def main():
             output_file_path = os.path.join(output_dir, output_filename)
             process_timeline_file(input_file_path, output_file_path)
             processed_count += 1
-
+    
     if processed_count == 0:
         print(f"在 '{input_dir}' 目录中没有找到需要处理的 'XXX_timeline.json' 文件。")
 

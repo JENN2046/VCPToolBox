@@ -99,6 +99,13 @@ function resolveSeed(seedCandidate) {
    return s;
 }
 
+// 将调用参数转换为有限数值；未传或非法时回退到配置值
+function resolveNumericArg(value, fallback) {
+    if (value === undefined || value === null || value === '') return fallback;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
 // 纯粹的数据替换 - 直接替换占位符为具体值（含种子自动处理）
 function fillWorkflowParameters(workflow, args, config) {
     const settings = config.userSettings || {};
@@ -115,8 +122,8 @@ function fillWorkflowParameters(workflow, args, config) {
     ].filter(part => part && String(part).trim());
     const positivePrompt = positivePromptParts.join(', ');
     
-    // 先解析种子：当配置默认种子为 -1 或非法时，运行时自动改为随机合法值（不透传 -1）
-    const resolvedSeed = resolveSeed(settings.defaultSeed);
+    // 调用参数优先；seed=-1 或非法时在运行时生成随机合法种子
+    const resolvedSeed = resolveSeed(args.seed ?? settings.defaultSeed);
 
     // 构建负面提示词
     const negativePromptParts = [
@@ -127,23 +134,24 @@ function fillWorkflowParameters(workflow, args, config) {
     
     // 构建替换映射
     const replacements = {
-        // 基础参数 - 优先使用args传入的值
-        '{{MODEL}}': settings.defaultModel || 'sd_xl_base_1.0.safetensors',
-        '{{WIDTH}}': args.width || settings.defaultWidth || 1024,
-        '{{HEIGHT}}': args.height || settings.defaultHeight || 1024,
-        '{{STEPS}}': settings.defaultSteps || 30,
-        '{{CFG}}': settings.defaultCfg || 7.5,
-        '{{SAMPLER}}': settings.defaultSampler || 'dpmpp_2m',
-        '{{SCHEDULER}}': settings.defaultScheduler || 'normal',
-        '{{SEED}}': resolvedSeed, // 使用运行时解析后的合法种子
-        '{{DENOISE}}': settings.defaultDenoise || 1.0,
-        '{{BATCH_SIZE}}': settings.defaultBatchSize || 1,
+        // 基础参数 - 调用参数优先于用户配置
+        '{{MODEL}}': args.model || settings.defaultModel || 'sd_xl_base_1.0.safetensors',
+        '{{WIDTH}}': resolveNumericArg(args.width, settings.defaultWidth || 1024),
+        '{{HEIGHT}}': resolveNumericArg(args.height, settings.defaultHeight || 1024),
+        '{{STEPS}}': resolveNumericArg(args.steps, settings.defaultSteps || 30),
+        '{{CFG}}': resolveNumericArg(args.cfg, settings.defaultCfg || 7.5),
+        '{{SAMPLER}}': args.sampler || settings.defaultSampler || 'dpmpp_2m',
+        '{{SCHEDULER}}': args.scheduler || settings.defaultScheduler || 'normal',
+        '{{SEED}}': resolvedSeed,
+        '{{DENOISE}}': resolveNumericArg(args.denoise, settings.defaultDenoise ?? 1.0),
+        '{{BATCH_SIZE}}': resolveNumericArg(args.batch_size, settings.defaultBatchSize || 1),
         
         // 提示词相关
         '{{POSITIVE_PROMPT}}': positivePrompt,
         '{{NEGATIVE_PROMPT}}': negativePrompt,
         '{{USER_PROMPT}}': userPrompt || '',
         '{{PROMPT_INPUT}}': userPrompt || '', // 独立提示词输入
+        '{{LORA_PROMPT}}': args.lora_prompt || '',
         
         // 组件字符串
         '{{LORAS}}': lorasString,
@@ -166,10 +174,13 @@ function fillWorkflowParameters(workflow, args, config) {
         '{{FD_GUIDE_SIZE}}': settings.faceDetailerGuideSize || 512
     };
     
-    // 安全的JSON替换 - 先解析为对象，然后递归替换
+    // 安全的JSON替换 - 精确匹配时保留数值/布尔类型，嵌入字符串时再转为文本
     function replaceInObject(obj, replacements) {
         if (typeof obj === 'string') {
-            // 对字符串值进行占位符替换
+            if (Object.prototype.hasOwnProperty.call(replacements, obj)) {
+                return replacements[obj];
+            }
+
             let result = obj;
             for (const [placeholder, value] of Object.entries(replacements)) {
                 if (result.includes(placeholder)) {
@@ -194,6 +205,40 @@ function fillWorkflowParameters(workflow, args, config) {
     
     // 使用安全的对象替换方法
     return replaceInObject(workflow, replacements);
+}
+
+// 根据单次调用配置节点式 LoRA。lora_name 显式留空时绕过并移除所有 LoraLoader。
+function configureWorkflowLora(workflow, args) {
+    if (!Object.prototype.hasOwnProperty.call(args, 'lora_name')) return workflow;
+
+    const loraName = typeof args.lora_name === 'string' ? args.lora_name.trim() : '';
+    const loraNodes = Object.entries(workflow)
+        .filter(([, node]) => node && node.class_type === 'LoraLoader');
+
+    for (const [nodeId, node] of loraNodes) {
+        if (loraName) {
+            node.inputs.lora_name = loraName;
+            node.inputs.strength_model = resolveNumericArg(args.lora_strength, node.inputs.strength_model ?? 1);
+            node.inputs.strength_clip = resolveNumericArg(args.lora_clip_strength, node.inputs.strength_clip ?? node.inputs.strength_model ?? 1);
+            continue;
+        }
+
+        const modelSource = node.inputs.model;
+        const clipSource = node.inputs.clip;
+
+        for (const otherNode of Object.values(workflow)) {
+            if (!otherNode || !otherNode.inputs) continue;
+            for (const [inputName, inputValue] of Object.entries(otherNode.inputs)) {
+                if (!Array.isArray(inputValue) || String(inputValue[0]) !== String(nodeId)) continue;
+                if (inputValue[1] === 0 && modelSource) otherNode.inputs[inputName] = modelSource;
+                if (inputValue[1] === 1 && clipSource) otherNode.inputs[inputName] = clipSource;
+            }
+        }
+
+        delete workflow[nodeId];
+    }
+
+    return workflow;
 }
 
 // 构建LoRA字符串
@@ -328,6 +373,9 @@ async function saveImagesToLocal(images, config) {
 
 // 主要生成函数
 async function generateImageAndSave(args) {
+    // 解析 showbase64 参数，默认为 false
+    const showBase64 = args.showbase64 === 'true' || args.showbase64 === true;
+
     // 加载配置
     const config = await loadConfiguration();
     
@@ -385,7 +433,10 @@ async function generateImageAndSave(args) {
             // 兼容旧格式（直接是工作流）和新格式（包含元数据和 workflow 键）
             const workflowObject = wfTemplate.workflow || wfTemplate;
 
-            const updated = fillWorkflowParameters(workflowObject, args, config);
+            const updated = configureWorkflowLora(
+                fillWorkflowParameters(workflowObject, args, config),
+                args
+            );
             const queueResult = await queuePrompt(updated, config);
             debugLog('Queued with prompt_id:', queueResult.prompt_id);
 
@@ -410,28 +461,59 @@ async function generateImageAndSave(args) {
         throw new Error(`All workflow attempts failed. Primary: ${primaryWorkflowName}. Last error: ${lastError && lastError.message ? lastError.message : String(lastError)}`);
     }
     
-    // 7. 构建返回结果 - 分离“日志文本”和“Agent HTML”
+    // 7. 构建返回结果 - 结构化格式
     const altText = args.prompt.substring(0, 80) + (args.prompt.length > 80 ? "..." : "");
     
-    // A) 日志文本（供 VCPTookBox 记录与调试）
-    let logs = `ComfyUI 图片生成成功！共生成 ${savedImages.length} 张图片\n\n`;
-    logs += `详细信息：\n`;
+    let textContent = `ComfyUI 图片生成成功！共生成 ${savedImages.length} 张图片\n\n`;
+    textContent += `详细信息：\n`;
     savedImages.forEach((image, index) => {
-        logs += `图片 ${index + 1}:\n`;
-        logs += `- 图片URL: ${image.url}\n`;
-        logs += `- 服务器路径: image/comfyuigen/${image.filename}\n`;
-        logs += `- 文件名: ${image.filename}\n\n`;
+        textContent += `图片 ${index + 1}:\n`;
+        textContent += `- 图片URL: ${image.url}\n`;
+        textContent += `- 服务器路径: image/comfyuigen/${image.filename}\n`;
+        textContent += `- 文件名: ${image.filename}\n\n`;
     });
-    
-    // B) Agent 展示的 HTML 片段（直接用于渲染）
-    let agentHtml = `请务必使用以下HTML <img> 标签将图片直接展示给用户 (您可以调整width属性，建议200-500像素)：\n`;
+    textContent += `请务必使用以下HTML <img> 标签将图片直接展示给用户 (您可以调整width属性，建议200-500像素)：\n`;
     savedImages.forEach((image, index) => {
-        agentHtml += `<img src="${image.url}" alt="${altText} ${index + 1}" width="300">\n`;
+        textContent += `<img src="${image.url}" alt="${altText} ${index + 1}" width="300">\n`;
     });
 
-    // 返回一个统一字符串（向后兼容），供 main() 分离；同时为未来改造保留结构化返回的可能
-    const combined = `${logs}${agentHtml}`;
-    return combined;
+    const content = [
+        {
+            type: 'text',
+            text: textContent
+        }
+    ];
+
+    // 只有当 showbase64 为 true 时才添加 base64 图片数据
+    if (showBase64) {
+        for (const image of savedImages) {
+            const imageData = await fs.readFile(image.localPath);
+            const base64Image = imageData.toString('base64');
+            const ext = path.extname(image.filename).replace('.', '') || 'png';
+            const mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+            content.push({
+                type: 'image_url',
+                image_url: {
+                    url: `data:${mimeType};base64,${base64Image}`
+                }
+            });
+        }
+    }
+
+    return {
+        content: content,
+        details: {
+            workflow: usedWorkflow,
+            prompt: args.prompt,
+            imageCount: savedImages.length,
+            images: savedImages.map(img => ({
+                serverPath: `image/comfyuigen/${img.filename}`,
+                fileName: img.filename,
+                imageUrl: img.url
+            })),
+            showBase64: showBase64
+        }
+    };
 }
 
 // 主函数
@@ -471,4 +553,13 @@ async function main() {
     }
 }
 
-main();
+if (require.main === module) {
+    main();
+}
+
+module.exports = {
+    fillWorkflowParameters,
+    configureWorkflowLora,
+    resolveSeed,
+    resolveNumericArg
+};

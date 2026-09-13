@@ -233,7 +233,19 @@ class AIMemoHandler {
         const aiResponse = await this._callAIModel(prompt, config);
 
         if (!aiResponse) {
-            return '[AI模型调用失败]';
+            const content = '[AI模型调用失败]';
+            return {
+                content,
+                vcpInfo: {
+                    type: 'AI_MEMO_RETRIEVAL',
+                    dbNames: dbNames,
+                    query: combinedQueryForDisplay,
+                    mode: 'aggregated_single_failed',
+                    diaryCount: dbNames.length,
+                    fileCount: diaryFiles.length,
+                    error: 'AI模型调用失败'
+                }
+            };
         }
 
         const extractedMemories = this._extractMemories(aiResponse);
@@ -547,10 +559,16 @@ class AIMemoHandler {
 
         // 1. 用 applyTagBoost 感应 coreTags（与 _processRAGPlaceholder 完全一致）
         let coreTagsForSearch = [];
-        if (tagWeight !== null && tagWeight !== undefined && typeof vdb.applyTagBoost === 'function') {
+        let preparedBoostResult = null;
+        if (tagWeight !== null && tagWeight !== undefined && typeof vdb.applyTagBoostAsync === 'function') {
             try {
                 const initialCoreTags = ghostTags.length > 0 ? [...ghostTags] : [];
-                const boostResult = vdb.applyTagBoost(new Float32Array(queryVector), tagWeight, initialCoreTags);
+                const boostResult = await vdb.applyTagBoostAsync(
+                    new Float32Array(queryVector),
+                    tagWeight,
+                    initialCoreTags
+                );
+                preparedBoostResult = boostResult;
                 if (boostResult?.info?.matchedTags) {
                     const rawTags = boostResult.info.matchedTags;
                     coreTagsForSearch = typeof this.ragPlugin._truncateCoreTags === 'function'
@@ -572,7 +590,15 @@ class AIMemoHandler {
         // 2. 跨所有日记本并行搜索
         const searchPromises = dbNames.map(async (dbName) => {
             try {
-                const results = await vdb.search(dbName, queryVector, k, tagWeight, coreTagsForSearch);
+                const results = await vdb.search(
+                    dbName,
+                    queryVector,
+                    k,
+                    tagWeight,
+                    coreTagsForSearch,
+                    undefined,
+                    preparedBoostResult ? { preparedBoostResult } : undefined
+                );
                 return (results || []).map(r => ({
                     dbName,
                     text: r.text || '',

@@ -1,319 +1,184 @@
-// VCPBridgeServer - local loopback prompt-injection API proxy.
+// VCPBridgeServer - System Prompt 劫持代理
+// 独立端口运行，拦截 CLI 工具请求，注入/替换 system prompt 后转发到上游 API。
+// 支持 OpenAI Chat、Responses API、Anthropic Messages、Gemini 四种协议。
 
 const express = require('express');
-const { once } = require('events');
-const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
-const { TextDecoder } = require('util');
-
-const DEFAULT_PORT = 3100;
-const DEFAULT_BIND_HOST = '127.0.0.1';
-const DEFAULT_MODEL = 'gpt-4.1-mini';
-const DEFAULT_TIMEOUT_MS = 120000;
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const fs = require('fs');
+const chokidar = require('chokidar');
+const { CONFIG_PATH, PROFILES_DIR, migrateBridgeConfig, normalizeBridgeConfig, parseModelMap, profileExists, readProfile, listProfiles } = require('./bridgeConfig');
 
 let server = null;
-let runtimeConfig = null;
-const recentResponsesRequests = new Map();
+let configWatcher = null;
+let profilesWatcher = null;
+let runtimeConfig = {};
+let profilesCache = new Map();
 
-function toBoolean(value, fallback = false) {
-    if (value === undefined || value === null || value === '') return fallback;
-    if (typeof value === 'boolean') return value;
-    return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+// ============================================================
+// 初始化与生命周期
+// ============================================================
+
+function initialize(config) {
+    const bridgeConfig = migrateBridgeConfig();
+    applyBridgeRuntimeConfig(bridgeConfig, config, true);
+    startConfigWatcher(config);
+    startProfilesWatcher();
+    loadAllProfiles();
+    startServer();
+    console.log(`[VCPBridgeServer] Initialized. Hijack mode: ${runtimeConfig.hijackMode}, Port: ${runtimeConfig.port}, Upstream: ${runtimeConfig.upstreamUrl}, Profiles: ${profilesCache.size}`);
 }
 
-function toInteger(value, fallback) {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isSafeInteger(parsed) ? parsed : fallback;
-}
-
-function validatePort(value) {
-    const port = toInteger(value, DEFAULT_PORT);
-    if (port < 1 || port > 65535) {
-        throw new Error(`BRIDGE_PORT must be between 1 and 65535, got ${value}`);
-    }
-    return port;
-}
-
-function validateBindHost(value) {
-    const host = String(value || DEFAULT_BIND_HOST).trim();
-    if (!LOOPBACK_HOSTS.has(host)) {
-        throw new Error(`BRIDGE_BIND_HOST must be loopback-only (${Array.from(LOOPBACK_HOSTS).join(', ')}), got ${host}`);
-    }
-    return host;
-}
-
-function normalizeUpstreamUrl(value) {
-    const raw = String(value || '').trim().replace(/\/+$/, '');
-    const url = new URL(raw);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        throw new Error(`BRIDGE_UPSTREAM_URL must use http or https, got ${url.protocol}`);
-    }
-    return url.toString().replace(/\/+$/, '');
-}
-
-function sanitizeUrlForLog(value) {
+function startProfilesWatcher() {
+    if (profilesWatcher) return;
     try {
-        const url = new URL(value);
-        url.username = '';
-        url.password = '';
-        return url.toString().replace(/\/+$/, '');
-    } catch (_error) {
-        return '<invalid-url>';
+        const fs_sync = require('fs');
+        if (!fs_sync.existsSync(PROFILES_DIR)) {
+            fs_sync.mkdirSync(PROFILES_DIR, { recursive: true });
+        }
+        profilesWatcher = chokidar.watch(PROFILES_DIR, {
+            ignoreInitial: true,
+            awaitWriteFinish: {
+                stabilityThreshold: 250,
+                pollInterval: 50
+            }
+        });
+        const reload = () => loadAllProfiles();
+        profilesWatcher.on('add', reload);
+        profilesWatcher.on('change', reload);
+        profilesWatcher.on('unlink', reload);
+        profilesWatcher.on('error', error => {
+            console.error('[VCPBridgeServer] Profiles watcher error:', error);
+        });
+    } catch (error) {
+        console.error('[VCPBridgeServer] Failed to start profiles watcher:', error);
     }
 }
+
+function applyBridgeRuntimeConfig(bridgeConfig, hostConfig = {}, isInitial = false) {
+    // 默认上游自动指向本地 VCP 主服务器，无需用户手动配置
+    const mainServerPort = hostConfig.PORT || process.env.PORT || 6005;
+    const mainServerKey = hostConfig.Key || process.env.Key || '';
+    const defaultUpstream = `http://127.0.0.1:${mainServerPort}`;
+
+    const normalized = normalizeBridgeConfig({
+        ...bridgeConfig,
+        mainServerPort,
+        upstreamUrl: bridgeConfig.upstreamUrl || defaultUpstream,
+        upstreamKey: bridgeConfig.upstreamKey || mainServerKey
+    });
+
+    const previousPort = runtimeConfig.port;
+    runtimeConfig = {
+        port: normalized.port,
+        upstreamUrl: normalized.upstreamUrl,
+        upstreamKey: normalized.upstreamKey,
+        upstreamType: normalized.upstreamType,
+        defaultModel: normalized.defaultModel,
+        systemPrompt: resolveSystemPrompt(normalized.systemPrompt),
+        hijackMode: normalized.hijackMode,
+        modelMap: parseModelMap(normalized.modelMap),
+        debugMode: normalized.debugMode,
+        basePath: hostConfig.PROJECT_BASE_PATH || __dirname,
+        configPath: CONFIG_PATH
+    };
+
+    if (!isInitial && previousPort && previousPort !== runtimeConfig.port) {
+        console.warn(`[VCPBridgeServer] bridge-config.json port changed from ${previousPort} to ${runtimeConfig.port}. Port changes require plugin/server restart.`);
+    }
+
+    if (!isInitial) {
+        console.log(`[VCPBridgeServer] Hot config reloaded. Hijack mode: ${runtimeConfig.hijackMode}, Upstream: ${runtimeConfig.upstreamUrl}`);
+    }
+}
+
+function startConfigWatcher(hostConfig = {}) {
+    if (configWatcher) return;
+
+    configWatcher = chokidar.watch(CONFIG_PATH, {
+        ignoreInitial: true,
+        awaitWriteFinish: {
+            stabilityThreshold: 250,
+            pollInterval: 50
+        }
+    });
+
+    const reload = () => {
+        try {
+            const bridgeConfig = migrateBridgeConfig();
+            applyBridgeRuntimeConfig(bridgeConfig, hostConfig, false);
+        } catch (error) {
+            console.error('[VCPBridgeServer] Failed to hot reload bridge-config.json:', error);
+        }
+    };
+
+    configWatcher.on('add', reload);
+    configWatcher.on('change', reload);
+    configWatcher.on('error', error => {
+        console.error('[VCPBridgeServer] bridge-config.json watcher error:', error);
+    });
+}
+
+function shutdown() {
+    if (configWatcher) {
+        configWatcher.close();
+        configWatcher = null;
+    }
+    if (profilesWatcher) {
+        profilesWatcher.close();
+        profilesWatcher = null;
+    }
+    if (server) {
+        server.close();
+        server = null;
+        console.log('[VCPBridgeServer] Server stopped.');
+    }
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
 
 function normalizeApiType(value) {
     const v = String(value || '').trim().toLowerCase();
     if (v === 'anthropic' || v === 'claude') return 'anthropic';
     if (v === 'gemini' || v === 'google') return 'gemini';
-    if (v === 'responses' || v === 'openai_responses') return 'responses';
     return 'chat';
 }
 
-function resolveSystemPrompt(raw, pluginDir = __dirname) {
+function resolveSystemPrompt(raw) {
     const trimmed = String(raw || '').trim();
     if (!trimmed) return '';
 
-    if (/^[^\\/:*?"<>|\r\n]+\.txt$/i.test(trimmed)) {
-        const filePath = path.join(pluginDir, trimmed);
-        if (fs.existsSync(filePath)) {
-            return fs.readFileSync(filePath, 'utf8').trim();
+    // 如果是 .txt 文件名，按优先级搜索多个目录
+    if (/^[^\\\/:*?"<>|\r\n]+\.txt$/i.test(trimmed)) {
+        const searchDirs = [
+            __dirname,                          // 插件根目录
+            path.join(__dirname, 'presets')      // presets 子目录
+        ];
+        for (const dir of searchDirs) {
+            const filePath = path.join(dir, trimmed);
+            if (fs.existsSync(filePath)) {
+                return fs.readFileSync(filePath, 'utf8').trim();
+            }
         }
     }
     return trimmed;
 }
 
-function parseModelMap(raw) {
-    if (!raw) return {};
-    return String(raw).split(',').reduce((acc, pair) => {
-        const idx = pair.indexOf(':');
-        if (idx > 0) {
-            const alias = pair.slice(0, idx).trim();
-            const target = pair.slice(idx + 1).trim();
-            if (alias && target) acc[alias] = target;
-        }
-        return acc;
-    }, {});
-}
-
-function stableStringify(value) {
-    if (Array.isArray(value)) {
-        return `[${value.map(stableStringify).join(',')}]`;
-    }
-    if (value && typeof value === 'object') {
-        return `{${Object.keys(value).sort().map(key => {
-            return `${JSON.stringify(key)}:${stableStringify(value[key])}`;
-        }).join(',')}}`;
-    }
-    return JSON.stringify(value);
-}
-
-function buildStableRequestId(prefix, payload) {
-    const hash = crypto
-        .createHash('sha256')
-        .update(stableStringify(payload || {}))
-        .digest('hex')
-        .slice(0, 24);
-    return `${prefix}_${hash}`;
-}
-
-function createRuntimeConfig(config = {}, options = {}) {
-    const pluginDir = options.pluginDir || __dirname;
-    const portValue = (config.BRIDGE_PORT === undefined || config.BRIDGE_PORT === null || config.BRIDGE_PORT === '')
-        ? DEFAULT_PORT
-        : config.BRIDGE_PORT;
-    const mainServerPort = config.PORT || process.env.PORT || 6005;
-    const defaultUpstreamUrl = `http://127.0.0.1:${mainServerPort}`;
-    const useLocalDefaultUpstream = config.BRIDGE_UPSTREAM_URL === undefined || config.BRIDGE_UPSTREAM_URL === null || config.BRIDGE_UPSTREAM_URL === '';
-    const upstreamUrl = useLocalDefaultUpstream
-        ? defaultUpstreamUrl
-        : config.BRIDGE_UPSTREAM_URL;
-    const upstreamKey = config.BRIDGE_UPSTREAM_KEY || (useLocalDefaultUpstream ? (config.Key || process.env.Key || '') : '');
-    return {
-        enabled: toBoolean(config.BRIDGE_ENABLED, false),
-        port: validatePort(portValue),
-        bindHost: validateBindHost(config.BRIDGE_BIND_HOST || DEFAULT_BIND_HOST),
-        upstreamUrl: normalizeUpstreamUrl(upstreamUrl),
-        upstreamKey: String(upstreamKey),
-        upstreamType: normalizeApiType(config.BRIDGE_UPSTREAM_TYPE),
-        defaultModel: String(config.BRIDGE_MODEL || DEFAULT_MODEL),
-        systemPrompt: resolveSystemPrompt(config.BRIDGE_SYSTEM_PROMPT || '', pluginDir),
-        hijackMode: String(config.BRIDGE_HIJACK_MODE || 'off').trim().toLowerCase(),
-        modelMap: parseModelMap(config.BRIDGE_MODEL_MAP || ''),
-        timeoutMs: Math.max(1000, toInteger(config.BRIDGE_UPSTREAM_TIMEOUT_MS, DEFAULT_TIMEOUT_MS)),
-        responsesRetrySuppressionMs: Math.max(0, toInteger(
-            config.BRIDGE_RESPONSES_RETRY_SUPPRESSION_MS ?? process.env.BRIDGE_RESPONSES_RETRY_SUPPRESSION_MS,
-            0
-        )),
-        debugMode: Boolean(config.DebugMode),
-        fetchImpl: options.fetchImpl || globalThis.fetch
-    };
-}
-
-function resolveModel(model, config = runtimeConfig) {
-    const candidate = model || config.defaultModel;
-    return config.modelMap[candidate] || candidate;
-}
-
-function getResponsesRetrySuppressionKey(body, messages, stream, config = runtimeConfig) {
-    if (!config || config.responsesRetrySuppressionMs <= 0) return null;
-    if (body?.requestId || body?.messageId) return null;
-
-    const requestBody = {
-        ...body,
-        model: resolveModel(body?.model, config),
-        stream
-    };
-    delete requestBody.requestId;
-    delete requestBody.messageId;
-
-    return buildStableRequestId('responses', {
-        requestBody,
-        messages
-    });
-}
-
-function pruneRecentResponsesRequests(windowMs, now = Date.now()) {
-    for (const [key, value] of recentResponsesRequests.entries()) {
-        if (now - value.lastSeenAt > windowMs * 4) {
-            recentResponsesRequests.delete(key);
-        }
-    }
-}
-
-function isSuppressedDuplicateResponsesRequest(requestId, config = runtimeConfig, now = Date.now()) {
-    const windowMs = config?.responsesRetrySuppressionMs || 0;
-    if (!requestId || windowMs <= 0) return false;
-    pruneRecentResponsesRequests(windowMs, now);
-
-    const entry = recentResponsesRequests.get(requestId);
-    if (entry && now - entry.lastSeenAt <= windowMs) {
-        entry.lastSeenAt = now;
-        entry.count += 1;
-        return true;
-    }
-
-    return false;
-}
-
-function rememberSuccessfulResponsesRequest(requestId, config = runtimeConfig, now = Date.now()) {
-    const windowMs = config?.responsesRetrySuppressionMs || 0;
-    if (!requestId || windowMs <= 0) return;
-    pruneRecentResponsesRequests(windowMs, now);
-    recentResponsesRequests.set(requestId, { lastSeenAt: now, count: 1 });
+function resolveModel(model) {
+    const candidate = model || runtimeConfig.defaultModel;
+    return runtimeConfig.modelMap[candidate] || candidate;
 }
 
 function extractBearerToken(authHeader) {
     if (!authHeader) return '';
-    const match = String(authHeader).match(/^Bearer\s+(.+)$/i);
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
     return match ? match[1].trim() : '';
 }
 
-function normalizeTextContent(content) {
-    if (typeof content === 'string') return content;
-    if (Array.isArray(content)) {
-        return content.map(item => {
-            if (typeof item === 'string') return item;
-            if (typeof item?.text === 'string') return item.text;
-            if (item?.type === 'text' && typeof item.text === 'string') return item.text;
-            if (item?.type === 'input_text' && typeof item.text === 'string') return item.text;
-            if (item?.type === 'output_text' && typeof item.text === 'string') return item.text;
-            return '';
-        }).filter(Boolean).join('\n');
-    }
-    return '';
-}
-
-function applySystemPromptHijack(messages, config = runtimeConfig) {
-    const safeMessages = Array.isArray(messages) ? messages.filter(message => message && typeof message === 'object') : [];
-    if (!config?.systemPrompt || config.hijackMode === 'off') {
-        return safeMessages;
-    }
-
-    const injected = { role: 'system', content: config.systemPrompt };
-    switch (config.hijackMode) {
-        case 'replace':
-            return [injected, ...safeMessages.filter(message => message.role !== 'system')];
-        case 'prepend':
-            return [injected, ...safeMessages];
-        case 'append': {
-            const result = [...safeMessages];
-            const lastSystemIdx = result.reduce((acc, message, index) => message.role === 'system' ? index : acc, -1);
-            if (lastSystemIdx >= 0) {
-                result.splice(lastSystemIdx + 1, 0, injected);
-            } else {
-                result.unshift(injected);
-            }
-            return result;
-        }
-        default:
-            return safeMessages;
-    }
-}
-
-function extractFromResponsesInput(input) {
-    if (typeof input === 'string') return [{ role: 'user', content: input }];
-    if (!Array.isArray(input)) return [];
-    const messages = [];
-    for (const item of input) {
-        if (!item || typeof item !== 'object') continue;
-        let role = item.role || (item.type === 'message' ? 'user' : null);
-        if (role === 'developer') role = 'system';
-        const content = normalizeTextContent(item.content);
-        if (role && content) messages.push({ role, content });
-    }
-    return messages;
-}
-
-function extractFromResponsesOutput(output) {
-    if (typeof output === 'string') return output;
-    if (!Array.isArray(output)) return '';
-
-    return output.map(item => {
-        if (typeof item === 'string') return item;
-        if (!item || typeof item !== 'object') return '';
-        if (typeof item.output_text === 'string') return item.output_text;
-        if (typeof item.text === 'string') return item.text;
-        if (Array.isArray(item.content) || typeof item.content === 'string') {
-            return normalizeTextContent(item.content);
-        }
-        if (Array.isArray(item.message?.content) || typeof item.message?.content === 'string') {
-            return normalizeTextContent(item.message.content);
-        }
-        return '';
-    }).filter(Boolean).join('\n');
-}
-
-function extractFromAnthropicBody(body = {}) {
-    const messages = [];
-    const system = normalizeTextContent(body.system);
-    if (system) messages.push({ role: 'system', content: system });
-    if (Array.isArray(body.messages)) {
-        for (const message of body.messages) {
-            const content = normalizeTextContent(message?.content);
-            if (message?.role && content) messages.push({ role: message.role, content });
-        }
-    }
-    return messages;
-}
-
-function extractFromGeminiBody(body = {}) {
-    const messages = [];
-    if (body.systemInstruction?.parts) {
-        const system = normalizeTextContent(body.systemInstruction.parts);
-        if (system) messages.push({ role: 'system', content: system });
-    }
-    if (Array.isArray(body.contents)) {
-        for (const content of body.contents) {
-            const role = content?.role === 'model' ? 'assistant' : 'user';
-            const text = normalizeTextContent(content?.parts);
-            if (text) messages.push({ role, content: text });
-        }
-    }
-    return messages;
-}
+// ============================================================
+// 原生工具字段保护/转换（不进入 messages，只在构建上游 body 时加回）
+// ============================================================
 
 function normalizeToolParameters(parameters) {
     if (parameters && typeof parameters === 'object') return parameters;
@@ -399,12 +264,15 @@ function normalizeToolChoice(toolChoice, body) {
     if (toolChoice.type === 'function' && toolChoice.function?.name) {
         return { type: 'function', function: { name: toolChoice.function.name } };
     }
+
     if (toolChoice.type === 'function' && toolChoice.name) {
         return { type: 'function', function: { name: toolChoice.name } };
     }
+
     if (toolChoice.type === 'tool' && toolChoice.name) {
         return { type: 'function', function: { name: toolChoice.name } };
     }
+
     if (toolChoice.type === 'auto') return 'auto';
     if (toolChoice.type === 'any') return 'required';
     if (toolChoice.type === 'none') return 'none';
@@ -457,27 +325,507 @@ function attachProtectedGeminiToolFields(targetBody, sourceBody) {
     return targetBody;
 }
 
-function buildUpstreamChatBody(messages, model, body = {}, config = runtimeConfig) {
+// ============================================================
+// Responses API 响应转换工具
+// ============================================================
+
+function buildResponsesUsage(usage) {
+    return {
+        input_tokens: usage?.prompt_tokens || usage?.input_tokens || 0,
+        output_tokens: usage?.completion_tokens || usage?.output_tokens || 0,
+        total_tokens: usage?.total_tokens || ((usage?.input_tokens || 0) + (usage?.output_tokens || 0)),
+        input_tokens_details: usage?.prompt_tokens_details || usage?.input_tokens_details || {},
+        output_tokens_details: usage?.completion_tokens_details || usage?.output_tokens_details || {}
+    };
+}
+
+function buildBaseResponsesEnvelope(model) {
+    return {
+        id: `resp_${Date.now()}`,
+        object: 'response',
+        created_at: Math.floor(Date.now() / 1000),
+        status: 'in_progress',
+        model,
+        output: [{
+            id: `msg_${Date.now()}`,
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: '', annotations: [] }]
+        }],
+        output_text: '',
+        usage: buildResponsesUsage(null)
+    };
+}
+
+function writeResponsesSseEvent(res, eventName, data) {
+    if (res.destroyed || res.writableEnded) return false;
+    res.write(`event: ${eventName}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    return true;
+}
+
+function safeJsonParse(text) {
+    try {
+        return JSON.parse(text);
+    } catch {
+        return null;
+    }
+}
+
+function extractTextFromProtocolResponse(raw, apiType) {
+    if (apiType === 'anthropic') {
+        const content = raw?.content;
+        return Array.isArray(content) ? content.map(item => item?.text || '').join('') : '';
+    }
+    if (apiType === 'gemini') {
+        const parts = raw?.candidates?.[0]?.content?.parts;
+        return Array.isArray(parts) ? parts.map(part => part?.text || '').join('') : '';
+    }
+    return raw?.choices?.[0]?.message?.content || '';
+}
+
+function extractUsageFromProtocolResponse(raw, apiType) {
+    if (apiType === 'anthropic') {
+        return {
+            input_tokens: raw?.usage?.input_tokens || 0,
+            output_tokens: raw?.usage?.output_tokens || 0,
+            total_tokens: (raw?.usage?.input_tokens || 0) + (raw?.usage?.output_tokens || 0)
+        };
+    }
+    if (apiType === 'gemini') {
+        return {
+            prompt_tokens: raw?.usageMetadata?.promptTokenCount || 0,
+            completion_tokens: raw?.usageMetadata?.candidatesTokenCount || 0,
+            total_tokens: raw?.usageMetadata?.totalTokenCount || 0
+        };
+    }
+    return raw?.usage || null;
+}
+
+function extractStreamDeltaByProtocol(eventJson, apiType) {
+    if (apiType === 'anthropic') {
+        return eventJson?.delta?.text || eventJson?.content_block?.text || '';
+    }
+    if (apiType === 'gemini') {
+        const parts = eventJson?.candidates?.[0]?.content?.parts;
+        return Array.isArray(parts) ? parts.map(part => part?.text || '').join('') : '';
+    }
+    return eventJson?.choices?.[0]?.delta?.content || eventJson?.choices?.[0]?.message?.content || '';
+}
+
+function extractStreamUsageByProtocol(eventJson, apiType) {
+    if (apiType === 'gemini' && eventJson?.usageMetadata) {
+        return {
+            prompt_tokens: eventJson.usageMetadata.promptTokenCount || 0,
+            completion_tokens: eventJson.usageMetadata.candidatesTokenCount || 0,
+            total_tokens: eventJson.usageMetadata.totalTokenCount || 0
+        };
+    }
+    return eventJson?.usage || null;
+}
+
+async function* iterateUpstreamSseJson(readableStream) {
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    for await (const chunk of readableStream) {
+        buffer += decoder.decode(chunk, { stream: true });
+
+        while (true) {
+            const newlineIndex = buffer.indexOf('\n');
+            if (newlineIndex === -1) break;
+
+            const line = buffer.slice(0, newlineIndex).trimEnd();
+            buffer = buffer.slice(newlineIndex + 1);
+
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) continue;
+
+            const data = trimmed.slice(5).trim();
+            if (data === '[DONE]') return;
+
+            const json = safeJsonParse(data);
+            if (json) yield json;
+        }
+    }
+}
+
+function buildResponsesOutput(raw, apiType, fallbackModel) {
+    const text = extractTextFromProtocolResponse(raw, apiType);
+    const responsePayload = buildBaseResponsesEnvelope(raw?.model || fallbackModel);
+    responsePayload.status = 'completed';
+    responsePayload.output[0].content[0].text = text;
+    responsePayload.output_text = text;
+    responsePayload.usage = buildResponsesUsage(extractUsageFromProtocolResponse(raw, apiType));
+    return responsePayload;
+}
+
+async function sendResponsesStreamFromProtocol(res, upstreamResponse, { model, apiType }) {
+    res.status(upstreamResponse.status);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+
+    const responsePayload = buildBaseResponsesEnvelope(model);
+    const itemId = responsePayload.output[0].id;
+    let finalUsage = null;
+
+    writeResponsesSseEvent(res, 'response.created', {
+        type: 'response.created',
+        response: {
+            id: responsePayload.id,
+            object: responsePayload.object,
+            created_at: responsePayload.created_at,
+            status: 'in_progress',
+            model: responsePayload.model,
+            usage: buildResponsesUsage(null)
+        }
+    });
+
+    writeResponsesSseEvent(res, 'response.output_item.added', {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { id: itemId, type: 'message', role: 'assistant', content: [] }
+    });
+
+    writeResponsesSseEvent(res, 'response.content_part.added', {
+        type: 'response.content_part.added',
+        item_id: itemId,
+        output_index: 0,
+        content_index: 0,
+        part: { type: 'output_text', text: '' }
+    });
+
+    try {
+        for await (const eventJson of iterateUpstreamSseJson(upstreamResponse.body)) {
+            const delta = extractStreamDeltaByProtocol(eventJson, apiType);
+            if (typeof delta === 'string' && delta.length > 0) {
+                responsePayload.output_text += delta;
+                writeResponsesSseEvent(res, 'response.output_text.delta', {
+                    type: 'response.output_text.delta',
+                    item_id: itemId,
+                    output_index: 0,
+                    content_index: 0,
+                    delta
+                });
+            }
+
+            const usage = extractStreamUsageByProtocol(eventJson, apiType);
+            if (usage) finalUsage = usage;
+            if (eventJson?.model) responsePayload.model = eventJson.model;
+        }
+
+        responsePayload.status = 'completed';
+        responsePayload.output[0].content[0].text = responsePayload.output_text;
+        if (finalUsage) responsePayload.usage = buildResponsesUsage(finalUsage);
+
+        writeResponsesSseEvent(res, 'response.output_text.done', {
+            type: 'response.output_text.done',
+            item_id: itemId,
+            output_index: 0,
+            content_index: 0,
+            text: responsePayload.output_text
+        });
+
+        writeResponsesSseEvent(res, 'response.content_part.done', {
+            type: 'response.content_part.done',
+            item_id: itemId,
+            output_index: 0,
+            content_index: 0,
+            part: { type: 'output_text', text: responsePayload.output_text }
+        });
+
+        writeResponsesSseEvent(res, 'response.output_item.done', {
+            type: 'response.output_item.done',
+            output_index: 0,
+            item: responsePayload.output[0]
+        });
+
+        writeResponsesSseEvent(res, 'response.completed', {
+            type: 'response.completed',
+            response: responsePayload
+        });
+    } catch (error) {
+        responsePayload.status = 'failed';
+        responsePayload.output[0].content[0].text = responsePayload.output_text;
+        responsePayload.error = {
+            code: 'vcp_bridge_stream_error',
+            message: error.message || 'VCP bridge stream failed before completion.'
+        };
+        writeResponsesSseEvent(res, 'response.failed', {
+            type: 'response.failed',
+            response: responsePayload
+        });
+    }
+
+    if (!res.destroyed && !res.writableEnded) res.end();
+}
+
+async function sendResponsesJsonFromProtocol(res, upstreamResponse, { model, apiType }) {
+    const rawText = await upstreamResponse.text();
+    const rawJson = safeJsonParse(rawText);
+
+    if (!upstreamResponse.ok) {
+        return res.status(upstreamResponse.status).type('application/json').send(rawJson || rawText);
+    }
+
+    return res.status(upstreamResponse.status).json(buildResponsesOutput(rawJson || {}, apiType, model));
+}
+
+// ============================================================
+// Profile 缓存管理
+// ============================================================
+
+function loadAllProfiles() {
+    profilesCache.clear();
+    try {
+        const profiles = listProfiles();
+        for (const p of profiles) {
+            profilesCache.set(p.name, p);
+        }
+        if (runtimeConfig.debugMode) {
+            console.log(`[VCPBridgeServer] Profiles cache reloaded: ${profilesCache.size} profiles.`);
+        }
+    } catch (error) {
+        console.error('[VCPBridgeServer] Failed to load profiles:', error.message);
+    }
+}
+
+function readProfileCached(name) {
+    if (!name) return null;
+    const cleaned = String(name).trim().toLowerCase();
+    if (profilesCache.has(cleaned)) return profilesCache.get(cleaned);
+    const profile = readProfile(cleaned);
+    if (profile) profilesCache.set(cleaned, profile);
+    return profile;
+}
+
+/**
+ * 解析当前请求应该使用的 Profile 配置
+ * 优先级：URL path > HTTP header > model name prefix > defaultProfile > null
+ */
+function resolveProfileForRequest(req, model) {
+    if (req.bridgeProfile) {
+        const profile = readProfileCached(req.bridgeProfile);
+        if (profile) return profile;
+    }
+
+    const headerProfile = req.headers['x-bridge-profile'];
+    if (headerProfile) {
+        const profile = readProfileCached(headerProfile);
+        if (profile) return profile;
+    }
+
+    if (model && model.includes('/')) {
+        const slashIdx = model.indexOf('/');
+        const maybeProfile = model.slice(0, slashIdx);
+        const cachedProfile = readProfileCached(maybeProfile);
+        if (cachedProfile) {
+            return { ...cachedProfile, _extractedModel: model.slice(slashIdx + 1) };
+        }
+    }
+
+    if (runtimeConfig.defaultProfile) {
+        const profile = readProfileCached(runtimeConfig.defaultProfile);
+        if (profile) return profile;
+    }
+
+    return null;
+}
+
+// ============================================================
+// System Prompt 劫持逻辑（带参数版本）
+// ============================================================
+
+function applySystemPromptHijackWithConfig(messages, systemPrompt, hijackMode) {
+    if (!systemPrompt || hijackMode === 'off') {
+        return messages;
+    }
+
+    const result = [...messages];
+    const injected = { role: 'system', content: systemPrompt };
+
+    switch (hijackMode) {
+        case 'replace':
+            const nonSystem = result.filter(m => m.role !== 'system');
+            return [injected, ...nonSystem];
+
+        case 'prepend':
+            return [injected, ...result];
+
+        case 'append': {
+            const lastSystemIdx = result.reduce((acc, m, i) => m.role === 'system' ? i : acc, -1);
+            if (lastSystemIdx >= 0) {
+                result.splice(lastSystemIdx + 1, 0, injected);
+            } else {
+                result.unshift(injected);
+            }
+            return result;
+        }
+
+        case 'merge': {
+            const systemContents = [
+                injected.content,
+                ...result
+                    .filter(m => m.role === 'system')
+                    .map(m => m.content)
+                    .filter(content => typeof content === 'string' && content.trim())
+            ];
+            const mergedSystem = { role: 'system', content: systemContents.join('\n\n') };
+            const nonSys = result.filter(m => m.role !== 'system');
+            return [mergedSystem, ...nonSys];
+        }
+
+        default:
+            return result;
+    }
+}
+
+// ============================================================
+// System Prompt 劫持逻辑
+// ============================================================
+
+function applySystemPromptHijack(messages) {
+    if (!runtimeConfig.systemPrompt || runtimeConfig.hijackMode === 'off') {
+        return messages;
+    }
+
+    const result = [...messages];
+    const injected = { role: 'system', content: runtimeConfig.systemPrompt };
+
+    switch (runtimeConfig.hijackMode) {
+        case 'replace':
+            // 移除所有 system 消息，替换为我们的
+            const nonSystem = result.filter(m => m.role !== 'system');
+            return [injected, ...nonSystem];
+
+        case 'prepend':
+            // 在第一条 system 消息之前插入
+            return [injected, ...result];
+
+        case 'append': {
+            // 在最后一条 system 消息之后插入
+            const lastSystemIdx = result.reduce((acc, m, i) => m.role === 'system' ? i : acc, -1);
+            if (lastSystemIdx >= 0) {
+                result.splice(lastSystemIdx + 1, 0, injected);
+            } else {
+                result.unshift(injected);
+            }
+            return result;
+        }
+
+        case 'merge': {
+            // 合并所有 system 消息为一条置顶 system；注入提示词优先，然后按原消息顺序拼接已有 system。
+            const systemContents = [
+                injected.content,
+                ...result
+                    .filter(m => m.role === 'system')
+                    .map(m => m.content)
+                    .filter(content => typeof content === 'string' && content.trim())
+            ];
+            const mergedSystem = { role: 'system', content: systemContents.join('\n\n') };
+            const nonSystem = result.filter(m => m.role !== 'system');
+            return [mergedSystem, ...nonSystem];
+        }
+
+        default:
+            return result;
+    }
+}
+
+// ============================================================
+// 消息提取（各协议 → 统一 messages 数组）
+// ============================================================
+
+function normalizeTextContent(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content.map(item => {
+            if (typeof item === 'string') return item;
+            if (item?.type === 'text' && typeof item.text === 'string') return item.text;
+            if (item?.type === 'input_text' && typeof item.text === 'string') return item.text;
+            if (item?.type === 'output_text' && typeof item.text === 'string') return item.text;
+            return '';
+        }).filter(Boolean).join('\n');
+    }
+    return '';
+}
+
+function extractFromResponsesInput(input) {
+    if (typeof input === 'string') return [{ role: 'user', content: input }];
+    if (!Array.isArray(input)) return [];
+    const messages = [];
+    for (const item of input) {
+        if (!item || typeof item !== 'object') continue;
+        let role = item.role || (item.type === 'message' ? 'user' : null);
+        if (role === 'developer') role = 'system';
+        const content = normalizeTextContent(item.content || item.output);
+        if (role && content) messages.push({ role, content });
+    }
+    return messages;
+}
+
+function extractFromAnthropicBody(body) {
+    const messages = [];
+    // system
+    if (body.system) {
+        const sys = typeof body.system === 'string' ? body.system
+            : Array.isArray(body.system) ? body.system.map(i => i?.text || '').filter(Boolean).join('\n')
+                : '';
+        if (sys) messages.push({ role: 'system', content: sys });
+    }
+    // messages
+    if (Array.isArray(body.messages)) {
+        for (const m of body.messages) {
+            const content = normalizeTextContent(m.content);
+            if (m.role && content) messages.push({ role: m.role, content });
+        }
+    }
+    return messages;
+}
+
+function extractFromGeminiBody(body) {
+    const messages = [];
+    // systemInstruction
+    if (body.systemInstruction?.parts) {
+        const sys = body.systemInstruction.parts.map(p => p?.text || '').filter(Boolean).join('\n');
+        if (sys) messages.push({ role: 'system', content: sys });
+    }
+    // contents
+    if (Array.isArray(body.contents)) {
+        for (const c of body.contents) {
+            const role = c.role === 'model' ? 'assistant' : 'user';
+            const text = normalizeTextContent(c.parts);
+            if (text) messages.push({ role, content: text });
+        }
+    }
+    return messages;
+}
+
+// ============================================================
+// 上游请求构建（统一 messages → 目标协议格式）
+// ============================================================
+
+function buildUpstreamChatBody(messages, model, body) {
     const result = {
-        model: resolveModel(model, config),
+        model: resolveModel(model),
         messages,
         stream: body.stream === true,
         ...(body.temperature !== undefined && { temperature: body.temperature }),
         ...(body.top_p !== undefined && { top_p: body.top_p }),
-        ...(body.max_tokens !== undefined && { max_tokens: body.max_tokens }),
-        ...(body.max_completion_tokens !== undefined && { max_completion_tokens: body.max_completion_tokens })
+        ...(body.max_tokens !== undefined && { max_tokens: body.max_tokens })
     };
     return attachProtectedChatToolFields(result, body);
 }
 
-function buildUpstreamAnthropicBody(messages, model, body = {}, config = runtimeConfig) {
-    const system = messages.filter(message => message.role === 'system').map(message => message.content).join('\n\n');
-    const nonSystem = messages.filter(message => message.role !== 'system').map(message => ({
-        role: message.role === 'assistant' ? 'assistant' : 'user',
-        content: message.content
+function buildUpstreamAnthropicBody(messages, model, body) {
+    const system = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+    const nonSystem = messages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content
     }));
     const result = {
-        model: resolveModel(model, config),
+        model: resolveModel(model),
         messages: nonSystem,
         max_tokens: body.max_tokens || body.max_output_tokens || 4096,
         stream: body.stream === true
@@ -487,783 +835,142 @@ function buildUpstreamAnthropicBody(messages, model, body = {}, config = runtime
     return attachProtectedAnthropicToolFields(result, body);
 }
 
-function buildUpstreamGeminiBody(messages, _model, body = {}) {
-    const system = messages.filter(message => message.role === 'system').map(message => message.content).join('\n\n');
-    const contents = messages.filter(message => message.role !== 'system').map(message => ({
-        role: message.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: message.content }]
+function buildUpstreamGeminiBody(messages, model, body) {
+    const system = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+    const contents = messages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
     }));
     const result = { contents };
     if (system) result.systemInstruction = { parts: [{ text: system }] };
-    const generationConfig = {};
-    if (body.temperature !== undefined) generationConfig.temperature = body.temperature;
-    if (body.top_p !== undefined) generationConfig.topP = body.top_p;
+    const genConfig = {};
+    if (body.temperature !== undefined) genConfig.temperature = body.temperature;
+    if (body.top_p !== undefined) genConfig.topP = body.top_p;
     if (body.max_tokens !== undefined || body.max_output_tokens !== undefined) {
-        generationConfig.maxOutputTokens = body.max_output_tokens || body.max_tokens;
+        genConfig.maxOutputTokens = body.max_output_tokens || body.max_tokens;
     }
-    if (Object.keys(generationConfig).length > 0) result.generationConfig = generationConfig;
+    if (Object.keys(genConfig).length > 0) result.generationConfig = genConfig;
     return attachProtectedGeminiToolFields(result, body);
 }
 
-function resolveUpstreamEndpoint(model, stream, config = runtimeConfig) {
-    if (config.upstreamType === 'responses') {
-        return { url: `${config.upstreamUrl}/v1/responses`, type: 'responses' };
+// ============================================================
+// 上游路由解析
+// ============================================================
+
+function resolveUpstreamEndpoint(model, stream) {
+    const type = runtimeConfig.upstreamType;
+    const base = runtimeConfig.upstreamUrl;
+
+    if (type === 'anthropic') {
+        return { url: `${base}/v1/messages`, type: 'anthropic' };
     }
-    if (config.upstreamType === 'anthropic') {
-        return { url: `${config.upstreamUrl}/v1/messages`, type: 'anthropic' };
-    }
-    if (config.upstreamType === 'gemini') {
-        const resolvedModel = encodeURIComponent(resolveModel(model, config));
+    if (type === 'gemini') {
+        const m = encodeURIComponent(resolveModel(model));
         const action = stream ? 'streamGenerateContent' : 'generateContent';
-        return { url: `${config.upstreamUrl}/v1beta/models/${resolvedModel}:${action}`, type: 'gemini' };
+        return { url: `${base}/v1beta/models/${m}:${action}`, type: 'gemini' };
     }
-    return { url: `${config.upstreamUrl}/v1/chat/completions`, type: 'chat' };
+    return { url: `${base}/v1/chat/completions`, type: 'chat' };
 }
 
-function normalizeResponseTextContent(content, textType = 'input_text') {
-    if (Array.isArray(content)) {
-        return content.map(part => {
-            if (part && typeof part === 'object' && typeof part.type === 'string') return part;
-            return { type: textType, text: normalizeTextContent(part) };
-        });
+// ============================================================
+// 核心代理逻辑
+// ============================================================
+
+async function proxyRequest(req, res, { messages, model, body, downstreamFormat }) {
+    // 0. 解析 Profile（请求级动态切换）
+    const profileConfig = resolveProfileForRequest(req, model);
+
+    // 如果 profile 通过 model 前缀提取了真实 model，使用它
+    const effectiveModel = profileConfig?._extractedModel || model;
+
+    // 1. 应用 system prompt 劫持（使用 profile 配置或全局兜底）
+    let hijackedMessages;
+    if (profileConfig && profileConfig.systemPrompt) {
+        const resolvedPrompt = resolveSystemPrompt(profileConfig.systemPrompt);
+        const resolvedMode = profileConfig.hijackMode || runtimeConfig.hijackMode;
+        hijackedMessages = applySystemPromptHijackWithConfig(messages, resolvedPrompt, resolvedMode);
+        if (runtimeConfig.debugMode) {
+            console.log(`[VCPBridgeServer] Using profile "${profileConfig.name}" | mode=${resolvedMode} | prompt=${profileConfig.systemPrompt.substring(0, 40)}...`);
+        }
+    } else {
+        hijackedMessages = applySystemPromptHijack(messages);
     }
-    return [{ type: textType, text: normalizeTextContent(content) }];
-}
 
-function buildResponsesInputFromMessages(messages) {
-    return messages
-        .filter(message => message.role !== 'system')
-        .map(message => ({
-            type: 'message',
-            role: message.role === 'assistant' ? 'assistant' : 'user',
-            content: normalizeResponseTextContent(message.content, message.role === 'assistant' ? 'output_text' : 'input_text')
-        }));
-}
+    // 如果 profile 有 modelOverride，优先使用
+    const finalModel = profileConfig?.modelOverride || effectiveModel;
 
-function buildUpstreamResponsesBody(messages, model, body = {}, config = runtimeConfig) {
-    const systemPrompt = messages
-        .filter(message => message.role === 'system')
-        .map(message => normalizeTextContent(message.content))
-        .filter(Boolean)
-        .join('\n\n');
-    const upstreamBody = {
-        ...body,
-        model: resolveModel(model, config),
-        store: body.store === undefined ? false : body.store
-    };
-
-    if (systemPrompt) upstreamBody.instructions = systemPrompt;
-    upstreamBody.input = buildResponsesInputFromMessages(messages);
-    upstreamBody.stream = body.stream === true;
-
-    return upstreamBody;
-}
-
-function buildUpstreamRequest({ messages, model, body = {}, requestHeaders = {}, downstreamFormat = 'chat' }, config = runtimeConfig) {
-    const hijackedMessages = applySystemPromptHijack(messages, config);
+    // 2. 解析上游端点
     const stream = body.stream === true;
-    const endpoint = resolveUpstreamEndpoint(model, stream, config);
+    const endpoint = resolveUpstreamEndpoint(finalModel, stream);
+
+    // 3. 构建上游请求体
     let upstreamBody;
-
-    if (endpoint.type === 'responses') {
-        upstreamBody = buildUpstreamResponsesBody(hijackedMessages, model, body, config);
-    } else if (endpoint.type === 'anthropic') {
-        upstreamBody = buildUpstreamAnthropicBody(hijackedMessages, model, body, config);
-    } else if (endpoint.type === 'gemini') {
-        upstreamBody = buildUpstreamGeminiBody(hijackedMessages, model, body, config);
-    } else {
-        upstreamBody = buildUpstreamChatBody(hijackedMessages, model, body, config);
+    switch (endpoint.type) {
+        case 'anthropic':
+            upstreamBody = buildUpstreamAnthropicBody(hijackedMessages, finalModel, body);
+            break;
+        case 'gemini':
+            upstreamBody = buildUpstreamGeminiBody(hijackedMessages, finalModel, body);
+            break;
+        default:
+            upstreamBody = buildUpstreamChatBody(hijackedMessages, finalModel, body);
     }
 
+    // 4. 构建请求头
+    const requestToken = extractBearerToken(req.headers.authorization);
+    const upstreamKey = runtimeConfig.upstreamKey || requestToken;
     const headers = { 'Content-Type': 'application/json' };
-    if (endpoint.type === 'responses') {
-        headers.Accept = body.stream === true ? 'text/event-stream' : 'application/json';
-        const chatKey = config.upstreamKey || extractBearerToken(requestHeaders.authorization);
-        if (chatKey) headers.Authorization = `Bearer ${chatKey}`;
-    } else if (endpoint.type === 'anthropic') {
-        headers['anthropic-version'] = requestHeaders['anthropic-version'] || '2023-06-01';
-        const anthropicKey = config.upstreamKey || requestHeaders['x-api-key'];
-        if (anthropicKey) headers['x-api-key'] = anthropicKey;
-    } else if (endpoint.type === 'gemini') {
-        const geminiKey = config.upstreamKey || requestHeaders['x-goog-api-key'];
-        if (geminiKey) headers['x-goog-api-key'] = geminiKey;
-    } else {
-        const chatKey = config.upstreamKey || extractBearerToken(requestHeaders.authorization);
-        if (chatKey) headers.Authorization = `Bearer ${chatKey}`;
+
+    if (upstreamKey) headers.Authorization = `Bearer ${upstreamKey}`;
+    if (endpoint.type === 'anthropic') {
+        headers['anthropic-version'] = req.headers['anthropic-version'] || '2023-06-01';
+        if (req.headers['x-api-key']) headers['x-api-key'] = req.headers['x-api-key'];
+    }
+    if (req.headers['x-goog-api-key']) headers['x-goog-api-key'] = req.headers['x-goog-api-key'];
+
+    if (runtimeConfig.debugMode) {
+        console.log(`[VCPBridgeServer] ${downstreamFormat} → ${endpoint.type} | ${endpoint.url} | hijack=${runtimeConfig.hijackMode}`);
     }
 
-    return { endpoint, headers, upstreamBody, downstreamFormat };
-}
-
-function extractTextFromUpstreamPayload(payload, upstreamType) {
-    if (!payload || typeof payload !== 'object') return '';
-    if (upstreamType === 'anthropic') {
-        const content = Array.isArray(payload.content) ? payload.content : [];
-        return content.map(item => item?.text || '').filter(Boolean).join('\n');
-    }
-    if (upstreamType === 'gemini') {
-        const parts = payload.candidates?.[0]?.content?.parts;
-        return normalizeTextContent(parts);
-    }
-    if (upstreamType === 'responses') {
-        if (typeof payload.output_text === 'string' && payload.output_text) return payload.output_text;
-        return extractFromResponsesOutput(payload.output);
-    }
-    return payload.choices?.map(choice => choice?.message?.content || '').filter(Boolean).join('\n') || '';
-}
-
-function extractUsageFromUpstreamPayload(payload, upstreamType) {
-    if (!payload || typeof payload !== 'object') return {};
-    if (upstreamType === 'anthropic') {
-        return {
-            input_tokens: payload.usage?.input_tokens || 0,
-            output_tokens: payload.usage?.output_tokens || 0,
-            total_tokens: (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0)
-        };
-    }
-    if (upstreamType === 'gemini') {
-        return {
-            input_tokens: payload.usageMetadata?.promptTokenCount || 0,
-            output_tokens: payload.usageMetadata?.candidatesTokenCount || 0,
-            total_tokens: payload.usageMetadata?.totalTokenCount || 0
-        };
-    }
-    if (upstreamType === 'responses') {
-        return {
-            input_tokens: payload.usage?.input_tokens || payload.usage?.prompt_tokens || 0,
-            output_tokens: payload.usage?.output_tokens || payload.usage?.completion_tokens || 0,
-            total_tokens: payload.usage?.total_tokens ||
-                (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0)
-        };
-    }
-    return {
-        input_tokens: payload.usage?.prompt_tokens || 0,
-        output_tokens: payload.usage?.completion_tokens || 0,
-        total_tokens: payload.usage?.total_tokens || 0
-    };
-}
-
-function buildResponsesPayloadFromUpstream(payload, upstreamType) {
-    const text = extractTextFromUpstreamPayload(payload, upstreamType);
-    const usage = extractUsageFromUpstreamPayload(payload, upstreamType);
-    const created = payload?.created || Math.floor(Date.now() / 1000);
-    const responseId = payload?.id && String(payload.id).startsWith('resp_')
-        ? payload.id
-        : `resp_${payload?.id || created}`;
-    const itemId = `msg_${responseId.replace(/^resp_/, '')}`;
-    return {
-        id: responseId,
-        object: 'response',
-        created_at: created,
-        status: 'completed',
-        error: null,
-        incomplete_details: null,
-        model: payload?.model || runtimeConfig?.defaultModel || DEFAULT_MODEL,
-        output: [
-            {
-                id: itemId,
-                type: 'message',
-                status: 'completed',
-                role: 'assistant',
-                content: [
-                    {
-                        type: 'output_text',
-                        text,
-                        annotations: []
-                    }
-                ]
-            }
-        ],
-        output_text: text,
-        usage
-    };
-}
-
-function buildChatPayloadFromUpstream(payload, upstreamType) {
-    const text = extractTextFromUpstreamPayload(payload, upstreamType);
-    const usage = extractUsageFromUpstreamPayload(payload, upstreamType);
-    const created = payload?.created || Math.floor(Date.now() / 1000);
-    const responseId = payload?.id && String(payload.id).startsWith('chatcmpl-')
-        ? payload.id
-        : `chatcmpl-${payload?.id || created}`;
-    return {
-        id: responseId,
-        object: 'chat.completion',
-        created,
-        model: payload?.model || runtimeConfig?.defaultModel || DEFAULT_MODEL,
-        choices: [
-            {
-                index: 0,
-                message: {
-                    role: 'assistant',
-                    content: text
-                },
-                finish_reason: 'stop'
-            }
-        ],
-        usage: {
-            prompt_tokens: usage.input_tokens || 0,
-            completion_tokens: usage.output_tokens || 0,
-            total_tokens: usage.total_tokens || 0
-        }
-    };
-}
-
-function buildAnthropicPayloadFromUpstream(payload, upstreamType) {
-    const text = extractTextFromUpstreamPayload(payload, upstreamType);
-    const usage = extractUsageFromUpstreamPayload(payload, upstreamType);
-    return {
-        id: payload?.id || `msg_${Date.now()}`,
-        type: 'message',
-        role: 'assistant',
-        model: payload?.model || runtimeConfig?.defaultModel || DEFAULT_MODEL,
-        content: [{ type: 'text', text }],
-        stop_reason: 'end_turn',
-        stop_sequence: null,
-        usage: {
-            input_tokens: usage.input_tokens || 0,
-            output_tokens: usage.output_tokens || 0
-        }
-    };
-}
-
-function buildGeminiPayloadFromUpstream(payload, upstreamType) {
-    const text = extractTextFromUpstreamPayload(payload, upstreamType);
-    const usage = extractUsageFromUpstreamPayload(payload, upstreamType);
-    return {
-        candidates: [
-            {
-                content: {
-                    role: 'model',
-                    parts: [{ text }]
-                },
-                finishReason: 'STOP',
-                index: 0
-            }
-        ],
-        usageMetadata: {
-            promptTokenCount: usage.input_tokens || 0,
-            candidatesTokenCount: usage.output_tokens || 0,
-            totalTokenCount: usage.total_tokens || 0
-        }
-    };
-}
-
-function transformUpstreamJsonPayload(payload, upstreamType, downstreamFormat) {
-    if (downstreamFormat === upstreamType) {
-        return payload;
-    }
-    if (downstreamFormat === 'chat') {
-        return buildChatPayloadFromUpstream(payload, upstreamType);
-    }
-    if (downstreamFormat === 'responses') {
-        return buildResponsesPayloadFromUpstream(payload, upstreamType);
-    }
-    if (downstreamFormat === 'anthropic') {
-        return buildAnthropicPayloadFromUpstream(payload, upstreamType);
-    }
-    if (downstreamFormat === 'gemini') {
-        return buildGeminiPayloadFromUpstream(payload, upstreamType);
-    }
-    return payload;
-}
-
-function createResponsesStreamEvent(type, data) {
-    return `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
-}
-
-function buildSuppressedResponsesPayload(model, text) {
-    const created = Math.floor(Date.now() / 1000);
-    const responseId = `resp_suppressed_${created}`;
-    const itemId = `msg_suppressed_${created}`;
-    return {
-        id: responseId,
-        object: 'response',
-        created_at: created,
-        status: 'completed',
-        model: model || runtimeConfig?.defaultModel || DEFAULT_MODEL,
-        output: [
-            {
-                id: itemId,
-                type: 'message',
-                status: 'completed',
-                role: 'assistant',
-                content: [{ type: 'output_text', text, annotations: [] }]
-            }
-        ],
-        output_text: text,
-        usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
-        metadata: {
-            vcp_bridge_suppressed_duplicate: true
-        }
-    };
-}
-
-function buildSuppressedResponsesSse(payload) {
-    const item = payload.output[0];
-    const part = item.content[0];
-    return [
-        createResponsesStreamEvent('response.created', {
-            response: {
-                id: payload.id,
-                object: payload.object,
-                created_at: payload.created_at,
-                status: 'in_progress',
-                model: payload.model,
-                output: []
-            }
-        }),
-        createResponsesStreamEvent('response.output_item.added', {
-            output_index: 0,
-            item: { id: item.id, type: item.type, status: 'in_progress', role: item.role, content: [] }
-        }),
-        createResponsesStreamEvent('response.content_part.added', {
-            item_id: item.id,
-            output_index: 0,
-            content_index: 0,
-            part: { type: part.type, text: '', annotations: [] }
-        }),
-        createResponsesStreamEvent('response.output_text.delta', {
-            item_id: item.id,
-            output_index: 0,
-            content_index: 0,
-            delta: payload.output_text
-        }),
-        createResponsesStreamEvent('response.output_text.done', {
-            item_id: item.id,
-            output_index: 0,
-            content_index: 0,
-            text: payload.output_text
-        }),
-        createResponsesStreamEvent('response.content_part.done', {
-            item_id: item.id,
-            output_index: 0,
-            content_index: 0,
-            part
-        }),
-        createResponsesStreamEvent('response.output_item.done', {
-            output_index: 0,
-            item
-        }),
-        createResponsesStreamEvent('response.completed', {
-            response: payload
-        }),
-        'data: [DONE]\n\n'
-    ].join('');
-}
-
-function sendSuppressedResponsesResult(res, { model, stream }) {
-    const payload = buildSuppressedResponsesPayload(
-        model,
-        '[VCPBridgeServer] Duplicate /v1/responses request suppressed by opt-in retry guard.'
-    );
-    if (!stream) {
-        return res.status(200).json(payload);
-    }
-    res.status(200);
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    return res.send(buildSuppressedResponsesSse(payload));
-}
-
-function createChatStreamChunk(id, created, model, content, finishReason = null) {
-    return {
-        id,
-        object: 'chat.completion.chunk',
-        created,
-        model,
-        choices: [
-            {
-                index: 0,
-                delta: content ? { content } : {},
-                finish_reason: finishReason
-            }
-        ]
-    };
-}
-
-function extractStreamingTextDelta(payload, upstreamType) {
-    if (!payload || typeof payload !== 'object') return '';
-    if (upstreamType === 'anthropic') {
-        if (payload.type === 'content_block_delta') {
-            return payload.delta?.text || '';
-        }
-        return normalizeTextContent(payload.content);
-    }
-    if (upstreamType === 'gemini') {
-        return normalizeTextContent(payload.candidates?.[0]?.content?.parts);
-    }
-    if (upstreamType === 'responses') {
-        if (payload.type === 'response.output_text.delta' && typeof payload.delta === 'string') {
-            return payload.delta;
-        }
-        if (typeof payload.delta === 'string') {
-            return payload.delta;
-        }
-        return '';
-    }
-    return payload.choices?.map(choice => choice?.delta?.content || '').join('') || '';
-}
-
-function transformUpstreamSseToChatSse(sseText, upstreamType) {
-    const created = Math.floor(Date.now() / 1000);
-    const responseId = `chatcmpl-${created}`;
-    let model = runtimeConfig?.defaultModel || DEFAULT_MODEL;
-    const lines = [];
-
-    for (const rawLine of String(sseText || '').split(/\r?\n/)) {
-        const line = rawLine.trim();
-        if (!line.startsWith('data:')) continue;
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
-        try {
-            const chunk = JSON.parse(data);
-            if (chunk.model) model = chunk.model;
-            if (chunk.message?.model) model = chunk.message.model;
-            const delta = extractStreamingTextDelta(chunk, upstreamType);
-            if (!delta) continue;
-            lines.push(`data: ${JSON.stringify(createChatStreamChunk(responseId, created, model, delta))}\n\n`);
-        } catch (_error) {}
-    }
-
-    lines.push(`data: ${JSON.stringify(createChatStreamChunk(responseId, created, model, '', 'stop'))}\n\n`);
-    lines.push('data: [DONE]\n\n');
-    return lines.join('');
-}
-
-function transformChatSseToResponsesSse(sseText) {
-    const created = Math.floor(Date.now() / 1000);
-    const responseId = `resp_${created}`;
-    const itemId = `msg_${created}`;
-    const deltas = [];
-    let model = runtimeConfig?.defaultModel || DEFAULT_MODEL;
-    const events = [
-        createResponsesStreamEvent('response.created', {
-            response: {
-                id: responseId,
-                object: 'response',
-                created_at: created,
-                status: 'in_progress',
-                model,
-                output: []
-            }
-        }),
-        createResponsesStreamEvent('response.output_item.added', {
-            output_index: 0,
-            item: {
-                id: itemId,
-                type: 'message',
-                status: 'in_progress',
-                role: 'assistant',
-                content: []
-            }
-        }),
-        createResponsesStreamEvent('response.content_part.added', {
-            item_id: itemId,
-            output_index: 0,
-            content_index: 0,
-            part: { type: 'output_text', text: '', annotations: [] }
-        })
-    ];
-
-    for (const rawLine of String(sseText || '').split(/\r?\n/)) {
-        const line = rawLine.trim();
-        if (!line.startsWith('data:')) continue;
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
-        try {
-            const chunk = JSON.parse(data);
-            if (chunk.model) model = chunk.model;
-            const delta = chunk.choices?.map(choice => choice?.delta?.content || '').join('') || '';
-            if (!delta) continue;
-            deltas.push(delta);
-            events.push(createResponsesStreamEvent('response.output_text.delta', {
-                item_id: itemId,
-                output_index: 0,
-                content_index: 0,
-                delta
-            }));
-        } catch (_error) {}
-    }
-
-    const text = deltas.join('');
-    events.push(
-        createResponsesStreamEvent('response.output_text.done', {
-            item_id: itemId,
-            output_index: 0,
-            content_index: 0,
-            text
-        }),
-        createResponsesStreamEvent('response.content_part.done', {
-            item_id: itemId,
-            output_index: 0,
-            content_index: 0,
-            part: { type: 'output_text', text, annotations: [] }
-        }),
-        createResponsesStreamEvent('response.output_item.done', {
-            output_index: 0,
-            item: {
-                id: itemId,
-                type: 'message',
-                status: 'completed',
-                role: 'assistant',
-                content: [{ type: 'output_text', text, annotations: [] }]
-            }
-        }),
-        createResponsesStreamEvent('response.completed', {
-            response: {
-                id: responseId,
-                object: 'response',
-                created_at: created,
-                status: 'completed',
-                model,
-                output: [
-                    {
-                        id: itemId,
-                        type: 'message',
-                        status: 'completed',
-                        role: 'assistant',
-                        content: [{ type: 'output_text', text, annotations: [] }]
-                    }
-                ],
-                output_text: text
-            }
-        }),
-        'data: [DONE]\n\n'
-    );
-    return events.join('');
-}
-
-async function writeSseChunk(res, text) {
-    if (!text) return;
-    if (!res.write(text)) {
-        await once(res, 'drain');
-    }
-}
-
-async function readSseLines(readable, onLine) {
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    for await (const chunk of readable) {
-        buffer += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-            await onLine(line);
-        }
-    }
-
-    buffer += decoder.decode();
-    if (buffer) {
-        await onLine(buffer);
-    }
-}
-
-async function streamUpstreamSseToChatSse(readable, upstreamType, res) {
-    const created = Math.floor(Date.now() / 1000);
-    const responseId = `chatcmpl-${created}`;
-    let model = runtimeConfig?.defaultModel || DEFAULT_MODEL;
-
-    await readSseLines(readable, async rawLine => {
-        const line = rawLine.trim();
-        if (!line.startsWith('data:')) return;
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') return;
-        try {
-            const chunk = JSON.parse(data);
-            if (chunk.model) model = chunk.model;
-            if (chunk.message?.model) model = chunk.message.model;
-            const delta = extractStreamingTextDelta(chunk, upstreamType);
-            if (!delta) return;
-            await writeSseChunk(res, `data: ${JSON.stringify(createChatStreamChunk(responseId, created, model, delta))}\n\n`);
-        } catch (_error) {}
-    });
-
-    await writeSseChunk(res, `data: ${JSON.stringify(createChatStreamChunk(responseId, created, model, '', 'stop'))}\n\n`);
-    await writeSseChunk(res, 'data: [DONE]\n\n');
-    res.end();
-}
-
-async function streamChatSseToResponsesSse(readable, res) {
-    const created = Math.floor(Date.now() / 1000);
-    const responseId = `resp_${created}`;
-    const itemId = `msg_${created}`;
-    const deltas = [];
-    let model = runtimeConfig?.defaultModel || DEFAULT_MODEL;
-
-    await writeSseChunk(res, [
-        createResponsesStreamEvent('response.created', {
-            response: {
-                id: responseId,
-                object: 'response',
-                created_at: created,
-                status: 'in_progress',
-                model,
-                output: []
-            }
-        }),
-        createResponsesStreamEvent('response.output_item.added', {
-            output_index: 0,
-            item: {
-                id: itemId,
-                type: 'message',
-                status: 'in_progress',
-                role: 'assistant',
-                content: []
-            }
-        }),
-        createResponsesStreamEvent('response.content_part.added', {
-            item_id: itemId,
-            output_index: 0,
-            content_index: 0,
-            part: { type: 'output_text', text: '', annotations: [] }
-        })
-    ].join(''));
-
-    await readSseLines(readable, async rawLine => {
-        const line = rawLine.trim();
-        if (!line.startsWith('data:')) return;
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') return;
-        try {
-            const chunk = JSON.parse(data);
-            if (chunk.model) model = chunk.model;
-            const delta = chunk.choices?.map(choice => choice?.delta?.content || '').join('') || '';
-            if (!delta) return;
-            deltas.push(delta);
-            await writeSseChunk(res, createResponsesStreamEvent('response.output_text.delta', {
-                item_id: itemId,
-                output_index: 0,
-                content_index: 0,
-                delta
-            }));
-        } catch (_error) {}
-    });
-
-    const text = deltas.join('');
-    await writeSseChunk(res, [
-        createResponsesStreamEvent('response.output_text.done', {
-            item_id: itemId,
-            output_index: 0,
-            content_index: 0,
-            text
-        }),
-        createResponsesStreamEvent('response.content_part.done', {
-            item_id: itemId,
-            output_index: 0,
-            content_index: 0,
-            part: { type: 'output_text', text, annotations: [] }
-        }),
-        createResponsesStreamEvent('response.output_item.done', {
-            output_index: 0,
-            item: {
-                id: itemId,
-                type: 'message',
-                status: 'completed',
-                role: 'assistant',
-                content: [{ type: 'output_text', text, annotations: [] }]
-            }
-        }),
-        createResponsesStreamEvent('response.completed', {
-            response: {
-                id: responseId,
-                object: 'response',
-                created_at: created,
-                status: 'completed',
-                model,
-                output: [
-                    {
-                        id: itemId,
-                        type: 'message',
-                        status: 'completed',
-                        role: 'assistant',
-                        content: [{ type: 'output_text', text, annotations: [] }]
-                    }
-                ],
-                output_text: text
-            }
-        }),
-        'data: [DONE]\n\n'
-    ].join(''));
-    res.end();
-}
-
-function shouldTransformResponse(upstreamType, downstreamFormat) {
-    return downstreamFormat !== upstreamType;
-}
-
-async function proxyRequest(req, res, payload) {
-    const config = runtimeConfig;
-    const { endpoint, headers, upstreamBody, downstreamFormat } = buildUpstreamRequest({
-        ...payload,
-        requestHeaders: req.headers
-    }, config);
-
-    if (config.debugMode) {
-        console.log(`[VCPBridgeServer] ${downstreamFormat} -> ${endpoint.type} | ${sanitizeUrlForLog(endpoint.url)} | hijack=${config.hijackMode}`);
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+    // 5. 发送请求
     let upstreamResponse;
     try {
-        upstreamResponse = await config.fetchImpl(endpoint.url, {
+        upstreamResponse = await fetch(endpoint.url, {
             method: 'POST',
             headers,
-            body: JSON.stringify(upstreamBody),
-            signal: controller.signal
+            body: JSON.stringify(upstreamBody)
         });
-    } catch (error) {
-        const message = error?.name === 'AbortError' ? 'Upstream fetch timed out' : `Upstream fetch failed: ${error.message}`;
-        return res.status(502).json({ error: { message, type: 'upstream_error' } });
-    } finally {
-        clearTimeout(timeout);
+    } catch (err) {
+        return res.status(502).json({ error: { message: `Upstream fetch failed: ${err.message}`, type: 'upstream_error' } });
     }
 
-    const contentType = upstreamResponse.headers.get('content-type') || '';
-    const shouldTransform = upstreamResponse.ok && shouldTransformResponse(endpoint.type, downstreamFormat);
+    // 6. Responses API 下游必须返回 Responses 格式，不能裸透传 chat/anthropic/gemini SSE。
+    if (downstreamFormat === 'responses') {
+        const fallbackModel = resolveModel(finalModel);
+        if (stream && upstreamResponse.body) {
+            return sendResponsesStreamFromProtocol(res, upstreamResponse, {
+                model: fallbackModel,
+                apiType: endpoint.type
+            });
+        }
+        return sendResponsesJsonFromProtocol(res, upstreamResponse, {
+            model: fallbackModel,
+            apiType: endpoint.type
+        });
+    }
+
+    // 7. 其他协议暂时透传响应（保持原始格式，不做响应转换）
     res.status(upstreamResponse.status);
     upstreamResponse.headers.forEach((value, key) => {
         const lower = key.toLowerCase();
-        if (!['content-encoding', 'transfer-encoding', 'content-length'].includes(lower)) {
+        if (lower !== 'content-encoding' && lower !== 'transfer-encoding' && lower !== 'content-length') {
             res.setHeader(key, value);
         }
     });
 
-    if (shouldTransform) {
-        if (contentType.includes('text/event-stream') && upstreamResponse.body && endpoint.type === 'chat' && downstreamFormat === 'responses') {
-            res.setHeader('content-type', 'text/event-stream; charset=utf-8');
-            if (typeof res.flushHeaders === 'function') res.flushHeaders();
-            return streamChatSseToResponsesSse(upstreamResponse.body, res);
-        }
-        if (contentType.includes('text/event-stream') && upstreamResponse.body && downstreamFormat === 'chat') {
-            res.setHeader('content-type', 'text/event-stream; charset=utf-8');
-            if (typeof res.flushHeaders === 'function') res.flushHeaders();
-            return streamUpstreamSseToChatSse(upstreamResponse.body, endpoint.type, res);
-        }
-        const text = await upstreamResponse.text();
-        if (contentType.includes('text/event-stream') && endpoint.type === 'chat' && downstreamFormat === 'responses') {
-            res.setHeader('content-type', 'text/event-stream; charset=utf-8');
-            return res.send(transformChatSseToResponsesSse(text));
-        }
-        if (contentType.includes('text/event-stream') && downstreamFormat === 'chat') {
-            res.setHeader('content-type', 'text/event-stream; charset=utf-8');
-            return res.send(transformUpstreamSseToChatSse(text, endpoint.type));
-        }
-        try {
-            const payloadJson = JSON.parse(text);
-            const transformed = transformUpstreamJsonPayload(payloadJson, endpoint.type, downstreamFormat);
-            res.setHeader('content-type', 'application/json; charset=utf-8');
-            return res.send(JSON.stringify(transformed));
-        } catch (_error) {
-            return res.send(text);
-        }
-    }
-
     if (!upstreamResponse.body) {
-        return res.send(await upstreamResponse.text());
+        const text = await upstreamResponse.text();
+        return res.send(text);
     }
 
     for await (const chunk of upstreamResponse.body) {
@@ -1272,51 +979,92 @@ async function proxyRequest(req, res, payload) {
     res.end();
 }
 
-function createApp() {
+// ============================================================
+// Express 路由
+// ============================================================
+
+function startServer() {
     const app = express();
     app.use(express.json({ limit: '10mb' }));
 
-    app.get('/health', (_req, res) => {
+    // 健康检查
+    app.get('/health', (req, res) => {
         res.json({
             ok: true,
             hijackMode: runtimeConfig.hijackMode,
             hasSystemPrompt: Boolean(runtimeConfig.systemPrompt),
             upstreamType: runtimeConfig.upstreamType,
-            upstreamUrl: sanitizeUrlForLog(runtimeConfig.upstreamUrl),
-            modelMap: runtimeConfig.modelMap
+            upstreamUrl: runtimeConfig.upstreamUrl,
+            modelMap: runtimeConfig.modelMap,
+            configPath: runtimeConfig.configPath
         });
     });
 
+    // ─── Profile-prefixed routes ─────────────────────────────────────────
+    // URL pattern: /v1/:profile/chat/completions, /v1/:profile/responses, etc.
+    // These must be registered BEFORE the standard routes to take priority.
+
+    app.post('/v1/:profile/chat/completions', async (req, res, next) => {
+        const profile = req.params.profile;
+        if (['chat', 'responses', 'messages', 'beta'].includes(profile)) {
+            return next();
+        }
+        req.bridgeProfile = profile;
+        const body = req.body || {};
+        const messages = Array.isArray(body.messages) ? body.messages : [];
+        await proxyRequest(req, res, { messages, model: body.model, body, downstreamFormat: 'chat' });
+    });
+
+    app.post('/v1/:profile/responses', async (req, res, next) => {
+        const profile = req.params.profile;
+        if (['chat', 'responses', 'messages', 'beta'].includes(profile)) {
+            return next();
+        }
+        req.bridgeProfile = profile;
+        const body = req.body || {};
+        const messages = extractFromResponsesInput(body.input);
+        const stream = body.stream === true || String(req.headers.accept || '').includes('text/event-stream');
+        await proxyRequest(req, res, { messages, model: body.model, body: { ...body, stream }, downstreamFormat: 'responses' });
+    });
+
+    app.post('/v1/:profile/messages', async (req, res, next) => {
+        const profile = req.params.profile;
+        if (['chat', 'responses', 'messages', 'beta'].includes(profile)) {
+            return next();
+        }
+        req.bridgeProfile = profile;
+        const body = req.body || {};
+        const messages = extractFromAnthropicBody(body);
+        const stream = body.stream === true || String(req.headers.accept || '').includes('text/event-stream');
+        await proxyRequest(req, res, { messages, model: body.model, body: { ...body, stream }, downstreamFormat: 'anthropic' });
+    });
+
+    // ─── Standard routes (no profile prefix) ─────────────────────────────
+
+    // OpenAI Chat Completions
     app.post('/v1/chat/completions', async (req, res) => {
         const body = req.body || {};
         const messages = Array.isArray(body.messages) ? body.messages : [];
         await proxyRequest(req, res, { messages, model: body.model, body, downstreamFormat: 'chat' });
     });
 
+    // OpenAI Responses API
     app.post('/v1/responses', async (req, res) => {
         const body = req.body || {};
         const messages = extractFromResponsesInput(body.input);
         const stream = body.stream === true || String(req.headers.accept || '').includes('text/event-stream');
-        const requestBody = { ...body, stream };
-        const suppressionKey = getResponsesRetrySuppressionKey(requestBody, messages, stream, runtimeConfig);
-        if (isSuppressedDuplicateResponsesRequest(suppressionKey, runtimeConfig)) {
-            if (runtimeConfig.debugMode) {
-                console.warn(`[VCPBridgeServer] Suppressed duplicate /v1/responses request: ${suppressionKey}`);
-            }
-            return sendSuppressedResponsesResult(res, { model: body.model, stream });
-        }
-        await proxyRequest(req, res, { messages, model: body.model, body: requestBody, downstreamFormat: 'responses' });
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-            rememberSuccessfulResponsesRequest(suppressionKey, runtimeConfig);
-        }
+        await proxyRequest(req, res, { messages, model: body.model, body: { ...body, stream }, downstreamFormat: 'responses' });
     });
 
+    // Anthropic Messages
     app.post('/v1/messages', async (req, res) => {
         const body = req.body || {};
         const messages = extractFromAnthropicBody(body);
-        await proxyRequest(req, res, { messages, model: body.model, body, downstreamFormat: 'anthropic' });
+        const stream = body.stream === true || String(req.headers.accept || '').includes('text/event-stream');
+        await proxyRequest(req, res, { messages, model: body.model, body: { ...body, stream }, downstreamFormat: 'anthropic' });
     });
 
+    // Gemini GenerateContent
     app.post(/^\/v1beta\/models\/(.+):(generateContent|streamGenerateContent)$/, async (req, res) => {
         const body = req.body || {};
         const messages = extractFromGeminiBody(body);
@@ -1325,80 +1073,19 @@ function createApp() {
         await proxyRequest(req, res, { messages, model, body: { ...body, stream }, downstreamFormat: 'gemini' });
     });
 
-    return app;
-}
-
-function startServer() {
-    if (server) return Promise.resolve();
-    const app = createApp();
-    return new Promise((resolve, reject) => {
-        const nextServer = app.listen(runtimeConfig.port, runtimeConfig.bindHost, () => {
-            server = nextServer;
-            console.log(`[VCPBridgeServer] Listening on http://${runtimeConfig.bindHost}:${runtimeConfig.port}`);
-            console.log(`[VCPBridgeServer] Upstream: ${sanitizeUrlForLog(runtimeConfig.upstreamUrl)} (${runtimeConfig.upstreamType})`);
-            if (runtimeConfig.systemPrompt) {
-                console.log(`[VCPBridgeServer] System prompt loaded (${runtimeConfig.systemPrompt.length} chars), mode: ${runtimeConfig.hijackMode}`);
-            }
-            resolve();
-        });
-        nextServer.once('error', reject);
-    });
-}
-
-async function initialize(config = {}, dependencies = {}) {
-    await shutdown();
-    recentResponsesRequests.clear();
-    runtimeConfig = createRuntimeConfig(config, {
-        fetchImpl: dependencies.fetchImpl
-    });
-    if (!runtimeConfig.enabled) {
-        console.log('[VCPBridgeServer] Disabled. Set BRIDGE_ENABLED=true to start the loopback proxy.');
-        return;
-    }
-    await startServer();
-}
-
-function shutdown() {
-    return new Promise(resolve => {
-        if (!server) {
-            resolve();
-            return;
+    // 启动监听
+    const bindHost = (process.env.VCP_BIND_HOST || process.env.BIND_HOST || '0.0.0.0').trim() || '0.0.0.0';
+    server = app.listen(runtimeConfig.port, bindHost, () => {
+        console.log(`[VCPBridgeServer] Prompt hijack proxy listening on http://${bindHost}:${runtimeConfig.port}`);
+        console.log(`[VCPBridgeServer] Upstream: ${runtimeConfig.upstreamUrl} (${runtimeConfig.upstreamType})`);
+        if (runtimeConfig.systemPrompt) {
+            console.log(`[VCPBridgeServer] System prompt loaded (${runtimeConfig.systemPrompt.length} chars), mode: ${runtimeConfig.hijackMode}`);
         }
-        const closingServer = server;
-        server = null;
-        closingServer.close(() => {
-            console.log('[VCPBridgeServer] Server stopped.');
-            resolve();
-        });
     });
 }
 
-module.exports = {
-    initialize,
-    shutdown,
-    _private: {
-        applySystemPromptHijack,
-        buildUpstreamAnthropicBody,
-        buildUpstreamChatBody,
-        buildUpstreamGeminiBody,
-        buildUpstreamResponsesBody,
-        buildUpstreamRequest,
-        buildChatPayloadFromUpstream,
-        buildResponsesPayloadFromUpstream,
-        createRuntimeConfig,
-        extractFromAnthropicBody,
-        extractFromGeminiBody,
-        extractFromResponsesInput,
-        transformChatSseToResponsesSse,
-        transformUpstreamSseToChatSse,
-        transformUpstreamJsonPayload,
-        normalizeApiType,
-        normalizeTextContent,
-        parseModelMap,
-        resolveModel,
-        resolveSystemPrompt,
-        resolveUpstreamEndpoint,
-        sanitizeUrlForLog,
-        isRunning: () => Boolean(server)
-    }
-};
+// ============================================================
+// 导出
+// ============================================================
+
+module.exports = { initialize, shutdown };

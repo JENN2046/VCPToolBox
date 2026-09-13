@@ -10,7 +10,7 @@ const configPath = path.resolve(__dirname, './config.env');
 const rootConfigPath = path.resolve(__dirname, '../../config.env');
 const manifestPath = path.resolve(__dirname, './plugin-manifest.json');
 
-dotenv.config({ path: configPath });
+dotenv.config({ path: configPath, quiet: true });
 
 const {
     VSearchKey: API_KEY,
@@ -172,7 +172,7 @@ const callGroundingMode = async (topic, keyword, showURL = false, deadline, sign
 
 行动指南：
 1. 意图对齐：深入理解【检索目标主题】，确保搜索结果能直接服务于该主题的研究。
-2. 深度检索：利用内置的 googleSearch 工具获取实时信息。
+2. 深度检索：利用内置的 Google Search grounding 工具获取实时信息。
 3. 信息精炼：不要简单堆砌搜索结果。请从网页中提取关键事实、核心数据、专家观点或最新进展。
 4. 语言风格：专业、客观、精炼。
 ${showURL ? '5. 严格溯源：每一条重要信息必须附带来源 URL。如果你使用了引用标记（如 [cite: X]），请确保在回复末尾的 [参考来源] 部分列出这些标记对应的完整 URL。' : '5. 节省Token：除非特别重要，否则不需要在正文中列出 URL 链接。'}`;
@@ -193,7 +193,10 @@ ${showURL ? '5. 严格溯源：每一条重要信息必须附带来源 URL。如
         ],
         stream: false,
         max_tokens: TOKENS,
-        tool_choice: "auto",
+        // NewAPI 的 /v1/chat/completions 兼容层对 Gemini Grounding 的处理更接近
+        // OpenAI-compatible tool 外壳：保留原先可识别的 function/googleSearch 声明，
+        // 但显式关闭 function_calling_config，避免 tool_choice: "auto" 触发
+        // "Function calling config is set without function_declarations."
         tools: [{
             type: "function",
             function: {
@@ -201,7 +204,12 @@ ${showURL ? '5. 严格溯源：每一条重要信息必须附带来源 URL。如
                 description: "从谷歌搜索引擎获取实时信息。",
                 parameters: { type: "object", properties: { query: { type: "string" } } }
             }
-        }]
+        }],
+        tool_config: {
+            function_calling_config: {
+                mode: "NONE"
+            }
+        }
     };
 
     try {
@@ -683,10 +691,18 @@ async function main(request) {
     const { deadline } = await createDeadlineContext();
     log(`启动 VSearch [模式: ${SearchMode}]。主题: "${SearchTopic}"，关键词数量: ${keywordList.length}`);
 
+    // AI 友好型返回：将报告文本包裹进 content 数组的 type:'text' 元素，规避 JSON 转义地狱
+    const buildAiFriendlyResult = (reportText) => ({
+        content: [
+            { type: 'text', text: reportText }
+        ]
+    });
+
     if (SearchMode === 'grok') {
         // Grok 模式：单次请求处理所有关键词，安全截止前截断流式输出，并对 503/空响应做指数退避重试
         const result = await callGrokMode(SearchTopic, keywordList, deadline);
-        return sendResponse({ status: "success", result: `## VSearch 检索报告 [模式: Grok]\n\n**研究主题**: ${SearchTopic}\n\n${result}` });
+        const reportText = `## VSearch 检索报告 [模式: Grok]\n\n**研究主题**: ${SearchTopic}\n\n${result}`;
+        return sendResponse({ status: "success", result: buildAiFriendlyResult(reportText) });
     }
 
     if (SearchMode === 'tavily') {
@@ -703,7 +719,8 @@ async function main(request) {
             return sendResponse({ status: "error", error: "Tavily 模式需要在根目录 config.env 中配置 TavilyKey。" });
         }
         const result = await callTavilyMode(SearchTopic, keywordList, tavilyKeyStr);
-        return sendResponse({ status: "success", result: `## VSearch 检索报告 [模式: Tavily]\n\n**研究主题**: ${SearchTopic}\n\n${result}` });
+        const reportText = `## VSearch 检索报告 [模式: Tavily]\n\n**研究主题**: ${SearchTopic}\n\n${result}`;
+        return sendResponse({ status: "success", result: buildAiFriendlyResult(reportText) });
     }
 
     if (SearchMode === 'kimisearch') {
@@ -715,7 +732,8 @@ async function main(request) {
             return sendResponse({ status: "error", error: "KimiSearch 模式需要在 config.env 中配置 KimiSearchUrl。" });
         }
         const result = await callKimiSearchMode(SearchTopic, keywordList, KIMI_SEARCH_KEY, KIMI_SEARCH_URL, KIMI_MAX_RESULTS, KIMI_INCLUDE_CONTENT);
-        return sendResponse({ status: "success", result: `## VSearch 检索报告 [模式: KimiSearch]\n\n**研究主题**: ${SearchTopic}\n\n${result}` });
+        const reportText = `## VSearch 检索报告 [模式: KimiSearch]\n\n**研究主题**: ${SearchTopic}\n\n${result}`;
+        return sendResponse({ status: "success", result: buildAiFriendlyResult(reportText) });
     }
 
     // Grounding 模式：并发分批执行；到达安全截止时间时，抛弃未返回搜索，直接返回已完成结果
@@ -764,7 +782,7 @@ async function main(request) {
         ? `\n\n> [提示] 已到达插件安全截止时间，未完成的 Grounding 搜索已被抛弃；以下为截止前已完成的结果。\n\n`
         : '\n\n';
     const finalOutput = `## VSearch 检索报告 [模式: Grounding]\n\n**研究主题**: ${SearchTopic}${timeoutNotice}${allResults.join('') || '[提示] 安全截止前没有搜索任务完成。'}`;
-    sendResponse({ status: "success", result: finalOutput });
+    sendResponse({ status: "success", result: buildAiFriendlyResult(finalOutput) });
 }
 
 // 插件入口 (stdio)

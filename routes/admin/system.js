@@ -1,3 +1,5 @@
+const { authority: approvalReceiptAuthority } = require('../../modules/approvalReceiptAuthority');
+const { forwardApprovalChannel } = require('../../modules/approvalChannelProxy');
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -5,92 +7,136 @@ const { exec } = require('child_process');
 const os = require('os');
 const util = require('util');
 const execAsync = util.promisify(exec);
-const pm2 = require('pm2');
 const { getAuthCode } = require('../../modules/captchaDecoder');
+const { listSupervisedProcesses } = require('../../modules/supervisorAdapter');
 
-function getStartedAtFromUptimeSeconds(uptimeSeconds) {
-    return Date.now() - Math.max(0, Math.floor(uptimeSeconds * 1000));
-}
+const CPU_TEMPERATURE_URL = 'http://localhost:8085/data.json';
+const CPU_TEMPERATURE_TIMEOUT_MS = 800;
+const CPU_TEMPERATURE_PRIORITY = [
+    'CPU Package',
+    'Core Max',
+    'Core Average',
+    'CPU Core #1'
+];
 
-function getUptimeSecondsFromStartedAt(startedAt) {
-    if (!Number.isFinite(startedAt) || startedAt <= 0) {
-        return 0;
+function parseTemperatureValue(value) {
+    if (!value || typeof value !== 'string') {
+        return null;
     }
 
-    return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const matched = value.match(/-?\d+(?:\.\d+)?/);
+    if (!matched) {
+        return null;
+    }
+
+    const parsed = Number.parseFloat(matched[0]);
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
-function buildCurrentProcessSnapshot() {
-    const uptime = process.uptime();
-    return {
-        name: 'vcptoolbox',
-        pid: process.pid,
-        status: 'online',
-        cpu: 0,
-        memory: process.memoryUsage().rss,
-        uptime,
-        startedAt: getStartedAtFromUptimeSeconds(uptime),
-        restarts: 0,
-        source: 'process'
-    };
+function collectCpuTemperatureSensors(node, output = []) {
+    if (!node || typeof node !== 'object') {
+        return output;
+    }
+
+    if (
+        node.Type === 'Temperature' &&
+        typeof node.SensorId === 'string' &&
+        node.SensorId.includes('/intelcpu/')
+    ) {
+        output.push(node);
+    }
+
+    if (Array.isArray(node.Children)) {
+        node.Children.forEach(child => collectCpuTemperatureSensors(child, output));
+    }
+
+    return output;
 }
 
-function buildCurrentProcessResponse(extra = {}) {
-    return {
-        success: true,
-        source: 'process',
-        processes: [buildCurrentProcessSnapshot()],
-        ...extra
-    };
+function pickCpuTemperatureSensor(sensors) {
+    for (const preferredName of CPU_TEMPERATURE_PRIORITY) {
+        const matched = sensors.find(sensor => sensor.Text === preferredName);
+        if (matched) {
+            return matched;
+        }
+    }
+
+    return sensors.find(sensor => !String(sensor.Text || '').includes('Distance to TjMax')) || null;
 }
 
-function normalizePm2Process(proc) {
-    const startedAt = proc.pm2_env?.pm_uptime || 0;
-    return {
-        name: proc.name,
-        pid: proc.pid,
-        status: proc.pm2_env?.status || 'unknown',
-        cpu: proc.monit?.cpu || 0,
-        memory: proc.monit?.memory || 0,
-        uptime: getUptimeSecondsFromStartedAt(startedAt),
-        startedAt,
-        restarts: proc.pm2_env?.restart_time || 0,
-        source: 'pm2'
-    };
+async function getCpuTemperature() {
+    if (typeof fetch !== 'function' || typeof AbortController !== 'function') {
+        return null;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CPU_TEMPERATURE_TIMEOUT_MS);
+
+    try {
+        const response = await fetch(CPU_TEMPERATURE_URL, {
+            signal: controller.signal,
+            cache: 'no-store'
+        });
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const data = await response.json();
+        const sensor = pickCpuTemperatureSensor(collectCpuTemperatureSensors(data));
+        const value = parseTemperatureValue(sensor?.Value || sensor?.RawValue);
+
+        if (value === null) {
+            return null;
+        }
+
+        return {
+            value,
+            unit: '°C',
+            source: sensor?.Text || '',
+            sensorId: sensor?.SensorId || '',
+            updatedAt: new Date().toISOString()
+        };
+    } catch (error) {
+        return null;
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 module.exports = function(options) {
     const router = express.Router();
-    // const { DEBUG_MODE } = options; // Currently unused in this module but available
+    // Independent Admin process uses the same authenticated, fixed Host proxy contract.
+    router.use('/human-client', require('../../modules/humanClientAdmissionRoutes').createAdminRouter());
+    const { vectorDBManager, tdbKnowledgeManager } = options;
 
-    // 获取当前 VCP 进程快照；用于非 PM2 启动方式下的只读监控
-    router.get('/system-monitor/processes', (req, res) => {
-        res.json(buildCurrentProcessResponse());
-    });
-
-    // 获取PM2进程列表和资源使用情况
-    router.get('/system-monitor/pm2/processes', (req, res) => {
-        pm2.list((err, list) => {
-            if (err) {
-                console.warn('[SystemMonitor] PM2 API unavailable, returning current process snapshot:', err.message);
-                return res.json(buildCurrentProcessResponse({
-                    degraded: true,
-                    warning: 'PM2 process list unavailable; returned current VCP process snapshot.'
-                }));
-            }
-
-            if (!Array.isArray(list) || list.length === 0) {
-                return res.json(buildCurrentProcessResponse({
-                    degraded: true,
-                    warning: 'No PM2 processes found; returned current VCP process snapshot.'
-                }));
-            }
-
-            const processInfo = list.map(normalizePm2Process);
-
-            res.json({ success: true, source: 'pm2', processes: processInfo });
-        });
-    });
+    // 保留原有 URL/`processes` 字段，当前部署优先读取 systemd user
+    // units；没有 user bus 时兼容回退到 PM2。
+    const listSupervisorProcesses = async (req, res) => {
+        try {
+            const result = await listSupervisedProcesses();
+            res.json({
+                success: true,
+                supervisor: result.supervisor,
+                health: result.processes.every(item => item.health === 'healthy')
+                    ? 'healthy'
+                    : 'degraded',
+                processes: result.processes
+            });
+        } catch (error) {
+            console.error('[SystemMonitor] Supervisor API Error:', error);
+            res.status(500).json({
+                success: false,
+                supervisor: 'unavailable',
+                health: 'unhealthy',
+                processes: [],
+                error: 'Failed to get supervised processes',
+                details: error.message
+            });
+        }
+    };
+    router.get('/system-monitor/pm2/processes', listSupervisorProcesses);
+    router.get('/system-monitor/supervisor/processes', listSupervisorProcesses);
 
     // 获取系统整体资源使用情况
     router.get('/system-monitor/system/resources', async (req, res) => {
@@ -164,6 +210,11 @@ module.exports = function(options) {
                     systemInfo.cpu = { usage: 0 };
                 }
             }
+            const cpuTemperature = await getCpuTemperature();
+            if (cpuTemperature && systemInfo.cpu) {
+                systemInfo.cpu.temperature = cpuTemperature;
+            }
+
             systemInfo.nodeProcess = {
                 pid: process.pid,
                 memory: process.memoryUsage(),
@@ -179,6 +230,36 @@ module.exports = function(options) {
         }
     });
 
+    // 获取记忆库内存剖面（估算）：热记忆 KnowledgeBase + 冷知识库 TDB
+    router.get('/system-monitor/memory/profile', (req, res) => {
+        try {
+            const processMemory = process.memoryUsage();
+            const knowledgeBase = vectorDBManager && typeof vectorDBManager.getMemoryProfile === 'function'
+                ? vectorDBManager.getMemoryProfile()
+                : { available: false, error: 'KnowledgeBaseManager profile unavailable', estimatedBytes: 0 };
+            const tdbKnowledge = tdbKnowledgeManager && typeof tdbKnowledgeManager.getMemoryProfile === 'function'
+                ? tdbKnowledgeManager.getMemoryProfile()
+                : { available: false, error: 'TDBKnowledge profile unavailable', estimatedBytes: 0 };
+
+            const estimatedBytes = (knowledgeBase.estimatedBytes || 0) + (tdbKnowledge.estimatedBytes || 0);
+
+            res.json({
+                success: true,
+                profile: {
+                    estimatedBytes,
+                    processMemory,
+                    knowledgeBase,
+                    tdbKnowledge,
+                    note: 'estimatedBytes 为诊断级估算；Rust/N-API/SQLite/TriviumDB 原生分配的真实 RSS 不能被 Node.js 按模块精确归因。',
+                    generatedAt: new Date().toISOString()
+                }
+            });
+        } catch (error) {
+            console.error('[SystemMonitor] Error getting memory profile:', error);
+            res.status(500).json({ success: false, error: 'Failed to get memory profile', details: error.message });
+        }
+    });
+ 
     // 获取 UserAuth 认证码
     router.get('/user-auth-code', async (req, res) => {
         const authCodePath = path.join(__dirname, '..', '..', 'Plugin', 'UserAuth', 'code.bin');
@@ -246,6 +327,54 @@ module.exports = function(options) {
             } else {
                 res.status(500).json({ success: false, error: '读取热榜缓存失败。', details: error.message });
             }
+        }
+    });
+
+    // 获取 VCPLog WebSocket 通知通道连接信息（VCP_Key + PORT）
+    // 用于 Vue 管理面板的右上角通知中心直连 VCP 主服务器的 VCPLog 频道
+    router.get('/notifications/connection', async (req, res) => {
+        try {
+            let capability;
+            try { approvalReceiptAuthority.assertAdminRequest(req); }
+            catch { return res.status(401).json({success:false,error:'Authenticated Admin session required.'}); }
+            res.setHeader('Cache-Control', 'no-store');
+            const port = parseInt(process.env.PORT, 10) || 6005;
+            if (!approvalReceiptAuthority.isChannelIssuer()) {
+                if (req.headers['x-vcp-approval-forwarded']) return res.status(503).json({success:false,error:'Approval issuer unavailable.'});
+                const forwarded = await forwardApprovalChannel(req, port);
+                return res.status(forwarded.status).json(forwarded.body);
+            }
+            capability = approvalReceiptAuthority.issueChannel(req);
+
+            // 反向代理场景下，WebSocket 应使用对外 Host，不应拼接内部 PORT。
+            // 直连管理端口场景下，则把 Host 归一到主服务 PORT。
+            const forwardedHost = (req.headers['x-forwarded-host'] || '').toString().split(',')[0].trim();
+            const requestHost = (req.headers.host || '').toString().split(',')[0].trim();
+            const rawHost = forwardedHost || requestHost || `localhost:${port}`;
+            const hostname = rawHost.replace(/:\d+$/, '') || 'localhost';
+            const forwardedProto = (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim();
+            const proto = forwardedProto || (req.protocol === 'https' ? 'https' : 'http');
+            const wsProto = proto === 'https' ? 'wss' : 'ws';
+            const wsHost = forwardedHost ? rawHost : `${hostname}:${port}`;
+
+            const deviceName = 'AdminPanel-Vue-Notifications';
+            res.json({
+                success: true,
+                connection: {
+                    vcpKey: '', // Legacy response field; no shared credential is exposed.
+                    port,
+                    hostname,
+                    deviceName,
+                    wsUrl: `${wsProto}://${wsHost}/VCPlog/admin-approval?capability=${encodeURIComponent(capability)}&deviceName=${encodeURIComponent(deviceName)}`
+                }
+            });
+        } catch (error) {
+            console.error('[Notifications] Failed to build VCPLog connection info:', error);
+            res.status(500).json({
+                success: false,
+                error: '获取 VCPLog 连接信息失败。',
+                details: error.message
+            });
         }
     });
 

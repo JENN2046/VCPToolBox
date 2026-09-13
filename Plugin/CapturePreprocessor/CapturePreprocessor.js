@@ -2,6 +2,10 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs').promises;
 const { spawn } = require('child_process');
+const {
+    stripPassiveBlocks,
+    replaceOutsidePassiveBlocks
+} = require('../../modules/passiveBlockUtils.js');
 
 let vcpConfig = {};
 let vcpProjectBasePath = '';
@@ -236,7 +240,7 @@ class CapturePreprocessor {
         // {{VCPScreenShot:[长窗口标题]}}, {{VCPScreenShot:28182346}} 和 {{VCPCameraCapture(N)}}。
         // 说明：纯数字目标会被视为 hwnd；方括号包裹用于兼容带空格、冒号、逗号等标点的长标题。
         const placeholderRegex = /{{\s*(?:(VCPScreenShotMini|VCPScreenShot)(?::(\[[\s\S]*?\]|[^}]+))?|VCPCameraCapture(?:\((\d+)\))?)\s*}}/g;
-        const matches = [...systemPromptText.matchAll(placeholderRegex)];
+        const matches = [...stripPassiveBlocks(systemPromptText).matchAll(placeholderRegex)];
 
         if (matches.length === 0) {
             return messages;
@@ -354,7 +358,7 @@ class CapturePreprocessor {
 
         // Clean the system prompt and merge user message content
         systemPrompt.content = this._replaceTextInContent(systemPrompt.content, (text) =>
-            text.replace(placeholderRegex, '').trim()
+            replaceOutsidePassiveBlocks(text, placeholderRegex, '').trim()
         );
 
         const mergedContent = [];

@@ -2,10 +2,6 @@ const express = require("express");
 const fs = require("fs").promises;
 const path = require("path");
 
-function isTruthyFlag(value) {
-  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
-}
-
 /**
  * Admin Panel API Routes
  * This file has been modularized. individual route handlers are located in ./admin/*.js
@@ -14,6 +10,7 @@ module.exports = function (
   DEBUG_MODE,
   dailyNoteRootPath,
   pluginManager,
+  knowledgeRootPath,
   getCurrentServerLogPath,
   vectorDBManager,
   agentDirPath,
@@ -24,7 +21,7 @@ module.exports = function (
   modelRedirectHandler,
   apiUrl,
   apiKey,
-  projectBasePath = path.join(__dirname, '..')
+  tdbKnowledgeManager
 ) {
   if (!agentDirPath || typeof agentDirPath !== "string") {
     throw new Error(
@@ -47,6 +44,7 @@ module.exports = function (
     DEBUG_MODE,
     dailyNoteRootPath,
     pluginManager,
+    knowledgeRootPath,
     getCurrentServerLogPath,
     vectorDBManager,
     agentDirPath,
@@ -57,7 +55,7 @@ module.exports = function (
     modelRedirectHandler,
     apiUrl,
     apiKey,
-    projectBasePath,
+    tdbKnowledgeManager,
   };
 
   /**
@@ -86,7 +84,7 @@ module.exports = function (
 
   mount("/", "system"); // Handles /system-monitor/*, /user-auth-code, /weather
   mount("/", "logs"); // Handles /logs/*
-  mount("/", "finalContext"); // Handles /final-context, /onering-config
+  mount("/", "finalContext"); // Handles /final-context
   mount("/", "config"); // Handles /tool-approval-config, /config/main
   mount("/", "plugins"); // Handles /plugins/*, /preprocessors/*
   mount("/", "server"); // Handles /verify-login, /logout, /check-auth, /server/restart
@@ -98,6 +96,8 @@ module.exports = function (
   mount("/", "schedules"); // Handles /schedules/*
   mount("/", "rag"); // Handles /rag-tags, /rag-params, /available-clusters, etc.
   mount("/", "agentAssistant"); // Handles /agent-assistant/*
+  mount("/", "aiChat"); // Handles /ai/*
+  mount("/", "openHerPersona"); // Handles /openher-persona/*
   mount("/", "taskAssistant"); // Handles /task-assistant/*
   mount("/", "toolListEditor"); // Handles /tool-list/*
   mount("/", "dynamicTools"); // Handles /dynamic-tools/*
@@ -108,10 +108,11 @@ module.exports = function (
   mount("/", "sarPrompts"); // Handles /sarprompts/*
   mount("/", "emojis"); // Handles /emojis/*
   mount("/", "pluginStore"); // Handles /plugin-store/*
-  mount("/", "codexImagegenRelay"); // Handles /codex-imagegen/*
-  if (isTruthyFlag(process.env.VCP_OAUTH_AUTH_CENTER_ENABLED)) {
-    mount("/", "oauthAuth"); // Handles /oauth-auth/*
-  }
+  mount("/", "bridgeProfiles"); // Handles /bridge-profiles/*
+  mount("/", "multimodalConfig"); // Handles /multimodal-config (JSON 真相源 + 热更新)
+  mount("/", "clawMail"); // Handles /claw-mail/*
+  mount("/", "tarotDivination"); // Handles /tarot-divination/*
+  mount("/", "toolCallRecords"); // Handles /tool-call-records/*
 
   return adminApiRouter;
 };

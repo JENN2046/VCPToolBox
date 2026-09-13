@@ -3,7 +3,8 @@
 **/*.rs.bk
 *.pdb
 
-# Cargo.lock is tracked for reproducible N-API builds in this application repo.
+# Cargo.lock (对于库项目通常忽略)
+Cargo.lock
 
 # Node.js相关
 node_modules/

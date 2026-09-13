@@ -6,15 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const repoRoot = path.resolve(__dirname, '..');
-
 console.log('VCP Knowledge Base Database & Index Repair Tool (Cost-Saving Version)');
 console.log('====================================================================\n');
 
 // --- Vexus Index Loader ---
 let VexusIndex;
 try {
-    const vexusModule = require(path.join(repoRoot, 'rust-vexus-lite'));
+    const vexusModule = require('./rust-vexus-lite');
     VexusIndex = vexusModule.VexusIndex;
     console.log('✅ Vexus-Lite Rust engine loaded.');
 } catch (e) {
@@ -26,11 +24,11 @@ try {
 // This function must be an exact copy of the one in KnowledgeBaseManager.js
 function _prepareTextForEmbedding(text) {
     const decorativeEmojis = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
-    let cleaned = text.replace(decorativeEmojis, ' ').replace(/\s+/g, ' ').trim();
+    let cleaned = text.replace(decorativeEmojis, ' ').replace(/<\|([^|]+)\|>/g, '$1').replace(/\s+/g, ' ').trim();
     return cleaned.length === 0 ? '[EMPTY_CONTENT]' : cleaned;
 }
 
-const storePath = path.join(repoRoot, 'VectorStore');
+const storePath = path.join(__dirname, 'VectorStore');
 const dbPath = path.join(storePath, 'knowledge_base.sqlite');
 const tagIdxPath = path.join(storePath, 'index_global_tags.usearch');
 
@@ -86,7 +84,7 @@ try {
             duplicateTags.forEach(dup => console.log(`  - Merging duplicate: "${dup.originalName}" (ID: ${dup.id})`));
 
             const placeholders = duplicateIds.map(() => '?').join(',');
-
+            
             const updateStmt = db.prepare(`UPDATE file_tags SET tag_id = ? WHERE tag_id IN (${placeholders}) AND file_id NOT IN (SELECT file_id FROM file_tags WHERE tag_id = ?)`);
             const updateResult = updateStmt.run(canonicalTag.id, ...duplicateIds, canonicalTag.id);
             console.log(`  - Remapped ${updateResult.changes} file-tag relationships.`);
@@ -94,7 +92,7 @@ try {
             const deleteStmt = db.prepare(`DELETE FROM tags WHERE id IN (${placeholders})`);
             const deleteResult = deleteStmt.run(...duplicateIds);
             console.log(`  - Deleted ${deleteResult.changes} duplicate tag entries from DB.`);
-
+            
             const cleanupStmt = db.prepare(`DELETE FROM file_tags WHERE tag_id IN (${placeholders})`);
             cleanupStmt.run(...duplicateIds);
         }
@@ -113,7 +111,7 @@ try {
             // It's crucial to know the dimension. We'll read it from the environment or use the default.
             const dimension = parseInt(process.env.VECTORDB_DIMENSION) || 3072;
             tagIndex = VexusIndex.load(tagIdxPath, null, dimension, 50000); // Capacity can be a safe default
-
+            
             let removedCount = 0;
             for (const id of allDuplicateIds) {
                 try {

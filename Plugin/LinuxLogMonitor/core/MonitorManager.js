@@ -25,6 +25,7 @@
 const path = require('path');
 const fs = require('fs').promises;
 const crypto = require('crypto');
+const util = require('util');
 
 const { MonitorTask } = require('./MonitorTask');
 const AnomalyDetector = require('./AnomalyDetector');
@@ -40,6 +41,28 @@ const STATE_FILE_PATH = path.join(__dirname, '..', 'state', 'active-monitors.jso
 const PID_FILE_PATH = path.join(__dirname, '..', 'state', 'monitor.pid');
 const STOP_SIGNAL_PATH = path.join(__dirname, '..', 'state', 'stop-requests.json');
 
+let loggerModule = null;
+
+function isServerLoggerActive() {
+    try {
+        loggerModule = loggerModule || require('../../../modules/logger');
+        return Boolean(
+            loggerModule.originalConsoleError &&
+            console.error !== loggerModule.originalConsoleError
+        );
+    } catch (_) {
+        return false;
+    }
+}
+
+function logInfo(...args) {
+    if (isServerLoggerActive()) {
+        console.info(...args);
+        return;
+    }
+    process.stderr.write(`${util.format(...args)}\n`);
+}
+
 class MonitorManager {
     /**
      * @param {Object} options
@@ -50,8 +73,8 @@ class MonitorManager {
     constructor(options = {}) {
         this.callbackBaseUrl = options.callbackBaseUrl || 'http://localhost:5000';
         this.pluginName = options.pluginName || 'LinuxLogMonitor';
-        this.callbackAuthSecret = options.callbackAuthSecret || process.env.CALLBACK_AUTH_SECRET || '';
         this.debug = options.debug || false;
+        this.callbackBearerToken = options.callbackBearerToken || null;
         
         // 活跃任务 Map<taskId, MonitorTask>
         this.tasks = new Map();
@@ -63,8 +86,8 @@ class MonitorManager {
         this.callbackTrigger = new CallbackTrigger({
             baseUrl: this.callbackBaseUrl,
             pluginName: this.pluginName,
-            callbackAuthSecret: this.callbackAuthSecret,
-            debug: this.debug
+            debug: this.debug,
+            bearerToken: this.callbackBearerToken
         });
         
         // 统计信息
@@ -89,8 +112,8 @@ class MonitorManager {
         const mode = options.mode || 'full';
         this._log(`初始化监控管理器 (模式: ${mode})...`);
         
-        // readonly 模式只准备规则目录，避免插件 direct 初始化写入真实 state 路径。
-        await this._ensureDirectories({ includeState: mode !== 'readonly' });
+        // 确保目录存在
+        await this._ensureDirectories();
         
         // 加载规则（所有模式都需要）
         await this._loadRules();
@@ -228,6 +251,39 @@ class MonitorManager {
             } catch (error) {
                 this._log(`停止任务 ${taskId} 失败: ${error.message}`);
             }
+        }
+    }
+
+    /**
+     * Stop generation-owned resources without deleting the durable monitor
+     * definitions. A following Runtime V2 generation can then recover the
+     * same tasks from active-monitors.json.
+     */
+    async suspendAll() {
+        this._log('挂起所有监控任务，保留持久化定义...');
+
+        if (this._stopSignalInterval) {
+            clearInterval(this._stopSignalInterval);
+            this._stopSignalInterval = null;
+        }
+
+        for (const task of this.tasks.values()) {
+            // UDS-backed tasks are owned by the stable monitor server. Dropping
+            // the generation-local proxy must not stop that external watcher.
+            if (task.serverTaskId) continue;
+            try {
+                await task.stop();
+            } catch (error) {
+                this._log(`挂起任务 ${task.taskId} 失败: ${error.message}`);
+            }
+        }
+
+        await this._saveState();
+        this.tasks.clear();
+        try {
+            await fs.unlink(PID_FILE_PATH);
+        } catch (_) {
+            // Missing PID file is already the desired state.
         }
     }
     
@@ -962,14 +1018,11 @@ class MonitorManager {
     /**
      * 确保目录存在
      */
-    async _ensureDirectories(options = {}) {
-        const { includeState = true } = options;
+    async _ensureDirectories() {
         const dirs = [
-            path.join(__dirname, '..', 'rules')
+            path.join(__dirname, '..', 'rules'),
+            path.join(__dirname, '..', 'state')
         ];
-        if (includeState) {
-            dirs.push(path.join(__dirname, '..', 'state'));
-        }
         
         for (const dir of dirs) {
             try {
@@ -1269,8 +1322,7 @@ class MonitorManager {
     }
 
     _isServerModeConfigured() {
-        const { hasLogMonitorServiceEnv } = require('../../../modules/LogMonitor');
-        return hasLogMonitorServiceEnv();
+        return Boolean(process.env.LOG_MONITOR_SOCK || global.__vcp_log_monitor_sock);
     }
 
     _normalizeContext(context) {
@@ -1410,17 +1462,7 @@ class MonitorManager {
         this._stopSignalInterval = setInterval(async () => {
             await this._checkStopSignals();
         }, 1000);
-
-        process.once('exit', () => {
-            if (this._stopSignalInterval) {
-                clearInterval(this._stopSignalInterval);
-            }
-            try {
-                require('fs').unlinkSync(PID_FILE_PATH);
-            } catch (e) {
-                // 忽略
-            }
-        });
+        this._stopSignalInterval.unref?.();
     }
 
     async _checkStopSignals() {
@@ -1476,7 +1518,9 @@ class MonitorManager {
      * 日志输出
      */
     _log(msg, ...args) {
-        console.error(`[MonitorManager] ${msg}`, ...args);  
+        if (this.debug) {
+            logInfo(`[MonitorManager] ${msg}`, ...args);
+        }
     }  
 }  
   

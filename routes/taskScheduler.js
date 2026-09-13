@@ -12,53 +12,6 @@ const TIMED_CONTACTS_DIR = path.join(__dirname, '..', 'VCPTimedContacts');
 const TIMED_RESULTS_DIR = path.join(__dirname, '..', 'VCPTimedResults');
 const scheduledJobs = new Map(); // 重命名以反映其存储的是 Job 对象
 
-function summarizeForStorage(value) {
-    if (value === null || value === undefined) {
-        return { type: 'empty' };
-    }
-
-    if (typeof value === 'string') {
-        return { type: 'string', length: value.length };
-    }
-
-    if (typeof value === 'number' || typeof value === 'boolean') {
-        return { type: typeof value };
-    }
-
-    if (Array.isArray(value)) {
-        return { type: 'array', length: value.length };
-    }
-
-    if (typeof value === 'object') {
-        const keys = Object.keys(value);
-        return {
-            type: 'object',
-            keys: keys.slice(0, 20),
-            keyCount: keys.length,
-            truncated: keys.length > 20
-        };
-    }
-
-    return { type: typeof value };
-}
-
-function summarizeErrorForStorage(error) {
-    if (!error) {
-        return { type: 'empty' };
-    }
-
-    if (typeof error === 'string') {
-        return { type: 'error', messageLength: error.length };
-    }
-
-    return {
-        type: 'error',
-        name: typeof error.name === 'string' ? error.name : 'Error',
-        code: typeof error.code === 'string' ? error.code : null,
-        messageLength: typeof error.message === 'string' ? error.message.length : 0
-    };
-}
-
 function formatToLocalDateTimeWithOffset(date) {
     const pad = (value, length = 2) => String(value).padStart(length, '0');
     const timezoneOffsetMinutes = date.getTimezoneOffset();
@@ -83,11 +36,9 @@ async function persistTimedTaskResult(task, status, payload = {}) {
             scheduledLocalTime: task?.scheduledLocalTime || null,
             executedAt: new Date().toISOString(),
             requestor: task?.requestor || null,
-            argumentsSummary: summarizeForStorage(task?.tool_call?.arguments),
+            arguments: task?.tool_call?.arguments || null,
             timedCall: task?.timedCall || null,
-            payloadSummary: summarizeForStorage(payload?.result),
-            resultSummary: payload?.resultSummary || null,
-            errorSummary: payload?.errorSummary || null
+            ...payload
         };
         await fs.writeFile(resultFilePath, JSON.stringify(resultData, null, 2), 'utf-8');
         if (DEBUG_MODE) {
@@ -140,19 +91,14 @@ async function executeTimedContact(task, filePath) {
         // 定时调用上下文统一通过 __vcp_timed_call 传递给目标工具。
         // 不再对 AgentAssistant 做 prompt 特判，避免不同工具出现不一致的定时语义。
         console.log(`[TaskScheduler] 正在执行任务 ${task.taskId}: 调用插件 '${tool_name}'...`);
-        const result = await pluginManager.processToolCall(
-            tool_name,
-            toolArgs,
-            null,
-            {
-                requestSource: 'task-scheduler',
-                taskId: task.taskId
-            }
-        );
+        const result = await pluginManager.processToolCall(tool_name, toolArgs, null, 'scheduler');
         
         console.log(`[TaskScheduler] 任务 ${task.taskId} (${tool_name}) 已处理。`);
         
-        const resultSummary = JSON.stringify(summarizeForStorage(result));
+        let resultSummary = `[无法从插件获取明确的回复内容]`;
+        if (result) {
+            resultSummary = typeof result === 'object' ? JSON.stringify(result) : String(result);
+        }
 
         await persistTimedTaskResult(task, 'success', {
             result,
@@ -164,7 +110,7 @@ async function executeTimedContact(task, filePath) {
             data: {
                 tool_name: `${tool_name} (Timed)`,
                 status: 'success',
-                content: `定时任务 ${task.taskId} 已成功执行。\n插件响应摘要: ${resultSummary}`,
+                content: `定时任务 ${task.taskId} 已成功执行。\n插件响应: ${resultSummary.substring(0, 500)}`,
                 source: 'task_scheduler_executor'
             }
         }, 'VCPLog');
@@ -172,15 +118,16 @@ async function executeTimedContact(task, filePath) {
     } catch (error) {
         console.error(`[TaskScheduler] 执行任务 ${task.taskId} 时发生错误:`, error);
         await persistTimedTaskResult(task, 'error', {
-            errorSummary: summarizeErrorForStorage(error)
+            error: error.message || '未知错误',
+            details: error.stack || JSON.stringify(error)
         });
-        const safeErrorSummary = JSON.stringify(summarizeErrorForStorage(error));
         webSocketServer.broadcast({
             type: 'vcp_log',
             data: {
                 tool_name: `${task.tool_call?.tool_name || 'UnknownPlugin'} (Timed)`,
                 status: 'error',
-                content: `执行定时任务 ${task.taskId} 失败，错误摘要: ${safeErrorSummary}`,
+                content: `执行定时任务 ${task.taskId} 失败: ${error.message || '未知错误'}`,
+                details: error.stack || JSON.stringify(error),
                 source: 'task_scheduler_executor_error'
             }
         }, 'VCPLog');

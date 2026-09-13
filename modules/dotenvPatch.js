@@ -1,35 +1,49 @@
 // modules/dotenvPatch.js
 const dotenv = require('dotenv');
 
-const SPECIAL_KEY_LINE = /(?:^|^)\s*(?:export\s+)?([\w.@#%&^+_-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
+// 自定义支持 @ 和 #%&^+-_ 符号的 LINE 正则
+const CUSTOM_LINE = /(?:^|^)\s*(?:export\s+)?([\w.@#%&^+_\-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
 
-function parseWithSpecialKeys(src) {
-    const obj = {};
-    let lines = src.toString();
+// 重写 dotenv.parse
+dotenv.parse = function (src) {
+  const obj = {};
 
-    lines = lines.replace(/\r\n?/mg, '\n');
+  // Convert buffer to string
+  let lines = src.toString();
 
-    let match;
-    SPECIAL_KEY_LINE.lastIndex = 0;
+  // Convert line breaks to same format
+  lines = lines.replace(/\r\n?/mg, '\n');
 
-    while ((match = SPECIAL_KEY_LINE.exec(lines)) != null) {
-        const key = match[1];
-        let value = (match[2] || '').trim();
-        const maybeQuote = value[0];
+  let match;
+  // 每次执行前重置正则的 lastIndex
+  CUSTOM_LINE.lastIndex = 0;
+  
+  while ((match = CUSTOM_LINE.exec(lines)) != null) {
+    const key = match[1];
 
-        value = value.replace(/^(['"`])([\s\S]*)\1$/mg, '$2');
+    // Default undefined or null to empty string
+    let value = (match[2] || '');
 
-        if (maybeQuote === '"') {
-            value = value.replace(/\\n/g, '\n');
-            value = value.replace(/\\r/g, '\r');
-        }
+    // Remove whitespace
+    value = value.trim();
 
-        obj[key] = value;
+    // Check if double quoted
+    const maybeQuote = value[0];
+
+    // Remove surrounding quotes
+    value = value.replace(/^(['"`])([\s\S]*)\1$/mg, '$2');
+
+    // Expand newlines if double quoted
+    if (maybeQuote === '"') {
+      value = value.replace(/\\n/g, '\n');
+      value = value.replace(/\\r/g, '\r');
     }
 
-    return obj;
-}
+    // Add to object
+    obj[key] = value;
+  }
 
-dotenv.parse = parseWithSpecialKeys;
+  return obj;
+};
 
-module.exports = dotenv;
+console.log('[dotenvPatch] Successfully patched dotenv.parse to support @ and #%&^+-_ in keys.');

@@ -3,14 +3,11 @@
 const fs = require('fs').promises;
 const path = require('path');
 const Database = require('better-sqlite3');
-
-const repoRoot = path.resolve(__dirname, '..');
-
-require('dotenv').config({ path: path.join(repoRoot, 'config.env') });
+require('dotenv').config();
 
 // 1. 加载配置
 const config = {
-    storePath: path.join(repoRoot, 'VectorStore'),
+    storePath: path.join(__dirname, 'VectorStore'),
     dbName: 'knowledge_base.sqlite',
     dimension: parseInt(process.env.VECTORDB_DIMENSION) || 3072,
     // 从环境变量获取黑名单
@@ -19,17 +16,17 @@ const config = {
 
 async function main() {
     console.log('--- 🏷️ 专门重建 Tag 索引 (含黑名单清理) ---');
-
+    
     const dbPath = path.join(config.storePath, config.dbName);
     const tagIdxPath = path.join(config.storePath, 'index_global_tags.usearch');
-
+    
     if (!require('fs').existsSync(dbPath)) {
         console.error('❌ 数据库文件不存在，请检查 VectorStore 目录');
         return;
     }
 
     const db = new Database(dbPath);
-
+    
     try {
         // 步骤 1: 从数据库中物理删除黑名单标签
         if (config.tagBlacklist.length > 0) {
@@ -43,7 +40,7 @@ async function main() {
 
         // 步骤 2: 存量 Tag 深度净化与合并 (处理句号、多余空格、表情符号)
         console.log('[Step 2/5] 正在执行存量 Tag 深度净化与合并...');
-
+        
         // 定义统一的清洗函数（与 KnowledgeBaseManager 保持一致）
         const prepareTag = (text) => {
             const decorativeEmojis = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
@@ -86,7 +83,7 @@ async function main() {
         console.log('[Step 3/5] 正在清理长度异常的“句子级”标签...');
         const MAX_TAG_LENGTH = 15; // 设定阈值，超过15个字符的标签通常是解析错误
         const longTags = db.prepare("SELECT id, name FROM tags WHERE length(name) > ?").all(MAX_TAG_LENGTH);
-
+        
         if (longTags.length > 0) {
             const deleteLongTag = db.prepare("DELETE FROM tags WHERE id = ?");
             const longTagTransaction = db.transaction(() => {
@@ -111,13 +108,13 @@ async function main() {
 
         // 步骤 5: 调用 Rust 引擎重建索引
         console.log('[Step 5/5] 正在通过 Rust 引擎重建索引...');
-        const { VexusIndex } = require(path.join(repoRoot, 'rust-vexus-lite'));
+        const { VexusIndex } = require('./rust-vexus-lite');
         const tagIdx = new VexusIndex(config.dimension, 50000);
-
+        
         // 核心：从清理后的数据库重新加载
         const count = await tagIdx.recoverFromSqlite(dbPath, 'tags', null);
         tagIdx.save(tagIdxPath);
-
+        
         console.log(`\n✨ 重建成功！共索引 ${count} 个合法标签。`);
         console.log(`文件位置: ${tagIdxPath}`);
 

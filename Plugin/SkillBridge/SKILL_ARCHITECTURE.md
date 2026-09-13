@@ -18,13 +18,6 @@ VCPSkill 是一个**技能（Skill）集合项目**，每个技能是一个独�
 | `gif-sticker-maker` | 创意工具 | 照片转GIF表情包 |
 | `shader-dev` | 创意工具 | GLSL着色器特效 |
 
-### SkillBridge 索引生成
-
-- `SkillBridge.js` 会扫描 `SKILL/` 下各技能的 `SKILL.md`，并把摘要写入 `skill-index.txt`
-- Static 插件真正提供给占位符系统的是脚本 `stdout`，不是仓库中的已提交索引快照
-- `skill-index.txt` 属于本地生成产物，默认使用相对路径，避免把机器相关绝对路径写入仓库
-- 需要固定行为时，请在插件目录放置 `config.env`（可从 `config.env.example` 复制）
-
 ---
 
 ## 二、Skill 的目录结构
