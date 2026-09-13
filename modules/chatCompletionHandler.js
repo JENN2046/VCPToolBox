@@ -636,6 +636,8 @@ async function fetchWithRetry(
       debugMode
     );
     if (beforeProviderAttempt !== null) {
+      let sealTimeoutId = null;
+      let removeSealAbortListener = null;
       try {
         if (typeof beforeProviderAttempt !== 'function'
           || typeof nextProviderAttemptOrdinal !== 'function'
@@ -666,8 +668,25 @@ async function fetchWithRetry(
           providerPathId: RESIDENT_PROVIDER_PATH_ID,
           target: url
         });
-        const sealed = await beforeProviderAttempt(sealInput, {
-          signal: attemptController.signal
+        // Bound the local seal independently; provider connection time starts later.
+        const numericSealTimeout = typeof connectionTimeout === 'number'
+          || typeof connectionTimeout === 'string' ? Number(connectionTimeout) : NaN;
+        const sealTimeoutMs = Number.isFinite(numericSealTimeout) && numericSealTimeout > 0
+          ? Math.min(Math.max(Math.floor(numericSealTimeout), 1), 2147483647)
+          : 900000;
+        const sealed = await new Promise((resolve, reject) => {
+          const denyAbortedSeal = () => reject(residentProviderAttemptDenied());
+          attemptController.signal.addEventListener('abort', denyAbortedSeal, { once: true });
+          removeSealAbortListener = () => attemptController.signal.removeEventListener('abort', denyAbortedSeal);
+          if (attemptController.signal.aborted) {
+            denyAbortedSeal();
+            return;
+          }
+          sealTimeoutId = setTimeout(() => attemptController.abort(), sealTimeoutMs);
+          // Both settlement handlers remain attached if timeout/abort wins first.
+          Promise.resolve(beforeProviderAttempt(sealInput, {
+            signal: attemptController.signal
+          })).then(resolve, reject);
         });
         if (!hasExactRecordKeys(sealed, ['body', 'seal'])
           || sealed.body !== attemptOptions.body) {
@@ -676,6 +695,9 @@ async function fetchWithRetry(
       } catch {
         cleanup();
         throw residentProviderAttemptDenied();
+      } finally {
+        if (sealTimeoutId !== null) clearTimeout(sealTimeoutId);
+        if (removeSealAbortListener) removeSealAbortListener();
       }
     }
     if (attemptController.signal.aborted) {
