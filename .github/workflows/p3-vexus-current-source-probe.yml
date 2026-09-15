@@ -43,7 +43,7 @@ jobs:
             rustc --version
             cargo --version
             node --version
-            /tmp/napi-cli/node_modules/.bin/napi --version
+            node -p "'@napi-rs/cli ' + require('/tmp/napi-cli/node_modules/@napi-rs/cli/package.json').version"
             gcc-12 --version | head -n 1
             ldd --version | head -n 1
           } | tee /tmp/p3-toolchain.txt
