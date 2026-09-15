@@ -1,0 +1,163 @@
+name: P2 source promotion
+
+on:
+  push:
+    branches:
+      - integration/p2-external-composition-merge-probe
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild exact validated P2 source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_P1=ed6d8565a04bd7767a24fe3fd1020df1a144de93
+          EXPECTED_DIFF_SHA256=4bffd44463ad797ce269ec0a8f3f9c603415e6abb08c23c0bb58d979103bfd77
+          TRACKING_REF=refs/heads/integration/upstream-tracking-rebaseline-r1
+          P2_BASE=f901f1a995fa6f8242e176b8ca66b6addd0be427
+          P2_HEAD=a4225acaafd0cf6019c843d65f374b499febe165
+          P1_COMPAT_TEST=tests/vcpToolBridgeNativeManifest.test.js
+
+          for i in 0 1 2 3; do
+            cp ".github/rebaseline/p2-adapt-${i}.patch" "/tmp/p2-adapt-${i}.patch"
+          done
+          cp .github/rebaseline/p2-p1-test-compat.py /tmp/p2-p1-test-compat.py
+          cp .github/rebaseline/p2-p1-cross-assert.js /tmp/p1-p2-cross.js
+
+          cat > /tmp/p2-assets.sha256 <<'EOF'
+          6bf5dcfe194f3b7644084b5f672fef89b50ad78708f39d34f3a8fcdd017886cd  /tmp/p2-adapt-0.patch
+          8e2375987a4c93cbdbe1f71ac392c3bdfa0c8ba41c14d2960a8d7189ece9204f  /tmp/p2-adapt-1.patch
+          47c9502164d1f1880948e32b69ab70923b73e775e8d6a72802c45c396b0d31a5  /tmp/p2-adapt-2.patch
+          e7da98d4324cce0afa3a26e9f20efd4cb62dd05829e8ecae44936ddddfd7847d  /tmp/p2-adapt-3.patch
+          779aa3500e2a3d0d7545500d04d023b38d0876ce097719a38c2db98a99870244  /tmp/p2-p1-test-compat.py
+          EOF
+          sed -i 's/^          //' /tmp/p2-assets.sha256
+          sha256sum -c /tmp/p2-assets.sha256
+
+          git fetch origin integration/upstream-tracking-rebaseline-r1 codex/upstream-main-clean-base codex/phase1-clean-core-plugin-contract
+          REMOTE_TRACKING="$(git ls-remote origin "$TRACKING_REF" | awk '{print $1}')"
+          test "$REMOTE_TRACKING" = "$EXPECTED_P1"
+          git checkout --detach "$EXPECTED_P1"
+
+          SUPPORT_PATHS=(
+            modules/externalPluginAllowPolicy.js
+            modules/externalPluginSafetyGate.js
+            modules/pluginRootResolver.js
+            modules/pluginRuntimeEnvSandbox.js
+            tests/externalPluginAllowPolicy.test.js
+            tests/externalPluginSafetyGate.test.js
+            tests/plugin-external-dirs.test.js
+            tests/plugin-external-runtime-direct-policy.test.js
+            tests/plugin-external-runtime-env-sandbox.test.js
+            tests/plugin-external-runtime-registration-gate.test.js
+          )
+          ALL_PATHS=(Plugin.js "${SUPPORT_PATHS[@]}" "$P1_COMPAT_TEST")
+
+          git diff "$P2_BASE" "$P2_HEAD" -- "${SUPPORT_PATHS[@]}" > /tmp/p2-support.patch
+          git apply /tmp/p2-support.patch
+
+          git diff "$P2_BASE" "$P2_HEAD" -- Plugin.js > /tmp/p2-plugin.patch
+          git apply --reject --ignore-space-change /tmp/p2-plugin.patch || true
+          for i in 0 1 2 3; do
+            git apply --ignore-space-change "/tmp/p2-adapt-${i}.patch"
+          done
+          rm -f Plugin.js.rej
+          chmod 0755 Plugin.js
+          python /tmp/p2-p1-test-compat.py
+
+          git add -N "${SUPPORT_PATHS[@]}"
+          node --check Plugin.js
+          node --check modules/externalPluginAllowPolicy.js
+          node --check modules/externalPluginSafetyGate.js
+          node --check modules/pluginRootResolver.js
+          node --check modules/pluginRuntimeEnvSandbox.js
+          node --check "$P1_COMPAT_TEST"
+          git diff --check
+          ! git diff --summary -- Plugin.js | grep -q 'mode change'
+
+          EXPECTED_FILES="$(printf '%s\n' "${ALL_PATHS[@]}" | sort)"
+          ACTUAL_FILES="$(git diff --name-only | sort)"
+          test "$ACTUAL_FILES" = "$EXPECTED_FILES"
+          git diff > /tmp/p2-promote.diff
+          echo "$EXPECTED_DIFF_SHA256  /tmp/p2-promote.diff" | sha256sum -c -
+
+      - name: Install locked test dependencies
+        shell: bash
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Re-run P2, P1, and cross-contract gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/externalPluginAllowPolicy.test.js \
+            tests/externalPluginSafetyGate.test.js \
+            tests/plugin-external-dirs.test.js \
+            tests/plugin-external-runtime-direct-policy.test.js \
+            tests/plugin-external-runtime-env-sandbox.test.js \
+            tests/plugin-external-runtime-registration-gate.test.js | tee /tmp/p2-promote-tests.txt
+          node --test tests/vcpToolBridgeNativeManifest.test.js | tee /tmp/p1-promote-regression.txt
+          node /tmp/p1-p2-cross.js | tee /tmp/p1-p2-promote-cross.txt
+
+      - name: Commit exact bounded source delta and fast-forward tracking
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_P1=ed6d8565a04bd7767a24fe3fd1020df1a144de93
+          TRACKING_REF=refs/heads/integration/upstream-tracking-rebaseline-r1
+          PATHS=(
+            Plugin.js
+            modules/externalPluginAllowPolicy.js
+            modules/externalPluginSafetyGate.js
+            modules/pluginRootResolver.js
+            modules/pluginRuntimeEnvSandbox.js
+            tests/externalPluginAllowPolicy.test.js
+            tests/externalPluginSafetyGate.test.js
+            tests/plugin-external-dirs.test.js
+            tests/plugin-external-runtime-direct-policy.test.js
+            tests/plugin-external-runtime-env-sandbox.test.js
+            tests/plugin-external-runtime-registration-gate.test.js
+            tests/vcpToolBridgeNativeManifest.test.js
+          )
+
+          REMOTE_TRACKING="$(git ls-remote origin "$TRACKING_REF" | awk '{print $1}')"
+          test "$REMOTE_TRACKING" = "$EXPECTED_P1"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_P1"
+
+          git add "${PATHS[@]}"
+          git diff --cached --check
+          ! git diff --cached --summary -- Plugin.js | grep -q 'mode change'
+          EXPECTED_FILES="$(printf '%s\n' "${PATHS[@]}" | sort)"
+          ACTUAL_FILES="$(git diff --cached --name-only | sort)"
+          test "$ACTUAL_FILES" = "$EXPECTED_FILES"
+
+          git config user.name "Jenn2046"
+          git config user.email "130375136+JENN2046@users.noreply.github.com"
+          git commit -m "feat(rebaseline): add external plugin composition contract" \
+            -m "Reintroduce only the validated external plugin composition delta on the clean upstream baseline. Preserve P1 Native Manifest authority and provenance across discovery/refresh. Includes the minimal P1 synthetic-loader fixture update required by hardened lstat-based discovery. Source migration only; no runtime activation."
+
+          NEW_HEAD="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_P1"
+          test "$(git diff --name-only HEAD^ HEAD | sort)" = "$EXPECTED_FILES"
+          git push origin "HEAD:$TRACKING_REF"
+          printf 'P2_HEAD=%s\nP2_PARENT=%s\n' "$NEW_HEAD" "$EXPECTED_P1" | tee /tmp/p2-promotion-result.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p2-source-promotion-evidence
+          path: |
+            /tmp/p2-promote.diff
+            /tmp/p2-promote-tests.txt
+            /tmp/p1-promote-regression.txt
+            /tmp/p1-p2-promote-cross.txt
+            /tmp/p2-promotion-result.txt
