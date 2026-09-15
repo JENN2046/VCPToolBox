@@ -8,6 +8,14 @@ const {
   normalizeReasoningTag,
   shouldConvertReasoningForModel
 } = require('../reasoningContentAdapter.js');
+const {
+  createPresentationChannel,
+  createStreamPresentationSink,
+  frameResidentProposalTurn,
+  hasResidentProposalSurface,
+  isResidentProposalToolCall,
+  residentProposalFailureCategory
+} = require('../vcpLoop/residentPresentation.js');
 
 class StreamHandler {
   constructor(context) {
@@ -63,6 +71,37 @@ class StreamHandler {
     );
     const reasoningTag = normalizeReasoningTag(reasoningToContentTag);
     const id = originalBody.requestId || originalBody.messageId;
+    const residentProposalFramingActive = hasResidentProposalSurface(originalBody.messages);
+    const residentPresentationChannel = createPresentationChannel(res, residentProposalFramingActive);
+    const residentPresentationSink = residentProposalFramingActive
+      ? createStreamPresentationSink({
+        channelId: residentPresentationChannel,
+        model: originalBody.model,
+        res
+      })
+      : null;
+    let residentProposalExecuted = false;
+    const failResidentProposalStream = (code) => {
+      res.__vcpDisableReplayCache?.();
+      if (!res.writableEnded && !res.destroyed) {
+        const payload = {
+          id: `chatcmpl-resident-fail-${Date.now()}`,
+          object: 'chat.completion.chunk',
+          created: Math.floor(Date.now() / 1000),
+          model: originalBody.model || 'unknown',
+          choices: [{ index: 0, delta: { content: `
+[AGENTSOSResident ${code}]
+` }, finish_reason: 'stop' }]
+        };
+        try {
+          res.write(`data: ${JSON.stringify(payload)}
+
+`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        } catch (_) {}
+      }
+    };
 
     let currentMessagesForLoop = originalBody.messages ? JSON.parse(JSON.stringify(originalBody.messages)) : [];
     let recursionDepth = 0;
@@ -151,6 +190,54 @@ class StreamHandler {
         let message = { content: '', reasoning_content: '' };
         let clientReasoningBlockOpen = false;
         let clientReasoningEndsWithNewline = false;
+        let deferredClientWrites = [];
+        const writeProviderClientChunk = (chunk, encodingOrCallback, maybeCallback) => {
+          const keepalive = typeof chunk === 'string' && chunk.startsWith(': vcp-keepalive');
+          if (!residentProposalFramingActive || keepalive) {
+            return res.write(chunk, encodingOrCallback, maybeCallback);
+          }
+          deferredClientWrites.push({ chunk, encodingOrCallback, maybeCallback });
+          const callback = typeof encodingOrCallback === 'function'
+            ? encodingOrCallback
+            : (typeof maybeCallback === 'function' ? maybeCallback : null);
+          if (callback) queueMicrotask(() => callback());
+          return true;
+        };
+        const flushDeferredClientWrites = () => {
+          for (const item of deferredClientWrites) {
+            if (res.writableEnded || res.destroyed) break;
+            res.write(item.chunk);
+          }
+          deferredClientWrites = [];
+        };
+        const discardDeferredClientWrites = () => { deferredClientWrites = []; };
+        const invalidResidentFrame = Object.freeze({
+          clientContent: '',
+          kind: 'INVALID',
+          loopContent: '',
+          toolCalls: Object.freeze([])
+        });
+        const incompleteStreamResult = () => {
+          if (residentProposalFramingActive) {
+            res.__vcpDisableReplayCache?.();
+            discardDeferredClientWrites();
+            return { content: '', message, residentFrame: invalidResidentFrame };
+          }
+          return { content: collectedContentThisTurn, message };
+        };
+        const writeResidentClientPrefix = (content) => {
+          if (!content || res.writableEnded || res.destroyed) return;
+          const payload = {
+            id: `chatcmpl-resident-client-${Date.now()}`,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: originalBody.model || 'unknown',
+            choices: [{ index: 0, delta: { content }, finish_reason: null }]
+          };
+          res.write(`data: ${JSON.stringify(payload)}
+
+`);
+        };
 
         const appendDelta = (delta) => {
           if (delta && delta.content) {
@@ -233,13 +320,13 @@ class StreamHandler {
               finish_reason: null
             }]
           };
-          res.write(`data: ${JSON.stringify(closePayload)}\n\n`);
+          writeProviderClientChunk(`data: ${JSON.stringify(closePayload)}\n\n`);
         };
         // 🌟 核心修复：注入 SSE 幽灵心跳保活，防止上游卡顿时浏览器假死
         keepAliveTimer = setInterval(() => {
           if (!res.writableEnded && !res.destroyed) {
             try {
-              res.write(': vcp-keepalive\n\n');
+              writeProviderClientChunk(': vcp-keepalive\n\n');
             } catch (e) {
               // Ignore errors
             }
@@ -265,8 +352,8 @@ class StreamHandler {
                   model: originalBody.model || 'unknown',
                   choices: [{ index: 0, delta: { content: '\n[上游响应超时，流已中断]' }, finish_reason: 'stop' }],
                 };
-                res.write(`data: ${JSON.stringify(stallPayload)}\n\n`);
-                res.write('data: [DONE]\n\n');
+                writeProviderClientChunk(`data: ${JSON.stringify(stallPayload)}\n\n`);
+                writeProviderClientChunk('data: [DONE]\n\n');
               } catch (e) { /* ignore */ }
             }
             if (aiResponse.body && !aiResponse.body.destroyed) {
@@ -274,7 +361,7 @@ class StreamHandler {
             }
             if (keepAliveTimer) clearInterval(keepAliveTimer);
             if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
-            resolve({ content: collectedContentThisTurn, message: message });
+            resolve(incompleteStreamResult());
           }, CHUNK_IDLE_TIMEOUT);
         };
         resetChunkIdleTimer(); // 启动首次空闲计时
@@ -284,7 +371,7 @@ class StreamHandler {
           if (DEBUG_MODE) console.log('[Stream Abort] Abort signal received, stopping stream processing.');
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (aiResponse.body && !aiResponse.body.destroyed) aiResponse.body.destroy();
-          resolve({ content: collectedContentThisTurn, message: message });
+          resolve(incompleteStreamResult());
         };
 
         if (abortController?.signal) {
@@ -326,10 +413,10 @@ class StreamHandler {
                   writeClientReasoningCloseChunk();
                 } else if (reasoningToContentEnabled && parsedData) {
                   const transformedData = transformParsedDataForClient(parsedData);
-                  res.write(`data: ${JSON.stringify(transformedData)}\n`);
+                  writeProviderClientChunk(`data: ${JSON.stringify(transformedData)}\n`);
                 } else {
                   // 保留空行，因为 SSE 依靠空行分隔消息块。
-                  res.write(line + '\n');
+                  writeProviderClientChunk(line + '\n');
                 }
               } catch (writeError) {
                 streamAborted = true;
@@ -367,9 +454,9 @@ class StreamHandler {
                 if (isDoneLine) {
                   writeClientReasoningCloseChunk();
                 } else if (reasoningToContentEnabled && parsedData) {
-                  res.write(`data: ${JSON.stringify(transformParsedDataForClient(parsedData))}\n`);
+                  writeProviderClientChunk(`data: ${JSON.stringify(transformParsedDataForClient(parsedData))}\n`);
                 } else {
-                  res.write(sseLineBuffer + '\n');
+                  writeProviderClientChunk(sseLineBuffer + '\n');
                 }
               } catch (e) { }
             }
@@ -377,7 +464,23 @@ class StreamHandler {
 
           writeClientReasoningCloseChunk();
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
-          resolve({ content: collectedContentThisTurn, message: message });
+          let residentFrame = null;
+          let finalLoopContent = collectedContentThisTurn;
+          if (residentProposalFramingActive) {
+            res.__vcpDisableReplayCache?.();
+            residentFrame = frameResidentProposalTurn(collectedContentThisTurn, ToolCallParser);
+            if (residentFrame.kind === 'NONE') {
+              flushDeferredClientWrites();
+            } else if (residentFrame.kind === 'RESIDENT_PROPOSAL') {
+              discardDeferredClientWrites();
+              writeResidentClientPrefix(residentFrame.clientContent);
+              finalLoopContent = residentFrame.loopContent;
+            } else {
+              discardDeferredClientWrites();
+              finalLoopContent = '';
+            }
+          }
+          resolve({ content: finalLoopContent, message: message, residentFrame });
         });
 
         aiResponse.body.on('error', streamError => {
@@ -385,13 +488,17 @@ class StreamHandler {
           if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (streamAborted || streamError.name === 'AbortError' || streamError.type === 'aborted') {
-            resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
+            if (residentProposalFramingActive) {
+              resolve(incompleteStreamResult());
+            } else {
+              resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
+            }
             return;
           }
           console.error('Error reading AI response stream:', streamError);
           if (!res.writableEnded) {
             try {
-              res.write(`data: ${JSON.stringify({ error: 'STREAM_READ_ERROR', message: streamError.message })}\n\n`);
+              writeProviderClientChunk(`data: ${JSON.stringify({ error: 'STREAM_READ_ERROR', message: streamError.message })}\n\n`);
               res.end();
             } catch (e) { }
           }
@@ -403,6 +510,11 @@ class StreamHandler {
     // --- 初始 AI 调用 ---
     if (DEBUG_MODE) console.log('[VCP Stream Loop] Processing initial AI call.');
     let initialAIResponseData = await processAIResponseStreamHelper(firstAiAPIResponse, true);
+    let currentResidentFrame = initialAIResponseData.residentFrame || null;
+    if (currentResidentFrame?.kind === 'INVALID') {
+      failResidentProposalStream('PROPOSAL_SEQUENCE_REJECTED');
+      return;
+    }
     currentAIContentForLoop = initialAIResponseData.content;
     if (writeChatLog) chatLogs.push({ request: originalBody, response: initialAIResponseData.message });
     if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
@@ -430,6 +542,14 @@ class StreamHandler {
       currentMessagesForLoop.push(...assistantMessages);
 
       const toolCalls = vcpToolUseForbidden ? [] : ToolCallParser.parse(currentAIContentForLoop);
+      const residentProposalCalls = toolCalls.filter(isResidentProposalToolCall);
+      if (
+        currentResidentFrame?.kind === 'RESIDENT_PROPOSAL'
+        && (residentProposalCalls.length !== 1 || residentProposalExecuted)
+      ) {
+        failResidentProposalStream('PROPOSAL_SEQUENCE_REJECTED');
+        return;
+      }
       if (toolCalls.length === 0) {
         if (DEBUG_MODE) console.log('[VCP Stream Loop] No tool calls found. Exiting loop.');
         if (!res.writableEnded) {
@@ -535,6 +655,11 @@ class StreamHandler {
 
         if (nextAiAPIResponse.ok) {
           let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
+          currentResidentFrame = nextAIResponseData.residentFrame || null;
+          if (currentResidentFrame?.kind === 'INVALID') {
+            failResidentProposalStream('PROPOSAL_SEQUENCE_REJECTED');
+            return;
+          }
           currentAIContentForLoop = nextAIResponseData.content;
           if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
             oneRingAssistantTurnParts.push(currentAIContentForLoop);
@@ -568,7 +693,23 @@ class StreamHandler {
       }
 
       // 执行普通调用
-      const toolResults = await toolExecutor.executeAll(normalCalls, clientIp, currentMessagesForLoop);
+      if (residentProposalCalls.length > 0) residentProposalExecuted = true;
+      const toolResults = await toolExecutor.executeAll(
+        normalCalls,
+        clientIp,
+        currentMessagesForLoop,
+        { residentPresentationSink }
+      );
+      if (residentProposalCalls.length === 1) {
+        const proposalIndex = normalCalls.findIndex(isResidentProposalToolCall);
+        const proposalFailure = proposalIndex >= 0
+          ? residentProposalFailureCategory(toolResults[proposalIndex])
+          : 'PROPOSAL_DISPATCH_FAILED';
+        if (proposalFailure) {
+          failResidentProposalStream(proposalFailure);
+          return;
+        }
+      }
       const combinedToolResultsForAI = toolResults.map(r => r.content).flat();
       if (archeryErrorContents.length > 0) combinedToolResultsForAI.push(...archeryErrorContents);
 
