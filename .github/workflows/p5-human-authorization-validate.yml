@@ -1,0 +1,88 @@
+name: P5 Human authorization validation
+
+on:
+  push:
+    branches:
+      - integration/p5-human-authorization-probe
+    paths:
+      - .github/workflows/p5-human-authorization-validate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: 33dcb35b7ad6911c6844caf385b83de8ac9b37f2
+
+      - name: Guard exact P5 ancestry and bounded surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=2ed4b2e398c188102069056a1768490ef903572c
+          CANDIDATE=33dcb35b7ad6911c6844caf385b83de8ac9b37f2
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          EXPECTED="$(printf '%s\n' \
+            modules/approvalReceiptAuthority.js \
+            modules/humanClientAdmission.js \
+            modules/humanClientAdmissionCrypto.js \
+            modules/trustedClientAuthorityStore.js \
+            modules/trustedClientImplementationProfile.js \
+            tests/humanAuthorizationKernel.test.cjs | sort)"
+          ACTUAL="$(git diff --name-only "$BASE" "$CANDIDATE" | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          ! git diff --summary "$BASE" "$CANDIDATE" | grep -E 'mode change|rename|delete mode'
+          git diff --check "$BASE" "$CANDIDATE"
+          test "$(git rev-parse "$CANDIDATE:modules/approvalReceiptAuthority.js")" = 34980147f7bc316467aca192b3d1ee88ba2b5c0c
+          test "$(git rev-parse "$CANDIDATE:modules/humanClientAdmission.js")" = 556ae4d6342f1f4eab0ecff779a3c553ce0f0b4e
+          test "$(git rev-parse "$CANDIDATE:modules/humanClientAdmissionCrypto.js")" = c022c8b90a396f9ac6956ebf0a790e929c005b48
+          test "$(git rev-parse "$CANDIDATE:modules/trustedClientAuthorityStore.js")" = 6a97c1e8a0e36087b659f5fdd984b79a1ab16975
+          test "$(git rev-parse "$CANDIDATE:modules/trustedClientImplementationProfile.js")" = 11047e5ca351a4ef58aa0a6d1b835aaf057f995d
+          test "$(git rev-parse "$CANDIDATE:tests/humanAuthorizationKernel.test.cjs")" = 135a1a506da64c568e80392b4aaad8ea542f5a3c
+          test "$(git show "$BASE:server.js" | git hash-object --stdin)" = "$(git show "$CANDIDATE:server.js" | git hash-object --stdin)"
+          test "$(git show "$BASE:WebSocketServer.js" | git hash-object --stdin)" = "$(git show "$CANDIDATE:WebSocketServer.js" | git hash-object --stdin)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+
+      - name: Install runtime dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Syntax gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            modules/approvalReceiptAuthority.js \
+            modules/humanClientAdmission.js \
+            modules/humanClientAdmissionCrypto.js \
+            modules/trustedClientAuthorityStore.js \
+            modules/trustedClientImplementationProfile.js \
+            tests/humanAuthorizationKernel.test.cjs; do
+            node --check "$file"
+          done
+
+      - name: P5 human authorization kernel
+        run: node --test tests/humanAuthorizationKernel.test.cjs
+
+      - name: P4 Resident host regression
+        run: node --test tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs
+
+      - name: P2 external composition regression
+        run: >-
+          node --test
+          tests/externalPluginAllowPolicy.test.js
+          tests/externalPluginSafetyGate.test.js
+          tests/plugin-external-dirs.test.js
+          tests/plugin-external-runtime-direct-policy.test.js
+          tests/plugin-external-runtime-env-sandbox.test.js
+          tests/plugin-external-runtime-registration-gate.test.js
+
+      - name: P1 Native Manifest regression
+        run: node --test tests/vcpToolBridgeNativeManifest.test.js
