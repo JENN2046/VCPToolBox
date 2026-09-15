@@ -1,0 +1,64 @@
+name: P2 external composition ours-resolve probe
+
+on:
+  push:
+    branches:
+      - integration/p2-external-composition-merge-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve P2 three-way conflicts to current host and show residual auto-port
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT=/tmp/current-Plugin.js
+          BASE=/tmp/p2-base-Plugin.js
+          P2=/tmp/p2-head-Plugin.js
+          MERGED=/tmp/merged-Plugin.js
+          RESOLVED=/tmp/resolved-ours-Plugin.js
+          cp Plugin.js "$CURRENT"
+          git show f901f1a995fa6f8242e176b8ca66b6addd0be427:Plugin.js > "$BASE"
+          git show a4225acaafd0cf6019c843d65f374b499febe165:Plugin.js > "$P2"
+          set +e
+          git merge-file -p "$CURRENT" "$BASE" "$P2" > "$MERGED"
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('/tmp/merged-Plugin.js').read_text(errors='strict').splitlines(True)
+          out=[]; i=0; conflicts=0
+          while i < len(src):
+              if src[i].startswith('<<<<<<<'):
+                  conflicts += 1; i += 1
+                  while i < len(src) and not src[i].startswith('======='):
+                      out.append(src[i]); i += 1
+                  if i >= len(src): raise SystemExit('unterminated conflict before separator')
+                  i += 1
+                  while i < len(src) and not src[i].startswith('>>>>>>>'):
+                      i += 1
+                  if i >= len(src): raise SystemExit('unterminated conflict after separator')
+                  i += 1
+              else:
+                  out.append(src[i]); i += 1
+          Path('/tmp/resolved-ours-Plugin.js').write_text(''.join(out))
+          print(f'resolved_conflicts={conflicts}')
+          PY
+          echo "remaining_markers=$(grep -Ec '^(<<<<<<<|=======|>>>>>>>)' "$RESOLVED" || true)"
+          echo '--- AUTO-PORTED P2 DIFF AFTER CHOOSING CURRENT FOR ALL CONFLICTS ---'
+          diff -u "$CURRENT" "$RESOLVED" || true
+          mkdir -p /tmp/p2-ours-probe
+          cp "$RESOLVED" /tmp/p2-ours-probe/resolved-ours-Plugin.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-external-composition-ours-resolve-probe
+          path: /tmp/p2-ours-probe/
+          if-no-files-found: error
