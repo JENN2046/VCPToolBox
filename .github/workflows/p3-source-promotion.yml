@@ -1,0 +1,125 @@
+name: P3 source promotion
+
+on:
+  push:
+    branches:
+      - integration/p3-vexus-native-abi-probe
+    paths:
+      - .github/workflows/p3-source-promotion.yml
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild exact P3 package on tracking head
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_TRACKING=1cf353b4f5c18afdfb4b3bc59e9fc966bc26538f
+          EXPECTED_CANDIDATE=3de1ccac3c99907254bbc5fda03aa820643b5649
+          EXPECTED_BINARY_SHA256=1ec35689e22b49dfdae21d400bc3295683fef64e152660b194a0b076cfc930e2
+          TRACKING_REF=refs/remotes/origin/integration/upstream-tracking-rebaseline-r1
+          CANDIDATE_REF=refs/remotes/origin/integration/p3-vexus-native-abi-candidate
+
+          git fetch origin integration/upstream-tracking-rebaseline-r1 integration/p3-vexus-native-abi-candidate
+          test "$(git rev-parse "$TRACKING_REF")" = "$EXPECTED_TRACKING"
+          test "$(git rev-parse "$CANDIDATE_REF")" = "$EXPECTED_CANDIDATE"
+          test "$(git merge-base "$TRACKING_REF" "$CANDIDATE_REF")" = "$EXPECTED_TRACKING"
+
+          EXPECTED_FILES="$(printf '%s\n' \
+            .github/workflows/vexus-linux-native-abi.yml \
+            rust-vexus-lite/vexus-lite.linux-x64-gnu.node \
+            scripts/check-vexus-linux-native-abi.js | sort)"
+          CANDIDATE_FILES="$(git diff --name-only "$EXPECTED_TRACKING" "$EXPECTED_CANDIDATE" | sort)"
+          test "$CANDIDATE_FILES" = "$EXPECTED_FILES"
+
+          git checkout --detach "$EXPECTED_TRACKING"
+          mkdir -p .github/workflows scripts
+          git show "$EXPECTED_CANDIDATE:.github/workflows/vexus-linux-native-abi.yml" > .github/workflows/vexus-linux-native-abi.yml
+          git show "$EXPECTED_CANDIDATE:scripts/check-vexus-linux-native-abi.js" > scripts/check-vexus-linux-native-abi.js
+          git show "$EXPECTED_CANDIDATE:rust-vexus-lite/vexus-lite.linux-x64-gnu.node" > rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+
+          test "$(sha256sum rust-vexus-lite/vexus-lite.linux-x64-gnu.node | awk '{print $1}')" = "$EXPECTED_BINARY_SHA256"
+          ACTUAL_FILES="$(git diff --name-only | sort)"
+          test "$ACTUAL_FILES" = "$EXPECTED_FILES"
+          git diff --check
+          git diff --stat
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+
+      - name: Install pinned toolchain and runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-12 g++-12 binutils
+          rustup toolchain install 1.89.0 --profile minimal
+          rustup default 1.89.0
+          npm install --prefix /tmp/napi-cli --ignore-scripts --no-audit --no-fund @napi-rs/cli@2.18.4
+          npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+
+      - name: Re-run reproducible build and ABI contract on prospective tracking tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_once() {
+            local root="$1"
+            rm -rf "$root"
+            mkdir -p "$root"
+            cp -a rust-vexus-lite "$root/rust-vexus-lite"
+            find "$root/rust-vexus-lite" -maxdepth 1 -type f -name '*.node' -delete
+            rm -rf "$root/rust-vexus-lite/target"
+            pushd "$root/rust-vexus-lite" >/dev/null
+            CC=gcc-12 CXX=g++-12 RUSTUP_TOOLCHAIN=1.89.0 \
+              /tmp/napi-cli/node_modules/.bin/napi build --platform --release --cargo-flags="--locked"
+            popd >/dev/null
+          }
+
+          build_once /tmp/p3-promote-build-1
+          build_once /tmp/p3-promote-build-2
+          B1=/tmp/p3-promote-build-1/rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          B2=/tmp/p3-promote-build-2/rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          TRACKED=rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          SHA1="$(sha256sum "$B1" | awk '{print $1}')"
+          SHA2="$(sha256sum "$B2" | awk '{print $1}')"
+          TRACKED_SHA="$(sha256sum "$TRACKED" | awk '{print $1}')"
+          test "$SHA1" = "$SHA2"
+          cmp -s "$B1" "$B2"
+          test "$SHA1" = "$TRACKED_SHA"
+          MAX_ALLOWED_GLIBC=2.35 node scripts/check-vexus-linux-native-abi.js
+          printf 'SOURCE_BUILD_SHA256=%s\nTRACKED_BINARY_SHA256=%s\nP3_GATE=PASS\n' "$SHA1" "$TRACKED_SHA" | tee /tmp/p3-promotion-evidence.txt
+
+      - name: Commit bounded P3 package and fast-forward tracking
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_TRACKING=1cf353b4f5c18afdfb4b3bc59e9fc966bc26538f
+          CURRENT_REMOTE="$(git ls-remote origin refs/heads/integration/upstream-tracking-rebaseline-r1 | awk '{print $1}')"
+          test "$CURRENT_REMOTE" = "$EXPECTED_TRACKING"
+
+          git config user.name "Jenn2046"
+          git config user.email "130375136+JENN2046@users.noreply.github.com"
+          git add \
+            .github/workflows/vexus-linux-native-abi.yml \
+            rust-vexus-lite/vexus-lite.linux-x64-gnu.node \
+            scripts/check-vexus-linux-native-abi.js
+          test "$(git diff --cached --name-only | wc -l)" -eq 3
+          git commit -m "fix(rebaseline): enforce Vexus Linux native ABI" \
+            -m "Rebuild the Linux x64 GNU Vexus artifact from current source on the clean tracking baseline, require reproducible source builds, enforce GLIBC <= 2.35, and gate the current Vexus/KnowledgeBase runtime contract. Source migration only; no runtime activation."
+          PROMOTED_SHA="$(git rev-parse HEAD)"
+          git push origin HEAD:integration/upstream-tracking-rebaseline-r1
+          printf 'PROMOTED_SHA=%s\n' "$PROMOTED_SHA" | tee -a /tmp/p3-promotion-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p3-source-promotion-evidence
+          path: /tmp/p3-promotion-evidence.txt
