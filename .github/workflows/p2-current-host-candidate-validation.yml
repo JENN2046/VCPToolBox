@@ -68,7 +68,7 @@ jobs:
           done
           rm -f Plugin.js.rej
           chmod 0644 Plugin.js
-          git apply /tmp/p2-p1-test-compat.patch
+          git apply --ignore-space-change /tmp/p2-p1-test-compat.patch
 
           git add -N "${SUPPORT_PATHS[@]}"
           node --check Plugin.js
