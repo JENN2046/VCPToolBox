@@ -1,0 +1,53 @@
+name: P4 PR276 reject probe
+
+on:
+  push:
+    branches:
+      - integration/p4-resident-host-probe
+    paths:
+      - .github/workflows/p4-pr276-reject-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply PR276 with rejects
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=614fcdc619eb1233ce6e658cc59ec59af7d4ef8f
+          SOURCE=5272cbe053dee4fcd6a6ba17bf57db11a30eb958
+          git diff --binary "$BASE" "$SOURCE" -- \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            tests/residentProviderPresenceContract.test.cjs > /tmp/pr276.diff
+          set +e
+          git apply --reject --whitespace=nowarn /tmp/pr276.diff > /tmp/apply.out 2>&1
+          rc=$?
+          set -e
+          printf 'APPLY_RC=%s\n' "$rc" | tee /tmp/result.txt
+          cat /tmp/apply.out | tee -a /tmp/result.txt
+          find . -name '*.rej' -print | sort | tee /tmp/reject-files.txt
+          for f in $(cat /tmp/reject-files.txt); do
+            printf '\n===== %s =====\n' "$f" >> /tmp/rejects.txt
+            cat "$f" >> /tmp/rejects.txt
+          done
+          git status --short | tee -a /tmp/result.txt
+          git diff --stat | tee /tmp/stat.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p4-pr276-reject-probe
+          path: |
+            /tmp/result.txt
+            /tmp/reject-files.txt
+            /tmp/rejects.txt
+            /tmp/stat.txt
+            /tmp/pr276.diff
