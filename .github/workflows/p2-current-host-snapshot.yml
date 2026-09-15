@@ -1,0 +1,26 @@
+name: P2 current host snapshot
+
+on:
+  push:
+    branches:
+      - integration/p2-external-composition-merge-probe
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export exact current tracking Plugin.js
+        run: |
+          mkdir -p /tmp/p2-current
+          git show ed6d8565a04bd7767a24fe3fd1020df1a144de93:Plugin.js > /tmp/p2-current/Plugin.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-current-host-snapshot
+          path: /tmp/p2-current/Plugin.js
+          if-no-files-found: error
