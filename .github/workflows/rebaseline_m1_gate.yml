@@ -36,7 +36,7 @@ jobs:
           test "${changed[3]}" = 'tests/rebaselineMigrationMatrix.test.cjs'
 
           # M1 is governance + acceptance only. No product/runtime path may change.
-          if git diff --name-only "$upstream"..HEAD | grep -Ev '^(\.github/workflows/rebaseline_m1_gate\.yml|docs/rebaseline/|tests/rebaselineMigrationMatrix\.test\.cjs)$'; then
+          if git diff --name-only "$upstream"..HEAD | grep -Ev '^(\.github/workflows/rebaseline_m1_gate\.yml|docs/rebaseline/.*|tests/rebaselineMigrationMatrix\.test\.cjs)$'; then
             echo 'Unexpected product/runtime path in M1 diff' >&2
             exit 1
           fi
