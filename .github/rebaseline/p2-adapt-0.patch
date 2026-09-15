@@ -1,0 +1,91 @@
+diff --git a/Plugin.js b/Plugin.js
+index 6ce505a..b051eae 100644
+--- a/Plugin.js
++++ b/Plugin.js
+@@ -20,9 +20,23 @@ const {
+     getCurrentNativeManifest,
+     hasDirectRuntimeContractChange
+ } = require('./modules/nativeManifestAuthority');
++const {
++    createPluginRootResolver,
++    discoverLegacyManifestRecordsFromRoot
++} = require('./modules/pluginRootResolver');
++const { classifyExternalPluginManifest } = require('./modules/externalPluginSafetyGate');
++const {
++    evaluateExternalPluginAllowPolicy
++} = require('./modules/externalPluginAllowPolicy');
++const {
++    buildExternalPluginRuntimeEnv,
++    isPluginRuntimeEnvKeyDenied
++} = require('./modules/pluginRuntimeEnvSandbox');
+ 
+ const PLUGIN_DIR = path.join(__dirname, 'Plugin');
+ const manifestFileName = 'plugin-manifest.json';
++const EXTERNAL_LEGACY_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';
++const EXTERNAL_PLUGIN_ALLOWLIST_ENV = 'VCP_EXTERNAL_PLUGIN_ALLOWLIST';
+ const PREPROCESSOR_ORDER_FILE = path.join(__dirname, 'preprocessor_order.json');
+ const SSH_MANAGER_ENV_PLUGIN_ALLOWLIST = new Set([
+     'LinuxShellExecutor',
+@@ -33,6 +47,37 @@ const LOG_MONITOR_ENV_PLUGIN_ALLOWLIST = new Set([
+ ]);
+ const EMBEDDED_FILE_URL_REGEX = /file:\/\/[^\s"'()\]\}\>，。？！）\r\n]+/g;
+ 
++
++const PLUGIN_DIAGNOSTIC_SECRET_PATTERNS = [
++    /((?:api[_-]?key|apikey|token|secret|password|passwd|pwd|authorization|bearer|cookie|session|credential|private[_-]?key)\s*[:=]\s*)[^\s"',;}\]]+/gi,
++    /\b(?:sk|ghp|github_pat|xox[baprs]|ya29)\b[-_A-Za-z0-9]{12,}/gi,
++    /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi
++];
++
++function scrubPluginDiagnosticText(value) {
++    if (value === undefined || value === null) return '';
++    let text = String(value);
++    for (const pattern of PLUGIN_DIAGNOSTIC_SECRET_PATTERNS) {
++        text = text.replace(pattern, (match, prefix) => (prefix ? `${prefix}[redacted]` : '[redacted]'));
++    }
++    text = text.replace(/\b[A-Za-z]:\\[^\s"',;}\]]+/g, '[path]');
++    text = text.replace(/(^|[\s"'(])\/(?:Users|home|var|tmp|etc|opt|srv|mnt)\/[^\s"',;}\]]+/g, '$1[path]');
++    text = text.replace(/\\\\[^\\\s"',;}\]]+(?:\\[^\s"',;}\]]+)+/g, '[path]');
++    return text;
++}
++
++function scrubPluginDiagnosticSnippet(value, maxLength) {
++    return scrubPluginDiagnosticText(value).substring(0, maxLength);
++}
++
++function formatRuntimeEnvDebugKeyList(env = {}) {
++    const keys = Object.keys(env || {});
++    const visibleKeys = keys.filter(key => !isPluginRuntimeEnvKeyDenied(key)).sort();
++    const redactedCount = keys.length - visibleKeys.length;
++    const suffix = redactedCount > 0 ? ` (redacted ${redactedCount} sensitive keys)` : '';
++    return `${visibleKeys.join(',')}${suffix}`;
++}
++
+ function getFormattedLocalTimestamp() {
+     const date = new Date();
+     const year = date.getFullYear();
+@@ -148,6 +193,11 @@ class PluginManager extends EventEmitter {
+         this.tdbKnowledgeManager = null; // 冷知识库管理器，等待 server.js 注入
+         this.toolApprovalManager = new ToolApprovalManager(path.join(__dirname, 'toolApprovalConfig.json'));
+         this.pendingApprovals = new Map(); // requestId -> { resolve, reject, timeoutId }
++        this.pluginRootResolver = createPluginRootResolver({
++            projectRoot: __dirname,
++            env: process.env
++        });
++        this.lastPluginRootSnapshot = null;
+     }
+ 
+     _createRuntimePluginEntryFromNativeManifest(nativeManifest) {
+@@ -647,9 +697,10 @@ class PluginManager extends EventEmitter {
+                 }
+             }
+ 
+-            const manifest = record.manifest;
+-            if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
++            const nativeManifest = record.manifest;
++            if (!nativeManifest.name || !nativeManifest.pluginType || !nativeManifest.entryPoint) continue;
+ 
++            const manifest = this._createRuntimePluginEntryFromNativeManifest(nativeManifest);
+             manifest.basePath = record.pluginPath;
+             manifest.pluginSource = record.source;
+             manifest.pluginRoot = record.rootPath;
