@@ -60,17 +60,19 @@ jobs:
           node --check tests/lightMemoCompatibility.test.cjs
           node -e "JSON.parse(require('node:fs').readFileSync('Plugin/LightMemo/plugin-manifest.json','utf8'))"
 
-      - name: P6 wrapper load contract
+      - name: P6 wrapper composition contract
         shell: bash
         run: |
           set -euo pipefail
           node - <<'NODE'
           const assert = require('node:assert/strict');
-          const manifest = JSON.parse(require('node:fs').readFileSync('Plugin/LightMemo/plugin-manifest.json', 'utf8'));
+          const fs = require('node:fs');
+          const manifest = JSON.parse(fs.readFileSync('Plugin/LightMemo/plugin-manifest.json', 'utf8'));
+          const wrapper = fs.readFileSync('Plugin/LightMemo/LightMemoCompat.js', 'utf8');
           assert.equal(manifest.entryPoint.script, 'LightMemoCompat.js');
-          const lightMemo = require('./Plugin/LightMemo/LightMemoCompat.js');
-          assert.equal(lightMemo[Symbol.for('vcp.p6.lightmemo.compatibility.v1')], true);
-          assert.equal(typeof lightMemo.processToolCall, 'function');
+          assert.match(wrapper, /require\('\.\/LightMemo\.js'\)/u);
+          assert.match(wrapper, /require\('\.\.\/\.\.\/modules\/lightMemoCompatibility\.js'\)/u);
+          assert.match(wrapper, /applyLightMemoCompatibility\(lightMemo\)/u);
           NODE
 
       - name: P6 LightMemo compatibility seam
