@@ -1,0 +1,427 @@
+name: P2 current-host candidate validation
+
+on:
+  push:
+    branches:
+      - integration/p2-external-composition-merge-probe
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build bounded P2 candidate on exact P1 head
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_P1=ed6d8565a04bd7767a24fe3fd1020df1a144de93
+          P2_BASE=f901f1a995fa6f8242e176b8ca66b6addd0be427
+          P2_HEAD=a4225acaafd0cf6019c843d65f374b499febe165
+          SOURCE_SHA="$GITHUB_SHA"
+
+          git fetch origin integration/upstream-tracking-rebaseline-r1 codex/upstream-main-clean-base codex/phase1-clean-core-plugin-contract
+          ACTUAL_P1="$(git rev-parse origin/integration/upstream-tracking-rebaseline-r1)"
+          test "$ACTUAL_P1" = "$EXPECTED_P1"
+          git checkout --detach "$ACTUAL_P1"
+
+          SUPPORT_PATHS=(
+            modules/externalPluginAllowPolicy.js
+            modules/externalPluginSafetyGate.js
+            modules/pluginRootResolver.js
+            modules/pluginRuntimeEnvSandbox.js
+            tests/externalPluginAllowPolicy.test.js
+            tests/externalPluginSafetyGate.test.js
+            tests/plugin-external-dirs.test.js
+            tests/plugin-external-runtime-direct-policy.test.js
+            tests/plugin-external-runtime-env-sandbox.test.js
+            tests/plugin-external-runtime-registration-gate.test.js
+          )
+          git diff "$P2_BASE" "$P2_HEAD" -- "${SUPPORT_PATHS[@]}" > /tmp/p2-support.patch
+          git apply /tmp/p2-support.patch
+
+          git diff "$P2_BASE" "$P2_HEAD" -- Plugin.js > /tmp/p2-plugin.patch
+          git apply --reject --ignore-space-change /tmp/p2-plugin.patch || true
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('Plugin.js')
+          text = path.read_bytes().decode('utf-8')
+
+          def must_replace(old, new, count=1):
+              global text
+              if old not in text:
+                  raise SystemExit(f'missing expected adaptation anchor: {old[:100]!r}')
+              text = text.replace(old, new, count)
+
+          # A — imports + resolver authority seam, preserving P1 native-manifest imports.
+          must_replace(
+              "} = require('./modules/nativeManifestAuthority');\n",
+              "} = require('./modules/nativeManifestAuthority');\n"
+              "const {\n"
+              "    createPluginRootResolver,\n"
+              "    discoverLegacyManifestRecordsFromRoot\n"
+              "} = require('./modules/pluginRootResolver');\n"
+              "const { classifyExternalPluginManifest } = require('./modules/externalPluginSafetyGate');\n"
+              "const { evaluateExternalPluginAllowPolicy } = require('./modules/externalPluginAllowPolicy');\n"
+              "const {\n"
+              "    buildExternalPluginRuntimeEnv,\n"
+              "    isPluginRuntimeEnvKeyDenied\n"
+              "} = require('./modules/pluginRuntimeEnvSandbox');\n"
+          )
+          must_replace(
+              "const manifestFileName = 'plugin-manifest.json';\nconst PREPROCESSOR_ORDER_FILE",
+              "const manifestFileName = 'plugin-manifest.json';\n"
+              "const EXTERNAL_LEGACY_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';\n"
+              "const EXTERNAL_PLUGIN_ALLOWLIST_ENV = 'VCP_EXTERNAL_PLUGIN_ALLOWLIST';\n"
+              "const PREPROCESSOR_ORDER_FILE"
+          )
+
+          diagnostic_helpers = r'''
+const PLUGIN_DIAGNOSTIC_SECRET_PATTERNS = [
+    /((?:api[_-]?key|apikey|token|secret|password|passwd|pwd|authorization|bearer|cookie|session|credential|private[_-]?key)\s*[:=]\s*)[^\s"',;}\]]+/gi,
+    /\b(?:sk|ghp|github_pat|xox[baprs]|ya29)\b[-_A-Za-z0-9]{12,}/gi,
+    /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi
+];
+
+function scrubPluginDiagnosticText(value) {
+    if (value === undefined || value === null) return '';
+    let text = String(value);
+    for (const pattern of PLUGIN_DIAGNOSTIC_SECRET_PATTERNS) {
+        text = text.replace(pattern, (match, prefix) => (prefix ? `${prefix}[redacted]` : '[redacted]'));
+    }
+    text = text.replace(/\b[A-Za-z]:\\[^\s"',;}\]]+/g, '[path]');
+    text = text.replace(/(^|[\s"'(])\/(?:Users|home|var|tmp|etc|opt|srv|mnt)\/[^\s"',;}\]]+/g, '$1[path]');
+    text = text.replace(/\\\\[^\\\s"',;}\]]+(?:\\[^\s"',;}\]]+)+/g, '[path]');
+    return text;
+}
+
+function scrubPluginDiagnosticSnippet(value, maxLength) {
+    return scrubPluginDiagnosticText(value).substring(0, maxLength);
+}
+
+function formatRuntimeEnvDebugKeyList(env = {}) {
+    const keys = Object.keys(env || {});
+    const visibleKeys = keys.filter(key => !isPluginRuntimeEnvKeyDenied(key)).sort();
+    const redactedCount = keys.length - visibleKeys.length;
+    const suffix = redactedCount > 0 ? ` (redacted ${redactedCount} sensitive keys)` : '';
+    return `${visibleKeys.join(',')}${suffix}`;
+}
+
+'''
+          marker = "const EMBEDDED_FILE_URL_REGEX = /file:\\/\\/[^\\s\"'()\\]\\}\\>，。？！）\\r\\n]+/g;\n\n"
+          must_replace(marker, marker + diagnostic_helpers)
+
+          must_replace(
+              "        this.pendingApprovals = new Map(); // requestId -> { resolve, reject, timeoutId }\n    }\n",
+              "        this.pendingApprovals = new Map(); // requestId -> { resolve, reject, timeoutId }\n"
+              "        this.pluginRootResolver = createPluginRootResolver({\n"
+              "            projectRoot: __dirname,\n"
+              "            env: process.env\n"
+              "        });\n"
+              "        this.lastPluginRootSnapshot = null;\n"
+              "    }\n"
+          )
+
+          # B — P1 x P2 composition: every discovered runtime entry keeps canonical native authority.
+          must_replace(
+              "            const manifest = record.manifest;\n            if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;\n\n            manifest.basePath = record.pluginPath;\n",
+              "            const nativeManifest = record.manifest;\n"
+              "            if (!nativeManifest.name || !nativeManifest.pluginType || !nativeManifest.entryPoint) continue;\n\n"
+              "            const manifest = this._createRuntimePluginEntryFromNativeManifest(nativeManifest);\n"
+              "            manifest.basePath = record.pluginPath;\n"
+          )
+
+          # C1 — static process execution uses the same external env sandbox; retain current detached behavior.
+          must_replace(
+              "            const pluginConfig = this._getPluginConfig(plugin);\n"
+              "            const envForProcess = { ...process.env };\n"
+              "            for (const key in pluginConfig) {\n"
+              "                if (pluginConfig.hasOwnProperty(key) && pluginConfig[key] !== undefined) {\n"
+              "                    envForProcess[key] = String(pluginConfig[key]);\n"
+              "                }\n"
+              "            }\n"
+              "            if (this.projectBasePath) { // Add projectBasePath for static plugins too if needed\n"
+              "                envForProcess.PROJECT_BASE_PATH = this.projectBasePath;\n"
+              "            }\n\n\n"
+              "            const [command, ...args] = plugin.entryPoint.command.split(' ');\n"
+              "            const pluginProcess = spawn(command, args, {\n",
+              "            const pluginConfig = this._getPluginConfig(plugin);\n"
+              "            const additionalEnv = {};\n"
+              "            if (this.projectBasePath) { // Add projectBasePath for static plugins too if needed\n"
+              "                additionalEnv.PROJECT_BASE_PATH = this.projectBasePath;\n"
+              "            }\n"
+              "            const envForProcess = this._buildPluginProcessEnv(plugin, pluginConfig, additionalEnv);\n\n"
+              "            const [command, ...args] = plugin.entryPoint.command.split(' ');\n"
+              "            const pluginProcess = this._spawnPluginProcess(command, args, {\n"
+          )
+
+          # B2 — use resolver discovery on current host instead of replacing later lifecycle code.
+          start = text.index("            // 2. 发现并加载所有插件模块，但不初始化\n", text.index("    async _loadPluginsOnce()"))
+          end = text.index("            // 3. 确定预处理器加载顺序\n", start)
+          text = text[:start] + (
+              "            // 2. 发现并加载所有插件模块，但不初始化\n"
+              "            const legacyManifests = await this._discoverLegacyPluginManifests();\n"
+              "            for (const manifest of legacyManifests) {\n"
+              "                if (this.plugins.has(manifest.name)) {\n"
+              "                    this._warnDuplicateLocalPluginSkipped(manifest, this.plugins.get(manifest.name));\n"
+              "                    continue;\n"
+              "                }\n"
+              "                await this._registerLocalPlugin(manifest, discoveredPreprocessors, modulesToInitialize);\n"
+              "            }\n\n"
+          ) + text[end:]
+
+          # C2 — old P2 patch called this executionContext; current host calls it executionOptions.
+          text = text.replace('if (executionContext && typeof executionContext === \'object\') {', "if (executionOptions && typeof executionOptions === 'object') {")
+          text = text.replace('executionContext.requestSource', 'executionOptions.requestSource')
+          text = text.replace('executionContext.agentAlias', 'executionOptions.agentAlias')
+          text = text.replace('executionContext.agentId', 'executionOptions.agentId')
+          text = text.replace('executionContext.executionContext', 'executionOptions.executionContext')
+
+          # External plugins must never receive host admin authentication.
+          must_replace(
+              "        if (plugin.requiresAdmin) {\n            const decryptedCode = await this._getDecryptedAuthCode();\n",
+              "        if (plugin.requiresAdmin) {\n"
+              "            if (this._isExternalPluginManifest(plugin)) {\n"
+              "                throw new Error(`External plugin \"${pluginName}\" cannot receive admin authentication.`);\n"
+              "            }\n"
+              "            const decryptedCode = await this._getDecryptedAuthCode();\n"
+          )
+
+          must_replace(
+              "        const finalEnv = { ...envForProcess, ...additionalEnv };\n",
+              "        const finalEnv = this._buildPluginProcessEnv(plugin, pluginConfig, additionalEnv);\n"
+          )
+          must_replace(
+              "        if (this.debugMode && plugin.pluginType === 'asynchronous') {\n"
+              "            console.log(`[PluginManager executePlugin] Final ENV for async plugin ${pluginName}:`, JSON.stringify(finalEnv, null, 2).substring(0, 500) + \"...\");\n"
+              "        }\n",
+              "        if (this.debugMode && plugin.pluginType === 'asynchronous') {\n"
+              "            const scope = this._isExternalPluginManifest(plugin) ? 'External' : 'Core';\n"
+              "            console.log(`[PluginManager executePlugin] ${scope} async plugin ${pluginName} runtime env keys:`, formatRuntimeEnvDebugKeyList(finalEnv));\n"
+              "        }\n"
+          )
+          text = text.replace("            const pluginProcess = spawn(command, args, {\n", "            const pluginProcess = this._spawnPluginProcess(command, args, {\n", 1)
+
+          # Diagnostic redaction rejected by current-host drift; preserve the security intent only.
+          text = text.replace('${outputBuffer.substring(0, 100)}...', '${scrubPluginDiagnosticSnippet(outputBuffer, 100)}...')
+          text = text.replace('${data.trim()}`);', '${scrubPluginDiagnosticText(data.trim())}`);')
+          text = text.replace('parsedOutput.pluginStderr = errorOutput.trim();', 'parsedOutput.pluginStderr = scrubPluginDiagnosticText(errorOutput.trim());')
+          text = text.replace('${outputBuffer.trim().substring(0, 100)}`);', '${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 100)}`);')
+          text = text.replace('Stdout: ${outputBuffer.trim().substring(0, 200)}`;', 'Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 200)}`;')
+          text = text.replace('Stderr: ${errorOutput.trim().substring(0, 200)}`;', 'Stderr: ${scrubPluginDiagnosticSnippet(errorOutput.trim(), 200)}`;')
+          text = text.replace('Stdout: ${outputBuffer.trim().substring(0, 200)}`));', 'Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 200)}`));')
+
+          # D — multi-root watcher while retaining upstream strict manifest-only depth.
+          watcher_start = text.index('    startPluginWatcher() {')
+          watcher_end = text.index('    _hasManifestRuntimeContractChange(currentManifest, freshManifest) {', watcher_start)
+          watcher = r'''    startPluginWatcher() {
+        if (this.pluginWatcher) {
+            if (this.debugMode) console.log('[PluginManager] Plugin file watcher is already running.');
+            return this.pluginWatcher;
+        }
+        if (this.debugMode) console.log('[PluginManager] Starting plugin file watcher...');
+
+        const watchRoots = this.pluginRootResolver.getWatchRoots();
+        const normalizedRoots = watchRoots.map(rootPath => path.resolve(rootPath));
+        const findRoot = targetPath => normalizedRoots
+            .filter(rootPath => this._isPathInsideRoot(targetPath, rootPath))
+            .sort((a, b) => b.length - a.length)[0] || null;
+
+        this.pluginWatcher = chokidar.watch(watchRoots, {
+            depth: 1,
+            ignored: (targetPath, stats) => {
+                if (!targetPath) return false;
+                const rootPath = findRoot(targetPath);
+                if (!rootPath) return true;
+                if (path.resolve(targetPath) === rootPath) return false;
+                const baseName = path.basename(targetPath);
+                if (baseName.startsWith('.')) return true;
+                const relative = path.relative(rootPath, targetPath);
+                const segments = relative.split(/[\\/]/).filter(Boolean);
+                if (stats ? stats.isDirectory() : !baseName.includes('.')) return segments.length >= 2;
+                if (segments.length !== 2) return true;
+                return baseName !== manifestFileName && baseName !== `${manifestFileName}.block`;
+            },
+            persistent: true,
+            ignoreInitial: true,
+            awaitWriteFinish: {
+                stabilityThreshold: 500,
+                pollInterval: 100
+            }
+        });
+
+        const filterManifest = filePath => {
+            const rootPath = findRoot(filePath);
+            if (!rootPath) return false;
+            const relative = path.relative(rootPath, filePath);
+            const segments = relative.split(/[\\/]/).filter(Boolean);
+            if (segments.length !== 2) return false;
+            const fileName = path.basename(filePath);
+            return fileName === manifestFileName || fileName === `${manifestFileName}.block`;
+        };
+
+        const enqueueManifestChange = (eventType, filePath) => {
+            if (filterManifest(filePath)) this.handlePluginManifestChange(eventType, filePath);
+        };
+
+        this.pluginWatcher
+            .on('add', filePath => enqueueManifestChange('add', filePath))
+            .on('change', filePath => enqueueManifestChange('change', filePath))
+            .on('unlink', filePath => enqueueManifestChange('unlink', filePath))
+            .on('error', error => console.error('[PluginManager] Plugin watcher error:', error));
+
+        console.log(`[PluginManager] Chokidar is now watching ${watchRoots.map(rootPath => this._formatPluginEventPathForLog(rootPath)).join(', ')} (depth: 1, strict manifest filter).`);
+        return this.pluginWatcher;
+    }
+
+'''
+          text = text[:watcher_start] + watcher + text[watcher_end:]
+
+          # Preserve P2 provenance when P1 performs metadata-only native-manifest refresh.
+          must_replace(
+              "            refreshedManifest.basePath = currentManifest.basePath || path.dirname(filePath);\n"
+              "            refreshedManifest.pluginSpecificEnvConfig = currentManifest.pluginSpecificEnvConfig || {};\n"
+              "            this.plugins.set(freshManifest.name, refreshedManifest);\n",
+              "            refreshedManifest.basePath = currentManifest.basePath || path.dirname(filePath);\n"
+              "            refreshedManifest.pluginSpecificEnvConfig = currentManifest.pluginSpecificEnvConfig || {};\n"
+              "            refreshedManifest.pluginSource = currentManifest.pluginSource;\n"
+              "            refreshedManifest.pluginRoot = currentManifest.pluginRoot;\n"
+              "            refreshedManifest.pluginRootId = currentManifest.pluginRootId;\n"
+              "            refreshedManifest.pluginRootDisplayPath = currentManifest.pluginRootDisplayPath;\n"
+              "            this.plugins.set(freshManifest.name, refreshedManifest);\n"
+          )
+
+          if 'executionContext &&' in text or 'const finalEnv = { ...envForProcess' in text:
+              raise SystemExit('stale rejected P2 host code remains')
+          path.write_bytes(text.encode('utf-8'))
+          PY
+
+          rm -f Plugin.js.rej
+          node --check Plugin.js
+          node --check modules/externalPluginAllowPolicy.js
+          node --check modules/externalPluginSafetyGate.js
+          node --check modules/pluginRootResolver.js
+          node --check modules/pluginRuntimeEnvSandbox.js
+          git diff --check
+
+          EXPECTED_FILES="$(printf '%s\n' Plugin.js "${SUPPORT_PATHS[@]}" | sort)"
+          ACTUAL_FILES="$(git diff --name-only | sort)"
+          test "$ACTUAL_FILES" = "$EXPECTED_FILES"
+          git diff --stat
+          git diff --numstat
+          git diff > /tmp/p2-current-host-candidate.diff
+
+      - name: Run P2 targeted suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/externalPluginAllowPolicy.test.js \
+            tests/externalPluginSafetyGate.test.js \
+            tests/plugin-external-dirs.test.js \
+            tests/plugin-external-runtime-direct-policy.test.js \
+            tests/plugin-external-runtime-env-sandbox.test.js \
+            tests/plugin-external-runtime-registration-gate.test.js | tee /tmp/p2-tests.txt
+
+      - name: Run P1 regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/vcpToolBridgeNativeManifest.test.js | tee /tmp/p1-regression.txt
+
+      - name: Assert P1 x P2 native authority and provenance composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE' | tee /tmp/p1-p2-cross.txt
+          const assert = require('node:assert/strict');
+          const fs = require('fs');
+          const os = require('os');
+          const path = require('path');
+          const pluginManager = require('./Plugin.js');
+
+          (async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p1-p2-cross-'));
+            const pluginDir = path.join(root, 'ExternalCrossFixture');
+            fs.mkdirSync(pluginDir, { recursive: true });
+            const native = {
+              name: 'ExternalCrossFixture',
+              displayName: 'External Cross Fixture',
+              pluginType: 'synchronous',
+              entryPoint: { command: 'node fixture.js' },
+              communication: { protocol: 'stdio', timeout: 1000 },
+              capabilities: { invocationCommands: [] }
+            };
+            const manifestPath = path.join(pluginDir, 'plugin-manifest.json');
+            fs.writeFileSync(manifestPath, JSON.stringify(native, null, 2));
+
+            try {
+              const manifests = await pluginManager._discoverLegacyPluginManifestsFromDir(root, 'external', {
+                rootId: 'external:1',
+                source: 'external',
+                rootPath: root,
+                displayPath: '[external]/fixture',
+                allowConfigEnv: false,
+                enabled: true
+              });
+              assert.equal(manifests.length, 1);
+              const runtimeEntry = manifests[0];
+              assert.deepEqual(pluginManager.getCurrentNativeManifest(runtimeEntry), native);
+              assert.equal(runtimeEntry.pluginSource, 'external');
+              assert.equal(runtimeEntry.pluginRootId, 'external:1');
+
+              pluginManager.plugins.set(native.name, runtimeEntry);
+              const refreshedNative = { ...native, displayName: 'External Cross Fixture v2' };
+              fs.writeFileSync(manifestPath, JSON.stringify(refreshedNative, null, 2));
+              const result = await pluginManager._refreshPluginManifestMetadata(manifestPath);
+              assert.equal(result.refreshed, true);
+              const refreshed = pluginManager.plugins.get(native.name);
+              assert.equal(refreshed.pluginSource, 'external');
+              assert.equal(refreshed.pluginRootId, 'external:1');
+              assert.deepEqual(pluginManager.getCurrentNativeManifest(refreshed), refreshedNative);
+              assert.equal(pluginManager._isExternalPluginManifest(refreshed), true);
+              console.log('PASS_P1_P2_NATIVE_AUTHORITY_PROVENANCE');
+            } finally {
+              pluginManager.plugins.delete(native.name);
+              await pluginManager.toolApprovalManager?.shutdown?.();
+              fs.rmSync(root, { recursive: true, force: true });
+            }
+          })().catch(error => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+      - name: Capture candidate evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "SOURCE_SHA=$GITHUB_SHA"
+            echo "FILES:"
+            git diff --name-only || true
+            echo "STAT:"
+            git diff --stat || true
+            echo "NUMSTAT:"
+            git diff --numstat || true
+          } > /tmp/summary.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p2-current-host-candidate-validation
+          path: |
+            /tmp/p2-current-host-candidate.diff
+            /tmp/p2-tests.txt
+            /tmp/p1-regression.txt
+            /tmp/p1-p2-cross.txt
+            /tmp/summary.txt
