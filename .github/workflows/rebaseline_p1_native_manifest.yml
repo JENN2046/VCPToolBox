@@ -51,6 +51,12 @@ jobs:
           test "${changed[3]}" = 'modules/nativeManifestAuthority.js'
           test "${changed[4]}" = 'tests/vcpToolBridgeNativeManifest.test.js'
 
+      - name: Install repository dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+
       - name: Syntax validation
         shell: bash
         run: |
