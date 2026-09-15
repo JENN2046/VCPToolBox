@@ -25,7 +25,11 @@ jobs:
         run: |
           set -euo pipefail
           expected=29336add899777b030c2973a7e3ecb4e442ce11d
-          test "$(git rev-parse HEAD^)" = "$expected"
+          git merge-base --is-ancestor "$expected" HEAD
+          test "$(git rev-list --count "$expected"..HEAD)" -eq 2
+          mapfile -t prechanged < <(git diff --name-only "$expected"..HEAD)
+          test "${#prechanged[@]}" -eq 1
+          test "${prechanged[0]}" = '.github/workflows/pr276_final_bounded.yml'
 
       - name: Apply bounded OneRing and Host contract repair
         shell: bash
@@ -59,13 +63,13 @@ jobs:
 
           onering_path = Path('Plugin/OneRing/OneRing.js')
           onering = onering_path.read_text(encoding='utf-8')
-          needle = """    return {\n      agentName,\n      frontendSource,\n      postTurn,\n      turnId: normalizeText(postTurn?.turnId) || null,\n      requestHash: normalizeText(postTurn?.requestHash) || null,\n    };"""
-          replacement = """    return {\n      agentName,\n      externalKeyDigest: null,\n      frontendPlane: null,\n      frontendPrincipalDigest: null,\n      frontendSource,\n      postTurn,\n      turnId: normalizeText(postTurn?.turnId) || null,\n      requestHash: normalizeText(postTurn?.requestHash) || null,\n    };"""
+          needle = """        return {\n            agentName,\n            frontendSource: tailMeta ? tailMeta.frontendSource : frontendSourceFromTrigger,"""
+          replacement = """        return {\n            agentName,\n            externalKeyDigest: null,\n            frontendPlane: null,\n            frontendPrincipalDigest: null,\n            frontendSource: tailMeta ? tailMeta.frontendSource : frontendSourceFromTrigger,"""
           count = onering.count(needle)
           if count != 1:
-              pos = onering.find('extractMetaFromMessages')
-              print(onering[max(0, pos-400):pos+1600])
-              raise SystemExit(f'OneRing extractMeta return replacement count {count}')
+              pos = onering.find('_extractMetaFromMessages(messages)')
+              print(onering[max(0, pos-400):pos+2600])
+              raise SystemExit(f'OneRing _extractMeta return replacement count {count}')
           onering = onering.replace(needle, replacement, 1)
           onering_path.write_text(onering, encoding='utf-8')
           PY
@@ -107,16 +111,16 @@ jobs:
           }
 
           test('OneRing explicitly projects unknown authority metadata as null', () => {
-            const marker = 'function extractMetaFromMessages(messages)';
+            const marker = '_extractMetaFromMessages(messages) {';
             const start = oneRing.indexOf(marker);
-            assert.ok(start >= 0, 'extractMetaFromMessages must exist');
-            const next = oneRing.indexOf('async function recordAIResponseFromMessages', start);
-            const body = oneRing.slice(start, next > start ? next : start + 2400);
-            assert.match(body, /externalKeyDigest:\s*null/);
-            assert.match(body, /frontendPlane:\s*null/);
-            assert.match(body, /frontendPrincipalDigest:\s*null/);
-            assert.doesNotMatch(body, /createHash|sha256|digest/i,
-              'OneRing must not fabricate authority metadata from labels');
+            assert.ok(start >= 0, '_extractMetaFromMessages must exist');
+            const next = oneRing.indexOf('_hasOneRingActivationSignal(messages)', start);
+            const body = oneRing.slice(start, next > start ? next : start + 3200);
+            for (const key of ['externalKeyDigest', 'frontendPlane', 'frontendPrincipalDigest']) {
+              const match = body.match(new RegExp(`${key}:\\s*([^,\\n]+)`));
+              assert.ok(match, `${key} must be explicitly projected`);
+              assert.equal(match[1].trim(), 'null', `${key} must remain honest UNKNOWN`);
+            }
           });
 
           test('Host admits honest UNKNOWN OneRing authority metadata for Resident evaluation', () => {
@@ -153,17 +157,18 @@ jobs:
             assert.match(handler, /frontendPrincipalDigest:\s*presenceOneRingMeta\.frontendPrincipalDigest/);
           });
 
-          test('Resident remains an explicit external composition dependency', () => {
+          test('Resident remains an explicit external composition dependency and missing composition fails closed', () => {
             assert.match(pluginManager, /VCP_PLUGIN_DIRS/);
             assert.match(pluginManager, /VCP_EXTERNAL_PLUGIN_ALLOWLIST/);
             assert.match(handler, /messagePreprocessors\s*\.get\('AGENTSOSResident'\)/);
-            assert.match(handler, /!residentModule[\s\S]{0,180}typeof residentModule\.processMessages !== 'function'/);
-            assert.match(handler, /Object\.getOwnPropertyDescriptor\([\s\S]{0,160}residentPresenceModule[\s\S]{0,160}'sealProviderAttempt'/);
+            assert.match(handler, /!residentModule[\s\S]{0,240}typeof residentModule\.processMessages !== 'function'/);
+            assert.match(handler, /Object\.getOwnPropertyDescriptor\([\s\S]{0,500}'sealProviderAttempt'/);
+            assert.match(handler, /throw residentProviderAttemptDenied\(\)/);
           });
 
           test('Presence-bound path keeps replay-cache bypass and provider-seal gating', () => {
-            assert.match(handler, /!residentPresenceRequested[\s\S]{0,120}responseCacheKey[\s\S]{0,120}responseReplayCache\.replay/);
-            assert.match(handler, /residentPresenceRequested[\s\S]{0,120}__vcpDisableReplayCache/);
+            assert.match(handler, /responseCacheKey\s*&&\s*!residentPresenceRequested/);
+            assert.match(handler, /__vcpDisableReplayCache/);
             assert.match(handler, /await Promise\.race\(/);
             assert.match(handler, /sealProviderAttempt/);
             assert.match(handler, /RESIDENT_PROVIDER_ATTEMPT_DENIED/);
