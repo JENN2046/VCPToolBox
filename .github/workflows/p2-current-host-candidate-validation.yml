@@ -81,6 +81,10 @@ jobs:
           git diff --numstat
           git diff > /tmp/p2-current-host-candidate.diff
 
+      - name: Install locked test dependencies
+        shell: bash
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
       - name: Run P2 targeted suite
         shell: bash
         run: |
