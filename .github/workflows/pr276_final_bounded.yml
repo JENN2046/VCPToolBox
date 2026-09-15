@@ -1,4 +1,4 @@
-name: PR276 final bounded repair
+name: PR276 byte-preserving cleanup
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  repair-and-validate:
+  cleanup-and-validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -20,165 +20,56 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Pin repair input
+      - name: Pin validated repair
         shell: bash
         run: |
           set -euo pipefail
-          expected=29336add899777b030c2973a7e3ecb4e442ce11d
+          expected=10ed922fc774ca70e692e1bb67653131cca8ae38
           git merge-base --is-ancestor "$expected" HEAD
-          mapfile -t prechanged < <(git diff --name-only "$expected"..HEAD)
-          test "${#prechanged[@]}" -eq 1
-          test "${prechanged[0]}" = '.github/workflows/pr276_final_bounded.yml'
+          mapfile -t changed < <(git diff --name-only "$expected"..HEAD)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = '.github/workflows/pr276_final_bounded.yml'
 
-      - name: Apply bounded OneRing and Host contract repair
+      - name: Restore original handler bytes and replay only nullable identity repair
         shell: bash
         run: |
           set -euo pipefail
+          git show 29336add899777b030c2973a7e3ecb4e442ce11d:modules/chatCompletionHandler.js > /tmp/pr276-handler-original
           python3 - <<'PY'
           from pathlib import Path
 
-          handler_path = Path('modules/chatCompletionHandler.js')
-          handler = handler_path.read_text(encoding='utf-8')
-          replacements = [
+          original = Path('/tmp/pr276-handler-original').read_bytes()
+          eol = b'\r\n' if b'\r\n' in original else b'\n'
+          data = original
+          pairs = [
               (
-                  "    && typeof value.externalKeyDigest === 'string'\n    && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)",
-                  "    && (value.externalKeyDigest === null\n      || (typeof value.externalKeyDigest === 'string'\n        && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)))"
+                  b"    && typeof value.externalKeyDigest === 'string'" + eol + b"    && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)",
+                  b"    && (value.externalKeyDigest === null" + eol + b"      || (typeof value.externalKeyDigest === 'string'" + eol + b"        && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)))"
               ),
               (
-                  "    && typeof value.frontendPlane === 'string'\n    && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)",
-                  "    && (value.frontendPlane === null\n      || (typeof value.frontendPlane === 'string'\n        && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)))"
+                  b"    && typeof value.frontendPlane === 'string'" + eol + b"    && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)",
+                  b"    && (value.frontendPlane === null" + eol + b"      || (typeof value.frontendPlane === 'string'" + eol + b"        && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)))"
               ),
               (
-                  "    && typeof value.frontendPrincipalDigest === 'string'\n    && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)",
-                  "    && (value.frontendPrincipalDigest === null\n      || (typeof value.frontendPrincipalDigest === 'string'\n        && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)))"
+                  b"    && typeof value.frontendPrincipalDigest === 'string'" + eol + b"    && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)",
+                  b"    && (value.frontendPrincipalDigest === null" + eol + b"      || (typeof value.frontendPrincipalDigest === 'string'" + eol + b"        && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)))"
               ),
           ]
-          for old, new in replacements:
-              count = handler.count(old)
+          for old, new in pairs:
+              count = data.count(old)
               if count != 1:
-                  raise SystemExit(f'handler replacement count {count} for {old!r}')
-              handler = handler.replace(old, new, 1)
-          handler_path.write_text(handler, encoding='utf-8')
+                  raise SystemExit(f'byte-preserving replacement count {count}')
+              data = data.replace(old, new, 1)
 
-          onering_path = Path('Plugin/OneRing/OneRing.js')
-          onering = onering_path.read_text(encoding='utf-8')
-          needle = """        return {\n            agentName,\n            frontendSource: tailMeta ? tailMeta.frontendSource : frontendSourceFromTrigger,"""
-          replacement = """        return {\n            agentName,\n            externalKeyDigest: null,\n            frontendPlane: null,\n            frontendPrincipalDigest: null,\n            frontendSource: tailMeta ? tailMeta.frontendSource : frontendSourceFromTrigger,"""
-          count = onering.count(needle)
-          if count != 1:
-              raise SystemExit(f'OneRing _extractMeta return replacement count {count}')
-          onering = onering.replace(needle, replacement, 1)
-          onering_path.write_text(onering, encoding='utf-8')
+          if eol == b'\r\n' and data.count(b'\n') != data.count(b'\r\n'):
+              raise SystemExit('mixed newline bytes introduced')
+          if eol == b'\n' and b'\r\n' in data:
+              raise SystemExit('unexpected CRLF introduced')
+
+          Path('modules/chatCompletionHandler.js').write_bytes(data)
           PY
 
-          cat > tests/residentProviderPresenceContract.test.cjs <<'EOF'
-          'use strict';
-
-          const assert = require('node:assert/strict');
-          const fs = require('node:fs');
-          const vm = require('node:vm');
-          const { createHash } = require('node:crypto');
-          const test = require('node:test');
-
-          const handler = fs.readFileSync('modules/chatCompletionHandler.js', 'utf8');
-          const oneRing = fs.readFileSync('Plugin/OneRing/OneRing.js', 'utf8');
-          const pluginManager = fs.readFileSync('Plugin.js', 'utf8');
-
-          function loadPresenceValidators() {
-            const start = handler.indexOf('function isPlainRecord(value)');
-            const end = handler.indexOf('function parseBooleanEnv', start);
-            assert.ok(start >= 0 && end > start, 'presence validator source slice must exist');
-            const source = `${handler.slice(start, end)}\n` +
-              `this.validateJson = json => validOneRingPresenceMeta(JSON.parse(json));\n` +
-              `this.sameJson = (left, right) => sameOneRingPresenceMeta(JSON.parse(left), JSON.parse(right));`;
-            const context = { Buffer, createHash };
-            vm.runInNewContext(source, context, { filename: 'chatCompletionHandler.presence.validators.js' });
-            return {
-              valid(value) { return context.validateJson(JSON.stringify(value)); },
-              same(left, right) { return context.sameJson(JSON.stringify(left), JSON.stringify(right)); }
-            };
-          }
-
-          function meta(overrides = {}) {
-            return {
-              agentName: 'Nuobao',
-              externalKeyDigest: null,
-              frontendPlane: null,
-              frontendPrincipalDigest: null,
-              frontendSource: 'VCPChat',
-              requestHash: '1'.repeat(64),
-              turnId: 'turn:r1:test',
-              ...overrides
-            };
-          }
-
-          test('OneRing explicitly projects unknown authority metadata as null', () => {
-            const marker = '_extractMetaFromMessages(messages) {';
-            const start = oneRing.indexOf(marker);
-            assert.ok(start >= 0, '_extractMetaFromMessages must exist');
-            const next = oneRing.indexOf('_hasOneRingActivationSignal(messages)', start);
-            const body = oneRing.slice(start, next > start ? next : start + 3200);
-            for (const key of ['externalKeyDigest', 'frontendPlane', 'frontendPrincipalDigest']) {
-              const match = body.match(new RegExp(`${key}:\\s*([^,\\n]+)`));
-              assert.ok(match, `${key} must be explicitly projected`);
-              assert.equal(match[1].trim(), 'null', `${key} must remain honest UNKNOWN`);
-            }
-          });
-
-          test('Host admits honest UNKNOWN OneRing authority metadata for Resident evaluation', () => {
-            const validators = loadPresenceValidators();
-            assert.equal(validators.valid(meta()), true);
-          });
-
-          test('Host still admits exact non-null authority metadata when a trusted producer exists', () => {
-            const validators = loadPresenceValidators();
-            assert.equal(validators.valid(meta({
-              externalKeyDigest: 'a'.repeat(64),
-              frontendPlane: 'VCPCHAT',
-              frontendPrincipalDigest: 'b'.repeat(64)
-            })), true);
-          });
-
-          test('Host rejects malformed non-null authority metadata', () => {
-            const validators = loadPresenceValidators();
-            assert.equal(validators.valid(meta({ externalKeyDigest: 'not-a-digest' })), false);
-            assert.equal(validators.valid(meta({ frontendPlane: 'vcpchat' })), false);
-            assert.equal(validators.valid(meta({ frontendPrincipalDigest: 'xyz' })), false);
-          });
-
-          test('OneRing metadata equality treats UNKNOWN as a real stable contract value', () => {
-            const validators = loadPresenceValidators();
-            assert.equal(validators.same(meta(), meta()), true);
-            assert.equal(validators.same(meta(), meta({ requestHash: '2'.repeat(64) })), false);
-            assert.equal(validators.same(meta(), meta({ externalKeyDigest: 'a'.repeat(64) })), false);
-          });
-
-          test('Host passes OneRing authority fields through without synthesizing identity', () => {
-            assert.match(handler, /externalKeyDigest:\s*presenceOneRingMeta\.externalKeyDigest/);
-            assert.match(handler, /frontendPlane:\s*presenceOneRingMeta\.frontendPlane/);
-            assert.match(handler, /frontendPrincipalDigest:\s*presenceOneRingMeta\.frontendPrincipalDigest/);
-          });
-
-          test('Resident remains an explicit external composition dependency and missing composition fails closed', () => {
-            assert.match(pluginManager, /VCP_PLUGIN_DIRS/);
-            assert.match(pluginManager, /VCP_EXTERNAL_PLUGIN_ALLOWLIST/);
-            assert.match(handler, /messagePreprocessors\s*\.get\('AGENTSOSResident'\)/);
-            assert.match(handler, /!residentModule[\s\S]{0,240}typeof residentModule\.processMessages !== 'function'/);
-            assert.match(handler, /Object\.getOwnPropertyDescriptor\([\s\S]{0,500}'sealProviderAttempt'/);
-            assert.match(handler, /throw residentProviderAttemptDenied\(\)/);
-          });
-
-          test('Presence-bound path keeps replay-cache bypass and bounded provider-seal gating', () => {
-            assert.match(handler, /!residentPresenceRequested[\s\S]{0,120}responseReplayCache\.replay/);
-            assert.match(handler, /__vcpDisableReplayCache/);
-            assert.match(handler, /const sealed = await new Promise\(/);
-            assert.match(handler, /sealTimeoutId = setTimeout\(\(\) => attemptController\.abort\(\), sealTimeoutMs\)/);
-            assert.match(handler, /sealProviderAttempt/);
-            assert.match(handler, /RESIDENT_PROVIDER_ATTEMPT_DENIED/);
-          });
-          EOF
-
-      - name: Syntax and focused contract validation
+      - name: Revalidate repaired contract
         shell: bash
         run: |
           set -euo pipefail
@@ -187,19 +78,20 @@ jobs:
           node --check tests/residentProviderPresenceContract.test.cjs
           node --test tests/residentProviderPresenceContract.test.cjs
           node --test tests/directPluginRuntime.test.js
+          read -r adds dels path < <(git diff --numstat 29336add899777b030c2973a7e3ecb4e442ce11d -- modules/chatCompletionHandler.js)
+          echo "handler delta from reviewed head: +${adds}/-${dels} ${path}"
+          test "$adds" -le 15
+          test "$dels" -le 15
 
-      - name: Verify bounded diff and commit repair
+      - name: Commit byte-preserving cleanup
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
-          printf 'changed files:\n%s\n' "${changed[*]}"
-          test "${#changed[@]}" -eq 3
-          test "${changed[0]}" = 'Plugin/OneRing/OneRing.js'
-          test "${changed[1]}" = 'modules/chatCompletionHandler.js'
-          test "${changed[2]}" = 'tests/residentProviderPresenceContract.test.cjs'
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = 'modules/chatCompletionHandler.js'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Plugin/OneRing/OneRing.js modules/chatCompletionHandler.js tests/residentProviderPresenceContract.test.cjs
-          git commit -m 'fix(resident): preserve unknown OneRing authority metadata'
+          git add modules/chatCompletionHandler.js
+          git commit -m 'fix(resident): preserve handler source bytes'
           git push origin HEAD:${GITHUB_REF_NAME}
