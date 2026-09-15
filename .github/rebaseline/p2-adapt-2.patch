@@ -1,0 +1,113 @@
+diff --git a/Plugin.js b/Plugin.js
+index 6ce505a..b051eae 100644
+--- a/Plugin.js
++++ b/Plugin.js
+@@ -2205,15 +2200,15 @@ class PluginManager extends EventEmitter {
+                         if (code === 0 && parsedOutput.status === "error" && this.debugMode) {
+                             console.warn(`[PluginManager executePlugin Internal] Plugin "${pluginName}" exited with code 0 but reported error in JSON. Trusting JSON.`);
+                         }
+-                        if (errorOutput.trim()) parsedOutput.pluginStderr = errorOutput.trim();
++                        if (errorOutput.trim()) parsedOutput.pluginStderr = scrubPluginDiagnosticText(errorOutput.trim());
+ 
+                         if (!initialResponseSent) resolve(parsedOutput); // Ensure resolve only once
+                         else if (this.debugMode) console.log(`[PluginManager executePlugin Internal] Plugin ${pluginName} exited, initial async response already sent.`);
+                         return;
+                     }
+-                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Plugin "${pluginName}" final stdout was not in the expected JSON format: ${outputBuffer.trim().substring(0, 100)}`);
++                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Plugin "${pluginName}" final stdout was not in the expected JSON format: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 100)}`);
+                 } catch (e) {
+-                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Failed to parse final stdout JSON from plugin "${pluginName}". Error: ${e.message}. Stdout: ${outputBuffer.trim().substring(0, 100)}`);
++                    if (this.debugMode) console.warn(`[PluginManager executePlugin Internal] Failed to parse final stdout JSON from plugin "${pluginName}". Error: ${e.message}. Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 100)}`);
+                 }
+ 
+                 if (!initialResponseSent) { // Only reject if no response has been sent yet
+@@ -2235,12 +2230,12 @@ class PluginManager extends EventEmitter {
+                         });
+                     } else if (code !== 0) {
+                         let detailedError = `Plugin "${pluginName}" exited with code ${code}.`;
+-                        if (outputBuffer.trim()) detailedError += ` Stdout: ${outputBuffer.trim().substring(0, 200)}`;
+-                        if (errorOutput.trim()) detailedError += ` Stderr: ${errorOutput.trim().substring(0, 200)}`;
++                        if (outputBuffer.trim()) detailedError += ` Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 200)}`;
++                        if (errorOutput.trim()) detailedError += ` Stderr: ${scrubPluginDiagnosticSnippet(errorOutput.trim(), 200)}`;
+                         reject(new Error(detailedError));
+                     } else {
+                         // Exit code 0, but no valid initial JSON response was sent/parsed.
+-                        reject(new Error(`Plugin "${pluginName}" exited successfully but did not provide a valid initial JSON response. Stdout: ${outputBuffer.trim().substring(0, 200)}`));
++                        reject(new Error(`Plugin "${pluginName}" exited successfully but did not provide a valid initial JSON response. Stdout: ${scrubPluginDiagnosticSnippet(outputBuffer.trim(), 200)}`));
+                     }
+                 }
+             });
+@@ -2251,7 +2246,7 @@ class PluginManager extends EventEmitter {
+                 }
+                 pluginProcess.stdin.end();
+             } catch (e) {
+-                console.error(`[PluginManager executePlugin Internal] Stdin write error for "${pluginName}": ${e.message}`);
++                console.error(`[PluginManager executePlugin Internal] Stdin write error for "${pluginName}": ${scrubPluginDiagnosticText(e.message)}`);
+                 if (!initialResponseSent) { // Only reject if no response has been sent yet
+                     reject(new Error(`Stdin write error for "${pluginName}": ${e.message}`));
+                 }
+@@ -2806,31 +2801,32 @@ class PluginManager extends EventEmitter {
+         }
+         if (this.debugMode) console.log('[PluginManager] Starting plugin file watcher...');
+ 
+-        // 强约束：只监听各插件根目录下的 plugin-manifest.json / plugin-manifest.json.block。
+-        // depth: 1 严格限定只下潜到 Plugin/<PluginName> 这一层，深层子目录完全不建立文件系统监听句柄；
+-        // ignored 函数在递归入口处立即阻断所有与 manifest 无关的子目录和文件，避免任何运行时数据（如浏览器 Profile）被扫描。
+-        this.pluginWatcher = chokidar.watch(PLUGIN_DIR, {
++        const watchRoots = this.pluginRootResolver.getWatchRoots();
++        const normalizedRoots = watchRoots.map(rootPath => path.resolve(rootPath));
++        const findRoot = targetPath => normalizedRoots
++            .filter(rootPath => this._isPathInsideRoot(targetPath, rootPath))
++            .sort((a, b) => b.length - a.length)[0] || null;
++
++        // Keep the upstream hardening: only watch root/<PluginName>/plugin-manifest.json(.block),
++        // now applied independently to every managed root.
++        this.pluginWatcher = chokidar.watch(watchRoots, {
+             depth: 1,
+             ignored: (targetPath, stats) => {
+                 if (!targetPath) return false;
+-                const normalized = targetPath.replace(/\\/g, '/');
+-                if (normalized === PLUGIN_DIR.replace(/\\/g, '/')) return false;
++                const rootPath = findRoot(targetPath);
++                if (!rootPath) return true;
++                if (path.resolve(targetPath) === rootPath) return false;
+ 
+-                const base = path.basename(targetPath);
+-                if (base.startsWith('.')) return true;
++                const baseName = path.basename(targetPath);
++                if (baseName.startsWith('.')) return true;
++                const relative = path.relative(rootPath, targetPath);
++                const segments = relative.split(/[\\/]/).filter(Boolean);
+ 
+-                // 目录层级判断：只允许 Plugin/<PluginFolder>，禁止进入第三层及以后的子目录
+-                const rel = path.relative(PLUGIN_DIR, targetPath);
+-                const segments = rel.split(/[\\/]/).filter(Boolean);
+-
+-                if (stats ? stats.isDirectory() : !base.includes('.')) {
+-                    // segments.length >= 2 说明已经进入插件子文件夹内部（如 Plugin/ChromeBridge/managed-profile）
++                if (stats ? stats.isDirectory() : !baseName.includes('.')) {
+                     return segments.length >= 2;
+                 }
+-
+-                // 文件层级判断：只接收 segments.length === 2 且名字匹配 manifestFileName 的文件
+                 if (segments.length !== 2) return true;
+-                return base !== manifestFileName && base !== `${manifestFileName}.block`;
++                return baseName !== manifestFileName && baseName !== `${manifestFileName}.block`;
+             },
+             persistent: true,
+             ignoreInitial: true,
+@@ -2840,9 +2836,11 @@ class PluginManager extends EventEmitter {
+             }
+         });
+ 
+-        const filterManifest = (filePath) => {
+-            const rel = path.relative(PLUGIN_DIR, filePath);
+-            const segments = rel.split(/[\\/]/).filter(Boolean);
++        const filterManifest = filePath => {
++            const rootPath = findRoot(filePath);
++            if (!rootPath) return false;
++            const relative = path.relative(rootPath, filePath);
++            const segments = relative.split(/[\\/]/).filter(Boolean);
+             if (segments.length !== 2) return false;
+             const fileName = path.basename(filePath);
+             return fileName === manifestFileName || fileName === `${manifestFileName}.block`;
