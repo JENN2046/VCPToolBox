@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const pluginManager = require('../../Plugin.js');
+const pluginManager = require(path.join(process.cwd(), 'Plugin.js'));
 
 (async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p1-p2-cross-'));
