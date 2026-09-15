@@ -23,9 +23,20 @@ jobs:
           EXPECTED_P1=ed6d8565a04bd7767a24fe3fd1020df1a144de93
           P2_BASE=f901f1a995fa6f8242e176b8ca66b6addd0be427
           P2_HEAD=a4225acaafd0cf6019c843d65f374b499febe165
-          cp .github/rebaseline/p2-current-host-adaptation.patch.b64 /tmp/p2-adapt.b64
+
+          for i in 0 1 2 3; do
+            cp ".github/rebaseline/p2-adapt-${i}.patch" "/tmp/p2-adapt-${i}.patch"
+          done
           cp .github/rebaseline/p2-p1-cross-assert.js /tmp/p1-p2-cross.js
-          base64 -d /tmp/p2-adapt.b64 > /tmp/p2-adapt.patch
+
+          cat > /tmp/p2-adapt.sha256 <<'EOF'
+          6bf5dcfe194f3b7644084b5f672fef89b50ad78708f39d34f3a8fcdd017886cd  /tmp/p2-adapt-0.patch
+          8e2375987a4c93cbdbe1f71ac392c3bdfa0c8ba41c14d2960a8d7189ece9204f  /tmp/p2-adapt-1.patch
+          47c9502164d1f1880948e32b69ab70923b73e775e8d6a72802c45c396b0d31a5  /tmp/p2-adapt-2.patch
+          e7da98d4324cce0afa3a26e9f20efd4cb62dd05829e8ecae44936ddddfd7847d  /tmp/p2-adapt-3.patch
+          EOF
+          sed -i 's/^          //' /tmp/p2-adapt.sha256
+          sha256sum -c /tmp/p2-adapt.sha256
 
           git fetch origin integration/upstream-tracking-rebaseline-r1 codex/upstream-main-clean-base codex/phase1-clean-core-plugin-contract
           ACTUAL_P1="$(git rev-parse origin/integration/upstream-tracking-rebaseline-r1)"
@@ -49,7 +60,9 @@ jobs:
 
           git diff "$P2_BASE" "$P2_HEAD" -- Plugin.js > /tmp/p2-plugin.patch
           git apply --reject --ignore-space-change /tmp/p2-plugin.patch || true
-          git apply --ignore-space-change /tmp/p2-adapt.patch
+          for i in 0 1 2 3; do
+            git apply --ignore-space-change "/tmp/p2-adapt-${i}.patch"
+          done
           rm -f Plugin.js.rej
           chmod 0644 Plugin.js
 
