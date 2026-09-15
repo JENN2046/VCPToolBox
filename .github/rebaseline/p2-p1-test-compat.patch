@@ -1,0 +1,28 @@
+diff --git a/tests/vcpToolBridgeNativeManifest.test.js b/tests/vcpToolBridgeNativeManifest.test.js
+--- a/tests/vcpToolBridgeNativeManifest.test.js
++++ b/tests/vcpToolBridgeNativeManifest.test.js
+@@ -388,6 +388,7 @@ test('PluginManager production loader captures complete native authority before runtime augmentation', async t => {
+     }));
+     const originalReadFile = fs.readFile.bind(fs);
+     const originalReaddir = fs.readdir.bind(fs);
++    const originalLstat = fs.lstat.bind(fs);
+ 
+     t.after(async () => {
+         Object.assign(pluginManager, originalState);
+@@ -401,6 +402,17 @@ test('PluginManager production loader captures complete native authority before runtime augmentation', async t => {
+         }
+         return originalReaddir(target, options);
+     });
++    t.mock.method(fs, 'lstat', async target => {
++        const resolved = path.resolve(String(target));
++        if (resolved === path.resolve(manifestPath)) {
++            return {
++                isSymbolicLink: () => false,
++                isFile: () => true
++            };
++        }
++        return originalLstat(target);
++    });
+     t.mock.method(fs, 'readFile', async (target, encoding) => {
+         const resolved = path.resolve(String(target));
+         if (resolved === path.resolve(manifestPath)) return JSON.stringify(initialNative);
