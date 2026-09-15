@@ -1,0 +1,187 @@
+{
+  "schema_version": "vcptoolbox-upstream-rebaseline-r1.matrix.v1",
+  "status": "FROZEN",
+  "program": "VCPTOOLBOX_UPSTREAM_TRACKING_REBASELINE_R1",
+  "upstream": {
+    "repository": "lioensky/VCPToolBox",
+    "branch": "main",
+    "commit": "9deadda698eb87b4ee2aef5c27ea7c01e8970a02",
+    "tree": "83d9d49f626ea7f782203ba7ad24197dfbc909fc"
+  },
+  "legacy_migration_source": {
+    "repository": "JENN2046/VCPToolBox",
+    "branch": "nuobao-vcptoolbox",
+    "commit": "e3ca2caebd32d7e1a05c61e01fd25275777f6a89",
+    "tree": "5600833a8e27aa81e6844026b9d2fa66f02a7004",
+    "role": "REFERENCE_ONLY_NOT_ANCESTRY_BASE"
+  },
+  "historical_clean_lane": {
+    "repository": "JENN2046/VCPToolBox",
+    "branch": "integration/clean-upstream-main",
+    "commit": "62e7e2693bac3f2c556f8f2e9d9f1f08bcced5e2",
+    "role": "IMPLEMENTATION_EVIDENCE_ONLY_NOT_NEW_BASE"
+  },
+  "durable_prerequisite_authority": {
+    "repository": "JENN2046/agents-os-vcptoolbox-authority",
+    "branch": "agent/vcptoolbox-selected-source-baseline",
+    "role": "ACCEPTED_PREREQUISITE_EVIDENCE_NOT_DEVELOPMENT_FORK"
+  },
+  "packages": [
+    {
+      "id": "P1_NATIVE_MANIFEST_SURFACE",
+      "title": "Native manifest producer / FMS native-v1 surface",
+      "classification": "REQUIRED_LOCAL_DELTA_ACTUAL_CONSUMED_CONTRACT",
+      "migration_rule": "PORT_CURRENT_REQUIRED_SEMANTICS_ONLY",
+      "required_semantics": [
+        "native-v1 manifest discovery remains available to current consumers",
+        "manifest identity and discovery behavior remain deterministic",
+        "consumer-facing contract is preserved without carrying unrelated historical fork code"
+      ],
+      "known_consumer": "JENN2046/codex-memory",
+      "explicit_exclusions": [
+        "historical commit replay as a migration strategy",
+        "unrelated plugin/runtime changes"
+      ],
+      "m1_status": "PENDING_MIGRATION"
+    },
+    {
+      "id": "P2_EXTERNAL_PLUGIN_COMPOSITION",
+      "title": "External plugin composition and admission",
+      "classification": "REQUIRED_LOCAL_DELTA_ACTUAL_CONSUMED_CONTRACT",
+      "migration_rule": "ADAPT_CURRENT_CONTRACT_TO_CURRENT_UPSTREAM",
+      "required_semantics": [
+        "VCP_PLUGIN_ALLOWED_ROOTS / VCP_PLUGIN_DIRS / VCP_EXTERNAL_PLUGIN_ALLOWLIST composition seam",
+        "canonical path and realpath containment for admitted external roots",
+        "exact pluginName@sourceDirectory admission identity where applicable",
+        "external runtime registration remains explicitly gated",
+        "external plugin runtime environment remains sandboxed",
+        "external roots do not inherit plugin config env by default"
+      ],
+      "known_consumers": [
+        "JENN2046/VCPToolBox-JENN-Extensions",
+        "JENN2046/Agents-OS agents-os-resident"
+      ],
+      "explicit_exclusions": [
+        "copying external plugin source into VCPToolBox core",
+        "default-on admission of external plugins"
+      ],
+      "m1_status": "PENDING_MIGRATION"
+    },
+    {
+      "id": "P3_RESIDENT_HOST_CONTRACT",
+      "title": "AGENTS OS Resident host integration contract",
+      "classification": "REQUIRED_LOCAL_INTEGRATION_CONTRACT",
+      "migration_rule": "PRESERVE_HOST_SEAMS_NOT_RESIDENT_SOURCE_COPY",
+      "required_host_files": [
+        "Plugin.js",
+        "modules/chatCompletionHandler.js",
+        "modules/handlers/nonStreamHandler.js",
+        "modules/handlers/streamHandler.js",
+        "modules/vcpLoop/toolExecutor.js",
+        "modules/vcpLoop/residentPresentation.js"
+      ],
+      "required_semantics": [
+        "hybridservice/direct Resident host compatibility",
+        "pre-model fail-closed processing",
+        "ephemeral proposal presentation remains host-visible and not serialized to the model",
+        "non-enumerable presence binding and provider-attempt seal seam remain representable",
+        "provider body binding remains exact UTF-8 bytes",
+        "unknown OneRing authority metadata remains honest UNKNOWN rather than synthesized identity",
+        "missing or unadmitted Resident remains fail-closed before material provider execution"
+      ],
+      "source_authority": "JENN2046/Agents-OS/extensions/agents-os-resident",
+      "explicit_exclusions": [
+        "vendoring a second Resident source authority into VCPToolBox",
+        "Resident installation or allowlisting",
+        "provider_enabled activation",
+        "production BOUND identity claims"
+      ],
+      "m1_status": "PENDING_MIGRATION"
+    },
+    {
+      "id": "P4_HUMAN_AUTHORIZATION_KERNEL",
+      "title": "Trusted Human authorization authority kernel",
+      "classification": "REQUIRED_SECURITY_AND_AUTHORIZATION_INVARIANT",
+      "migration_rule": "PORT_AUTHORITY_KERNEL_AND_EXECUTION_BINDING_ONLY",
+      "canonical_formula": "Trusted Client + Explicit Human Intent + Exact Pending Authority Target",
+      "required_semantics": [
+        "self-authenticating trusted-client enrollment/proof rather than VCP_Key, deviceName or IP identity",
+        "durable trusted-client record and revocable session/capability admission",
+        "HTTP and WebSocket trusted-human admission remain fail-closed",
+        "approval receipt remains bound to exact pending authority target",
+        "tool execution consumes verified authorization rather than caller-asserted approval",
+        "unadmitted production profiles remain disabled and cannot be upgraded by payload/env spelling"
+      ],
+      "explicit_exclusions": [
+        "AdminPanel UI migration as a core prerequisite",
+        "automatic production admission of VCPChat or other clients",
+        "treating generic bearer authentication as Human Authorization"
+      ],
+      "m1_status": "PENDING_MIGRATION"
+    },
+    {
+      "id": "P5_VEXUS_NATIVE_ABI_COMPAT",
+      "title": "Vexus Linux native ABI compatibility",
+      "classification": "REQUIRED_LOCAL_DELTA_GENERIC_COMPATIBILITY_INVARIANT",
+      "migration_rule": "REBUILD_CURRENT_UPSTREAM_SOURCE_DO_NOT_CARRY_OLD_BINARY",
+      "required_semantics": [
+        "linux-x64-gnu addon is reproducibly built from the exact accepted current upstream Rust/JS source",
+        "Linux GNU artifact respects the accepted GLIBC compatibility ceiling (<= 2.35 unless superseded by explicit evidence)",
+        "native addon load/runtime contract is validated on the supported Linux target"
+      ],
+      "explicit_exclusions": [
+        "copying the August binary artifact onto newer upstream source",
+        "pinning historical Rust source merely to preserve an old binary"
+      ],
+      "m1_status": "PENDING_REBUILD"
+    },
+    {
+      "id": "P6_MEMORY_COLD_COMPATIBILITY",
+      "title": "VCP-APP LightMemo / Cold TDB compatibility seam",
+      "classification": "REQUIRED_LOCAL_COMPATIBILITY_CONTRACT",
+      "migration_rule": "PORT_CONSUMED_LIGHTMEMO_SEAMS_VALIDATE_UPSTREAM_TDB",
+      "required_semantics": [
+        "knowledge_base remains the Cold TDB routing surface and folder remains Hot scope",
+        "cold_result_mode=structured remains available where consumed",
+        "cold_text_mode=preview|legacy_full_body compatibility remains available",
+        "preview avoids full-body expansion and preserves retrieval/order semantics",
+        "L03 candidate dedup remains a LightMemo pre-body/pre-rerank/pre-structured-seam operation keyed by library/source identity",
+        "include_river_trace compatibility is preserved where consumed",
+        "current upstream TDB storage/search/lifecycle is preferred unless a consumed compatibility failure is proven"
+      ],
+      "known_consumer": "VCP-APP",
+      "explicit_exclusions": [
+        "modules/tdbRecovery by default",
+        "RiverMemoInspector implementation as a core migration prerequisite",
+        "forking TDB internals when current upstream behavior satisfies the consumed contract"
+      ],
+      "m1_status": "PENDING_MIGRATION"
+    }
+  ],
+  "global_exclusions": [
+    "full-repository historical inventory beyond these six packages",
+    "wholesale cherry-pick of the thick fork",
+    "runtime activation or service restart",
+    "deployment or runtime cutover",
+    "database/memory state migration",
+    "automatic plugin admission",
+    "protecting historical implementation when only semantic contract is required"
+  ],
+  "m1": {
+    "name": "CLEAN_UPSTREAM_BASELINE_AND_ACCEPTANCE_HARNESS",
+    "base_commit": "9deadda698eb87b4ee2aef5c27ea7c01e8970a02",
+    "allowed_changes": [
+      "frozen rebaseline matrix",
+      "rebaseline acceptance harness",
+      "M1 documentation"
+    ],
+    "product_code_changes": "FORBIDDEN",
+    "runtime_changes": "FORBIDDEN",
+    "exit_conditions": [
+      "branch ancestry starts at the exact current upstream commit",
+      "matrix contains exactly the six frozen packages",
+      "acceptance harness validates matrix identity and M1 boundaries",
+      "no product/runtime source is changed in M1"
+    ]
+  }
+}
