@@ -1,0 +1,24 @@
+diff --git a/Plugin.js b/Plugin.js
+index 6ce505a..b051eae 100644
+--- a/Plugin.js
++++ b/Plugin.js
+@@ -2858,7 +2856,7 @@ class PluginManager extends EventEmitter {
+             .on('unlink', filePath => enqueueManifestChange('unlink', filePath))
+             .on('error', error => console.error('[PluginManager] Plugin watcher error:', error));
+ 
+-        console.log(`[PluginManager] Chokidar is now watching ${PLUGIN_DIR} (depth: 1, strict manifest filter).`);
++        console.log(`[PluginManager] Chokidar is now watching ${watchRoots.map(rootPath => this._formatPluginEventPathForLog(rootPath)).join(', ')} (depth: 1, strict manifest filter).`);
+         return this.pluginWatcher;
+     }
+ 
+@@ -2922,6 +2920,10 @@ class PluginManager extends EventEmitter {
+             const refreshedManifest = this._createRuntimePluginEntryFromNativeManifest(freshManifest);
+             refreshedManifest.basePath = currentManifest.basePath || path.dirname(filePath);
+             refreshedManifest.pluginSpecificEnvConfig = currentManifest.pluginSpecificEnvConfig || {};
++            refreshedManifest.pluginSource = currentManifest.pluginSource;
++            refreshedManifest.pluginRoot = currentManifest.pluginRoot;
++            refreshedManifest.pluginRootId = currentManifest.pluginRootId;
++            refreshedManifest.pluginRootDisplayPath = currentManifest.pluginRootDisplayPath;
+             this.plugins.set(freshManifest.name, refreshedManifest);
+         }
+ 
