@@ -47,6 +47,7 @@ jobs:
           git show "$EXPECTED_CANDIDATE:rust-vexus-lite/vexus-lite.linux-x64-gnu.node" > rust-vexus-lite/vexus-lite.linux-x64-gnu.node
 
           test "$(sha256sum rust-vexus-lite/vexus-lite.linux-x64-gnu.node | awk '{print $1}')" = "$EXPECTED_BINARY_SHA256"
+          git add -N .github/workflows/vexus-linux-native-abi.yml scripts/check-vexus-linux-native-abi.js
           ACTUAL_FILES="$(git diff --name-only | sort)"
           test "$ACTUAL_FILES" = "$EXPECTED_FILES"
           git diff --check
