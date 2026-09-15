@@ -39,32 +39,52 @@ jobs:
           from pathlib import Path
 
           original = Path('/tmp/pr276-handler-original').read_bytes()
-          eol = b'\r\n' if b'\r\n' in original else b'\n'
           data = original
-          pairs = [
-              (
-                  b"    && typeof value.externalKeyDigest === 'string'" + eol + b"    && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)",
-                  b"    && (value.externalKeyDigest === null" + eol + b"      || (typeof value.externalKeyDigest === 'string'" + eol + b"        && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)))"
-              ),
-              (
-                  b"    && typeof value.frontendPlane === 'string'" + eol + b"    && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)",
-                  b"    && (value.frontendPlane === null" + eol + b"      || (typeof value.frontendPlane === 'string'" + eol + b"        && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)))"
-              ),
-              (
-                  b"    && typeof value.frontendPrincipalDigest === 'string'" + eol + b"    && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)",
-                  b"    && (value.frontendPrincipalDigest === null" + eol + b"      || (typeof value.frontendPrincipalDigest === 'string'" + eol + b"        && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)))"
-              ),
-          ]
-          for old, new in pairs:
-              count = data.count(old)
-              if count != 1:
-                  raise SystemExit(f'byte-preserving replacement count {count}')
+
+          def replace_local(first, second, replacement_lines):
+              global data
+              if data.count(first) != 1:
+                  raise SystemExit(f'first-line count is {data.count(first)} for {first!r}')
+              pos = data.find(first) + len(first)
+              if data[pos:pos+2] == b'\r\n':
+                  nl = b'\r\n'
+              elif data[pos:pos+1] == b'\n':
+                  nl = b'\n'
+              else:
+                  raise SystemExit(f'no newline after {first!r}')
+              old = first + nl + second
+              if data.count(old) != 1:
+                  raise SystemExit(f'two-line count is {data.count(old)} for {first!r}')
+              new = nl.join(replacement_lines)
               data = data.replace(old, new, 1)
 
-          if eol == b'\r\n' and data.count(b'\n') != data.count(b'\r\n'):
-              raise SystemExit('mixed newline bytes introduced')
-          if eol == b'\n' and b'\r\n' in data:
-              raise SystemExit('unexpected CRLF introduced')
+          replace_local(
+              b"    && typeof value.externalKeyDigest === 'string'",
+              b"    && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)",
+              [
+                  b"    && (value.externalKeyDigest === null",
+                  b"      || (typeof value.externalKeyDigest === 'string'",
+                  b"        && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)))",
+              ],
+          )
+          replace_local(
+              b"    && typeof value.frontendPlane === 'string'",
+              b"    && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)",
+              [
+                  b"    && (value.frontendPlane === null",
+                  b"      || (typeof value.frontendPlane === 'string'",
+                  b"        && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)))",
+              ],
+          )
+          replace_local(
+              b"    && typeof value.frontendPrincipalDigest === 'string'",
+              b"    && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)",
+              [
+                  b"    && (value.frontendPrincipalDigest === null",
+                  b"      || (typeof value.frontendPrincipalDigest === 'string'",
+                  b"        && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)))",
+              ],
+          )
 
           Path('modules/chatCompletionHandler.js').write_bytes(data)
           PY
