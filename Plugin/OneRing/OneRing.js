@@ -2995,6 +2995,9 @@ class OneRingPreprocessor {
 
         return {
             agentName,
+            externalKeyDigest: null,
+            frontendPlane: null,
+            frontendPrincipalDigest: null,
             frontendSource: tailMeta ? tailMeta.frontendSource : frontendSourceFromTrigger,
             lastUserSenderName: tailMeta ? tailMeta.senderName : null,
             lastUserTimestamp: tailMeta ? tailMeta.timestamp : null,

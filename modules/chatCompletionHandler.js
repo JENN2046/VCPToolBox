@@ -156,12 +156,15 @@ function validOneRingPresenceMeta(value) {
     && Buffer.byteLength(value.agentName, 'utf8') <= 200
     && value.agentName.trim() === value.agentName
     && !/[\u0000-\u001f\u007f]/u.test(value.agentName)
-    && typeof value.externalKeyDigest === 'string'
-    && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)
-    && typeof value.frontendPlane === 'string'
-    && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)
-    && typeof value.frontendPrincipalDigest === 'string'
-    && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)
+    && (value.externalKeyDigest === null
+      || (typeof value.externalKeyDigest === 'string'
+        && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)))
+    && (value.frontendPlane === null
+      || (typeof value.frontendPlane === 'string'
+        && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)))
+    && (value.frontendPrincipalDigest === null
+      || (typeof value.frontendPrincipalDigest === 'string'
+        && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)))
     && typeof value.frontendSource === 'string'
     && value.frontendSource.length > 0
     && Buffer.byteLength(value.frontendSource, 'utf8') <= 200
