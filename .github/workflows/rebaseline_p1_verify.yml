@@ -1,0 +1,80 @@
+name: VCPToolBox rebaseline P1 clean-tree verify
+
+on:
+  push:
+    branches:
+      - codex/vcptoolbox-rebaseline-p1-native-manifest-verify
+    paths:
+      - .github/workflows/rebaseline_p1_verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact clean P1 tree
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pin validated parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=e598ac01d4a4573ce0ec4fe179b13cd684a29a26
+          test "$(git rev-parse HEAD^)" = "$expected"
+          mapfile -t delta < <(git diff --name-only "$expected"..HEAD)
+          test "${#delta[@]}" -eq 1
+          test "${delta[0]}" = '.github/workflows/rebaseline_p1_verify.yml'
+
+      - name: Install repository dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+
+      - name: Syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check Plugin.js
+          node --check Plugin/VCPToolBridge/index.js
+          node --check WebSocketServer.js
+          node --check modules/nativeManifestAuthority.js
+          node --check tests/vcpToolBridgeNativeManifest.test.js
+          node --check tests/rebaselineMigrationMatrix.test.cjs
+
+      - name: M1 matrix remains frozen
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/rebaselineMigrationMatrix.test.cjs
+
+      - name: P1 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/vcpToolBridgeNativeManifest.test.js
+
+      - name: Current-upstream adjacent regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/dynamicToolRegistry.test.js
+
+      - name: Exact P1 diff gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          m1=9f35410d71943a7a886a431823ba405d72ff859c
+          mapfile -t changed < <(git diff --name-only "$m1"..HEAD^ | sort)
+          printf 'P1 product paths:\n%s\n' "${changed[*]}"
+          test "${#changed[@]}" -eq 5
+          test "${changed[0]}" = 'Plugin.js'
+          test "${changed[1]}" = 'Plugin/VCPToolBridge/index.js'
+          test "${changed[2]}" = 'WebSocketServer.js'
+          test "${changed[3]}" = 'modules/nativeManifestAuthority.js'
+          test "${changed[4]}" = 'tests/vcpToolBridgeNativeManifest.test.js'
