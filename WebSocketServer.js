@@ -34,6 +34,39 @@ const distributedServerIPs = new Map(); // 新增：存储分布式服务器的I
 const waitingControlClients = new Map(); // 新增：存储等待页面更新的ChromeControl客户端 (clientId -> requestId)
 const VCP_ASYNC_RESULTS_DIR = path.join(__dirname, 'VCPAsyncResults');
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'Asia/Shanghai';
+const MANIFEST_RESPONSE_LOG_SUMMARY = 'Sent vcp_manifest_response; payload logging suppressed.';
+const UNCLASSIFIED_FRAME_LOG_SUMMARY = 'Sent outbound frame; payload logging suppressed because classification was unavailable.';
+
+function serializeOutboundFrame(data) {
+    const frame = JSON.stringify(data);
+    try {
+        const serializedMessage = JSON.parse(frame);
+        return {
+            frame,
+            serializedMessageType:
+                serializedMessage !== null && typeof serializedMessage === 'object'
+                    ? serializedMessage.type
+                    : null,
+            classificationAvailable: true
+        };
+    } catch (error) {
+        return {
+            frame,
+            serializedMessageType: null,
+            classificationAvailable: false
+        };
+    }
+}
+
+function writeSerializedFrameLog(serializedFrame, formatNonManifestLog) {
+    if (serializedFrame.serializedMessageType === 'vcp_manifest_response') {
+        writeLog(MANIFEST_RESPONSE_LOG_SUMMARY);
+    } else if (!serializedFrame.classificationAvailable) {
+        writeLog(UNCLASSIFIED_FRAME_LOG_SUMMARY);
+    } else {
+        writeLog(formatNonManifestLog(serializedFrame.frame));
+    }
+}
 
 function formatDateTimeForConfiguredTimezone(date = new Date()) {
     try {
@@ -603,7 +636,8 @@ function broadcast(data, targetClientType = null, abortController = null) {
         }
     }
 
-    const messageString = JSON.stringify(data);
+    const serializedFrame = serializeOutboundFrame(data);
+    const messageString = serializedFrame.frame;
     
     const clientsToBroadcast = new Map([
        ...clients,
@@ -627,7 +661,10 @@ function broadcast(data, targetClientType = null, abortController = null) {
             }
         }
     });
-    writeLog(`Broadcasted (Target: ${targetClientType || 'All'}): ${messageString.substring(0, 200)}...`);
+    writeSerializedFrameLog(
+        serializedFrame,
+        frame => `Broadcasted (Target: ${targetClientType || 'All'}): ${frame.substring(0, 200)}...`
+    );
 }
 
 // 新增：专门广播给 VCPInfo 客户端
@@ -644,8 +681,12 @@ function sendMessageToClient(clientId, data) {
                     chromeControlClients.get(clientId);
 
     if (clientWs && clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(JSON.stringify(data));
-        writeLog(`Sent message to client ${clientId}: ${JSON.stringify(data)}`);
+        const serializedFrame = serializeOutboundFrame(data);
+        clientWs.send(serializedFrame.frame);
+        writeSerializedFrameLog(
+            serializedFrame,
+            frame => `Sent message to client ${clientId}: ${frame}`
+        );
         return true;
     }
     writeLog(`Failed to send message to client ${clientId}: Not found or not open.`);
@@ -1039,7 +1080,8 @@ function formatDistributedServerListForPrompt() {
 // 新增：专门广播给管理面板
 function broadcastToAdminPanel(data) {
     if (!wssInstance) return;
-    const messageString = JSON.stringify(data);
+    const serializedFrame = serializeOutboundFrame(data);
+    const messageString = serializedFrame.frame;
     
     adminPanelClients.forEach(clientWs => {
         if (clientWs.readyState === WebSocket.OPEN) {
@@ -1048,7 +1090,10 @@ function broadcastToAdminPanel(data) {
     });
     console.log(`[WebSocketServer] Broadcasted to ${adminPanelClients.size} Admin Panel clients.`);
     if (serverConfig.debugMode) {
-        writeLog(`Broadcasted to Admin Panel: ${messageString.substring(0, 200)}...`);
+        writeSerializedFrameLog(
+            serializedFrame,
+            frame => `Broadcasted to Admin Panel: ${frame.substring(0, 200)}...`
+        );
     }
 }
 
@@ -1072,6 +1117,7 @@ module.exports = {
     // Narrow test hooks for deterministic lifecycle tests; not used by production callers.
     __testing: {
         distributedServers,
+        adminPanelClients,
         pendingToolRequests,
         sendCancelToolIfSupported,
         rejectPendingToolRequestsForServer

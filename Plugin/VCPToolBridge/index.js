@@ -1,5 +1,8 @@
 // Plugin/VCPToolBridge/index.js
 const path = require('path');
+const { NATIVE_MANIFEST_UNAVAILABLE } = require('../../modules/nativeManifestAuthority');
+
+const NATIVE_MANIFEST_SURFACE = 'native-v1';
 
 class VCPToolBridge {
     constructor() {
@@ -159,6 +162,12 @@ class VCPToolBridge {
                 }
             } catch (err) {
                 console.error(`[VCPToolBridge] Error handling bridged message ${message.type}:`, err);
+                if (
+                    message.type === 'get_vcp_manifests' &&
+                    message.data?.manifestSurface === NATIVE_MANIFEST_SURFACE
+                ) {
+                    return;
+                }
             }
 
             return originalHandler.call(wss, serverId, message);
@@ -173,41 +182,98 @@ class VCPToolBridge {
      */
     async handleGetManifests(serverId, message, pluginManager) {
         const requestId = message.data?.requestId;
-        if (this.debugMode) console.log(`[VCPToolBridge] 📤 Exporting manifests to server: ${serverId} (Req: ${requestId})`);
+        const nativeV1Requested = message.data?.manifestSurface === NATIVE_MANIFEST_SURFACE;
+        if (this.debugMode) {
+            if (nativeV1Requested) {
+                console.log('[VCPToolBridge] Preparing native-v1 manifest response.');
+            } else {
+                console.log(`[VCPToolBridge] 📤 Exporting manifests to server: ${serverId} (Req: ${requestId})`);
+            }
+        }
 
         const excludedTools = (this.config.Excluded_Tools || "").split(',').map(t => t.trim()).filter(Boolean);
         const excludedKeywords = (this.config.Excluded_Display_Keywords || "")
             .split(',')
             .map(t => t.trim().replace(/^["']|["']$/g, ''))
             .filter(Boolean);
-        const exportablePlugins = [];
+        try {
+            const exportablePlugins = [];
 
-        for (const [name, plugin] of pluginManager.plugins.entries()) {
-            if (excludedTools.includes(name)) continue;
-            if (plugin.isDistributed) continue;
-            if (plugin.displayName && excludedKeywords.some(kw => plugin.displayName.includes(kw))) continue;
+            for (const [name, plugin] of pluginManager.plugins.entries()) {
+                if (excludedTools.includes(name)) continue;
+                if (plugin.isDistributed) continue;
 
-            if (plugin.capabilities && plugin.capabilities.invocationCommands && plugin.capabilities.invocationCommands.length > 0) {
+                if (!nativeV1Requested) {
+                    if (plugin.displayName && excludedKeywords.some(kw => plugin.displayName.includes(kw))) continue;
+                    if (!plugin.capabilities?.invocationCommands?.length) continue;
+
+                    exportablePlugins.push({
+                        name: plugin.name,
+                        displayName: plugin.displayName || plugin.name,
+                        description: plugin.description || "",
+                        version: plugin.version || "1.0.0",
+                        capabilities: {
+                            invocationCommands: plugin.capabilities.invocationCommands
+                        }
+                    });
+                    continue;
+                }
+
+                if (typeof pluginManager.getCurrentNativeManifest !== 'function') {
+                    throw new Error(NATIVE_MANIFEST_UNAVAILABLE);
+                }
+
+                const nativeManifest = pluginManager.getCurrentNativeManifest(plugin);
+                if (!nativeManifest || nativeManifest.name !== name) {
+                    throw new Error(NATIVE_MANIFEST_UNAVAILABLE);
+                }
+
+                if (
+                    nativeManifest.displayName &&
+                    excludedKeywords.some(kw => nativeManifest.displayName.includes(kw))
+                ) continue;
+
+                const invocationCommands = nativeManifest.capabilities?.invocationCommands;
+                if (!Array.isArray(invocationCommands) || invocationCommands.length === 0) continue;
+
                 exportablePlugins.push({
-                    name: plugin.name,
-                    displayName: plugin.displayName || plugin.name,
-                    description: plugin.description || "",
-                    version: plugin.version || "1.0.0",
+                    name: nativeManifest.name,
+                    displayName: nativeManifest.displayName || nativeManifest.name,
+                    description: nativeManifest.description || "",
+                    version: nativeManifest.version || "1.0.0",
                     capabilities: {
-                        invocationCommands: plugin.capabilities.invocationCommands
-                    }
+                        invocationCommands
+                    },
+                    nativeManifest
                 });
             }
-        }
 
-        this.wss.sendMessageToClient(serverId.replace('dist-', ''), {
-            type: 'vcp_manifest_response',
-            data: {
-                requestId,
-                plugins: exportablePlugins,
-                vcpVersion: '1.0.0'
+            const response = {
+                type: 'vcp_manifest_response',
+                data: {
+                    requestId,
+                    plugins: exportablePlugins,
+                    vcpVersion: '1.0.0'
+                }
+            };
+            if (nativeV1Requested) {
+                response.data.manifestSurface = NATIVE_MANIFEST_SURFACE;
             }
-        });
+
+            this.wss.sendMessageToClient(serverId.replace('dist-', ''), response);
+        } catch (error) {
+            if (!nativeV1Requested) throw error;
+
+            this.wss.sendMessageToClient(serverId.replace('dist-', ''), {
+                type: 'vcp_manifest_response',
+                data: {
+                    requestId,
+                    manifestSurface: NATIVE_MANIFEST_SURFACE,
+                    status: 'error',
+                    error: NATIVE_MANIFEST_UNAVAILABLE
+                }
+            });
+        }
     }
 
     /**
