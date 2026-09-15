@@ -1,5 +1,6 @@
 'use strict';
 
+// P3 validates the current Rust/JS contract; do not revive historical VexusIndex.upsert smoke surfaces.
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
