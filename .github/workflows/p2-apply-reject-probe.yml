@@ -1,0 +1,55 @@
+name: P2 apply reject probe
+
+on:
+  push:
+    branches:
+      - integration/p2-external-composition-merge-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply bounded P2 patch onto exact current tracking head with rejects
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin codex/phase1-clean-core-plugin-contract
+          git checkout --detach ed6d8565a04bd7767a24fe3fd1020df1a144de93
+          git diff --binary f901f1a995fa6f8242e176b8ca66b6addd0be427..a4225acaafd0cf6019c843d65f374b499febe165 -- \
+            Plugin.js \
+            modules/externalPluginAllowPolicy.js \
+            modules/externalPluginSafetyGate.js \
+            modules/pluginRootResolver.js \
+            modules/pluginRuntimeEnvSandbox.js \
+            tests/externalPluginAllowPolicy.test.js \
+            tests/externalPluginSafetyGate.test.js \
+            tests/plugin-external-dirs.test.js \
+            tests/plugin-external-runtime-direct-policy.test.js \
+            tests/plugin-external-runtime-env-sandbox.test.js \
+            tests/plugin-external-runtime-registration-gate.test.js \
+            > /tmp/p2.patch
+          set +e
+          git apply --reject --whitespace=nowarn /tmp/p2.patch
+          rc=$?
+          set -e
+          echo "git_apply_exit=$rc"
+          mkdir -p /tmp/p2-apply-reject
+          cp Plugin.js /tmp/p2-apply-reject/Plugin.js
+          test -f Plugin.js.rej && cp Plugin.js.rej /tmp/p2-apply-reject/Plugin.js.rej || true
+          cp /tmp/p2.patch /tmp/p2-apply-reject/p2.patch
+          git diff -- Plugin.js > /tmp/p2-apply-reject/Plugin.diff
+          find modules tests -name '*.rej' -print > /tmp/p2-apply-reject/other-rejects.txt || true
+          printf 'reject_count='; find . -name '*.rej' | wc -l
+          printf 'plugin_reject_hunks='; grep -c '^@@' Plugin.js.rej 2>/dev/null || true
+          printf 'changed_paths:\n'; git status --short
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-apply-reject-probe
+          path: /tmp/p2-apply-reject/
+          if-no-files-found: error
