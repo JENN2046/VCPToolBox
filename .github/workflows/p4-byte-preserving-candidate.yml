@@ -1,0 +1,146 @@
+name: P4 byte-preserving candidate
+
+on:
+  push:
+    branches: [integration/p4-resident-host-probe]
+    paths: [.github/workflows/p4-byte-preserving-candidate.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild-and-validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Guard exact inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=c8493902dad054c4b94c3f035578c3a1d4d14491
+          SOURCE=e51a29f560d659c23899cc5f8cc19ee930563960
+          CLEAN_REF=refs/remotes/origin/integration/p4-resident-host-clean-candidate
+          git fetch origin integration/p4-resident-host-clean-candidate
+          test "$(git rev-parse "$CLEAN_REF")" = "$BASE"
+          test "$(git merge-base "$BASE" "$SOURCE")" = "$BASE"
+          test "$(git ls-remote origin refs/heads/integration/upstream-tracking-rebaseline-r1 | awk '{print $1}')" = "$BASE"
+
+      - name: Extract semantic-only P4 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=c8493902dad054c4b94c3f035578c3a1d4d14491
+          SOURCE=e51a29f560d659c23899cc5f8cc19ee930563960
+          git diff --ignore-space-at-eol --binary "$BASE" "$SOURCE" -- \
+            Plugin.js \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            modules/handlers/nonStreamHandler.js \
+            modules/handlers/streamHandler.js \
+            modules/vcpLoop/residentPresentation.js \
+            modules/vcpLoop/toolExecutor.js \
+            tests/residentHostContract.test.cjs \
+            tests/residentProviderPresenceContract.test.cjs > /tmp/p4-semantic.diff
+          test -s /tmp/p4-semantic.diff
+          git diff --ignore-space-at-eol --stat "$BASE" "$SOURCE" -- \
+            Plugin.js Plugin/OneRing/OneRing.js modules/chatCompletionHandler.js \
+            modules/handlers/nonStreamHandler.js modules/handlers/streamHandler.js \
+            modules/vcpLoop/residentPresentation.js modules/vcpLoop/toolExecutor.js \
+            tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs \
+            | tee /tmp/p4-semantic-source-stat.txt
+
+      - name: Apply semantic patch to exact P3 head
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=c8493902dad054c4b94c3f035578c3a1d4d14491
+          git checkout -B p4-clean "$BASE"
+          git apply --ignore-space-change --whitespace=nowarn /tmp/p4-semantic.diff
+          git add -N modules/vcpLoop/residentPresentation.js tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs
+          git diff --check
+          EXPECTED="$(printf '%s\n' \
+            Plugin.js \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            modules/handlers/nonStreamHandler.js \
+            modules/handlers/streamHandler.js \
+            modules/vcpLoop/residentPresentation.js \
+            modules/vcpLoop/toolExecutor.js \
+            tests/residentHostContract.test.cjs \
+            tests/residentProviderPresenceContract.test.cjs | sort)"
+          ACTUAL="$(git diff --name-only "$BASE" | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          git diff --stat "$BASE" | tee /tmp/p4-clean-stat.txt
+          git diff --numstat "$BASE" | tee /tmp/p4-clean-numstat.txt
+
+          # Existing files must keep their base modes exactly.
+          for f in Plugin.js Plugin/OneRing/OneRing.js modules/chatCompletionHandler.js modules/handlers/nonStreamHandler.js modules/handlers/streamHandler.js modules/vcpLoop/toolExecutor.js; do
+            test "$(git ls-tree "$BASE" -- "$f" | awk '{print $1}')" = "$(git ls-files -s -- "$f" | awk '{print $1}')"
+          done
+
+          # Guard against line-ending/full-file rewrites returning.
+          python3 - <<'PY'
+          import subprocess
+          rows = subprocess.check_output(['git','diff','--numstat','c8493902dad054c4b94c3f035578c3a1d4d14491']).decode().splitlines()
+          stats = {}
+          for row in rows:
+              a,d,p = row.split('\t',2)
+              if a.isdigit() and d.isdigit(): stats[p]=(int(a),int(d))
+          for path, limit in {
+              'Plugin.js': 700,
+              'modules/chatCompletionHandler.js': 900,
+          }.items():
+              a,d = stats[path]
+              if a + d > limit:
+                  raise SystemExit(f'line-ending/full-file drift detected in {path}: {a}+{d}')
+          PY
+
+          for f in Plugin.js modules/chatCompletionHandler.js modules/handlers/nonStreamHandler.js modules/handlers/streamHandler.js modules/vcpLoop/residentPresentation.js modules/vcpLoop/toolExecutor.js; do node --check "$f"; done
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: P4 focused contract
+        run: node --test tests/residentProviderPresenceContract.test.cjs tests/residentHostContract.test.cjs | tee /tmp/p4-tests.txt
+
+      - name: P2 and P1 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t P2 < <(git diff --name-only ed6d8565a04bd7767a24fe3fd1020df1a144de93 1cf353b4f5c18afdfb4b3bc59e9fc966bc26538f -- tests/ | grep -E '\.(js|cjs)$' | sort -u)
+          node --test "${P2[@]}" | tee /tmp/p2-regression.txt
+          node --test tests/vcpToolBridgeNativeManifest.test.js | tee /tmp/p1-regression.txt
+
+      - name: Commit clean candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=c8493902dad054c4b94c3f035578c3a1d4d14491
+          test "$(git ls-remote origin refs/heads/integration/p4-resident-host-clean-candidate | awk '{print $1}')" = "$BASE"
+          git config user.name Jenn2046
+          git config user.email 130375136+JENN2046@users.noreply.github.com
+          git add \
+            Plugin.js Plugin/OneRing/OneRing.js modules/chatCompletionHandler.js \
+            modules/handlers/nonStreamHandler.js modules/handlers/streamHandler.js \
+            modules/vcpLoop/residentPresentation.js modules/vcpLoop/toolExecutor.js \
+            tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs
+          test "$(git diff --cached --name-only | wc -l)" -eq 9
+          git commit -m "feat(rebaseline): add bounded Resident host contract"
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          git push origin HEAD:integration/p4-resident-host-clean-candidate
+          echo "CLEAN_CANDIDATE_SHA=$(git rev-parse HEAD)" | tee /tmp/p4-clean-candidate.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p4-byte-preserving-candidate-evidence
+          path: |
+            /tmp/p4-semantic-source-stat.txt
+            /tmp/p4-clean-stat.txt
+            /tmp/p4-clean-numstat.txt
+            /tmp/p4-tests.txt
+            /tmp/p2-regression.txt
+            /tmp/p1-regression.txt
+            /tmp/p4-clean-candidate.txt
