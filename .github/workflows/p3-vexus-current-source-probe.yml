@@ -90,14 +90,40 @@ jobs:
 
           pushd /tmp/vexus-build-1/rust-vexus-lite >/dev/null
           node - <<'NODE' | tee /tmp/p3-current-api.txt
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
           const mod = require('./index.js');
           for (const name of ['NativeKnowledgeRuntime', 'VexusIndex', 'VexusWatcher']) {
             if (typeof mod[name] !== 'function') throw new Error(`missing current export: ${name}`);
           }
-          console.log('CURRENT_LOADER_EXPORTS=PASS');
+          const required = ['add', 'search', 'stats', 'save', 'remove'];
+          for (const name of required) {
+            if (typeof mod.VexusIndex.prototype[name] !== 'function') throw new Error(`missing VexusIndex method: ${name}`);
+          }
+          if (typeof mod.VexusIndex.load !== 'function') throw new Error('missing VexusIndex.load');
+
+          const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'vexus-p3-'));
+          try {
+            const index = new mod.VexusIndex(4, 16);
+            index.add(1, new Float32Array([1, 0, 0, 0]));
+            index.add(2, new Float32Array([0, 1, 0, 0]));
+            const first = index.search(new Float32Array([1, 0, 0, 0]), 2);
+            if (!Array.isArray(first) || first[0]?.id !== 1) throw new Error('add/search smoke failed');
+            const stats = index.stats();
+            if (stats.totalVectors < 2) throw new Error('stats smoke failed');
+            const saved = path.join(scratch, 'minimal.usearch');
+            index.save(saved);
+            const loaded = mod.VexusIndex.load(saved, null, 4, 16);
+            const second = loaded.search(new Float32Array([0, 1, 0, 0]), 2);
+            if (!Array.isArray(second) || second[0]?.id !== 2) throw new Error('save/load smoke failed');
+            loaded.remove(2);
+            console.log('CURRENT_LOADER_EXPORTS=PASS');
+            console.log('CURRENT_VEXUSINDEX_SMOKE=PASS');
+          } finally {
+            fs.rmSync(scratch, { recursive: true, force: true });
+          }
           NODE
-          node test.js | tee /tmp/p3-vexus-smoke.txt
-          rm -f test_index.usearch test_map.bin
           popd >/dev/null
 
       - name: Verify KnowledgeBaseManager loads against rebuilt native module
@@ -105,9 +131,12 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --ignore-scripts --omit=dev --no-audit --no-fund
-          TRACKED_SHA="$(sha256sum rust-vexus-lite/vexus-lite.linux-x64-gnu.node | awk '{print $1}')"
-          BUILT_SHA="$(sha256sum /tmp/vexus-build-1/rust-vexus-lite/vexus-lite.linux-x64-gnu.node | awk '{print $1}')"
-          cp /tmp/vexus-build-1/rust-vexus-lite/vexus-lite.linux-x64-gnu.node rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          TRACKED_BINARY=rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          BUILT_BINARY=/tmp/vexus-build-1/rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          TRACKED_SHA="$(sha256sum "$TRACKED_BINARY" | awk '{print $1}')"
+          BUILT_SHA="$(sha256sum "$BUILT_BINARY" | awk '{print $1}')"
+          TRACKED_GLIBC="$(objdump -T "$TRACKED_BINARY" | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -Vu | tail -n 1)"
+          cp "$BUILT_BINARY" "$TRACKED_BINARY"
           SCRATCH="$(mktemp -d)"
           trap 'rm -rf "$SCRATCH"' EXIT
           KNOWLEDGEBASE_ROOT_PATH="$SCRATCH/diary" \
@@ -120,7 +149,7 @@ jobs:
           }
           console.log('KNOWLEDGEBASE_MANAGER_LOAD=PASS');
           NODE
-          printf 'TRACKED_BINARY_SHA256=%s\nSOURCE_BUILD_SHA256=%s\n' "$TRACKED_SHA" "$BUILT_SHA" | tee /tmp/p3-binary-comparison.txt
+          printf 'TRACKED_BINARY_SHA256=%s\nTRACKED_MAX_GLIBC=%s\nSOURCE_BUILD_SHA256=%s\n' "$TRACKED_SHA" "$TRACKED_GLIBC" "$BUILT_SHA" | tee /tmp/p3-binary-comparison.txt
 
       - name: Confirm no repository source mutation
         shell: bash
@@ -140,7 +169,6 @@ jobs:
             /tmp/p3-build.txt
             /tmp/p3-glibc.txt
             /tmp/p3-current-api.txt
-            /tmp/p3-vexus-smoke.txt
             /tmp/p3-kbd-load.txt
             /tmp/p3-binary-comparison.txt
             /tmp/p3-clean.txt
