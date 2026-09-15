@@ -1,0 +1,86 @@
+name: P4 Resident host validation
+
+on:
+  push:
+    branches:
+      - integration/p4-resident-host-probe
+    paths:
+      - .github/workflows/p4-resident-host-validate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: 3e7b03fb90556e38021a5fa1813ad50f64efb408
+
+      - name: Guard exact P4 ancestry and bounded surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=c8493902dad054c4b94c3f035578c3a1d4d14491
+          CANDIDATE=3e7b03fb90556e38021a5fa1813ad50f64efb408
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          EXPECTED="$(printf '%s\n' \
+            Plugin.js \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            modules/handlers/nonStreamHandler.js \
+            modules/handlers/streamHandler.js \
+            modules/vcpLoop/residentPresentation.js \
+            modules/vcpLoop/toolExecutor.js \
+            tests/residentHostContract.test.cjs \
+            tests/residentProviderPresenceContract.test.cjs | sort)"
+          ACTUAL="$(git diff --name-only "$BASE" "$CANDIDATE" | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          ! git diff --summary "$BASE" "$CANDIDATE" | grep -E 'mode change|rename|delete mode'
+          git diff --check "$BASE" "$CANDIDATE"
+          test "$(git rev-parse "$CANDIDATE:tests/residentProviderPresenceContract.test.cjs")" = c8202847218475e987a5bd2d91063d7c0321f625
+          test ! -e Plugin/AGENTSOSResident
+          test ! -e extensions/agents-os-resident
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+
+      - name: Install runtime dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Syntax gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            Plugin.js \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            modules/handlers/nonStreamHandler.js \
+            modules/handlers/streamHandler.js \
+            modules/vcpLoop/residentPresentation.js \
+            modules/vcpLoop/toolExecutor.js \
+            tests/residentHostContract.test.cjs \
+            tests/residentProviderPresenceContract.test.cjs; do
+            node --check "$file"
+          done
+
+      - name: P4 focused contract
+        run: node --test tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs
+
+      - name: P2 external composition regression
+        run: >-
+          node --test
+          tests/externalPluginAllowPolicy.test.js
+          tests/externalPluginSafetyGate.test.js
+          tests/plugin-external-dirs.test.js
+          tests/plugin-external-runtime-direct-policy.test.js
+          tests/plugin-external-runtime-env-sandbox.test.js
+          tests/plugin-external-runtime-registration-gate.test.js
+
+      - name: P1 Native Manifest regression
+        run: node --test tests/vcpToolBridgeNativeManifest.test.js
