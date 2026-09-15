@@ -192,7 +192,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t changed < <(git diff --name-only | sort)
+          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
           printf 'changed files:\n%s\n' "${changed[*]}"
           test "${#changed[@]}" -eq 3
           test "${changed[0]}" = 'Plugin/OneRing/OneRing.js'
