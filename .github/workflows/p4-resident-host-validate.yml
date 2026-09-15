@@ -17,14 +17,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: b1cd306b9d37d5b4f81bef0902b9c400c8ca903d
+          ref: 26a8cb3bb960958291789e4171c4ffbb3ad03377
 
       - name: Guard exact P4 ancestry and bounded surface
         shell: bash
         run: |
           set -euo pipefail
           BASE=c8493902dad054c4b94c3f035578c3a1d4d14491
-          CANDIDATE=b1cd306b9d37d5b4f81bef0902b9c400c8ca903d
+          CANDIDATE=26a8cb3bb960958291789e4171c4ffbb3ad03377
           test "$(git rev-parse HEAD)" = "$CANDIDATE"
           test "$(git rev-parse HEAD^)" = "$BASE"
           EXPECTED="$(printf '%s\n' \
@@ -42,7 +42,7 @@ jobs:
           ! git diff --summary "$BASE" "$CANDIDATE" | grep -E 'mode change|rename|delete mode'
           git diff --check "$BASE" "$CANDIDATE"
           test "$(git rev-parse "$CANDIDATE:tests/residentProviderPresenceContract.test.cjs")" = c8202847218475e987a5bd2d91063d7c0321f625
-          test "$(git rev-parse "$CANDIDATE:tests/residentHostContract.test.cjs")" = bb108d68af94ccd6c79b93abdd23828b50ecbb08
+          test "$(git rev-parse "$CANDIDATE:tests/residentHostContract.test.cjs")" = b4cd44c9f5376c51f69179abe20ae59c273dccff
           test ! -e Plugin/AGENTSOSResident
           test ! -e extensions/agents-os-resident
 
