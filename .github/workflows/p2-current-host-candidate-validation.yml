@@ -23,10 +23,12 @@ jobs:
           EXPECTED_P1=ed6d8565a04bd7767a24fe3fd1020df1a144de93
           P2_BASE=f901f1a995fa6f8242e176b8ca66b6addd0be427
           P2_HEAD=a4225acaafd0cf6019c843d65f374b499febe165
+          P1_COMPAT_TEST=tests/vcpToolBridgeNativeManifest.test.js
 
           for i in 0 1 2 3; do
             cp ".github/rebaseline/p2-adapt-${i}.patch" "/tmp/p2-adapt-${i}.patch"
           done
+          cp .github/rebaseline/p2-p1-test-compat.patch /tmp/p2-p1-test-compat.patch
           cp .github/rebaseline/p2-p1-cross-assert.js /tmp/p1-p2-cross.js
 
           cat > /tmp/p2-adapt.sha256 <<'EOF'
@@ -34,6 +36,7 @@ jobs:
           8e2375987a4c93cbdbe1f71ac392c3bdfa0c8ba41c14d2960a8d7189ece9204f  /tmp/p2-adapt-1.patch
           47c9502164d1f1880948e32b69ab70923b73e775e8d6a72802c45c396b0d31a5  /tmp/p2-adapt-2.patch
           e7da98d4324cce0afa3a26e9f20efd4cb62dd05829e8ecae44936ddddfd7847d  /tmp/p2-adapt-3.patch
+          8a2835763d561a21e6fb8bab0dea53fdaf3193c6e9174feadc4d5a891e292a6a  /tmp/p2-p1-test-compat.patch
           EOF
           sed -i 's/^          //' /tmp/p2-adapt.sha256
           sha256sum -c /tmp/p2-adapt.sha256
@@ -65,6 +68,7 @@ jobs:
           done
           rm -f Plugin.js.rej
           chmod 0644 Plugin.js
+          git apply /tmp/p2-p1-test-compat.patch
 
           git add -N "${SUPPORT_PATHS[@]}"
           node --check Plugin.js
@@ -72,9 +76,10 @@ jobs:
           node --check modules/externalPluginSafetyGate.js
           node --check modules/pluginRootResolver.js
           node --check modules/pluginRuntimeEnvSandbox.js
+          node --check "$P1_COMPAT_TEST"
           git diff --check
 
-          EXPECTED_FILES="$(printf '%s\n' Plugin.js "${SUPPORT_PATHS[@]}" | sort)"
+          EXPECTED_FILES="$(printf '%s\n' Plugin.js "$P1_COMPAT_TEST" "${SUPPORT_PATHS[@]}" | sort)"
           ACTUAL_FILES="$(git diff --name-only | sort)"
           test "$ACTUAL_FILES" = "$EXPECTED_FILES"
           git diff --stat
