@@ -71,24 +71,18 @@ jobs:
           done
 
       - name: P4 host static contract
-        id: host_contract
-        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           node --test tests/residentHostContract.test.cjs 2>&1 | tee /tmp/p4-host.tap
 
       - name: P4 provider presence contract
-        id: provider_contract
-        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           node --test tests/residentProviderPresenceContract.test.cjs 2>&1 | tee /tmp/p4-provider.tap
 
       - name: P2 external composition regression
-        id: p2_regression
-        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
@@ -102,8 +96,6 @@ jobs:
             2>&1 | tee /tmp/p2-regression.tap
 
       - name: P1 Native Manifest regression
-        id: p1_regression
-        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
@@ -118,17 +110,3 @@ jobs:
             /tmp/p4-provider.tap
             /tmp/p2-regression.tap
             /tmp/p1-regression.tap
-
-      - name: Final P4 gate
-        if: always()
-        env:
-          HOST: ${{ steps.host_contract.outcome }}
-          PROVIDER: ${{ steps.provider_contract.outcome }}
-          P2: ${{ steps.p2_regression.outcome }}
-          P1: ${{ steps.p1_regression.outcome }}
-        run: |
-          printf 'HOST=%s\nPROVIDER=%s\nP2=%s\nP1=%s\n' "$HOST" "$PROVIDER" "$P2" "$P1"
-          test "$HOST" = success
-          test "$PROVIDER" = success
-          test "$P2" = success
-          test "$P1" = success
