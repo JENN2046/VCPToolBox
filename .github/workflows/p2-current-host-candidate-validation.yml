@@ -67,7 +67,7 @@ jobs:
             git apply --ignore-space-change "/tmp/p2-adapt-${i}.patch"
           done
           rm -f Plugin.js.rej
-          chmod 0644 Plugin.js
+          chmod 0755 Plugin.js
           python /tmp/p2-p1-test-compat.py
 
           git add -N "${SUPPORT_PATHS[@]}"
@@ -78,6 +78,7 @@ jobs:
           node --check modules/pluginRuntimeEnvSandbox.js
           node --check "$P1_COMPAT_TEST"
           git diff --check
+          ! git diff --summary -- Plugin.js | grep -q 'mode change'
 
           EXPECTED_FILES="$(printf '%s\n' Plugin.js "$P1_COMPAT_TEST" "${SUPPORT_PATHS[@]}" | sort)"
           ACTUAL_FILES="$(git diff --name-only | sort)"
@@ -127,6 +128,8 @@ jobs:
             git diff --stat || true
             echo "NUMSTAT:"
             git diff --numstat || true
+            echo "SUMMARY:"
+            git diff --summary || true
           } > /tmp/summary.txt
 
       - uses: actions/upload-artifact@v4
