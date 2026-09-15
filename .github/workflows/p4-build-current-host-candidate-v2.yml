@@ -1,0 +1,123 @@
+name: P4 build current-host candidate v2
+
+on:
+  push:
+    branches:
+      - integration/p4-resident-host-probe
+    paths:
+      - .github/workflows/p4-build-current-host-candidate-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Capture bounded transform
+        run: |
+          cp scripts/rebaseline/p4-current-host-transform.py /tmp/p4-current-host-transform.py
+          cp scripts/rebaseline/p4-current-host-transform-v2.py /tmp/p4-current-host-transform-v2.py
+
+      - name: Guard exact source and candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_TRACKING=c8493902dad054c4b94c3f035578c3a1d4d14491
+          EXPECTED_CANDIDATE=5781462c38c7b0d1fd8d65e5853b7a6fe9da4b1c
+          test "$(git ls-remote origin refs/heads/integration/upstream-tracking-rebaseline-r1 | awk '{print $1}')" = "$EXPECTED_TRACKING"
+          test "$(git ls-remote origin refs/heads/integration/p4-resident-host-candidate | awk '{print $1}')" = "$EXPECTED_CANDIDATE"
+          git checkout -B p4-work "$EXPECTED_CANDIDATE"
+          mkdir -p scripts/rebaseline
+          cp /tmp/p4-current-host-transform.py scripts/rebaseline/p4-current-host-transform.py
+
+      - name: Forward-port provider seal and adapt current host
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=614fcdc619eb1233ce6e658cc59ec59af7d4ef8f
+          SOURCE=5272cbe053dee4fcd6a6ba17bf57db11a30eb958
+          git diff --binary "$BASE" "$SOURCE" -- \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            tests/residentProviderPresenceContract.test.cjs > /tmp/pr276.diff
+          set +e
+          git apply --reject --whitespace=nowarn /tmp/pr276.diff > /tmp/pr276-apply.txt 2>&1
+          APPLY_RC=$?
+          set -e
+          test "$APPLY_RC" -eq 1
+          test -f modules/chatCompletionHandler.js.rej
+          python3 /tmp/p4-current-host-transform-v2.py
+          rm -f scripts/rebaseline/p4-current-host-transform.py
+          test ! -e modules/chatCompletionHandler.js.rej
+          git diff --check
+
+      - name: Validate bounded surface and syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -N tests/residentProviderPresenceContract.test.cjs tests/residentHostContract.test.cjs
+          EXPECTED_FILES="$(printf '%s\n' \
+            Plugin.js \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            modules/handlers/nonStreamHandler.js \
+            modules/handlers/streamHandler.js \
+            modules/vcpLoop/residentPresentation.js \
+            modules/vcpLoop/toolExecutor.js \
+            tests/residentHostContract.test.cjs \
+            tests/residentProviderPresenceContract.test.cjs | sort)"
+          ACTUAL_FILES="$(git diff --name-only c8493902dad054c4b94c3f035578c3a1d4d14491 | sort)"
+          test "$ACTUAL_FILES" = "$EXPECTED_FILES"
+          node --check Plugin.js
+          node --check modules/chatCompletionHandler.js
+          node --check modules/handlers/nonStreamHandler.js
+          node --check modules/handlers/streamHandler.js
+          node --check modules/vcpLoop/residentPresentation.js
+          node --check modules/vcpLoop/toolExecutor.js
+          printf '%s\n' "$ACTUAL_FILES" | tee /tmp/p4-files.txt
+          git diff --stat c8493902dad054c4b94c3f035578c3a1d4d14491 | tee /tmp/p4-stat.txt
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: P4 focused contract
+        run: node --test tests/residentProviderPresenceContract.test.cjs tests/residentHostContract.test.cjs | tee /tmp/p4-tests.txt
+
+      - name: P2 and P1 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t P2_TESTS < <(git diff --name-only ed6d8565a04bd7767a24fe3fd1020df1a144de93 1cf353b4f5c18afdfb4b3bc59e9fc966bc26538f -- tests/ | grep -E '\.(js|cjs)$' | sort -u)
+          test "${#P2_TESTS[@]}" -gt 0
+          node --test "${P2_TESTS[@]}" | tee /tmp/p2-regression.txt
+          node --test tests/vcpToolBridgeNativeManifest.test.js | tee /tmp/p1-regression.txt
+
+      - name: Commit candidate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/integration/p4-resident-host-candidate | awk '{print $1}')" = 5781462c38c7b0d1fd8d65e5853b7a6fe9da4b1c
+          git config user.name "Jenn2046"
+          git config user.email "130375136+JENN2046@users.noreply.github.com"
+          git add Plugin.js Plugin/OneRing/OneRing.js modules/chatCompletionHandler.js modules/handlers/nonStreamHandler.js modules/handlers/streamHandler.js modules/vcpLoop/toolExecutor.js tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs
+          git commit -m "feat(rebaseline): adapt Resident host contract to current tracking"
+          git push origin HEAD:integration/p4-resident-host-candidate
+          printf 'CANDIDATE_SHA=%s\n' "$(git rev-parse HEAD)" | tee /tmp/p4-candidate.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p4-current-host-candidate-v2-evidence
+          path: |
+            /tmp/pr276-apply.txt
+            /tmp/p4-files.txt
+            /tmp/p4-stat.txt
+            /tmp/p4-tests.txt
+            /tmp/p2-regression.txt
+            /tmp/p1-regression.txt
+            /tmp/p4-candidate.txt
