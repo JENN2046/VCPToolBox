@@ -2,6 +2,15 @@
 const vcpInfoHandler = require('../../vcpInfoHandler.js');
 const roleDivider = require('../roleDivider.js');
 const {
+  attachNonStreamPresentations,
+  createNonStreamPresentationSink,
+  createPresentationChannel,
+  frameResidentProposalTurn,
+  hasResidentProposalSurface,
+  isResidentProposalToolCall,
+  residentProposalFailureCategory
+} = require('../vcpLoop/residentPresentation.js');
+const {
   buildClientVisibleContent,
   removeReasoningFields,
   normalizeReasoningTag,
@@ -166,6 +175,17 @@ class NonStreamHandler {
     } = this.context;
 
     const shouldShowVCP = SHOW_VCP_OUTPUT || this.context.forceShowVCP;
+    const residentProposalFramingActive = hasResidentProposalSurface(originalBody.messages);
+    const residentPresentations = [];
+    const residentPresentationChannel = createPresentationChannel(res, residentProposalFramingActive);
+    const residentPresentationSink = residentProposalFramingActive
+      ? createNonStreamPresentationSink({
+        channelId: residentPresentationChannel,
+        presentations: residentPresentations,
+        res
+      })
+      : null;
+    let residentProposalExecuted = false;
     const reasoningToContentEnabled = shouldConvertReasoningForModel(
       originalBody.model,
       reasoningToContentGloballyEnabled,
@@ -311,9 +331,26 @@ class NonStreamHandler {
       }
 
       let anyToolProcessedInCurrentIteration = false;
+      const residentFrame = residentProposalFramingActive
+        ? frameResidentProposalTurn(currentAIContentForLoop, ToolCallParser)
+        : { kind: 'NONE', clientContent: currentAIContentForClient, loopContent: currentAIContentForLoop };
+      if (residentFrame.kind !== 'NONE') res.__vcpDisableReplayCache?.();
+      if (
+        residentFrame.kind === 'INVALID'
+        || (residentFrame.kind === 'RESIDENT_PROPOSAL' && residentProposalExecuted)
+      ) {
+        if (residentFrame.clientContent) conversationHistoryForClient.push(residentFrame.clientContent);
+        conversationHistoryForClient.push('\n[AGENTSOSResident PROPOSAL_SEQUENCE_REJECTED]\n');
+        break;
+      }
+      if (residentFrame.kind === 'RESIDENT_PROPOSAL') {
+        currentAIContentForLoop = residentFrame.loopContent;
+        currentAIContentForClient = residentFrame.clientContent;
+      }
       conversationHistoryForClient.push(currentAIContentForClient);
 
       const toolCalls = vcpToolUseForbidden ? [] : ToolCallParser.parse(currentAIContentForLoop);
+      const residentProposalCalls = toolCalls.filter(isResidentProposalToolCall);
 
       if (toolCalls.length > 0) {
         anyToolProcessedInCurrentIteration = true;
@@ -424,7 +461,25 @@ class NonStreamHandler {
         }
         currentMessagesForNonStreamLoop.push(...assistantMessages);
 
-        const toolResults = await toolExecutor.executeAll(normalCalls, clientIp, currentMessagesForNonStreamLoop);
+        if (residentProposalCalls.length > 0) residentProposalExecuted = true;
+        const toolResults = await toolExecutor.executeAll(
+          normalCalls,
+          clientIp,
+          currentMessagesForNonStreamLoop,
+          { residentPresentationSink }
+        );
+        if (residentProposalCalls.length === 1) {
+          const proposalIndex = normalCalls.findIndex(isResidentProposalToolCall);
+          const proposalFailure = proposalIndex >= 0
+            ? residentProposalFailureCategory(toolResults[proposalIndex])
+            : 'PROPOSAL_DISPATCH_FAILED';
+          if (proposalFailure) {
+            conversationHistoryForClient.push(`
+[AGENTSOSResident ${proposalFailure}]
+`);
+            break;
+          }
+        }
         const normalCallLogs = (() => {
           let logs = [];
           if (writeChatLog) {
@@ -571,6 +626,7 @@ class NonStreamHandler {
       };
     }
 
+    attachNonStreamPresentations(finalJsonResponse, residentPresentations);
     if (writeChatLog) writeChatLog(originalBody, chatLogs);
     recordOneRingAIResponse(oneRingAssistantTurnParts.join('\n'), 'final_turn');
     if (!res.writableEnded && !res.destroyed) {

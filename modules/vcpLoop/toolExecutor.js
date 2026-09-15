@@ -7,6 +7,33 @@ const { getEmbeddingsBatch, cosineSimilarity } = require('../../EmbeddingUtils')
 const toolCallRecordStore = require('../toolCallRecordStore');
 
 const VCP_TIMED_CONTACTS_DIR = path.join(__dirname, '..', '..', 'VCPTimedContacts');
+const RESIDENT_TOOL_NAME = 'AGENTSOSResident';
+
+function isResidentProposalCall(toolCall) {
+  return toolCall?.name === RESIDENT_TOOL_NAME
+    && typeof toolCall?.args?.operation === 'string'
+    && toolCall.args.operation.startsWith('PROPOSE_');
+}
+
+function residentProposalFailureFor(error) {
+  const map = {
+    RESIDENT_PROPOSAL_DISPATCH_FAILED: 'PROPOSAL_DISPATCH_FAILED',
+    RESIDENT_PROPOSAL_EXECUTION_FAILED: 'PROPOSAL_EXECUTION_FAILED',
+    RESIDENT_PROPOSAL_INPUT_REJECTED: 'PROPOSAL_INPUT_REJECTED',
+    RESIDENT_PROPOSAL_PREPARE_FAILED: 'PROPOSAL_PREPARE_FAILED',
+    RESIDENT_PROPOSAL_PRESENTATION_FAILED: 'PROPOSAL_PRESENTATION_FAILED',
+    RESIDENT_PROPOSAL_RESULT_REJECTED: 'PROPOSAL_RESULT_REJECTED'
+  };
+  const candidates = [error?.code];
+  try {
+    const parsed = JSON.parse(error?.message || '{}');
+    candidates.push(parsed?.residentProposalFailure, parsed?.code);
+  } catch (_) {}
+  for (const candidate of candidates) {
+    if (map[candidate]) return map[candidate];
+  }
+  return 'PROPOSAL_EXECUTION_FAILED';
+}
 
 /**
  * 提取消息的纯文本字符串
@@ -189,8 +216,9 @@ class ToolExecutor {
    * 执行单个工具调用
    * @returns {Promise<{success: boolean, content: Array, error?: string, raw?: any}>}
    */
-  async execute(toolCall, clientIp, contextMessages = []) {
+  async execute(toolCall, clientIp, contextMessages = [], requestExecutionContext = {}) {
     const { name, args, river, vref, archeryNoReply } = toolCall;
+    const residentProposalCall = isResidentProposalCall(toolCall);
 
     // === river 上下文注入 ===
     // river 协议允许 AI 在工具调用时携带对话上下文，支持四种模式：
@@ -358,6 +386,9 @@ class ToolExecutor {
     if (!this.pluginManager.getPlugin(name)) {
       const message = `未找到名为 "${name}" 的插件`;
       const errorResult = this._createErrorResult(name, message);
+      if (residentProposalCall) {
+        errorResult.residentProposalFailureCategory = 'PROPOSAL_DISPATCH_FAILED';
+      }
       toolCallRecordStore.finishRecord(recordHandle, {
         success: false,
         result: errorResult.content,
@@ -369,10 +400,23 @@ class ToolExecutor {
     // 执行插件
     try {
       if (this.debugMode) console.log(`[ToolExecutor] Calling processToolCall for ${name} with args keys: ${Object.keys(args).join(', ')}`);
-      const result = await this.pluginManager.processToolCall(name, args, clientIp, 'post', {
+      const executionOptions = {
         archeryNoReply: !!archeryNoReply,
         toolCallRecordHandle: recordHandle
-      });
+      };
+      if (
+        residentProposalCall
+        && typeof requestExecutionContext?.residentPresentationSink === 'function'
+      ) {
+        executionOptions.residentPresentationSink = requestExecutionContext.residentPresentationSink;
+      }
+      const result = await this.pluginManager.processToolCall(
+        name,
+        args,
+        clientIp,
+        'post',
+        executionOptions
+      );
       const processedResult = this._processResult(name, result);
       toolCallRecordStore.finishRecord(recordHandle, {
         success: true,
@@ -381,6 +425,9 @@ class ToolExecutor {
       return this._attachRecordIdToResult(processedResult, recordHandle);
     } catch (error) {
       const errorResult = this._createErrorResult(name, `执行错误: ${error.message}`);
+      if (residentProposalCall) {
+        errorResult.residentProposalFailureCategory = residentProposalFailureFor(error);
+      }
       toolCallRecordStore.finishRecord(recordHandle, {
         success: false,
         result: errorResult.content,
@@ -393,9 +440,9 @@ class ToolExecutor {
   /**
    * 批量执行工具调用
    */
-  async executeAll(toolCalls, clientIp, contextMessages = []) {
+  async executeAll(toolCalls, clientIp, contextMessages = [], requestExecutionContext = {}) {
     return Promise.all(
-      toolCalls.map(tc => this.execute(tc, clientIp, contextMessages))
+      toolCalls.map(tc => this.execute(tc, clientIp, contextMessages, requestExecutionContext))
     );
   }
 

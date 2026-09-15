@@ -5,6 +5,7 @@ const contextManager = require('./contextManager.js');
 const roleDivider = require('./roleDivider.js');
 const fs = require('fs').promises;
 const path = require('path');
+const { createHash, randomBytes } = require('node:crypto');
 const http = require('http');
 const https = require('https');
 const finalContextStore = require('./finalContextStore.js');
@@ -40,6 +41,337 @@ const StreamHandler = require('./handlers/streamHandler');
 const NonStreamHandler = require('./handlers/nonStreamHandler');
 
 const VCP_TOOL_USE_FORBIDDEN_PLACEHOLDER = '[[VCPToolUse=Forbidden]]';
+const RESIDENT_PRESENCE_BINDING_PROPERTY = '__agentsOsResidentPresence';
+
+const RESIDENT_PRESENCE_BINDING_SCHEMA =
+
+  'agents-os-resident.provider-presence-binding.v2';
+
+const RESIDENT_PRESENCE_CARRIER_HEADER =
+
+  '[AGENTSOSResident PresenceContext v1]\n';
+
+const RESIDENT_PROVIDER_ATTEMPT_DENIED =
+
+  'RESIDENT_PROVIDER_ATTEMPT_DENIED';
+
+const RESIDENT_PROVIDER_PATH_ID = 'VCP-CHAT-COMPLETIONS';
+
+const RESIDENT_PROVIDER_CREDENTIAL_SLOT =
+
+  'credential-slot:vcp-toolbox:primary';
+
+
+
+function residentProviderAttemptDenied() {
+
+  const error = new Error(RESIDENT_PROVIDER_ATTEMPT_DENIED);
+
+  error.code = RESIDENT_PROVIDER_ATTEMPT_DENIED;
+
+  return error;
+
+}
+
+
+
+function isPlainRecord(value) {
+
+  return value !== null
+
+    && typeof value === 'object'
+
+    && !Array.isArray(value)
+
+    && (Object.getPrototypeOf(value) === Object.prototype
+
+      || Object.getPrototypeOf(value) === null);
+
+}
+
+
+
+function hasExactRecordKeys(value, expected) {
+
+  if (!isPlainRecord(value)) return false;
+
+  const actual = Object.keys(value).sort();
+
+  const wanted = [...expected].sort();
+
+  return actual.length === wanted.length
+
+    && actual.every((key, index) => key === wanted[index]);
+
+}
+
+
+
+function sha256Text(value) {
+
+  return `sha256:${createHash('sha256').update(value, 'utf8').digest('hex')}`;
+
+}
+
+
+
+function readResidentPresenceBinding(messages) {
+
+  if (!Array.isArray(messages)) throw residentProviderAttemptDenied();
+
+  const descriptor = Object.getOwnPropertyDescriptor(
+
+    messages,
+
+    RESIDENT_PRESENCE_BINDING_PROPERTY
+
+  );
+
+  if (!descriptor) return null;
+
+  if (descriptor.enumerable !== false
+
+    || descriptor.configurable !== false
+
+    || descriptor.writable !== false
+
+    || Object.hasOwn(descriptor, 'get')
+
+    || Object.hasOwn(descriptor, 'set')) {
+
+    throw residentProviderAttemptDenied();
+
+  }
+
+  const binding = descriptor.value;
+
+  if (!Object.isFrozen(binding)
+
+    || !hasExactRecordKeys(binding, [
+
+      'attachmentGeneration',
+
+      'authorityGeneration',
+
+      'carrierContentSha256',
+
+      'contextId',
+
+      'freshPresenceId',
+
+      'projectionGeneration',
+
+      'schema'
+
+    ])
+
+    || binding.schema !== RESIDENT_PRESENCE_BINDING_SCHEMA
+
+    || !Number.isSafeInteger(binding.attachmentGeneration)
+
+    || binding.attachmentGeneration < 1
+
+    || !Number.isSafeInteger(binding.authorityGeneration)
+
+    || binding.authorityGeneration < 1
+
+    || !Number.isSafeInteger(binding.projectionGeneration)
+
+    || binding.projectionGeneration < 0
+
+    || !/^sha256:[0-9a-f]{64}$/u.test(binding.carrierContentSha256)
+
+    || !/^sha256:[0-9a-f]{64}$/u.test(binding.contextId)
+
+    || !/^fresh-presence:r1:[0-9a-f]{64}$/u.test(binding.freshPresenceId)) {
+
+    throw residentProviderAttemptDenied();
+
+  }
+
+  const carriers = messages.filter((message) =>
+
+    isPlainRecord(message)
+
+      && message.role === 'system'
+
+      && typeof message.content === 'string'
+
+      && message.content.startsWith(RESIDENT_PRESENCE_CARRIER_HEADER));
+
+  if (carriers.length !== 1
+
+    || sha256Text(carriers[0].content) !== binding.carrierContentSha256) {
+
+    throw residentProviderAttemptDenied();
+
+  }
+
+  return binding;
+
+}
+
+
+
+function validResidentProviderSeal(result, input, binding) {
+
+  const seal = result?.seal;
+
+  return hasExactRecordKeys(result, ['body', 'seal'])
+
+    && result.body === input.finalBodyText
+
+    && hasExactRecordKeys(seal, [
+
+      'accepted',
+
+      'attachmentGeneration',
+
+      'attemptId',
+
+      'authorityGeneration',
+
+      'contextId',
+
+      'credentialSlotDigest',
+
+      'ordinal',
+
+      'projectionGeneration',
+
+      'providerInvoked',
+
+      'resultCode',
+
+      'schema',
+
+      'sealId'
+
+    ])
+
+    && seal.accepted === true
+
+    && seal.attachmentGeneration === binding.attachmentGeneration
+
+    && seal.attemptId === input.attemptId
+
+    && seal.authorityGeneration === binding.authorityGeneration
+
+    && seal.contextId === binding.contextId
+
+    && seal.ordinal === input.ordinal
+
+    && seal.projectionGeneration === binding.projectionGeneration
+
+    && seal.providerInvoked === false
+
+    && seal.resultCode
+
+      === 'PRESENCE_PROVIDER_ATTEMPT_MATERIAL_SEALED_NOT_INVOKED'
+
+    && seal.schema === 'AGENTS_OS_PROVIDER_ATTEMPT_SEAL_V1'
+
+    && /^sha256:[0-9a-f]{64}$/u.test(seal.credentialSlotDigest)
+
+    && /^sha256:[0-9a-f]{64}$/u.test(seal.sealId);
+
+}
+
+
+
+function validResidentPresenceIntent(value) {
+
+  return hasExactRecordKeys(value, ['requested'])
+
+    && value.requested === true;
+
+}
+
+
+
+function validOneRingPresenceMeta(value) {
+
+  return isPlainRecord(value)
+
+    && typeof value.agentName === 'string'
+
+    && value.agentName.length > 0
+
+    && Buffer.byteLength(value.agentName, 'utf8') <= 200
+
+    && value.agentName.trim() === value.agentName
+
+    && !/[\u0000-\u001f\u007f]/u.test(value.agentName)
+
+    && (value.externalKeyDigest === null
+
+      || (typeof value.externalKeyDigest === 'string'
+
+        && /^[0-9a-f]{64}$/u.test(value.externalKeyDigest)))
+
+    && (value.frontendPlane === null
+
+      || (typeof value.frontendPlane === 'string'
+
+        && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.frontendPlane)))
+
+    && (value.frontendPrincipalDigest === null
+
+      || (typeof value.frontendPrincipalDigest === 'string'
+
+        && /^[0-9a-f]{64}$/u.test(value.frontendPrincipalDigest)))
+
+    && typeof value.frontendSource === 'string'
+
+    && value.frontendSource.length > 0
+
+    && Buffer.byteLength(value.frontendSource, 'utf8') <= 200
+
+    && value.frontendSource.trim() === value.frontendSource
+
+    && !/[\u0000-\u001f\u007f]/u.test(value.frontendSource)
+
+    && typeof value.requestHash === 'string'
+
+    && /^[0-9a-f]{64}$/u.test(value.requestHash)
+
+    && typeof value.turnId === 'string'
+
+    && value.turnId.length > 0
+
+    && Buffer.byteLength(value.turnId, 'utf8') <= 300
+
+    && value.turnId.trim() === value.turnId
+
+    && !/[\u0000-\u001f\u007f]/u.test(value.turnId);
+
+}
+
+
+
+function sameOneRingPresenceMeta(left, right) {
+
+  return validOneRingPresenceMeta(left)
+
+    && validOneRingPresenceMeta(right)
+
+    && left.agentName === right.agentName
+
+    && left.externalKeyDigest === right.externalKeyDigest
+
+    && left.frontendPlane === right.frontendPlane
+
+    && left.frontendPrincipalDigest === right.frontendPrincipalDigest
+
+    && left.frontendSource === right.frontendSource
+
+    && left.requestHash === right.requestHash
+
+    && left.turnId === right.turnId;
+
+}
+
+
 
 function parseBooleanEnv(value, defaultValue = false) {
   if (value === undefined || value === null || value === '') return defaultValue;
@@ -134,6 +466,17 @@ function installResponseCacheRecorder(res, { cache, cacheKey, id, clientIp, stre
   const originalWrite = res.write.bind(res);
   const originalEnd = res.end.bind(res);
   let finalized = false;
+  let cacheDisabled = false;
+
+  Object.defineProperty(res, '__vcpDisableReplayCache', {
+    configurable: true,
+    enumerable: false,
+    value() {
+      cacheDisabled = true;
+      capturedChunks.length = 0;
+    },
+    writable: false
+  });
 
   const captureChunk = (chunk, encoding) => {
     if (chunk === undefined || chunk === null) return;
@@ -159,7 +502,10 @@ function installResponseCacheRecorder(res, { cache, cacheKey, id, clientIp, stre
     finalized = true;
 
     const statusCode = res.statusCode || 200;
-    if (statusCode >= 200 && statusCode < 500 && capturedChunks.length > 0) {
+    if (!cacheDisabled
+      && statusCode >= 200
+      && statusCode < 500
+      && capturedChunks.length > 0) {
       cache.set(cacheKey, {
         id,
         clientIp,
@@ -168,8 +514,13 @@ function installResponseCacheRecorder(res, { cache, cacheKey, id, clientIp, stre
         headers: res.getHeaders ? res.getHeaders() : {},
         chunks: capturedChunks
       });
-    } else if (debugMode) {
+    } else if (debugMode && !cacheDisabled) {
       console.log(`[ResponseReplayCache] Skip caching key=${cacheKey}, status=${statusCode}, chunks=${capturedChunks.length}`);
+    }
+    try {
+      delete res.__vcpDisableReplayCache;
+    } catch {
+      // Response disposal remains the final cleanup boundary.
     }
   };
 
@@ -271,7 +622,20 @@ function copyArrayMetadata(source, target) {
     try {
       Object.defineProperty(target, key, descriptor);
     } catch (e) {
-      // Metadata preservation is best-effort and must not break request flow.
+      if (key === RESIDENT_PRESENCE_BINDING_PROPERTY) {
+        throw residentProviderAttemptDenied();
+      }
+      // Other legacy metadata remains best-effort for compatibility.
+    }
+    if (key === RESIDENT_PRESENCE_BINDING_PROPERTY) {
+      const copied = Object.getOwnPropertyDescriptor(target, key);
+      if (!copied
+        || copied.value !== descriptor.value
+        || copied.enumerable !== descriptor.enumerable
+        || copied.configurable !== descriptor.configurable
+        || copied.writable !== descriptor.writable) {
+        throw residentProviderAttemptDenied();
+      }
     }
   }
 
@@ -409,7 +773,17 @@ function applyModelFallbackForAttempt(options, candidates, attemptIndex, debugMo
 async function fetchWithRetry(
   url,
   options,
-  { retries = 3, delay = 1000, debugMode = false, onRetry = null, connectionTimeout = 900000, modelFallbackCandidates = null } = {},
+  {
+    retries = 3,
+    delay = 1000,
+    debugMode = false,
+    onRetry = null,
+    connectionTimeout = 900000,
+    modelFallbackCandidates = null,
+    beforeProviderAttempt = null,
+    nextProviderAttemptOrdinal = null,
+    providerAttemptNamespace = null
+  } = {},
 ) {
   const { default: fetch } = await import('node-fetch');
   const maxAttempts = Math.max(
@@ -433,18 +807,97 @@ async function fetchWithRetry(
       removeExternalListener = () => externalSignal.removeEventListener('abort', forwardAbort);
     }
 
-    // 设置连接超时
-    const timeoutId = connectionTimeout > 0
-      ? setTimeout(() => { didTimeout = true; attemptController.abort(); }, connectionTimeout)
-      : null;
+    let timeoutId = null;
 
     const cleanup = () => {
       if (timeoutId) clearTimeout(timeoutId);
       if (removeExternalListener) removeExternalListener();
     };
 
+    const attemptOptions = applyModelFallbackForAttempt(
+      options,
+      modelFallbackCandidates,
+      i,
+      debugMode
+    );
+    if (beforeProviderAttempt !== null) {
+      let sealTimeoutId = null;
+      let removeSealAbortListener = null;
+      try {
+        if (typeof beforeProviderAttempt !== 'function'
+          || typeof nextProviderAttemptOrdinal !== 'function'
+          || !/^[0-9a-f]{64}$/u.test(providerAttemptNamespace)
+          || typeof url !== 'string'
+          || typeof attemptOptions?.body !== 'string'
+          || attemptOptions.body.length === 0
+          || attemptOptions.method !== 'POST') {
+          throw residentProviderAttemptDenied();
+        }
+        const ordinal = nextProviderAttemptOrdinal();
+        if (!Number.isSafeInteger(ordinal) || ordinal < 1) {
+          throw residentProviderAttemptDenied();
+        }
+        const attemptId = `attempt:vcp:r1:${createHash('sha256')
+          .update('vcp-toolbox.resident-provider-attempt.v1', 'utf8')
+          .update(Buffer.from([0]))
+          .update(providerAttemptNamespace, 'utf8')
+          .update(Buffer.from([0]))
+          .update(String(ordinal), 'utf8')
+          .digest('hex')}`;
+        const sealInput = Object.freeze({
+          attemptId,
+          credentialSlotRef: RESIDENT_PROVIDER_CREDENTIAL_SLOT,
+          finalBodyText: attemptOptions.body,
+          method: attemptOptions.method,
+          ordinal,
+          providerPathId: RESIDENT_PROVIDER_PATH_ID,
+          target: url
+        });
+        // Bound the local seal independently; provider connection time starts later.
+        const numericSealTimeout = typeof connectionTimeout === 'number'
+          || typeof connectionTimeout === 'string' ? Number(connectionTimeout) : NaN;
+        const sealTimeoutMs = Number.isFinite(numericSealTimeout) && numericSealTimeout > 0
+          ? Math.min(Math.max(Math.floor(numericSealTimeout), 1), 2147483647)
+          : 900000;
+        const sealed = await new Promise((resolve, reject) => {
+          const denyAbortedSeal = () => reject(residentProviderAttemptDenied());
+          attemptController.signal.addEventListener('abort', denyAbortedSeal, { once: true });
+          removeSealAbortListener = () => attemptController.signal.removeEventListener('abort', denyAbortedSeal);
+          if (attemptController.signal.aborted) {
+            denyAbortedSeal();
+            return;
+          }
+          sealTimeoutId = setTimeout(() => attemptController.abort(), sealTimeoutMs);
+          // Both settlement handlers remain attached if timeout/abort wins first.
+          Promise.resolve(beforeProviderAttempt(sealInput, {
+            signal: attemptController.signal
+          })).then(resolve, reject);
+        });
+        if (!hasExactRecordKeys(sealed, ['body', 'seal'])
+          || sealed.body !== attemptOptions.body) {
+          throw residentProviderAttemptDenied();
+        }
+      } catch {
+        cleanup();
+        throw residentProviderAttemptDenied();
+      } finally {
+        if (sealTimeoutId !== null) clearTimeout(sealTimeoutId);
+        if (removeSealAbortListener) removeSealAbortListener();
+      }
+    }
+    if (attemptController.signal.aborted) {
+      cleanup();
+      throw Object.assign(new Error('The operation was aborted.'), {
+        name: 'AbortError'
+      });
+    }
+
+    // Provider connection timeout starts only after the local authority seal.
+    timeoutId = connectionTimeout > 0
+      ? setTimeout(() => { didTimeout = true; attemptController.abort(); }, connectionTimeout)
+      : null;
+
     try {
-      const attemptOptions = applyModelFallbackForAttempt(options, modelFallbackCandidates, i, debugMode);
       const response = await fetch(url, {
         ...attemptOptions,
         agent: getFetchAgent, // 注入防御性长连接池
@@ -742,6 +1195,15 @@ class ChatCompletionHandler {
 
     const id = req.body.requestId || req.body.messageId;
     let originalBody = req.body;
+    const residentPresenceRequested = originalBody
+      && typeof originalBody === 'object'
+      && Object.hasOwn(originalBody, 'agentsOsResidentPresenceContext');
+    const residentPresenceContext = residentPresenceRequested
+      ? originalBody.agentsOsResidentPresenceContext
+      : undefined;
+    if (residentPresenceRequested) {
+      delete originalBody.agentsOsResidentPresenceContext;
+    }
     const vcpchatExtensions = originalBody && typeof originalBody === 'object'
       ? originalBody.vcpchatExtensions
       : null;
@@ -758,7 +1220,9 @@ class ChatCompletionHandler {
     const isOriginalRequestStreaming = originalBody.stream === true;
     const responseCacheKey = this.responseReplayCache.buildKey(clientIp, id);
 
-    if (responseCacheKey && this.responseReplayCache.replay(responseCacheKey, req, res)) {
+    if (!residentPresenceRequested
+      && responseCacheKey
+      && this.responseReplayCache.replay(responseCacheKey, req, res)) {
       return;
     }
 
@@ -768,7 +1232,7 @@ class ChatCompletionHandler {
     let cleanupClientDisconnectListeners = () => {};
     let finalizeResponseCacheRecorder = () => {};
 
-    if (responseCacheKey) {
+    if (responseCacheKey && !residentPresenceRequested) {
       finalizeResponseCacheRecorder = installResponseCacheRecorder(res, {
         cache: this.responseReplayCache,
         cacheKey: responseCacheKey,
@@ -858,6 +1322,10 @@ class ChatCompletionHandler {
     }
 
     try {
+      if (residentPresenceRequested
+        && !validResidentPresenceIntent(residentPresenceContext)) {
+        throw residentProviderAttemptDenied();
+      }
       if (originalBody.model) {
         const originalModel = originalBody.model;
         const isSemanticRoutingModel = semanticModelRouter && typeof semanticModelRouter.isRoutingModel === 'function'
@@ -1047,6 +1515,10 @@ class ChatCompletionHandler {
         }
         processedMessages.push(newMessage);
       }
+      processedMessages = copyArrayMetadata(
+        tavernProcessedMessages,
+        processedMessages
+      );
       if (DEBUG_MODE) await writeDebugLog('LogAfterVariableProcessing', processedMessages);
 
       // --- 媒体处理器 ---
@@ -1068,7 +1540,15 @@ class ChatCompletionHandler {
         if (pluginManager.messagePreprocessors.has(processorName)) {
           if (DEBUG_MODE) console.log(`[Server] Calling message preprocessor: ${processorName}`);
           try {
-            processedMessages = await pluginManager.executeMessagePreprocessor(processorName, processedMessages, requestPreprocessorConfig);
+            const messagesBeforeProcessor = processedMessages;
+            processedMessages = copyArrayMetadata(
+              messagesBeforeProcessor,
+              await pluginManager.executeMessagePreprocessor(
+                processorName,
+                processedMessages,
+                requestPreprocessorConfig
+              )
+            );
           } catch (pluginError) {
             console.error(`[Server] Error in preprocessor ${processorName}:`, pluginError);
           }
@@ -1078,13 +1558,74 @@ class ChatCompletionHandler {
       // --- 其他通用消息预处理器 ---
       for (const name of pluginManager.messagePreprocessors.keys()) {
         // 跳过已经特殊处理的插件
-        if (name === 'ImageProcessor' || name === 'MultiModalProcessor' || name === 'VCPTavern') continue;
+        if (name === 'ImageProcessor'
+          || name === 'MultiModalProcessor'
+          || name === 'VCPTavern'
+          || (residentPresenceRequested && name === 'AGENTSOSResident')) continue;
 
         if (DEBUG_MODE) console.log(`[Server] Calling message preprocessor: ${name}`);
         try {
-          processedMessages = await pluginManager.executeMessagePreprocessor(name, processedMessages, requestPreprocessorConfig);
+          const messagesBeforeProcessor = processedMessages;
+          processedMessages = copyArrayMetadata(
+            messagesBeforeProcessor,
+            await pluginManager.executeMessagePreprocessor(
+              name,
+              processedMessages,
+              requestPreprocessorConfig
+            )
+          );
         } catch (pluginError) {
           console.error(`[Server] Error in preprocessor ${name}:`, pluginError);
+        }
+      }
+      let presenceOneRingMeta = null;
+      if (residentPresenceRequested) {
+        try {
+          const oneRingModule = pluginManager.messagePreprocessors
+            .get('OneRing');
+          const residentModule = pluginManager.messagePreprocessors
+            .get('AGENTSOSResident');
+          const extracted = oneRingModule
+            ?.extractMetaFromMessages?.(processedMessages);
+          if (!validOneRingPresenceMeta(extracted)
+            || !residentModule
+            || typeof residentModule.processMessages !== 'function') {
+            throw residentProviderAttemptDenied();
+          }
+          presenceOneRingMeta = Object.freeze({
+            agentName: extracted.agentName,
+            externalKeyDigest: extracted.externalKeyDigest,
+            frontendPlane: extracted.frontendPlane,
+            frontendPrincipalDigest: extracted.frontendPrincipalDigest,
+            frontendSource: extracted.frontendSource,
+            requestHash: extracted.requestHash,
+            turnId: extracted.turnId
+          });
+          const messagesBeforeResident = processedMessages;
+          processedMessages = copyArrayMetadata(
+            messagesBeforeResident,
+            await pluginManager.executeMessagePreprocessor(
+              'AGENTSOSResident',
+              processedMessages,
+              {
+                ...requestPreprocessorConfig,
+                agentsOsResidentPresenceContext: {
+                  oneRing: {
+                    externalKeyDigest:
+                      presenceOneRingMeta.externalKeyDigest,
+                    frontendPlane: presenceOneRingMeta.frontendPlane,
+                    frontendPrincipalDigest:
+                      presenceOneRingMeta.frontendPrincipalDigest,
+                    frontendSource: presenceOneRingMeta.frontendSource,
+                    requestHash: presenceOneRingMeta.requestHash,
+                    turnId: presenceOneRingMeta.turnId
+                  }
+                }
+              }
+            )
+          );
+        } catch {
+          throw residentProviderAttemptDenied();
         }
       }
       if (DEBUG_MODE) await writeDebugLog('LogAfterPreprocessors', processedMessages);
@@ -1139,14 +1680,49 @@ class ChatCompletionHandler {
       if (enableRoleDivider) {
         if (DEBUG_MODE) console.log('[Server] Applying Role Divider processing (Final Stage)...');
         // skipCount: 1 to exclude the initial SystemPrompt from splitting
-        processedMessages = roleDivider.process(processedMessages, {
-          ignoreList: roleDividerIgnoreList,
-          switches: roleDividerSwitches,
-          scanSwitches: roleDividerScanSwitches,
-          removeDisabledTags: roleDividerRemoveDisabledTags,
-          skipCount: 1
-        });
+        const messagesBeforeRoleDivider = processedMessages;
+        processedMessages = copyArrayMetadata(
+          messagesBeforeRoleDivider,
+          roleDivider.process(processedMessages, {
+            ignoreList: roleDividerIgnoreList,
+            switches: roleDividerSwitches,
+            scanSwitches: roleDividerScanSwitches,
+            removeDisabledTags: roleDividerRemoveDisabledTags,
+            skipCount: 1
+          })
+        );
         if (DEBUG_MODE) await writeDebugLog('LogAfterFinalRoleDivider', processedMessages);
+      }
+
+      let residentPresenceBinding = null;
+      let residentPresenceModule = null;
+      if (residentPresenceRequested) {
+        try {
+          residentPresenceBinding = readResidentPresenceBinding(
+            processedMessages
+          );
+          residentPresenceModule = pluginManager.messagePreprocessors
+            .get('AGENTSOSResident');
+        } catch {
+          throw residentProviderAttemptDenied();
+        }
+        const sealDescriptor = residentPresenceModule
+          ? Object.getOwnPropertyDescriptor(
+            residentPresenceModule,
+            'sealProviderAttempt'
+          )
+          : null;
+        if (!residentPresenceBinding
+          || !residentPresenceModule
+          || !sealDescriptor
+          || sealDescriptor.enumerable !== false
+          || sealDescriptor.configurable !== false
+          || sealDescriptor.writable !== false
+          || Object.hasOwn(sealDescriptor, 'get')
+          || Object.hasOwn(sealDescriptor, 'set')
+          || typeof sealDescriptor.value !== 'function') {
+          throw residentProviderAttemptDenied();
+        }
       }
 
       // 经过改造后，processedMessages 已经是最终版本，无需再调用 replaceOtherVariables
@@ -1164,6 +1740,13 @@ class ChatCompletionHandler {
       } catch (oneRingMetaError) {
         console.warn('[OneRing] Failed to freeze response meta before upstream fetch:', oneRingMetaError.message);
       }
+      if (residentPresenceRequested
+        && !sameOneRingPresenceMeta(
+          presenceOneRingMeta,
+          oneRingResponseMeta
+        )) {
+        throw residentProviderAttemptDenied();
+      }
 
       const willStreamResponse = isOriginalRequestStreaming;
       const finalUpstreamBody = { ...originalBody, stream: willStreamResponse };
@@ -1178,7 +1761,52 @@ class ChatCompletionHandler {
 
       await writeDebugLog('LogOutputAfterProcessing', finalUpstreamBody);
 
-      let firstAiAPIResponse = await fetchWithRetry(
+      let providerAttemptOrdinal = 0;
+      const providerAttemptNamespace = residentPresenceBinding
+        ? randomBytes(32).toString('hex')
+        : null;
+      const requestFetchWithRetry = residentPresenceBinding
+        ? (url, options, retryOptions = {}) => fetchWithRetry(
+          url,
+          options,
+          {
+            ...retryOptions,
+            providerAttemptNamespace,
+            nextProviderAttemptOrdinal: () => {
+              providerAttemptOrdinal += 1;
+              return providerAttemptOrdinal;
+            },
+            beforeProviderAttempt: async (input, { signal } = {}) => {
+              if (signal?.aborted === true) {
+                throw residentProviderAttemptDenied();
+              }
+              let result;
+              const boundInput = Object.freeze({
+                ...input,
+                binding: residentPresenceBinding
+              });
+              try {
+                result = await residentPresenceModule.sealProviderAttempt(
+                  boundInput
+                );
+              } catch {
+                throw residentProviderAttemptDenied();
+              }
+              if (signal?.aborted === true
+                || !validResidentProviderSeal(
+                  result,
+                  boundInput,
+                  residentPresenceBinding
+                )) {
+                throw residentProviderAttemptDenied();
+              }
+              return result;
+            }
+          }
+        )
+        : fetchWithRetry;
+
+      let firstAiAPIResponse = await requestFetchWithRetry(
         `${apiUrl}/v1/chat/completions`,
         {
           method: 'POST',
@@ -1303,7 +1931,7 @@ class ChatCompletionHandler {
         clientIp,
         forceShowVCP,
         _refreshRagBlocksIfNeeded,
-        fetchWithRetry,
+        fetchWithRetry: requestFetchWithRetry,
         isToolResultError,
         formatToolResult,
         vcpToolUseForbidden,
