@@ -1,0 +1,92 @@
+name: P2 external composition merge probe
+
+on:
+  push:
+    branches:
+      - integration/p2-external-composition-merge-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current tracking-derived probe
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch bounded P2 precedent refs
+        run: |
+          git fetch origin codex/phase1-clean-core-plugin-contract codex/upstream-main-clean-base
+
+      - name: Three-way merge only Plugin.js
+        shell: bash
+        run: |
+          set -uo pipefail
+          CURRENT=/tmp/current-Plugin.js
+          BASE=/tmp/p2-base-Plugin.js
+          P2=/tmp/p2-head-Plugin.js
+          MERGED=/tmp/merged-Plugin.js
+
+          cp Plugin.js "$CURRENT"
+          git show f901f1a995fa6f8242e176b8ca66b6addd0be427:Plugin.js > "$BASE"
+          git show a4225acaafd0cf6019c843d65f374b499febe165:Plugin.js > "$P2"
+
+          set +e
+          git merge-file -p "$CURRENT" "$BASE" "$P2" > "$MERGED"
+          RC=$?
+          set -e
+
+          echo "merge_file_exit=$RC"
+          echo "conflict_markers=$(grep -c '^<<<<<<<' "$MERGED" || true)"
+          echo "current_lines=$(wc -l < "$CURRENT")"
+          echo "p2_base_lines=$(wc -l < "$BASE")"
+          echo "p2_head_lines=$(wc -l < "$P2")"
+          echo "merged_lines=$(wc -l < "$MERGED")"
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/merged-Plugin.js')
+          lines = p.read_text(errors='replace').splitlines()
+          markers = [i for i,l in enumerate(lines) if l.startswith('<<<<<<<')]
+          print(f'conflict_count={len(markers)}')
+          for n,i in enumerate(markers,1):
+              lo=max(0,i-25); hi=min(len(lines),i+90)
+              print(f'--- CONFLICT {n} lines {lo+1}-{hi} ---')
+              for j in range(lo,hi):
+                  print(f'{j+1:05d}: {lines[j]}')
+          PY
+
+          mkdir -p /tmp/p2-probe
+          cp "$MERGED" /tmp/p2-probe/merged-Plugin.js
+          printf '%s\n' "$RC" > /tmp/p2-probe/merge-file-exit.txt
+
+      - name: Record bounded precedent file identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            modules/externalPluginAllowPolicy.js
+            modules/externalPluginSafetyGate.js
+            modules/pluginRootResolver.js
+            modules/pluginRuntimeEnvSandbox.js
+            tests/externalPluginAllowPolicy.test.js
+            tests/externalPluginSafetyGate.test.js
+            tests/plugin-external-dirs.test.js
+            tests/plugin-external-runtime-direct-policy.test.js
+            tests/plugin-external-runtime-env-sandbox.test.js
+            tests/plugin-external-runtime-registration-gate.test.js
+          )
+          for f in "${files[@]}"; do
+            blob=$(git rev-parse "a4225acaafd0cf6019c843d65f374b499febe165:$f")
+            printf '%s  %s\n' "$blob" "$f"
+          done
+
+      - name: Upload merge probe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-external-composition-merge-probe
+          path: /tmp/p2-probe/
+          if-no-files-found: error
