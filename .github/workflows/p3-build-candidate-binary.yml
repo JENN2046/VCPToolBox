@@ -1,0 +1,81 @@
+name: P3 build candidate Vexus binary
+
+on:
+  push:
+    branches:
+      - integration/p3-vexus-native-abi-probe
+    paths:
+      - .github/workflows/p3-build-candidate-binary.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-candidate:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@v4
+        with:
+          ref: integration/p3-vexus-native-abi-candidate
+          fetch-depth: 0
+
+      - name: Guard exact candidate and tracking heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_CANDIDATE=06c071822ae179d533cab52c30203abb4eda01c9
+          EXPECTED_TRACKING=1cf353b4f5c18afdfb4b3bc59e9fc966bc26538f
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE"
+          test "$(git ls-remote origin refs/heads/integration/upstream-tracking-rebaseline-r1 | awk '{print $1}')" = "$EXPECTED_TRACKING"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+
+      - name: Install pinned native build toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-12 g++-12 binutils
+          rustup toolchain install 1.89.0 --profile minimal
+          rustup default 1.89.0
+          npm install --prefix /tmp/napi-cli --ignore-scripts --no-audit --no-fund @napi-rs/cli@2.18.4
+          npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+
+      - name: Build candidate artifact from current source and validate it
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/vexus-candidate-build
+          mkdir -p /tmp/vexus-candidate-build
+          cp -a rust-vexus-lite /tmp/vexus-candidate-build/rust-vexus-lite
+          find /tmp/vexus-candidate-build/rust-vexus-lite -maxdepth 1 -type f -name '*.node' -delete
+          rm -rf /tmp/vexus-candidate-build/rust-vexus-lite/target
+          pushd /tmp/vexus-candidate-build/rust-vexus-lite >/dev/null
+          CC=gcc-12 CXX=g++-12 RUSTUP_TOOLCHAIN=1.89.0 \
+            /tmp/napi-cli/node_modules/.bin/napi build --platform --release --cargo-flags="--locked"
+          popd >/dev/null
+
+          BUILT=/tmp/vexus-candidate-build/rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          test -f "$BUILT"
+          MAX_OBSERVED="$(objdump -T "$BUILT" | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -Vu | tail -n 1)"
+          test "$(printf '%s\n%s\n' "$MAX_OBSERVED" 2.35 | sort -V | tail -n 1)" = 2.35
+          cp "$BUILT" rust-vexus-lite/vexus-lite.linux-x64-gnu.node
+          MAX_ALLOWED_GLIBC=2.35 node scripts/check-vexus-linux-native-abi.js
+          echo "CANDIDATE_BINARY_SHA256=$(sha256sum "$BUILT" | awk '{print $1}')"
+          echo "MAX_OBSERVED_GLIBC=$MAX_OBSERVED"
+
+      - name: Commit only the derived binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="rust-vexus-lite/vexus-lite.linux-x64-gnu.node"
+          ACTUAL="$(git status --porcelain | sed -E 's/^.. //')"
+          test "$ACTUAL" = "$EXPECTED"
+          git config user.name "Jenn2046"
+          git config user.email "130375136+JENN2046@users.noreply.github.com"
+          git add "$EXPECTED"
+          git commit -m "build(rebaseline): derive Vexus Linux ABI artifact"
+          git push origin HEAD:integration/p3-vexus-native-abi-candidate
