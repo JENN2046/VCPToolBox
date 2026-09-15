@@ -1,0 +1,53 @@
+name: P4 PR276 forward-port probe
+
+on:
+  push:
+    branches:
+      - integration/p4-resident-host-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard exact tracking source
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED=c8493902dad054c4b94c3f035578c3a1d4d14491
+          test "$(git merge-base HEAD "$EXPECTED")" = "$EXPECTED"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED"
+
+      - name: Apply PR276 bounded provider-seal patch
+        shell: bash
+        run: |
+          set +e
+          BASE=614fcdc619eb1233ce6e658cc59ec59af7d4ef8f
+          SOURCE=5272cbe053dee4fcd6a6ba17bf57db11a30eb958
+          git diff --binary "$BASE" "$SOURCE" -- \
+            Plugin/OneRing/OneRing.js \
+            modules/chatCompletionHandler.js \
+            tests/residentProviderPresenceContract.test.cjs > /tmp/pr276.diff
+          git apply --3way --index /tmp/pr276.diff > /tmp/apply.out 2>&1
+          rc=$?
+          printf 'APPLY_RC=%s\n' "$rc" | tee /tmp/result.txt
+          cat /tmp/apply.out | tee -a /tmp/result.txt
+          git status --short | tee -a /tmp/result.txt
+          git diff --name-only --diff-filter=U | tee /tmp/conflicts.txt
+          git diff --stat | tee /tmp/stat.txt
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p4-pr276-forward-port-probe
+          path: |
+            /tmp/result.txt
+            /tmp/conflicts.txt
+            /tmp/stat.txt
+            /tmp/pr276.diff
