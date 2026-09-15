@@ -53,6 +53,7 @@ jobs:
           rm -f Plugin.js.rej
           chmod 0644 Plugin.js
 
+          git add -N "${SUPPORT_PATHS[@]}"
           node --check Plugin.js
           node --check modules/externalPluginAllowPolicy.js
           node --check modules/externalPluginSafetyGate.js
