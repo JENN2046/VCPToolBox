@@ -18,6 +18,13 @@ const {
     createDefaultDependencyBridgeRegistry,
     createDefaultExecutionBridgeRegistry
 } = require('./modules/pluginBridgeRegistry');
+const {
+    attachNativeManifestAuthority,
+    buildDirectRefreshEffectiveNativeManifest,
+    createRuntimePluginEntry,
+    getCurrentNativeManifest,
+    hasDirectRuntimeContractChange
+} = require('./modules/nativeManifestAuthority');
 
 const PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const manifestFileName = 'plugin-manifest.json';
@@ -161,6 +168,14 @@ class PluginManager extends EventEmitter {
         });
         this.dependencyBridgeRegistry = createDefaultDependencyBridgeRegistry();
         this.executionBridgeRegistry = createDefaultExecutionBridgeRegistry();
+    }
+
+    _createRuntimePluginEntryFromNativeManifest(nativeManifest) {
+        return createRuntimePluginEntry(nativeManifest);
+    }
+
+    getCurrentNativeManifest(runtimeEntry) {
+        return getCurrentNativeManifest(runtimeEntry);
     }
 
     _sanitizeToolResultForAi(result) {
@@ -887,9 +902,11 @@ class PluginManager extends EventEmitter {
                     const manifestPath = path.join(pluginPath, manifestFileName);
                     try {
                         const manifestContent = await fs.readFile(manifestPath, 'utf-8');
-                        const manifest = JSON.parse(manifestContent);
-                        if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) continue;
-                        if (this.plugins.has(manifest.name)) continue;
+                        const nativeManifest = JSON.parse(manifestContent);
+                        if (!nativeManifest.name || !nativeManifest.pluginType || !nativeManifest.entryPoint) continue;
+                        if (this.plugins.has(nativeManifest.name)) continue;
+
+                        const manifest = this._createRuntimePluginEntryFromNativeManifest(nativeManifest);
 
                         manifest.basePath = pluginPath;
                         manifest.pluginSpecificEnvConfig = {};
@@ -2428,26 +2445,8 @@ class PluginManager extends EventEmitter {
         return this.pluginWatcher;
     }
 
-    _getManifestRuntimeSignature(manifest) {
-        const capabilities = { ...(manifest.capabilities || {}) };
-        delete capabilities.invocationCommands;
-
-        return JSON.stringify({
-            name: manifest.name,
-            pluginType: manifest.pluginType,
-            entryPoint: manifest.entryPoint,
-            communication: manifest.communication,
-            configSchema: manifest.configSchema,
-            capabilities,
-            refreshIntervalCron: manifest.refreshIntervalCron,
-            requiresAdmin: manifest.requiresAdmin,
-            requiresKnowledgeBaseManager: manifest.requiresKnowledgeBaseManager,
-            requiresContextBridge: manifest.requiresContextBridge,
-            requiresJevClient: manifest.requiresJevClient,
-            hasApiRoutes: manifest.hasApiRoutes,
-            webSocketPush: manifest.webSocketPush,
-            vcpInfoLifecycle: manifest.vcpInfoLifecycle
-        });
+    _hasManifestRuntimeContractChange(currentManifest, freshManifest) {
+        return hasDirectRuntimeContractChange(currentManifest, freshManifest);
     }
 
     async _refreshPluginManifestMetadata(filePath) {
@@ -2471,9 +2470,10 @@ class PluginManager extends EventEmitter {
             return { refreshed: false };
         }
 
-        const runtimeChanged =
-            this._getManifestRuntimeSignature(currentManifest) !==
-            this._getManifestRuntimeSignature(freshManifest);
+        const runtimeChanged = this._hasManifestRuntimeContractChange(
+            currentManifest,
+            freshManifest
+        );
 
         if (runtimeChanged && currentManifest.communication?.protocol !== 'direct') {
             return { refreshed: false, runtimeChanged: true };
@@ -2487,18 +2487,25 @@ class PluginManager extends EventEmitter {
                 invocationCommands: freshManifest.capabilities?.invocationCommands ||
                     currentManifest.capabilities?.invocationCommands
             };
-            this.plugins.set(freshManifest.name, {
+            const refreshedManifest = {
                 ...currentManifest,
                 displayName: freshManifest.displayName || freshManifest.name,
                 description: freshManifest.description || '',
                 version: freshManifest.version,
                 author: freshManifest.author,
                 capabilities: mergedCapabilities
-            });
+            };
+            const effectiveNativeManifest = buildDirectRefreshEffectiveNativeManifest(
+                currentManifest,
+                freshManifest
+            );
+            attachNativeManifestAuthority(refreshedManifest, effectiveNativeManifest);
+            this.plugins.set(freshManifest.name, refreshedManifest);
         } else {
-            freshManifest.basePath = currentManifest.basePath || path.dirname(filePath);
-            freshManifest.pluginSpecificEnvConfig = currentManifest.pluginSpecificEnvConfig || {};
-            this.plugins.set(freshManifest.name, freshManifest);
+            const refreshedManifest = this._createRuntimePluginEntryFromNativeManifest(freshManifest);
+            refreshedManifest.basePath = currentManifest.basePath || path.dirname(filePath);
+            refreshedManifest.pluginSpecificEnvConfig = currentManifest.pluginSpecificEnvConfig || {};
+            this.plugins.set(freshManifest.name, refreshedManifest);
         }
 
         return {
