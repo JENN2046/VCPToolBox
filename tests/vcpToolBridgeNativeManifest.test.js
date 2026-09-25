@@ -388,6 +388,7 @@ test('PluginManager production loader captures complete native authority before 
     }));
     const originalReadFile = fs.readFile.bind(fs);
     const originalReaddir = fs.readdir.bind(fs);
+    const originalLstat = fs.lstat.bind(fs);
 
     t.after(async () => {
         Object.assign(pluginManager, originalState);
@@ -399,6 +400,16 @@ test('PluginManager production loader captures complete native authority before 
             return [{ name: 'FMSR1InitialLoaderFixture', isDirectory: () => true }];
         }
         return originalReaddir(target, options);
+    });
+    t.mock.method(fs, 'lstat', async target => {
+        const resolved = path.resolve(String(target));
+        if (resolved === path.resolve(manifestPath)) {
+            return {
+                isSymbolicLink: () => false,
+                isFile: () => true
+            };
+        }
+        return originalLstat(target);
     });
     t.mock.method(fs, 'readFile', async (target, encoding) => {
         const resolved = path.resolve(String(target));
