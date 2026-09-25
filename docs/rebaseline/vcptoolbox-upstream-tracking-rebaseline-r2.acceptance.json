@@ -1,0 +1,56 @@
+{
+  "schema_version": "vcptoolbox-upstream-rebaseline-r2.acceptance.v1",
+  "status": "IMPLEMENTATION_ACCEPTED_RELEASE_NOT_CUT_OVER",
+  "author_upstream": {
+    "repository": "lioensky/VCPToolBox",
+    "branch": "main",
+    "commit": "9fb8ef6a5f2ff2634d9a25aa99c34b4f6c5c3e28",
+    "fresh_readback": "MATCH"
+  },
+  "branch": "integration/upstream-tracking-rebaseline-r2",
+  "implementation_head": "9dc746ec81ccae6e71d26b943f1c81fbb21fdaa1",
+  "implementation_tree": "626953784e2c7c00b25dc2b275111a8afbea9566",
+  "packages": {
+    "P1_NATIVE_MANIFEST": "4478c86fc1d0724094f55223623336aa0be72d5c",
+    "P2_EXTERNAL_PLUGIN_ADMISSION": "6ec832e190a5b28712159ca3054654b3bdac7659",
+    "P3_RESIDENT_HOST_CONTRACT": "6802e07e760125ea9561a3a8fe9b4daec3b60533",
+    "P4_HUMAN_AUTHORIZATION": "0eadd1aeddc80b637efc4a1357e25203b3da42bd",
+    "P5_VEXUS_NATIVE_ABI": "d9707c89f5c3829fcd109c3e91bf64c6afa1cc94",
+    "P6_MEMORY_COLD_COMPATIBILITY": "9dc746ec81ccae6e71d26b943f1c81fbb21fdaa1"
+  },
+  "acceptance": {
+    "syntax_check": "PASS",
+    "targeted_tests": {
+      "tests": 101,
+      "pass": 101,
+      "fail": 0,
+      "skipped": 0
+    },
+    "p5": {
+      "build_environment": {
+        "os": "Ubuntu 22.04",
+        "glibc": "2.35",
+        "gcc": "12.3",
+        "rust": "1.89.0",
+        "node": "20.20.2",
+        "napi_cli": "2.18.4"
+      },
+      "build_1_sha256": "5d14ac48e15c01af06ece516da098f1adced4846957d7d1fbac524dddaaf8976",
+      "build_2_sha256": "5d14ac48e15c01af06ece516da098f1adced4846957d7d1fbac524dddaaf8976",
+      "reproducible": "PASS",
+      "maximum_observed_glibc": "2.35",
+      "abi_contract": "PASS",
+      "loader_exports": "PASS",
+      "vexus_index_smoke": "PASS",
+      "knowledge_base_manager_load": "PASS"
+    }
+  },
+  "deployment": {
+    "production_cutover": false,
+    "current_release": "2f8fd1ff",
+    "state_separation": "PENDING",
+    "core_services": "STOPPED",
+    "backup_cron": "PAUSED"
+  },
+  "next_gate": "GENERATE_STAGING_RUNTIME_AND_COLD_START_ACCEPTANCE"
+}
