@@ -42,6 +42,29 @@ const PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const manifestFileName = 'plugin-manifest.json';
 const EXTERNAL_LEGACY_PLUGIN_DIRS_ENV = 'VCP_PLUGIN_DIRS';
 const EXTERNAL_PLUGIN_ALLOWLIST_ENV = 'VCP_EXTERNAL_PLUGIN_ALLOWLIST';
+const RESIDENT_TOOL_NAME = 'AGENTSOSResident';
+const RESIDENT_PROPOSAL_FAILURE_CODES = new Set([
+    'RESIDENT_PROPOSAL_DISPATCH_FAILED',
+    'RESIDENT_PROPOSAL_EXECUTION_FAILED',
+    'RESIDENT_PROPOSAL_INPUT_REJECTED',
+    'RESIDENT_PROPOSAL_PREPARE_FAILED',
+    'RESIDENT_PROPOSAL_PRESENTATION_FAILED',
+    'RESIDENT_PROPOSAL_RESULT_REJECTED'
+]);
+
+function residentProposalFailureCode(error) {
+    if (RESIDENT_PROPOSAL_FAILURE_CODES.has(error?.code)) return error.code;
+    if (error?.code === 'DIRECT_TOOL_TIMEOUT') return 'RESIDENT_PROPOSAL_DISPATCH_FAILED';
+    try {
+        const parsed = JSON.parse(error?.message || '{}');
+        if (RESIDENT_PROPOSAL_FAILURE_CODES.has(parsed?.residentProposalFailure)) {
+            return parsed.residentProposalFailure;
+        }
+        if (RESIDENT_PROPOSAL_FAILURE_CODES.has(parsed?.code)) return parsed.code;
+    } catch (_) {}
+    return 'RESIDENT_PROPOSAL_EXECUTION_FAILED';
+}
+
 const PREPROCESSOR_ORDER_FILE = path.join(__dirname, 'preprocessor_order.json');
 const STATIC_PLACEHOLDER_INJECTION_STAGE = '$StaticPlaceholderInjection';
 const PREPROCESSOR_VIRTUAL_STAGES = Object.freeze({
@@ -583,6 +606,17 @@ class PluginManager extends EventEmitter {
         return 'external_direct_runtime_denied';
     }
 
+    _isExactAdmittedResidentExternalDirect(manifest, classification, policyDecision, duplicateExisting) {
+        return classification?.pluginName === RESIDENT_TOOL_NAME
+            && manifest?.pluginType === 'hybridservice'
+            && manifest?.communication?.protocol === 'direct'
+            && this._hasDirectScriptEntryPoint(manifest)
+            && manifest?.requiresAdmin !== true
+            && policyDecision?.decision === 'would_allow'
+            && classification?.duplicateOfBuiltIn !== true
+            && duplicateExisting !== true;
+    }
+
     _evaluateExternalPluginRuntimeRegistration(manifest) {
         if (!this._isExternalPluginManifest(manifest)) {
             return {
@@ -598,8 +632,33 @@ class PluginManager extends EventEmitter {
             isExternal: true,
             builtInPluginNames: Array.from(this.plugins.keys())
         });
+        const policyDecision = evaluateExternalPluginAllowPolicy(
+            classification,
+            this._getExternalPluginRuntimeAllowPolicy(),
+            { projectRoot: __dirname }
+        );
+        const duplicateExisting = Boolean(manifest.name && this.plugins.has(manifest.name));
 
         if (this._isExternalDirectOrHybridSameProcess(manifest)) {
+            const residentAllowed = this._isExactAdmittedResidentExternalDirect(
+                manifest,
+                classification,
+                policyDecision,
+                duplicateExisting
+            );
+            if (residentAllowed) {
+                return {
+                    allowed: true,
+                    decision: 'allowed',
+                    code: 'resident_external_direct_runtime_allowed',
+                    pluginName: classification.pluginName,
+                    pluginSource: 'external',
+                    pluginRootId: this._sanitizeExternalRuntimeRootId(manifest.pluginRootId),
+                    pluginRootDisplayPath: this._sanitizeExternalRuntimeDisplayPath(manifest.pluginRootDisplayPath),
+                    risk: classification.risk,
+                    entryPointKind: classification.entryPointKind
+                };
+            }
             return {
                 allowed: false,
                 decision: 'blocked',
@@ -613,12 +672,6 @@ class PluginManager extends EventEmitter {
             };
         }
 
-        const policyDecision = evaluateExternalPluginAllowPolicy(
-            classification,
-            this._getExternalPluginRuntimeAllowPolicy(),
-            { projectRoot: __dirname }
-        );
-        const duplicateExisting = Boolean(manifest.name && this.plugins.has(manifest.name));
         const allowed = policyDecision.decision === 'would_allow'
             && classification.duplicateOfBuiltIn !== true
             && duplicateExisting !== true;
@@ -1670,8 +1723,23 @@ class PluginManager extends EventEmitter {
             ? toolCallRecordStore.beginRecord({ toolName, args: toolArgs || {}, requestIp, sourceNode })
             : null;
 
+        const residentProposalCall = toolName === RESIDENT_TOOL_NAME
+            && typeof toolArgs?.operation === 'string'
+            && toolArgs.operation.startsWith('PROPOSE_');
+
         const plugin = this.plugins.get(toolName);
         if (!plugin) {
+            if (residentProposalCall) {
+                const fixedCode = 'RESIDENT_PROPOSAL_DISPATCH_FAILED';
+                const fixedError = new Error(fixedCode);
+                fixedError.code = fixedCode;
+                toolCallRecordStore.finishRecord(managedToolCallRecord, {
+                    success: false,
+                    result: { residentProposalFailure: fixedCode },
+                    error: fixedError
+                });
+                throw fixedError;
+            }
             const notFoundError = new Error(`[PluginManager] Plugin "${toolName}" not found for tool call.`);
             toolCallRecordStore.finishRecord(managedToolCallRecord, {
                 success: false,
@@ -1808,6 +1876,8 @@ class PluginManager extends EventEmitter {
                     requestIp,
                     sourceNode,
                     executionOptions,
+                    residentProposalCall,
+                    residentPresentationSink: executionOptions.residentPresentationSink,
                     webSocketServer: this.webSocketServer,
                     debugMode: this.debugMode,
                     debugLog: (...args) => {
@@ -1908,6 +1978,20 @@ class PluginManager extends EventEmitter {
             return sanitizedResult;
 
         } catch (e) {
+            if (residentProposalCall) {
+                const fixedCode = residentProposalFailureCode(e);
+                console.error('[PluginManager processToolCall] Resident proposal failed closed: ' + fixedCode);
+                const fixedResult = { residentProposalFailure: fixedCode };
+                const fixedError = new Error(JSON.stringify(fixedResult));
+                fixedError.code = fixedCode;
+                this.toolLifecycleVcpInfo.emit(lifecycleContext, 'error', { error: fixedError });
+                toolCallRecordStore.finishRecord(managedToolCallRecord, {
+                    success: false,
+                    result: fixedResult,
+                    error: fixedCode
+                });
+                throw fixedError;
+            }
             this.toolLifecycleVcpInfo.emit(lifecycleContext, 'error', { error: e });
             console.error(`[PluginManager processToolCall] Error during execution for plugin ${toolName}:`, e.message);
             let errorObject;

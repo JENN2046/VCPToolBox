@@ -286,6 +286,18 @@ function createDefaultExecutionBridgeRegistry() {
                 pluginName: context.toolName
             };
 
+            if (
+                context.residentProposalCall &&
+                typeof context.residentPresentationSink === 'function'
+            ) {
+                Object.defineProperty(directContext, 'emitEphemeralPresentation', {
+                    configurable: false,
+                    enumerable: false,
+                    value: context.residentPresentationSink,
+                    writable: false
+                });
+            }
+
             if (plugin.requiresAdmin) {
                 const decryptedCode = await context.getDecryptedAuthCode();
                 if (!decryptedCode) {
