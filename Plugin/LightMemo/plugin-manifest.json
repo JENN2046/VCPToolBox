@@ -8,7 +8,7 @@
   "pluginType": "hybridservice",
   "requiresJevClient": true,
   "entryPoint": {
-    "script": "LightMemo.js"
+    "script": "LightMemoCompat.js"
   },
   "communication": {
     "protocol": "direct"
