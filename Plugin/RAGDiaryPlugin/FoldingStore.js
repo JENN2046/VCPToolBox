@@ -6,6 +6,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { resolveSymlinkTargetSync } = require('../../modules/symlinkSafeAtomicWrite');
 
 class FoldingStore {
     /**
@@ -23,8 +24,9 @@ class FoldingStore {
         this._stmts = {};
 
         try {
-            const dbDir = path.dirname(dbPath);
-            console.log(`[FoldingStore] 初始化开始: dbPath=${dbPath}, dbDir=${dbDir}, cwd=${process.cwd()}, maxEntries=${this.maxEntries}, evictCount=${this.evictCount}`);
+            const writeDbPath = resolveSymlinkTargetSync(dbPath);
+            const dbDir = path.dirname(writeDbPath);
+            console.log(`[FoldingStore] 初始化开始: dbPath=${dbPath}, writeDbPath=${writeDbPath}, dbDir=${dbDir}, cwd=${process.cwd()}, maxEntries=${this.maxEntries}, evictCount=${this.evictCount}`);
 
             try {
                 fs.mkdirSync(dbDir, { recursive: true });
@@ -54,13 +56,14 @@ class FoldingStore {
 
             // 尝试删除损坏的数据库并重建
             try {
-                if (fs.existsSync(dbPath)) {
-                    fs.unlinkSync(dbPath);
-                    console.log(`[FoldingStore] 已删除旧数据库文件，准备重建: ${dbPath}`);
+                const writeDbPath = resolveSymlinkTargetSync(dbPath);
+                if (fs.existsSync(writeDbPath)) {
+                    fs.unlinkSync(writeDbPath);
+                    console.log(`[FoldingStore] 已删除旧数据库文件，准备重建: ${writeDbPath}`);
                 } else {
-                    console.log(`[FoldingStore] 初始化失败时未发现现有数据库文件，将直接尝试重建: ${dbPath}`);
+                    console.log(`[FoldingStore] 初始化失败时未发现现有数据库文件，将直接尝试重建: ${writeDbPath}`);
                 }
-                this.db = new Database(dbPath);
+                this.db = new Database(writeDbPath);
                 console.log('[FoldingStore] 重建阶段 SQLite 连接已建立，开始配置 PRAGMA...');
                 this.db.pragma('journal_mode = WAL');
                 this.db.pragma('synchronous = NORMAL');

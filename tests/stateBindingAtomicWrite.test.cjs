@@ -65,3 +65,31 @@ test('P7 atomic writers are wired to the helper', async () => {
     assert.match(content, new RegExp(marker));
   }
 });
+
+test('FoldingStore keeps a DB state symlink intact under a read-only runtime directory', async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'vcp-folding-state-'));
+  const stateDir = path.join(root, 'state');
+  const runtimeDir = path.join(root, 'runtime');
+  await fsp.mkdir(stateDir);
+  await fsp.mkdir(runtimeDir);
+
+  const target = path.join(stateDir, 'folding_store.db');
+  const logical = path.join(runtimeDir, 'folding_store.db');
+  await fsp.symlink(target, logical);
+  await fsp.chmod(runtimeDir, 0o555);
+
+  let store;
+  try {
+    const FoldingStore = require('../Plugin/RAGDiaryPlugin/FoldingStore');
+    store = new FoldingStore(logical, { maxEntries: 10, evictCount: 2 });
+
+    assert.equal(store.getStats().available, true);
+    assert.equal((await fsp.lstat(logical)).isSymbolicLink(), true);
+    assert.equal((await fsp.stat(target)).isFile(), true);
+    assert.equal(await fsp.readlink(logical), target);
+  } finally {
+    if (store) store.shutdown();
+    await fsp.chmod(runtimeDir, 0o755).catch(() => undefined);
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
