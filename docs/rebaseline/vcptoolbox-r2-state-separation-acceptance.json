@@ -1,0 +1,39 @@
+{
+  "schema_version": "vcptoolbox-r2-state-separation-acceptance-v1",
+  "status": "PASS_READY_FOR_IMMUTABLE_RELEASE_PREVIEW",
+  "author_upstream": "9fb8ef6a5f2ff2634d9a25aa99c34b4f6c5c3e28",
+  "implementation_remote": "09d0c13a9fe4a1cbf5b4f8e8e28ac1d60c5f9ec8",
+  "implementation_remote_tree": "611e64de759e6d9ca8430ba777ac6e44578a3500",
+  "local_equivalent": "1b422e975fabd5323e957e0c0cfe503b7386ec40",
+  "state": {
+    "bindings": 115,
+    "bindings_preserved": "115/115",
+    "snapshot_files": 611,
+    "snapshot_hash_verify": "PASS",
+    "sqlite_quick_check": "9/9 PASS",
+    "legacy_path_hits": 0
+  },
+  "core": {
+    "tests": "124/124 PASS",
+    "cold_start": "PASS",
+    "graceful_shutdown": "PASS",
+    "final_ports_clear": "PASS"
+  },
+  "environment": {
+    "legacy_venv_dependency": false,
+    "pip_check": "PASS",
+    "import_smoke": "PASS"
+  },
+  "bridge": {
+    "release": "vcp-app-0.3.12-r13",
+    "production_files_exact": "16/16",
+    "recoverable_tests": "95/95 PASS",
+    "test_only_forensic_gap": 4,
+    "healthz": 200,
+    "readyz_with_core_stopped": 503,
+    "user_core_masked": true
+  },
+  "production_cutover": false,
+  "cleanup_enforcement": "PREPARED_NOT_ACTIVE",
+  "next_gate": "IMMUTABLE_RELEASE_PREVIEW_THEN_PROMOTE_R2"
+}
