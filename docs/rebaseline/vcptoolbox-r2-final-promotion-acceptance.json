@@ -1,0 +1,35 @@
+{
+  "schema_version": "vcptoolbox-r2-final-promotion-acceptance-v1",
+  "status": "PASS_READY_FOR_PROMOTION",
+  "author_upstream": "9fb8ef6a5f2ff2634d9a25aa99c34b4f6c5c3e28",
+  "implementation_commit": "f704d468b8932e5071415abf51f2803367b0afef",
+  "implementation_tree": "6a5acee42371ee24bc33a53a648fbedb6f8043eb",
+  "local_equivalent": "91ad6844a64cfba1feb9c89525425aae9add2094",
+  "regression": "125/125 PASS",
+  "state": {
+    "bindings": "115/115",
+    "snapshot_files": 611,
+    "snapshot_hash_verify": "PASS",
+    "sqlite": "9/9 PASS",
+    "legacy_hits": 0
+  },
+  "immutable_preview": {
+    "writable_files": 0,
+    "writable_directories": 0,
+    "main_ready": true,
+    "admin_ready": true,
+    "main_http": 401,
+    "admin_http": 302,
+    "readonly_errors": 0,
+    "tree_unchanged": true
+  },
+  "bridge": {
+    "release": "vcp-app-0.3.12-r13",
+    "production_loaded_files_exact": "16/16",
+    "recoverable_tests": "95/95 PASS",
+    "old_user_core_masked": true
+  },
+  "previous_current": "2f8fd1ff",
+  "destructive_cleanup": false,
+  "next_action": "PROMOTE_AND_ATOMIC_CURRENT_SWITCH"
+}
