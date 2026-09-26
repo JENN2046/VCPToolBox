@@ -3,6 +3,7 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
+const { atomicWriteFilePreserveSymlink } = require('../../modules/symlinkSafeAtomicWrite');
 
 const PLACEHOLDER_REGEX = /\[\[VCPTimeLine::([^:\]\r\n]+?)(?::([^:\]\r\n]+?))?(?::([^:\]\r\n]+?))?\]\]/g;
 const HEADER_REGEX = /^\[?\s*(\d{4})[.-](\d{1,2})[.-](\d{1,2})(?:\.\d+)?\s*\]?\s*-\s*(.+?)\s*$/;
@@ -198,10 +199,11 @@ class VCPTimeLine {
     }
 
     async writeJsonAtomic(target, value) {
-        await fsp.mkdir(path.dirname(target), { recursive: true });
-        const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
-        await fsp.writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-        await fsp.rename(temp, target);
+        await atomicWriteFilePreserveSymlink(
+            target,
+            `${JSON.stringify(value, null, 2)}\n`,
+            'utf8'
+        );
     }
 
     extractText(content) {

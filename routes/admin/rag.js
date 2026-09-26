@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
+const { atomicWriteFilePreserveSymlink } = require('../../modules/symlinkSafeAtomicWrite');
 
 module.exports = function(options) {
     const router = express.Router();
@@ -68,13 +69,8 @@ module.exports = function(options) {
 
     const writeJsonFileAtomic = async (filePath, body) => {
         assertPlainObject(body);
-        const dir = path.dirname(filePath);
-        const base = path.basename(filePath);
-        const tempPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
         const content = JSON.stringify(body, null, 2);
-
-        await fs.writeFile(tempPath, content, 'utf-8');
-        await fs.rename(tempPath, filePath);
+        await atomicWriteFilePreserveSymlink(filePath, content, 'utf-8');
     };
 
     const saveMergedJsonFile = async (filePath, body) => {

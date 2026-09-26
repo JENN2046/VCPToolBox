@@ -6,6 +6,7 @@ const dotenv = require('dotenv');
 const { parseEnvContent } = require('./envScanner');
 const { locate } = require('./indexStore');
 const { isPathInside, listFilesRecursive, normalizePlaceholder, pathExists, toRelative } = require('./pathUtils');
+const { resolveSymlinkTarget } = require('../../../modules/symlinkSafeAtomicWrite');
 
 function timestampForPath() {
     return new Date().toISOString().replace(/[:.]/g, '-');
@@ -39,9 +40,10 @@ async function atomicValidatedWrite(targetPath, newContent, options = {}) {
     if (!isPathInside(projectRoot, target)) throw new Error('拒绝写入扫描根目录之外的路径');
     if (!(await pathExists(target))) throw new Error(`目标文件不存在：${toRelative(projectRoot, target)}`);
 
+    const writeTarget = await resolveSymlinkTarget(target);
     const originalContent = await fs.readFile(target, 'utf8');
     const stat = await fs.stat(target);
-    const tempPath = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`);
+    const tempPath = path.join(path.dirname(writeTarget), `.${path.basename(writeTarget)}.${process.pid}.${Date.now()}.tmp`);
     const backupRoot = path.resolve(options.backupRoot);
     if (!isPathInside(options.pluginDir, backupRoot)) throw new Error('备份目录必须位于 PlaceholderExplorer 插件目录内');
     const relativeTarget = toRelative(projectRoot, target);
@@ -63,7 +65,7 @@ async function atomicValidatedWrite(targetPath, newContent, options = {}) {
 
         await fs.mkdir(path.dirname(backupPath), { recursive: true });
         await fs.copyFile(target, backupPath);
-        await fs.rename(tempPath, target);
+        await fs.rename(tempPath, writeTarget);
         tempCreated = false;
         await pruneBackups(backupRoot, options.backupRetention);
         return {

@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const { atomicWriteFilePreserveSymlink } = require('../../modules/symlinkSafeAtomicWrite');
 
 // 目标 JSON 文件路径（编辑暂存文件，由 SemanticGroupManager 自动 merge 到主文件）。
 // 测试环境可通过 SEMANTIC_GROUPS_PATH 指向隔离夹具，避免触碰生产数据。
@@ -22,18 +23,13 @@ async function readSemanticGroupsFile() {
 }
 
 async function writeSemanticGroupsFile(data) {
-    const tempPath = `${SEMANTIC_GROUPS_PATH}.${process.pid}.${Date.now()}.tmp`;
     try {
-        await fs.writeFile(tempPath, JSON.stringify(data, null, 2), 'utf8');
-        await fs.rename(tempPath, SEMANTIC_GROUPS_PATH);
+        await atomicWriteFilePreserveSymlink(
+            SEMANTIC_GROUPS_PATH,
+            JSON.stringify(data, null, 2),
+            'utf8'
+        );
     } catch (error) {
-        try {
-            await fs.unlink(tempPath);
-        } catch (cleanupError) {
-            if (cleanupError.code !== 'ENOENT') {
-                console.error(`清理语义组临时文件失败: ${cleanupError.message}`);
-            }
-        }
         throw new Error(`写入语义组文件失败: ${error.message}`);
     }
 }

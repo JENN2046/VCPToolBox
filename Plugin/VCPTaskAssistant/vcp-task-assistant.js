@@ -6,8 +6,9 @@ const fsPromises = require('fs').promises;
 const schedule = require('node-schedule');
 const ForumEngine = require('./lib/forum-engine');
 const agentAssistant = require('../AgentAssistant/AgentAssistant.js');
+const { resolveSymlinkTargetSync } = require('../../modules/symlinkSafeAtomicWrite');
 
-const DATA_FILE = path.join(__dirname, 'task-center-data.json');
+const DATA_FILE = resolveSymlinkTargetSync(path.join(__dirname, 'task-center-data.json'));
 const MIN_INTERVAL_MINUTES = 10;
 const MAX_HISTORY = 200;
 const DEFAULT_FORUM_PROMPT = `[论坛小助手:]现在是论坛时间~ 你可以选择分享一个感兴趣的话题/趣味性话题/亦或者分享一些互联网新鲜事/或者发起一个最近几天想要讨论的话题作为新帖子；或者单纯只是先阅读一些别人的你感兴趣帖子，然后做出你的回复(先读帖再回复是好习惯)~
@@ -174,7 +175,7 @@ function getTaskById(taskId) {
     return taskCenterData.tasks.find(task => task.id === taskId) || null;
 }
 
-const BAK_FILE = path.join(__dirname, 'task-center-data.json.bak');
+const BAK_FILE = resolveSymlinkTargetSync(path.join(__dirname, 'task-center-data.json.bak'));
 let saveDisabled = false; // 熔断安全锁：一旦处于损坏或怀疑状态，禁止写盘抹杀
 let saveQueue = Promise.resolve(); // FIFO 互斥串行队列，彻底消除并发写入撕裂
 
@@ -244,7 +245,7 @@ async function saveData() {
     return new Promise((resolve) => {
         saveQueue = saveQueue.then(async () => {
             const randTag = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            const tmpFile = path.join(__dirname, `task-center-data.json.${randTag}.tmp`);
+            const tmpFile = path.join(path.dirname(DATA_FILE), `task-center-data.json.${randTag}.tmp`);
 
             try {
                 taskCenterData.history = (taskCenterData.history || []).slice(-(taskCenterData.settings?.maxHistory || MAX_HISTORY));

@@ -3,6 +3,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
+const { atomicWriteFilePreserveSymlink } = require('../../modules/symlinkSafeAtomicWrite');
 
 class SemanticGroupManager {
     constructor(ragPlugin) {
@@ -201,7 +202,6 @@ class SemanticGroupManager {
         }
         this.saveLock = true;
 
-        const tempFilePath = this.groupsFilePath + `.${crypto.randomUUID()}.tmp`;
         try {
             // 创建一个不含实际向量数据的副本用于保存
             const groupsToSave = JSON.parse(JSON.stringify(this.groups));
@@ -214,23 +214,15 @@ class SemanticGroupManager {
                 groups: groupsToSave
             };
 
-            // 1. 写入临时文件
-            await fs.writeFile(tempFilePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
-
-            // 2. 成功后，重命名临时文件以原子方式替换原文件
-            await fs.rename(tempFilePath, this.groupsFilePath);
+            await atomicWriteFilePreserveSymlink(
+                this.groupsFilePath,
+                JSON.stringify(dataToSave, null, 2),
+                'utf-8'
+            );
 
             console.log('[SemanticGroup] 语义组配置已通过原子写入操作更新并保存。');
         } catch (error) {
             console.error('[SemanticGroupManager] ❌ 保存语义组配置失败:', error.message);
-            // 如果出错，尝试清理临时文件
-            try {
-                await fs.unlink(tempFilePath);
-            } catch (cleanupError) {
-                if (cleanupError.code !== 'ENOENT') {
-                    console.error(`[SemanticGroup] 清理临时文件 ${tempFilePath} 失败:`, cleanupError);
-                }
-            }
             throw error; // 将原始错误重新抛出，以便API路由可以捕获它
         } finally {
             this.saveLock = false;

@@ -23,6 +23,7 @@ const path = require('path');
 const os = require('os');
 const util = require('util');
 const { createSanitizedUserCommandEnv } = require('../sensitiveEnv');
+const { resolveSymlinkTarget } = require('../symlinkSafeAtomicWrite');
 
 let loggerModule = null;
 
@@ -302,14 +303,15 @@ class SSHManager {
                     throw new Error('状态缓存序列化为空');
                 }
 
-                const tmpPath = `${this.statusCachePath}.tmp-${process.pid}-${Date.now()}`;
+                const writeTarget = await resolveSymlinkTarget(this.statusCachePath);
+                const backupPath = await resolveSymlinkTarget(`${this.statusCachePath}.bak`);
+                const tmpPath = `${writeTarget}.tmp-${process.pid}-${Date.now()}`;
                 await fs.writeFile(tmpPath, content, 'utf8');
 
                 try {
-                    await fs.rename(tmpPath, this.statusCachePath);
+                    await fs.rename(tmpPath, writeTarget);
                 } catch (renameError) {
                     // Windows 下 rename 覆盖可能失败：先备份旧文件，再替换
-                    const backupPath = `${this.statusCachePath}.bak`;
                     let backedUp = false;
 
                     try {
@@ -326,12 +328,12 @@ class SSHManager {
                     }
 
                     try {
-                        await fs.copyFile(tmpPath, this.statusCachePath);
+                        await fs.copyFile(tmpPath, writeTarget);
                         await fs.unlink(tmpPath);
                     } catch (replaceError) {
                         if (backedUp) {
                             try {
-                                await fs.copyFile(backupPath, this.statusCachePath);
+                                await fs.copyFile(backupPath, writeTarget);
                             } catch {
                                 // ignore
                             }

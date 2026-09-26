@@ -3,6 +3,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { normalizePlaceholder, pathExists } = require("./pathUtils");
+const { atomicWriteFilePreserveSymlink } = require("../../../modules/symlinkSafeAtomicWrite");
 
 function uniqueLocations(items) {
   const seen = new Set();
@@ -257,10 +258,11 @@ function buildIndex({
 }
 
 async function saveIndex(indexPath, index) {
-  await fs.mkdir(path.dirname(indexPath), { recursive: true });
-  const tempPath = `${indexPath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tempPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
-  await fs.rename(tempPath, indexPath);
+  await atomicWriteFilePreserveSymlink(
+    indexPath,
+    `${JSON.stringify(index, null, 2)}\n`,
+    "utf8"
+  );
   return indexPath;
 }
 

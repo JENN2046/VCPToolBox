@@ -23,6 +23,7 @@ const RAGResultFormatter = require('./RAGResultFormatter.js');
 const BM25QueryOptimizer = require('./BM25QueryOptimizer.js');
 const { chunkText } = require('../../TextChunker.js');
 const { getEmbeddingsBatch } = require('../../EmbeddingUtils.js');
+const { atomicWriteFilePreserveSymlink } = require('../../modules/symlinkSafeAtomicWrite');
 const {
     findLastRealUserMessage,
     isBetaSystemUserText,
@@ -536,13 +537,8 @@ class RAGDiaryPlugin {
     }
 
     async _writeJsonFileAtomic(filePath, data) {
-        const dir = path.dirname(filePath);
-        const base = path.basename(filePath);
-        const tempPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
         const json = JSON.stringify(data, null, 2);
-
-        await fs.writeFile(tempPath, json, 'utf-8');
-        await fs.rename(tempPath, filePath);
+        await atomicWriteFilePreserveSymlink(filePath, json, 'utf-8');
     }
 
     async _reloadRagTagsConfig(configPath) {
