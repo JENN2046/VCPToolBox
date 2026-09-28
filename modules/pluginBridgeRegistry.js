@@ -285,6 +285,14 @@ function createDefaultExecutionBridgeRegistry() {
                 sourceNode: context.sourceNode,
                 pluginName: context.toolName
             };
+            if (typeof context.emitEphemeralPresentation === 'function') {
+                Object.defineProperty(directContext, 'emitEphemeralPresentation', {
+                    configurable: false,
+                    enumerable: false,
+                    value: context.emitEphemeralPresentation,
+                    writable: false
+                });
+            }
 
             if (plugin.requiresAdmin) {
                 const decryptedCode = await context.getDecryptedAuthCode();

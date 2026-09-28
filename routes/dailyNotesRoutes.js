@@ -844,7 +844,17 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE, options = {}) {
                         try {
                             await fs.unlink(oldFilePath);
                         } catch (unlinkErr) {
-                            if (unlinkErr.code !== 'ENOENT') throw unlinkErr;
+                            if (unlinkErr.code !== 'ENOENT') {
+                                try {
+                                    await fs.unlink(newFilePath);
+                                } catch (rollbackErr) {
+                                    throw new AggregateError(
+                                        [unlinkErr, rollbackErr],
+                                        `Could not delete the original file or roll back the new file: ${unlinkErr.message}; ${rollbackErr.message}`
+                                    );
+                                }
+                                throw unlinkErr;
+                            }
                         }
 
                         dirCache.invalidate(targetFolderPath);

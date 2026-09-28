@@ -90,8 +90,8 @@ function outputAndExit(result) {
 
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/&/g, '&').replace(/"/g, '"')
-              .replace(/</g, '<').replace(/>/g, '>');
+    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+              .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function isPathWithinBase(target, base) {
