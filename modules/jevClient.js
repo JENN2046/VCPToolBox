@@ -371,10 +371,11 @@ class JevClient {
                     timeout: requestConfig.timeoutMs,
                     maxRedirects: 0,
                     signal: options.signal,
+                    // Direct requests must not inherit HTTP(S)_PROXY from the host.
+                    // A configured JEV proxy uses its own agent below.
+                    proxy: false,
                     ...(proxyAgent ? {
-                        httpsAgent: proxyAgent,
-                        // 禁止 Axios 再读取环境代理或执行二次代理解析。
-                        proxy: false
+                        httpsAgent: proxyAgent
                     } : {})
                 });
                 if (

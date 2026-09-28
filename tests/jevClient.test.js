@@ -157,3 +157,29 @@ test('调用级 apiKey 覆盖同样支持多 Key 轮询', async () => {
         'Bearer override-b'
     ]);
 });
+
+test('直连 JEV 请求显式禁用 Axios 环境代理', async () => {
+    const client = new JevClient({ apiKey: 'test-key', provider: 'typesafe', maxRetries: 0 });
+    client._getProxyAgent = () => null;
+    let requestOptions;
+    await withMockedPost(async (_url, _body, options) => {
+        requestOptions = options;
+        return successfulResponse();
+    }, () => client.decide(STATE, QUESTIONS));
+    assert.equal(requestOptions.proxy, false);
+    assert.equal(requestOptions.httpsAgent, undefined);
+});
+
+test('显式 JEV 代理仍使用专用 Agent 且禁用 Axios 环境代理', async () => {
+    const client = new JevClient({
+        apiKey: 'test-key', provider: 'typesafe', maxRetries: 0,
+        proxyUrl: 'http://127.0.0.1:7890'
+    });
+    let requestOptions;
+    await withMockedPost(async (_url, _body, options) => {
+        requestOptions = options;
+        return successfulResponse();
+    }, () => client.decide(STATE, QUESTIONS));
+    assert.equal(requestOptions.proxy, false);
+    assert.ok(requestOptions.httpsAgent);
+});
