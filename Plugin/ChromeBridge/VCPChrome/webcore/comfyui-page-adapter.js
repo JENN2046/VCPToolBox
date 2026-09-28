@@ -12,6 +12,39 @@
     const RESPONSE_EVENT = 'vcp-comfyui-agent-response';
     const TARGET_PATTERN = /^comfy-widget-([^-]+)-(\d+)$/;
     const ACTION_TIMEOUT_MS = 3000;
+    // MAIN-world state is DOM input; apply the same redaction on consumption.
+    const SENSITIVE_FIELD_PATTERN = /pass(word)?|passwd|pwd|token|access.?token|refresh.?token|authorization|auth|cookie|secret|api.?key|session.?id|credit.?card|card.?number|cvv|cvc|security.?code/i;
+    const REDACTED = '[REDACTED]';
+
+    function redactValue(value, depth = 0) {
+        if (depth > 8) return '[omitted]';
+        if (!value || typeof value !== 'object') return value;
+        if (Array.isArray(value)) return value.slice(0, 100).map(item => redactValue(item, depth + 1));
+        return Object.fromEntries(Object.entries(value).slice(0, 100).map(([key, item]) => [
+            key, SENSITIVE_FIELD_PATTERN.test(key) ? REDACTED : redactValue(item, depth + 1)
+        ]));
+    }
+
+    function redactState(state) {
+        if (!state) return state;
+        return {
+            ...state,
+            nodes: (Array.isArray(state.nodes) ? state.nodes : []).map(node => ({
+                ...node,
+                widgets: (Array.isArray(node.widgets) ? node.widgets : []).map(widget => {
+                    const sensitive = widget.sensitive === true || SENSITIVE_FIELD_PATTERN.test([
+                        widget.name, widget.label, widget.type, widget.options?.type, node.type, node.title
+                    ].filter(Boolean).join(' '));
+                    return {
+                        index: widget.index, name: widget.name, type: widget.type,
+                        disabled: widget.disabled === true, sensitive,
+                        value: sensitive ? REDACTED : redactValue(widget.value),
+                        options: sensitive ? undefined : redactValue(widget.options)
+                    };
+                })
+            }))
+        };
+    }
 
     function normalizeText(value, maxLength = 240) {
         return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
@@ -70,7 +103,7 @@
             const state = JSON.parse(element.textContent);
             if (state?.adapter !== 'comfyui-litegraph') return null;
             state.nodes = Array.isArray(state.nodes) ? state.nodes : [];
-            return state;
+            return redactState(state);
         } catch {
             return null;
         }
@@ -86,6 +119,7 @@
     }
 
     function createWidgetRecords(state) {
+        state = redactState(state);
         if (!state?.ready) return [];
         const records = [];
         for (const node of state.nodes) {
@@ -99,6 +133,7 @@
                     widgetName: widget.name || `widget-${widget.index}`,
                     widgetType: widget.type || typeof widget.value,
                     value: widget.value,
+                    sensitive: widget.sensitive === true,
                     disabled: widget.disabled === true,
                     options: widget.options || null
                 });
@@ -117,6 +152,7 @@
     }
 
     function buildMarkdown(state) {
+        state = redactState(state);
         if (!state) return '';
         const lines = [
             '',
@@ -247,6 +283,11 @@
             error.code = 'ELEMENT_NOT_INTERACTABLE';
             throw error;
         }
+        if (record.sensitive) {
+            const error = new Error('敏感 widget 不允许通过状态桥读写');
+            error.code = 'SENSITIVE_FIELD_BLOCKED';
+            throw error;
+        }
 
         const result = await dispatchWidgetAction(environment.document, {
             ...parsed,
@@ -260,7 +301,12 @@
                 ? `ComfyUI 参数更新后读回不一致: ${record.widgetName}`
                 : `已更新 ComfyUI 节点参数: ${record.nodeTitle} / ${record.widgetName}`,
             result: {
-                ...result,
+                nodeId: record.nodeId,
+                widgetName: record.widgetName,
+                widgetIndex: record.widgetIndex,
+                before: redactValue(result.before),
+                value: redactValue(result.value),
+                verified: result.verified,
                 attempted: true,
                 backendUsed: 'comfyui-main-world',
                 fallbackUsed: false,

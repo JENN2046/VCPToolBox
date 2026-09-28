@@ -249,8 +249,7 @@ class JevClient {
             throw new JevClientError(
                 'JEV_PROXY_URL 不是有效 URL，请使用例如 http://127.0.0.1:7890。',
                 {
-                    code: 'JEV_INVALID_PROXY_URL',
-                    cause: error
+                    code: 'JEV_INVALID_PROXY_URL'
                 }
             );
         }
@@ -267,10 +266,9 @@ class JevClient {
             return agent;
         } catch (error) {
             throw new JevClientError(
-                `无法创建 Jev HTTPS 代理 Agent: ${error.message}`,
+                '无法创建 Jev HTTPS 代理 Agent。',
                 {
-                    code: 'JEV_PROXY_AGENT_ERROR',
-                    cause: error
+                    code: 'JEV_PROXY_AGENT_ERROR'
                 }
             );
         }
@@ -289,13 +287,9 @@ class JevClient {
     }
 
     _createRequestError(error, config) {
-        const status = error?.response?.status ?? null;
-        const responseData = error?.response?.data;
-        const responseSummary = typeof responseData === 'string'
-            ? responseData.substring(0, 1000)
-            : responseData
-                ? JSON.stringify(responseData).substring(0, 1000)
-                : '';
+        const rawStatus = error?.response?.status;
+        const status = Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599
+            ? rawStatus : null;
         const retryable = RETRYABLE_STATUS_CODES.has(status)
             || error?.code === 'ECONNABORTED'
             || error?.code === 'ETIMEDOUT'
@@ -303,15 +297,14 @@ class JevClient {
 
         let message = `Jev 请求失败`;
         if (status) message += ` (HTTP ${status})`;
-        if (responseSummary) message += `: ${responseSummary}`;
-        else if (error?.message) message += `: ${error.message}`;
+        // Upstream bodies, transport messages and Axios causes can contain
+        // echoed conversations, headers and credentials. Expose metadata only.
 
         return new JevClientError(message, {
             code: status ? `JEV_HTTP_${status}` : 'JEV_NETWORK_ERROR',
             status,
             retryable,
-            provider: config.provider,
-            cause: error
+            provider: config.provider
         });
     }
 

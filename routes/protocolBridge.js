@@ -680,6 +680,8 @@ function createResponsesStreamTransformer(res, model) {
     let textItem = null;
     let reasoningItem = null;
     let reasoningText = '';
+    let emittedReasoningText = '';
+    let reasoningSnapshotSeen = false;
     const reasoningEncryptedContents = [];
     const functionCalls = new Map();
 
@@ -752,6 +754,11 @@ function createResponsesStreamTransformer(res, model) {
 
     function emitReasoningSummaryDone() {
         if (!reasoningItem) return;
+        // Snapshots may revise earlier text. Buffer them until completion so
+        // repeated/revised snapshots are never emitted as append-only deltas.
+        if (reasoningText.startsWith(emittedReasoningText)) {
+            emitReasoningDelta(reasoningText.slice(emittedReasoningText.length));
+        }
         reasoningItem.summary[0].text = reasoningText;
         if (reasoningEncryptedContents.length > 0) {
             reasoningItem.encrypted_content = reasoningEncryptedContents[0];
@@ -770,6 +777,18 @@ function createResponsesStreamTransformer(res, model) {
             output_index: outputIndex,
             summary_index: 0,
             part: { type: 'summary_text', text: reasoningText }
+        });
+    }
+
+    function emitReasoningDelta(text) {
+        if (!text) return;
+        emittedReasoningText += text;
+        writeSseEvent('response.reasoning_summary_text.delta', {
+            type: 'response.reasoning_summary_text.delta',
+            item_id: reasoningItem.id,
+            output_index: responsePayload.output.indexOf(reasoningItem),
+            summary_index: 0,
+            delta: text
         });
     }
 
@@ -860,24 +879,25 @@ function createResponsesStreamTransformer(res, model) {
             });
         },
 
-        onReasoning(...sources) {
+        onReasoning(source, snapshot = false) {
+            const sources = [source];
             if (terminalEventSent || res.destroyed || res.writableEnded) return;
             if (!headersSent) this.onStart();
             const text = extractResponsesReasoningText(...sources);
             const encryptedContents = extractEncryptedContents(...sources);
-            if ((!text || text.length === 0) && encryptedContents.length === 0 && !hasReasoningField(...sources)) return;
+            const textSnapshot = snapshot && (text.length > 0 || REASONING_KEYS.some(key =>
+                key !== 'reasoning_details' && key !== 'reasoningDetails'
+                && Object.prototype.hasOwnProperty.call(source || {}, key)
+                && source[key] !== null && source[key] !== undefined
+            ));
+            if ((!text || text.length === 0) && encryptedContents.length === 0 && !hasReasoningField(...sources) && !textSnapshot) return;
             const item = ensureReasoningItem();
             appendReasoningEncryptedContents(sources);
-            if (typeof text !== 'string' || text.length === 0) return;
-            reasoningText += text;
+            if (typeof text !== 'string') return;
+            reasoningSnapshotSeen ||= textSnapshot;
+            reasoningText = textSnapshot ? text : reasoningText + text;
             item.summary[0].text = reasoningText;
-            writeSseEvent('response.reasoning_summary_text.delta', {
-                type: 'response.reasoning_summary_text.delta',
-                item_id: item.id,
-                output_index: responsePayload.output.indexOf(item),
-                summary_index: 0,
-                delta: text
-            });
+            if (!reasoningSnapshotSeen) emitReasoningDelta(text);
         },
 
         onDelta(delta) {
@@ -1256,7 +1276,13 @@ async function forwardToChatCompletions(req, res, {
                     const json = JSON.parse(data);
                     const choice = json?.choices?.[0];
                     if (typeof transformer.onReasoning === 'function') {
-                        transformer.onReasoning(choice?.delta, choice?.message, choice);
+                        if (hasReasoningField(choice?.delta) || extractEncryptedContents(choice?.delta).length) {
+                            transformer.onReasoning(choice.delta);
+                        } else if (REASONING_KEYS.some(key => Object.prototype.hasOwnProperty.call(choice?.message || {}, key)) || extractEncryptedContents(choice?.message).length) {
+                            transformer.onReasoning(choice.message, true);
+                        } else {
+                            transformer.onReasoning(choice);
+                        }
                     }
                     const delta = choice?.delta?.content ?? choice?.message?.content;
                     if (typeof delta === 'string' && delta.length > 0) {

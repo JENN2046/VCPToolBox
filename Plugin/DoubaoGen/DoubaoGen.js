@@ -452,6 +452,14 @@ function normalizeResolution(input) {
     return DEFAULT_RESOLUTION;
 }
 
+function normalizeOutputFormat(value) {
+    const format = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (!['png', 'jpeg', 'jpg', 'webp'].includes(format)) {
+        throw new Error('output_format 必须为 png、jpeg、jpg 或 webp');
+    }
+    return format === 'jpg' ? 'jpeg' : format;
+}
+
 function normalizeDoubaoArgs(rawArgs) {
     const args = { ...(rawArgs || {}) };
 
@@ -463,7 +471,7 @@ function normalizeDoubaoArgs(rawArgs) {
     args.resolution = normalizeResolution(rawRes);
 
     // 3. Output Format 归一化
-    args.output_format = (args.output_format || args.outputFormat || args.format || DEFAULT_OUTPUT_FORMAT).toLowerCase();
+    args.output_format = normalizeOutputFormat(args.output_format || args.outputFormat || args.format || DEFAULT_OUTPUT_FORMAT);
 
     // 4. Show Base64 标志 (按次动态控制)
     if (args.showbase64 !== undefined) {
@@ -784,7 +792,7 @@ async function handleGroup(args) {
 async function saveImageToLocal(imageUrl, imageBase64, expectedExt = 'png') {
     try {
         let imageBuffer;
-        let ext = expectedExt;
+        let ext = normalizeOutputFormat(expectedExt);
 
         if (imageBase64) {
             imageBuffer = Buffer.from(imageBase64, 'base64');
@@ -803,13 +811,13 @@ async function saveImageToLocal(imageUrl, imageBase64, expectedExt = 'png') {
         const imageDir = path.join(PROJECT_BASE_PATH, 'image', 'doubaogen');
         const localPath = path.join(imageDir, fileName);
 
-        if (!isPathWithinBase(localPath, PROJECT_BASE_PATH)) {
+        if (!isPathWithinBase(localPath, imageDir)) {
             log('error', `安全防护拦截: 路径逃逸 ${localPath}`);
             return null;
         }
 
         await fs.mkdir(imageDir, { recursive: true });
-        await fs.writeFile(localPath, imageBuffer);
+        await fs.writeFile(localPath, imageBuffer, { flag: 'wx' });
 
         const relUrl = path.join('doubaogen', fileName).replace(/\\/g, '/');
         const accessibleUrl = `${VAR_HTTP_URL}:${SERVER_PORT}/pw=${IMAGESERVER_IMAGE_KEY}/images/${relUrl}`;

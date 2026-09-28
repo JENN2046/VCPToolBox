@@ -343,6 +343,37 @@ test('Responses stream keeps complete snapshot tool calls separate', async t => 
 });
 
 
+for (const [label, chunks, expected] of [
+  ['repeated snapshots', [{ message: { reasoning_content: 'A' } }, { message: { reasoning_content: 'A' } }], 'A'],
+  ['growing snapshots', [{ message: { reasoning_content: 'A' } }, { message: { reasoning_content: 'AB' } }], 'AB'],
+  ['revised snapshots', [{ message: { reasoning_content: 'old draft' } }, { message: { reasoning_content: 'new summary' } }], 'new summary'],
+  ['empty replacement snapshot', [{ message: { reasoning_content: 'old draft' } }, { message: { reasoning_content: '' } }], ''],
+  ['encrypted-only follow-up', [{ message: { reasoning_content: 'A' } }, { message: { reasoning_details: [{ type: 'reasoning.encrypted_content', data: 'opaque-fixture' }] } }], 'A'],
+  ['deltas then snapshots', [{ delta: { reasoning_content: 'A' } }, { message: { reasoning_content: 'AB' } }, { message: { reasoning_content: 'AB' } }], 'AB'],
+  ['snapshots then deltas', [{ message: { reasoning_content: 'A' } }, { delta: { reasoning_content: 'B' } }], 'AB']
+]) {
+  test(`Responses reasoning handles ${label} without duplicate summary deltas`, async t => {
+    const upstream = http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      for (const choice of chunks) res.write(`data: ${JSON.stringify({ choices: [{ index: 0, ...choice }] })}\n\n`);
+      res.end('data: [DONE]\n\n');
+    });
+    const upstreamInfo = await listen(upstream);
+    process.env.PORT = String(upstreamInfo.port);
+    const bridgeInfo = await listen(http.createServer(createBridgeApp()));
+    t.after(async () => { await close(bridgeInfo.server); await close(upstreamInfo.server); });
+    const response = await fetch(`http://127.0.0.1:${bridgeInfo.port}/v1/responses`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ model: 'fixture', stream: true, input: 'fixture' })
+    });
+    const events = parseSseEvents(await response.text());
+    const output = events.find(event => event.event === 'response.completed').data.response.output;
+    assert.equal(output.find(item => item.type === 'reasoning').summary[0].text, expected);
+    assert.equal(events.filter(event => event.event === 'response.reasoning_summary_text.delta').map(event => event.data.delta).join(''), expected);
+    assert.equal(events.find(event => event.event === 'response.reasoning_summary_text.done').data.text, expected);
+  });
+}
+
 test('Responses non-streaming reasoning stays native and precedes visible output and tool calls', async t => {
   const upstream = express();
   upstream.use(express.json());

@@ -7,6 +7,9 @@
     const MAX_NODES = 300;
     const MAX_WIDGET_VALUE_CHARS = 12000;
     const REFRESH_INTERVAL_MS = 1500;
+    // Keep aligned with web-agent-page-core's default sensitive-field policy.
+    const SENSITIVE_FIELD_PATTERN = /pass(word)?|passwd|pwd|token|access.?token|refresh.?token|authorization|auth|cookie|secret|api.?key|session.?id|credit.?card|card.?number|cvv|cvc|security.?code/i;
+    const REDACTED = '[REDACTED]';
 
     if (globalThis.__VCP_COMFYUI_MAIN_WORLD_BRIDGE__) return;
     globalThis.__VCP_COMFYUI_MAIN_WORLD_BRIDGE__ = true;
@@ -26,21 +29,21 @@
         return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
     }
 
-    function serializeValue(value) {
+    function serializeValue(value, depth = 0) {
+        if (depth > 8) return '[omitted]';
         if (value === null || value === undefined) return value ?? null;
         if (typeof value === 'string') return value.slice(0, MAX_WIDGET_VALUE_CHARS);
         if (typeof value === 'number' || typeof value === 'boolean') return value;
         if (Array.isArray(value)) {
-            return value.slice(0, 100).map(item => {
-                if (typeof item === 'string') return item.slice(0, 500);
-                if (typeof item === 'number' || typeof item === 'boolean' || item === null) return item;
-                return normalizeText(item, 500);
-            });
+            return value.slice(0, 100).map(item => serializeValue(item, depth + 1));
         }
         try {
-            return JSON.parse(JSON.stringify(value));
+            if (typeof value !== 'object') return null;
+            return Object.fromEntries(Object.entries(value).slice(0, 100).map(([key, item]) => [
+                key, SENSITIVE_FIELD_PATTERN.test(key) ? REDACTED : serializeValue(item, depth + 1)
+            ]));
         } catch {
-            return normalizeText(value, 1000);
+            return '[omitted]';
         }
     }
 
@@ -66,16 +69,25 @@
         };
     }
 
-    function serializeWidget(widget, index) {
+    function isSensitiveWidget(widget, node) {
+        return widget?.sensitive === true || SENSITIVE_FIELD_PATTERN.test([
+            widget?.name, widget?.label, widget?.type, widget?.inputEl?.type,
+            widget?.options?.type, node?.type, node?.title
+        ].filter(Boolean).join(' '));
+    }
+
+    function serializeWidget(widget, index, node) {
+        const sensitive = isSensitiveWidget(widget, node);
         const options = widget?.options || {};
-        const values = Array.isArray(options.values)
+        const values = !sensitive && Array.isArray(options.values)
             ? options.values.slice(0, 200).map(value => serializeValue(value))
             : undefined;
         return {
             index,
             name: normalizeText(widget?.name || widget?.label || `widget-${index}`, 160),
             type: normalizeText(widget?.type || typeof widget?.value, 80),
-            value: serializeValue(widget?.value),
+            value: sensitive ? REDACTED : serializeValue(widget?.value),
+            sensitive,
             disabled: widget?.disabled === true,
             options: values ? { values } : undefined
         };
@@ -93,7 +105,7 @@
                 ? node.pos.slice(0, 2).map(value => Math.round(Number(value) || 0))
                 : null,
             widgets: Array.isArray(node?.widgets)
-                ? node.widgets.map(serializeWidget)
+                ? node.widgets.map((widget, widgetIndex) => serializeWidget(widget, widgetIndex, node))
                 : [],
             inputs: Array.isArray(node?.inputs)
                 ? node.inputs.map(serializeSlot)
@@ -238,6 +250,7 @@
             request.widgetName
         );
         if (widget.disabled === true) throw new Error('目标 widget 已禁用');
+        if (isSensitiveWidget(widget, node)) throw new Error('敏感 widget 不允许通过状态桥读写');
         const before = serializeValue(widget.value);
         const value = coerceWidgetValue(widget, request.value);
         widget.value = value;

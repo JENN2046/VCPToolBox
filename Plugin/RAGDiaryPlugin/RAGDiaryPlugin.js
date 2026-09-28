@@ -4776,7 +4776,7 @@ class RAGDiaryPlugin {
         const eligibleDocuments = documents.slice(0, maxChoices);
         if (documents.length > eligibleDocuments.length) {
             console.warn(
-                `[RAGDiaryPlugin] Jev rerank candidates truncated: ` +
+                `[RAGDiaryPlugin] Jev rerank scoring window limited: ` +
                 `${documents.length} -> ${eligibleDocuments.length} (Choice hard limit).`
             );
         }
@@ -4859,7 +4859,11 @@ class RAGDiaryPlugin {
                 );
             }
 
-            const finalDocuments = rerankedDocuments.slice(0, originalK);
+            // Only the scoring window is bounded. Keep the unscored retrieval
+            // tail in its original order, including when originalK exceeds 255.
+            const finalDocuments = rerankedDocuments
+                .concat(documents.slice(eligibleDocuments.length))
+                .slice(0, originalK);
             console.log(
                 `[RAGDiaryPlugin] Jev${rrfOptions ? '+(RRF)' : ''} rerank completed: ` +
                 `${eligibleDocuments.length} candidates -> ${finalDocuments.length}, ` +

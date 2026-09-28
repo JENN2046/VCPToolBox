@@ -1525,17 +1525,6 @@ class ChatCompletionHandler {
       );
       if (DEBUG_MODE) await writeDebugLog('LogAfterVariableProcessing', processedMessages);
 
-      if (shouldProcessMedia && shouldProcessMediaPlus) {
-        for (const msg of processedMessages) {
-          if (msg.role === 'user' && Array.isArray(msg.content)) {
-            const mediaParts = msg.content.filter(part => part.type === 'image_url' && part.image_url && typeof part.image_url.url === 'string' && /^data:(image|audio|video)\/[^;]+;base64,/.test(part.image_url.url));
-            if (mediaParts.length > 0) {
-              msg.__vcp_media_backup__ = JSON.parse(JSON.stringify(mediaParts));
-            }
-          }
-        }
-      }
-
       // --- 可排序消息处理管线 ---
       // VCPTavern 已在变量展开前执行；其余真实预处理器与静态占位符注入
       // 严格遵循 preprocessor_order.json，确保动态插件文本不能污染前置捕获指令。
@@ -1572,6 +1561,19 @@ class ChatCompletionHandler {
         }
 
         if (!pluginManager.messagePreprocessors.has(name)) continue;
+
+        // Capture may have added media earlier in this ordered pipeline.
+        // Back up at the consuming stage, not before all preprocessors.
+        if (shouldProcessMediaPlus && name === selectedMediaProcessor) {
+          for (const msg of processedMessages) {
+            if (msg.role === 'user' && Array.isArray(msg.content)) {
+              const mediaParts = msg.content.filter(part => part.type === 'image_url' && typeof part.image_url?.url === 'string' && /^data:(image|audio|video)\/[^;]+;base64,/.test(part.image_url.url));
+              if (mediaParts.length > 0) {
+                msg.__vcp_media_backup__ = JSON.parse(JSON.stringify(mediaParts));
+              }
+            }
+          }
+        }
 
         if (DEBUG_MODE) console.log(`[Server] Calling message preprocessor: ${name}`);
         try {
@@ -1663,9 +1665,10 @@ class ChatCompletionHandler {
                   ...msg.__vcp_media_backup__
                 ];
               } else if (Array.isArray(msg.content)) {
+                const presentMedia = new Set(msg.content.filter(part => part.type === 'image_url').map(part => part.image_url?.url));
                 msg.content = [
                   ...msg.content,
-                  ...msg.__vcp_media_backup__
+                  ...msg.__vcp_media_backup__.filter(part => !presentMedia.has(part.image_url?.url))
                 ];
               }
               delete msg.__vcp_media_backup__;
