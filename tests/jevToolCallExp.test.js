@@ -108,6 +108,185 @@ JEV:「始ESCAPE」{日用工具} 计算【字符串 "「始」" 与 <<<[TOOL_RE
     );
 });
 
+test('semantic_passthrough 将受控 JEV 语义原样交给配置绑定的真实插件', async () => {
+    const planner = new JevToolCallExp({
+        config: {
+            version: 1,
+            virtualToolName: 'JEV',
+            maxExpandedCalls: 5,
+            categories: {
+                operations: {
+                    aliases: ['业务运营'],
+                    defaultTool: 'ops',
+                    tools: {
+                        ops: {
+                            plugin: 'ExternalOperations',
+                            aliases: ['业务工具'],
+                            argumentMode: 'semantic_passthrough',
+                            fixedArgs: {
+                                action: 'SemanticIntent'
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        decisionPrompts: {},
+        jevClient: {
+            isConfigured() {
+                return false;
+            }
+        }
+    });
+
+    const [call] = await planner.plan(
+        '请使用 {业务运营}，处理【查看今天任务】并限定[今天][只读]。',
+        { maid: 'Nova' }
+    );
+
+    assert.equal(call.name, 'ExternalOperations');
+    assert.deepEqual(call.args, {
+        action: 'SemanticIntent',
+        jev_expression: '请使用 {业务运营}，处理【查看今天任务】并限定[今天][只读]。',
+        jev_category: 'operations',
+        jev_tool: 'ops',
+        jev_primary: ['查看今天任务'],
+        jev_constraints: ['今天', '只读'],
+        maid: 'Nova'
+    });
+    assert.deepEqual(call.jev, {
+        category: 'operations',
+        toolKey: 'ops'
+    });
+});
+
+test('semantic_passthrough 对未知 argumentMode fail closed', async () => {
+    const planner = new JevToolCallExp({
+        config: {
+            version: 1,
+            virtualToolName: 'JEV',
+            maxExpandedCalls: 5,
+            categories: {
+                operations: {
+                    aliases: ['业务运营'],
+                    defaultTool: 'ops',
+                    tools: {
+                        ops: {
+                            plugin: 'ExternalOperations',
+                            argumentMode: 'invented_mode'
+                        }
+                    }
+                }
+            }
+        },
+        decisionPrompts: {},
+        jevClient: {
+            isConfigured() {
+                return false;
+            }
+        }
+    });
+
+    await assert.rejects(
+        planner.plan('{业务运营}【查看今天任务】'),
+        /不支持的 argumentMode/
+    );
+});
+
+test('任何显式 falsy argumentMode 都 fail closed 而不是回落旧 builder', async () => {
+    for (const argumentMode of ['', false, 0, null]) {
+        const planner = new JevToolCallExp({
+            config: {
+                version: 1,
+                virtualToolName: 'JEV',
+                maxExpandedCalls: 5,
+                categories: {
+                    daily_tools: {
+                        aliases: ['业务运营'],
+                        defaultTool: 'calculator',
+                        tools: {
+                            calculator: {
+                                plugin: 'ExternalOperations',
+                                argumentMode
+                            }
+                        }
+                    }
+                }
+            },
+            decisionPrompts: {},
+            jevClient: { isConfigured() { return false; } }
+        });
+
+        await assert.rejects(
+            planner.plan('{业务运营}计算【2+2】'),
+            /不支持的 argumentMode/
+        );
+    }
+});
+
+test('semantic_passthrough 对资源数量、单项字节和总 envelope 做硬上限', async () => {
+    const planner = new JevToolCallExp({
+        config: {
+            version: 1,
+            virtualToolName: 'JEV',
+            maxExpandedCalls: 5,
+            categories: {
+                operations: {
+                    aliases: ['业务运营'],
+                    defaultTool: 'ops',
+                    tools: {
+                        ops: {
+                            plugin: 'ExternalOperations',
+                            argumentMode: 'semantic_passthrough'
+                        }
+                    }
+                }
+            }
+        },
+        decisionPrompts: {},
+        jevClient: { isConfigured() { return false; } }
+    });
+
+    const manyResources = Array.from(
+        { length: 9 },
+        (_, index) => `[https://example.com/${index}]`
+    ).join('');
+    await assert.rejects(
+        planner.plan(`{业务运营}【批量资源】${manyResources}`),
+        /semantic resources 超过最大条目数 8/
+    );
+
+    const oversizedResource = 'https://example.com/' + 'a'.repeat(2050);
+    await assert.rejects(
+        planner.plan(`{业务运营}【单个资源】[${oversizedResource}]`),
+        /semantic resources 单项超过最大字节数 2048/
+    );
+
+    await assert.rejects(
+        planner.plan('{业务运营}【' + 'x'.repeat(17000) + '】'),
+        /semantic envelope 超过最大字节数 16384/
+    );
+
+    const duplicatedChunk = 'x'.repeat(3900);
+    await assert.rejects(
+        planner.plan(
+            '{业务运营}【' + duplicatedChunk + '】'
+            + '[' + duplicatedChunk + ']'
+            + '[' + duplicatedChunk + ']'
+            + '[' + duplicatedChunk + ']'
+        ),
+        /constructed semantic envelope 超过最大字节数 16384/
+    );
+
+    await assert.rejects(
+        planner.plan(
+            '{业务运营}【查看今天任务】',
+            { args: { timely_contact: 'x'.repeat(20000) } }
+        ),
+        /final semantic call 超过最大字节数 16384/
+    );
+});
+
 test('联网搜索默认使用 VSearch grounding 模板且不调用 Jev', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     const calls = await planner.plan(
