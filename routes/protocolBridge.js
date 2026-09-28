@@ -12,8 +12,6 @@ const {
 } = require('../modules/reasoningContentAdapter.js');
 
 const DEBUG_MODE = (process.env.DebugMode || 'False').toLowerCase() === 'true';
-const RESPONSE_RETRY_SUPPRESSION_WINDOW_MS = parseInt(process.env.PROTOCOL_BRIDGE_RETRY_SUPPRESSION_MS || '15000', 10);
-const recentResponsesRequests = new Map();
 
 // ============================================================
 // 消息提取工具函数（从各协议格式提取为统一 messages 数组）
@@ -178,122 +176,11 @@ function attachProtectedToolFields(chatBody, originalBody) {
 }
 
 // ============================================================
-// 请求稳定标识（降低客户端重试导致的重复预处理）
+// 每次桥接请求使用独立内部标识，避免不同调用者共享重放缓存键。
 // ============================================================
 
-function buildStableRequestId(prefix, payload) {
-    const hash = crypto
-        .createHash('sha256')
-        .update(JSON.stringify(payload || {}))
-        .digest('hex')
-        .slice(0, 24);
-    return `${prefix}_${hash}`;
-}
-
-function isSuppressedDuplicateResponsesRequest(requestId) {
-    if (!requestId || RESPONSE_RETRY_SUPPRESSION_WINDOW_MS <= 0) return false;
-
-    const now = Date.now();
-    for (const [key, value] of recentResponsesRequests.entries()) {
-        if (now - value.lastSeenAt > RESPONSE_RETRY_SUPPRESSION_WINDOW_MS * 4) {
-            recentResponsesRequests.delete(key);
-        }
-    }
-
-    const entry = recentResponsesRequests.get(requestId);
-    if (entry && now - entry.lastSeenAt <= RESPONSE_RETRY_SUPPRESSION_WINDOW_MS) {
-        entry.lastSeenAt = now;
-        entry.count += 1;
-        return true;
-    }
-
-    recentResponsesRequests.set(requestId, { lastSeenAt: now, count: 1 });
-    return false;
-}
-
-function buildImmediateResponsesPayload(model, text, status = 'completed') {
-    const response = buildBaseResponsesEnvelope(model || 'unknown');
-    response.status = status;
-    response.output_text = text || '';
-    response.output[0].content[0].text = response.output_text;
-    return response;
-}
-
-function sendImmediateResponsesResult(res, { model, text, stream }) {
-    const responsePayload = buildImmediateResponsesPayload(model, text, 'completed');
-    const item = responsePayload.output[0];
-    const part = item.content[0];
-
-    if (!stream) {
-        return res.status(200).json(responsePayload);
-    }
-
-    res.status(200);
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-
-    const writeEvent = (eventName, data) => {
-        res.write(`event: ${eventName}\n`);
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
-
-    writeEvent('response.created', {
-        type: 'response.created',
-        response: {
-            id: responsePayload.id,
-            object: responsePayload.object,
-            created_at: responsePayload.created_at,
-            status: 'in_progress',
-            model: responsePayload.model,
-            usage: buildResponsesUsage(null)
-        }
-    });
-    writeEvent('response.output_item.added', {
-        type: 'response.output_item.added',
-        output_index: 0,
-        item: { id: item.id, type: item.type, role: item.role, content: [] }
-    });
-    writeEvent('response.content_part.added', {
-        type: 'response.content_part.added',
-        item_id: item.id,
-        output_index: 0,
-        content_index: 0,
-        part: { type: part.type, text: '' }
-    });
-    if (responsePayload.output_text) {
-        writeEvent('response.output_text.delta', {
-            type: 'response.output_text.delta',
-            item_id: item.id,
-            output_index: 0,
-            content_index: 0,
-            delta: responsePayload.output_text
-        });
-    }
-    writeEvent('response.output_text.done', {
-        type: 'response.output_text.done',
-        item_id: item.id,
-        output_index: 0,
-        content_index: 0,
-        text: responsePayload.output_text
-    });
-    writeEvent('response.content_part.done', {
-        type: 'response.content_part.done',
-        item_id: item.id,
-        output_index: 0,
-        content_index: 0,
-        part
-    });
-    writeEvent('response.output_item.done', {
-        type: 'response.output_item.done',
-        output_index: 0,
-        item
-    });
-    writeEvent('response.completed', {
-        type: 'response.completed',
-        response: responsePayload
-    });
-    return res.end();
+function buildBridgeRequestId() {
+    return `responses_${crypto.randomUUID()}`;
 }
 
 // ============================================================
@@ -1254,20 +1141,13 @@ async function forwardToChatCompletions(req, res, {
     // 原生 function tools 字段不参与 messages/RAG/变量处理；在转发本地 chat 链路前作为受保护字段加回。
     attachProtectedToolFields(chatBody, originalBody);
 
-    // 保留原始请求中可能有用的字段（如 requestId、messageId 等 VCP 特有字段）。
-    // Codex Responses API 通常不会带 VCP 自定义 ID；为同构重试生成稳定 ID，便于主链路识别/缓存/中断追踪。
-    if (originalBody?.requestId) chatBody.requestId = originalBody.requestId;
-    if (originalBody?.messageId) {
-        chatBody.messageId = originalBody.messageId;
-    } else if (outputFormat === 'responses') {
-        chatBody.messageId = buildStableRequestId('responses', {
-            model: chatBody.model,
-            messages: chatBody.messages,
-            temperature: chatBody.temperature,
-            top_p: chatBody.top_p,
-            max_tokens: chatBody.max_tokens,
-            stream: chatBody.stream
-        });
+    // 主链路按 requestId/messageId 缓存响应，而桥接后的客户端 IP 均为 loopback。
+    // Responses 端点不能把客户端 ID 或请求内容哈希直接作为内部缓存键。
+    if (outputFormat === 'responses') {
+        chatBody.messageId = buildBridgeRequestId();
+    } else {
+        if (originalBody?.requestId) chatBody.requestId = originalBody.requestId;
+        if (originalBody?.messageId) chatBody.messageId = originalBody.messageId;
     }
 
     if (DEBUG_MODE) {
@@ -1436,28 +1316,6 @@ router.post('/v1/responses', async (req, res) => {
     }
 
     const wantsStream = body.stream === true || String(req.headers.accept || '').includes('text/event-stream');
-    if (!body.messageId && !body.requestId) {
-        body.messageId = buildStableRequestId('responses', {
-            model: body.model || 'gpt-4.1-mini',
-            messages,
-            temperature: body.temperature,
-            top_p: body.top_p,
-            max_tokens: body.max_output_tokens || body.max_tokens,
-            stream: wantsStream
-        });
-    }
-
-    const stableRequestId = body.messageId || body.requestId;
-    if (isSuppressedDuplicateResponsesRequest(stableRequestId)) {
-        if (DEBUG_MODE) {
-            console.warn(`[ProtocolBridge] Suppressed duplicate /v1/responses retry: ${stableRequestId}`);
-        }
-        return sendImmediateResponsesResult(res, {
-            model: body.model || 'gpt-4.1-mini',
-            stream: wantsStream,
-            text: '[VCP_PROTOCOL_BRIDGE] 检测到客户端短时间内重复提交同一 Responses 请求；已抑制重复转发以避免重复触发 RAG 与上游重试。请稍后重试或检查上游 API 可用性。'
-        });
-    }
 
     await forwardToChatCompletions(req, res, {
         messages,

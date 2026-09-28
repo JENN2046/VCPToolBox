@@ -2014,7 +2014,6 @@ class PluginManager extends EventEmitter {
                 fixedError.code = fixedCode;
                 throw fixedError;
             }
-            this.toolLifecycleVcpInfo.emit(lifecycleContext, 'error', { error: e });
             console.error(`[PluginManager processToolCall] Error during execution for plugin ${toolName}:`, e.message);
             let errorObject;
             try {

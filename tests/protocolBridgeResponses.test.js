@@ -142,7 +142,7 @@ test('Responses function calls bridge JSON and continuation messages', async t =
   });
 });
 
-test('Responses instructions precede string and array input without colliding stable request ids', async t => {
+test('Responses instructions precede input and repeated requests remain independent', async t => {
   const upstreamBodies = [];
   const upstream = express();
   upstream.use(express.json());
@@ -200,7 +200,7 @@ test('Responses instructions precede string and array input without colliding st
   assert.equal(duplicate.response.status, 200);
   assert.equal(emptyInstructions.response.status, 200);
   assert.equal(nullInstructions.response.status, 200);
-  assert.equal(upstreamBodies.length, 4, 'same request is suppressed, different instructions are forwarded');
+  assert.equal(upstreamBodies.length, 5, 'identical requests must both reach the upstream handler');
   assert.deepEqual(upstreamBodies[0].messages, [
     { role: 'system', content: 'SYSTEM A {{VCPAllTools}}' },
     { role: 'user', content: 'hello' }
@@ -210,14 +210,49 @@ test('Responses instructions precede string and array input without colliding st
     { role: 'system', content: 'input developer' },
     { role: 'user', content: 'hello' }
   ]);
-  assert.deepEqual(upstreamBodies[2].messages, [
+  assert.deepEqual(upstreamBodies[2].messages, upstreamBodies[1].messages);
+  assert.deepEqual(upstreamBodies[3].messages, [
     { role: 'user', content: 'empty instructions' }
   ]);
-  assert.deepEqual(upstreamBodies[3].messages, [
+  assert.deepEqual(upstreamBodies[4].messages, [
     { role: 'user', content: 'null instructions' }
   ]);
   assert.notEqual(upstreamBodies[0].messageId, upstreamBodies[1].messageId);
-  assert.match(duplicate.body.output_text, /重复提交同一 Responses 请求/);
+  assert.notEqual(upstreamBodies[1].messageId, upstreamBodies[2].messageId);
+  assert.equal(duplicate.body.output_text, 'ok');
+});
+
+test('Responses caller IDs do not become shared internal replay keys', async t => {
+  const upstreamBodies = [];
+  const upstream = express();
+  upstream.use(express.json());
+  upstream.post('/v1/chat/completions', (req, res) => {
+    upstreamBodies.push(req.body);
+    res.json({
+      id: `chatcmpl-${upstreamBodies.length}`,
+      model: req.body.model,
+      choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }]
+    });
+  });
+  const upstreamInfo = await listen(upstream);
+  process.env.PORT = String(upstreamInfo.port);
+
+  const bridgeInfo = await listen(http.createServer(createBridgeApp()));
+  t.after(async () => {
+    await close(bridgeInfo.server);
+    await close(upstreamInfo.server);
+  });
+
+  const requestBody = { model: 'test-model', requestId: 'same-client-id', messageId: 'same-message-id', input: 'hello' };
+  const first = await requestJson(`http://127.0.0.1:${bridgeInfo.port}/v1/responses`, requestBody);
+  const second = await requestJson(`http://127.0.0.1:${bridgeInfo.port}/v1/responses`, requestBody);
+
+  assert.equal(first.response.status, 200);
+  assert.equal(second.response.status, 200);
+  assert.equal(upstreamBodies.length, 2);
+  assert.notEqual(upstreamBodies[0].messageId, upstreamBodies[1].messageId);
+  assert.equal(upstreamBodies[0].requestId, undefined);
+  assert.equal(upstreamBodies[1].requestId, undefined);
 });
 
 test('Responses stream emits text and multiple function-call events', async t => {
