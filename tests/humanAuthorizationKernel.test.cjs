@@ -245,6 +245,13 @@ test('P5 durable trusted-client store anchors epochs and fails closed on attempt
     fs.writeFileSync(path.join(registryRoot, 'authority.json'), JSON.stringify(registry));
     fs.writeFileSync(path.join(anchorRoot, 'anchor.json'), JSON.stringify(anchor));
 
+    if (process.platform === 'win32') {
+      assert.throws(
+        () => new TrustedClientAuthorityStore({ registryRoot, anchorRoot }),
+        error => error?.code === LOCKDOWN
+      );
+    }
+
     const store = new TrustedClientAuthorityStore({ registryRoot, anchorRoot, testOnly: true });
     const key = keyMaterial();
     store.add({
