@@ -345,6 +345,11 @@ class JevToolCallExp {
             });
         }
 
+        const serializedEnvelope = JSON.stringify(args);
+        if (Buffer.byteLength(serializedEnvelope, 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
+            throw new Error(`JEV constructed semantic envelope 超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
+        }
+
         return args;
     }
 

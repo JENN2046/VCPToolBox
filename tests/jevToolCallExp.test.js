@@ -266,6 +266,17 @@ test('semantic_passthrough 对资源数量、单项字节和总 envelope 做硬�
         planner.plan('{业务运营}【' + 'x'.repeat(17000) + '】'),
         /semantic envelope 超过最大字节数 16384/
     );
+
+    const duplicatedChunk = 'x'.repeat(3900);
+    await assert.rejects(
+        planner.plan(
+            '{业务运营}【' + duplicatedChunk + '】'
+            + '[' + duplicatedChunk + ']'
+            + '[' + duplicatedChunk + ']'
+            + '[' + duplicatedChunk + ']'
+        ),
+        /constructed semantic envelope 超过最大字节数 16384/
+    );
 });
 
 test('联网搜索默认使用 VSearch grounding 模板且不调用 Jev', async () => {
