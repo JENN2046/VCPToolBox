@@ -280,7 +280,7 @@ class JevToolCallExp {
             const plannedRiver = toolKey === 'agent_assistant' ? args.river : null;
             if (plannedRiver) delete args.river;
 
-            calls.push({
+            const plannedCall = {
                 name: tool.plugin,
                 args,
                 archery: inheritedMeta.archery === true,
@@ -292,7 +292,16 @@ class JevToolCallExp {
                     category: parsed.categoryKey,
                     toolKey
                 }
-            });
+            };
+
+            if (hasArgumentMode && tool.argumentMode === 'semantic_passthrough') {
+                const serializedCall = JSON.stringify(plannedCall);
+                if (Buffer.byteLength(serializedCall, 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
+                    throw new Error(`JEV final semantic call 超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
+                }
+            }
+
+            calls.push(plannedCall);
         }
         return calls;
     }
