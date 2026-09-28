@@ -6,10 +6,12 @@
 const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
+const {
+    REASONING_KEYS,
+    extractReasoningTextFromSources
+} = require('../modules/reasoningContentAdapter.js');
 
 const DEBUG_MODE = (process.env.DebugMode || 'False').toLowerCase() === 'true';
-const RESPONSE_RETRY_SUPPRESSION_WINDOW_MS = parseInt(process.env.PROTOCOL_BRIDGE_RETRY_SUPPRESSION_MS || '15000', 10);
-const recentResponsesRequests = new Map();
 
 // ============================================================
 // 消息提取工具函数（从各协议格式提取为统一 messages 数组）
@@ -174,142 +176,222 @@ function attachProtectedToolFields(chatBody, originalBody) {
 }
 
 // ============================================================
-// 请求稳定标识（降低客户端重试导致的重复预处理）
+// 每次桥接请求使用独立内部标识，避免不同调用者共享重放缓存键。
 // ============================================================
 
-function buildStableRequestId(prefix, payload) {
-    const hash = crypto
-        .createHash('sha256')
-        .update(JSON.stringify(payload || {}))
-        .digest('hex')
-        .slice(0, 24);
-    return `${prefix}_${hash}`;
-}
-
-function isSuppressedDuplicateResponsesRequest(requestId) {
-    if (!requestId || RESPONSE_RETRY_SUPPRESSION_WINDOW_MS <= 0) return false;
-
-    const now = Date.now();
-    for (const [key, value] of recentResponsesRequests.entries()) {
-        if (now - value.lastSeenAt > RESPONSE_RETRY_SUPPRESSION_WINDOW_MS * 4) {
-            recentResponsesRequests.delete(key);
-        }
-    }
-
-    const entry = recentResponsesRequests.get(requestId);
-    if (entry && now - entry.lastSeenAt <= RESPONSE_RETRY_SUPPRESSION_WINDOW_MS) {
-        entry.lastSeenAt = now;
-        entry.count += 1;
-        return true;
-    }
-
-    recentResponsesRequests.set(requestId, { lastSeenAt: now, count: 1 });
-    return false;
-}
-
-function buildImmediateResponsesPayload(model, text, status = 'completed') {
-    const response = buildBaseResponsesEnvelope(model || 'unknown');
-    response.status = status;
-    response.output_text = text || '';
-    response.output[0].content[0].text = response.output_text;
-    return response;
-}
-
-function sendImmediateResponsesResult(res, { model, text, stream }) {
-    const responsePayload = buildImmediateResponsesPayload(model, text, 'completed');
-    const item = responsePayload.output[0];
-    const part = item.content[0];
-
-    if (!stream) {
-        return res.status(200).json(responsePayload);
-    }
-
-    res.status(200);
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-
-    const writeEvent = (eventName, data) => {
-        res.write(`event: ${eventName}\n`);
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
-
-    writeEvent('response.created', {
-        type: 'response.created',
-        response: {
-            id: responsePayload.id,
-            object: responsePayload.object,
-            created_at: responsePayload.created_at,
-            status: 'in_progress',
-            model: responsePayload.model,
-            usage: buildResponsesUsage(null)
-        }
-    });
-    writeEvent('response.output_item.added', {
-        type: 'response.output_item.added',
-        output_index: 0,
-        item: { id: item.id, type: item.type, role: item.role, content: [] }
-    });
-    writeEvent('response.content_part.added', {
-        type: 'response.content_part.added',
-        item_id: item.id,
-        output_index: 0,
-        content_index: 0,
-        part: { type: part.type, text: '' }
-    });
-    if (responsePayload.output_text) {
-        writeEvent('response.output_text.delta', {
-            type: 'response.output_text.delta',
-            item_id: item.id,
-            output_index: 0,
-            content_index: 0,
-            delta: responsePayload.output_text
-        });
-    }
-    writeEvent('response.output_text.done', {
-        type: 'response.output_text.done',
-        item_id: item.id,
-        output_index: 0,
-        content_index: 0,
-        text: responsePayload.output_text
-    });
-    writeEvent('response.content_part.done', {
-        type: 'response.content_part.done',
-        item_id: item.id,
-        output_index: 0,
-        content_index: 0,
-        part
-    });
-    writeEvent('response.output_item.done', {
-        type: 'response.output_item.done',
-        output_index: 0,
-        item
-    });
-    writeEvent('response.completed', {
-        type: 'response.completed',
-        response: responsePayload
-    });
-    return res.end();
+function buildBridgeRequestId() {
+    return `responses_${crypto.randomUUID()}`;
 }
 
 // ============================================================
 // OpenAI Responses API (/v1/responses) 消息提取
 // ============================================================
 
-function extractMessagesFromResponsesInput(input) {
+function stableJsonValue(value) {
+    if (value === undefined) return 'null';
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(item => stableJsonValue(item)).join(',')}]`;
+    return `{${Object.keys(value)
+        .filter(key => value[key] !== undefined)
+        .sort()
+        .map(key => `${JSON.stringify(key)}:${stableJsonValue(value[key])}`)
+        .join(',')}}`;
+}
+
+function stableJsonStringify(value) {
+    if (typeof value === 'string') return value;
+    if (value === undefined) return '';
+    return stableJsonValue(value);
+}
+
+function normalizeResponsesFunctionArguments(argumentsValue) {
+    if (typeof argumentsValue === 'string') return argumentsValue;
+    return stableJsonStringify(argumentsValue);
+}
+
+function normalizeResponsesFunctionOutput(output) {
+    if (typeof output === 'string') return output;
+    return stableJsonStringify(output);
+}
+
+function extractEncryptedContentFromValue(value, seen = new Set()) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return null;
+    seen.add(value);
+
+    if (typeof value.encrypted_content === 'string' && value.encrypted_content.length > 0) {
+        return value.encrypted_content;
+    }
+    if (value.type === 'reasoning.encrypted_content' && typeof value.data === 'string' && value.data.length > 0) {
+        return value.data;
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const encryptedContent = extractEncryptedContentFromValue(item, seen);
+            if (encryptedContent) return encryptedContent;
+        }
+    }
+
+    return null;
+}
+
+function extractEncryptedContents(...sources) {
+    const encryptedContents = [];
+    const seenValues = new Set();
+    for (const source of sources) {
+        const valuesToInspect = [source, source?.reasoning_details];
+        for (const value of valuesToInspect) {
+            const encryptedContent = extractEncryptedContentFromValue(value, seenValues);
+            if (encryptedContent && !encryptedContents.includes(encryptedContent)) {
+                encryptedContents.push(encryptedContent);
+            }
+        }
+    }
+    return encryptedContents;
+}
+
+function hasReasoningField(...sources) {
+    return sources.some(source => source && typeof source === 'object' && REASONING_KEYS.some(key => {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) return false;
+        const value = source[key];
+        if (value === undefined || value === null || value === false) return false;
+        if (typeof value === 'string') return value.length > 0;
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === 'object') return Object.keys(value).length > 0;
+        return true;
+    }));
+}
+
+function extractResponsesReasoningText(...sources) {
+    return extractReasoningTextFromSources(...sources);
+}
+
+function extractResponsesReasoningItemText(item) {
+    return extractReasoningTextFromSources(
+        item,
+        item && Array.isArray(item.summary) ? { reasoning_summary: item.summary } : null
+    );
+}
+
+function buildReasoningDetailsCarrier(encryptedContents) {
+    if (!Array.isArray(encryptedContents) || encryptedContents.length === 0) return undefined;
+    return encryptedContents.map(data => ({
+        type: 'reasoning.encrypted_content',
+        data
+    }));
+}
+
+function buildInternalReasoningFields(reasoningItems) {
+    const items = Array.isArray(reasoningItems) ? reasoningItems : [];
+    const reasoningText = items
+        .map(extractResponsesReasoningItemText)
+        .filter(text => typeof text === 'string' && text.trim().length > 0)
+        .join('\n');
+    const encryptedContents = extractEncryptedContents(...items);
+    const fields = {};
+
+    if (reasoningText) fields.reasoning_content = reasoningText;
+    const reasoningDetails = buildReasoningDetailsCarrier(encryptedContents);
+    if (reasoningDetails) fields.reasoning_details = reasoningDetails;
+    return fields;
+}
+
+function buildResponsesReasoningOutput(message, choice, index = 0) {
+    const reasoningText = extractResponsesReasoningText(message, choice);
+    const encryptedContents = extractEncryptedContents(message, choice);
+    if (!reasoningText && encryptedContents.length === 0 && !hasReasoningField(message, choice)) {
+        return null;
+    }
+
+    return {
+        id: `rs_${Date.now()}_${index}`,
+        type: 'reasoning',
+        status: 'completed',
+        summary: reasoningText ? [{ type: 'summary_text', text: reasoningText }] : [],
+        ...(encryptedContents.length > 0 ? { encrypted_content: encryptedContents[0] } : {})
+    };
+}
+
+function extractMessagesFromResponsesInput(input, instructions) {
+    const messages = [];
+
+    // Responses API 的 instructions 是插入模型上下文的 system/developer 消息。
+    // 先转换为内部统一的 system 消息，确保它能进入 VCP 的变量与占位符处理链路。
+    if (typeof instructions === 'string' && instructions.trim().length > 0) {
+        messages.push({ role: 'system', content: instructions });
+    }
+
     if (typeof input === 'string') {
-        return [{ role: 'user', content: input }];
+        messages.push({ role: 'user', content: input });
+        return messages;
     }
 
     if (!Array.isArray(input)) {
-        return [];
+        return messages;
     }
 
-    const messages = [];
+    let pendingFunctionCalls = [];
+    let pendingReasoningItems = [];
+
+    const flushPendingReasoning = () => {
+        if (pendingReasoningItems.length === 0) return;
+        const reasoningFields = buildInternalReasoningFields(pendingReasoningItems);
+        messages.push({
+            role: 'assistant',
+            content: null,
+            ...reasoningFields
+        });
+        pendingReasoningItems = [];
+    };
+
+    const flushPendingFunctionCalls = () => {
+        if (pendingFunctionCalls.length === 0) return;
+        const reasoningFields = buildInternalReasoningFields(pendingReasoningItems);
+        messages.push({
+            role: 'assistant',
+            content: null,
+            ...reasoningFields,
+            tool_calls: pendingFunctionCalls
+        });
+        pendingFunctionCalls = [];
+        pendingReasoningItems = [];
+    };
 
     for (const item of input) {
         if (!item || typeof item !== 'object') continue;
 
+        if (item.type === 'reasoning') {
+            // 延迟 flush，使 reasoning 位于 function_call 前后时都能合并到同一个 assistant 消息。
+            pendingReasoningItems.push(item);
+            continue;
+        }
+
+        if (item.type === 'function_call') {
+            const callId = item.call_id || item.id || `call_${Date.now()}_${pendingFunctionCalls.length}`;
+            pendingFunctionCalls.push({
+                id: callId,
+                type: 'function',
+                function: {
+                    name: item.name || '',
+                    arguments: normalizeResponsesFunctionArguments(item.arguments)
+                }
+            });
+            continue;
+        }
+
+        if (item.type === 'function_call_output') {
+            flushPendingFunctionCalls();
+            flushPendingReasoning();
+            messages.push({
+                role: 'tool',
+                ...(item.call_id || item.id ? { tool_call_id: item.call_id || item.id } : {}),
+                content: normalizeResponsesFunctionOutput(item.output)
+            });
+            continue;
+        }
+
+        flushPendingFunctionCalls();
+        flushPendingReasoning();
         const role = normalizeMessageRole(item.role || (item.type === 'message' ? 'user' : null));
         const content = normalizeTextContent(item.content || item.output);
 
@@ -329,6 +411,8 @@ function extractMessagesFromResponsesInput(input) {
         }
     }
 
+    flushPendingFunctionCalls();
+    flushPendingReasoning();
     return messages;
 }
 
@@ -419,34 +503,76 @@ function extractMessagesFromGeminiBody(body) {
 /**
  * 将标准 chat completion 响应转换为 OpenAI Responses API 格式
  */
+function buildResponsesFunctionCallOutput(toolCall, index) {
+    const functionData = toolCall?.function || {};
+    const callId = toolCall?.id || `call_${Date.now()}_${index}`;
+    return {
+        id: `fc_${callId}`,
+        type: 'function_call',
+        status: 'completed',
+        call_id: callId,
+        name: functionData.name || toolCall?.name || '',
+        arguments: normalizeResponsesFunctionArguments(functionData.arguments ?? toolCall?.arguments ?? '')
+    };
+}
+
 function buildResponsesApiOutput(chatResponse) {
-    const content = chatResponse?.choices?.[0]?.message?.content || '';
+    const message = chatResponse?.choices?.[0]?.message || {};
+    const choice = chatResponse?.choices?.[0] || {};
+    const content = typeof message.content === 'string' ? message.content : normalizeTextContent(message.content);
+    const toolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+        ? message.tool_calls
+        : (message.function_call ? [{ id: message.function_call.id, function: message.function_call }] : []);
+    const output = [];
+    const reasoningOutput = buildResponsesReasoningOutput(message, choice, 0);
+
+    if (reasoningOutput) {
+        output.push(reasoningOutput);
+    }
+
+    if (content) {
+        output.push({
+            id: `msg_${Date.now()}`,
+            type: 'message',
+            role: 'assistant',
+            content: [
+                {
+                    type: 'output_text',
+                    text: content,
+                    annotations: []
+                }
+            ]
+        });
+    }
+
+    toolCalls.forEach((toolCall, index) => {
+        output.push(buildResponsesFunctionCallOutput(toolCall, index));
+    });
+
+    if (output.length === 0) {
+        output.push({
+            id: `msg_${Date.now()}`,
+            type: 'message',
+            role: 'assistant',
+            content: [
+                {
+                    type: 'output_text',
+                    text: '',
+                    annotations: []
+                }
+            ]
+        });
+    }
+
     return {
         id: chatResponse?.id || `resp_${Date.now()}`,
         object: 'response',
         created_at: chatResponse?.created || Math.floor(Date.now() / 1000),
         status: 'completed',
         model: chatResponse?.model,
-        output: [
-            {
-                id: `msg_${Date.now()}`,
-                type: 'message',
-                role: 'assistant',
-                content: [
-                    {
-                        type: 'output_text',
-                        text: content,
-                        annotations: []
-                    }
-                ]
-            }
-        ],
+        output,
         output_text: content,
-        usage: {
-            input_tokens: chatResponse?.usage?.prompt_tokens || 0,
-            output_tokens: chatResponse?.usage?.completion_tokens || 0,
-            total_tokens: chatResponse?.usage?.total_tokens || 0
-        }
+        usage: buildResponsesUsage(chatResponse?.usage)
     };
 }
 
@@ -546,10 +672,18 @@ function buildBaseResponsesEnvelope(model) {
  */
 function createResponsesStreamTransformer(res, model) {
     const responsePayload = buildBaseResponsesEnvelope(model);
-    const itemId = responsePayload.output[0].id;
+    responsePayload.output = [];
+    const responseId = responsePayload.id;
     let headersSent = false;
     let terminalEventSent = false;
     let finalUsage = null;
+    let textItem = null;
+    let reasoningItem = null;
+    let reasoningText = '';
+    let emittedReasoningText = '';
+    let reasoningSnapshotSeen = false;
+    const reasoningEncryptedContents = [];
+    const functionCalls = new Map();
 
     function writeSseEvent(eventName, data) {
         if (res.destroyed || res.writableEnded) return false;
@@ -558,16 +692,166 @@ function createResponsesStreamTransformer(res, model) {
         return true;
     }
 
+    function ensureTextItem() {
+        if (textItem) return textItem;
+        textItem = {
+            id: `msg_${Date.now()}`,
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: '', annotations: [] }]
+        };
+        responsePayload.output.push(textItem);
+        writeSseEvent('response.output_item.added', {
+            type: 'response.output_item.added',
+            output_index: responsePayload.output.length - 1,
+            item: { id: textItem.id, type: 'message', role: 'assistant', content: [] }
+        });
+        writeSseEvent('response.content_part.added', {
+            type: 'response.content_part.added',
+            item_id: textItem.id,
+            output_index: responsePayload.output.length - 1,
+            content_index: 0,
+            part: { type: 'output_text', text: '' }
+        });
+        return textItem;
+    }
+
+    function ensureReasoningItem() {
+        if (reasoningItem) return reasoningItem;
+        reasoningItem = {
+            id: `rs_${Date.now()}_${responsePayload.output.length}`,
+            type: 'reasoning',
+            status: 'in_progress',
+            summary: [{ type: 'summary_text', text: '' }]
+        };
+        responsePayload.output.push(reasoningItem);
+        const outputIndex = responsePayload.output.length - 1;
+        writeSseEvent('response.output_item.added', {
+            type: 'response.output_item.added',
+            output_index: outputIndex,
+            item: { ...reasoningItem, summary: [] }
+        });
+        writeSseEvent('response.reasoning_summary_part.added', {
+            type: 'response.reasoning_summary_part.added',
+            item_id: reasoningItem.id,
+            output_index: outputIndex,
+            summary_index: 0,
+            part: { type: 'summary_text', text: '' }
+        });
+        return reasoningItem;
+    }
+
+    function appendReasoningEncryptedContents(sources) {
+        for (const encryptedContent of extractEncryptedContents(...sources)) {
+            if (!reasoningEncryptedContents.includes(encryptedContent)) {
+                reasoningEncryptedContents.push(encryptedContent);
+            }
+        }
+        if (reasoningItem && reasoningEncryptedContents.length > 0) {
+            reasoningItem.encrypted_content = reasoningEncryptedContents[0];
+        }
+    }
+
+    function emitReasoningSummaryDone() {
+        if (!reasoningItem) return;
+        // Snapshots may revise earlier text. Buffer them until completion so
+        // repeated/revised snapshots are never emitted as append-only deltas.
+        if (reasoningText.startsWith(emittedReasoningText)) {
+            emitReasoningDelta(reasoningText.slice(emittedReasoningText.length));
+        }
+        reasoningItem.summary[0].text = reasoningText;
+        if (reasoningEncryptedContents.length > 0) {
+            reasoningItem.encrypted_content = reasoningEncryptedContents[0];
+        }
+        const outputIndex = responsePayload.output.indexOf(reasoningItem);
+        writeSseEvent('response.reasoning_summary_text.done', {
+            type: 'response.reasoning_summary_text.done',
+            item_id: reasoningItem.id,
+            output_index: outputIndex,
+            summary_index: 0,
+            text: reasoningText
+        });
+        writeSseEvent('response.reasoning_summary_part.done', {
+            type: 'response.reasoning_summary_part.done',
+            item_id: reasoningItem.id,
+            output_index: outputIndex,
+            summary_index: 0,
+            part: { type: 'summary_text', text: reasoningText }
+        });
+    }
+
+    function emitReasoningDelta(text) {
+        if (!text) return;
+        emittedReasoningText += text;
+        writeSseEvent('response.reasoning_summary_text.delta', {
+            type: 'response.reasoning_summary_text.delta',
+            item_id: reasoningItem.id,
+            output_index: responsePayload.output.indexOf(reasoningItem),
+            summary_index: 0,
+            delta: text
+        });
+    }
+
+    function ensureFunctionCall(index, callDelta) {
+        let state = functionCalls.get(index);
+        const functionData = callDelta?.function || {};
+        const callId = callDelta?.id || state?.callId || `call_${responseId}_${index}`;
+        if (!state) {
+            const item = {
+                id: `fc_${callId}`,
+                type: 'function_call',
+                status: 'in_progress',
+                call_id: callId,
+                name: functionData.name || callDelta?.name || '',
+                arguments: ''
+            };
+            state = { index, item, callId, arguments: '' };
+            functionCalls.set(index, state);
+            responsePayload.output.push(item);
+            writeSseEvent('response.output_item.added', {
+                type: 'response.output_item.added',
+                output_index: responsePayload.output.length - 1,
+                item: { ...item }
+            });
+        }
+        if (functionData.name || callDelta?.name) {
+            state.item.name = functionData.name || callDelta.name;
+        }
+        return state;
+    }
+
     function finalizeCompletedPayload(usage) {
+        if (textItem) textItem.content[0].text = responsePayload.output_text;
+        if (reasoningItem) {
+            reasoningItem.summary[0].text = reasoningText;
+            if (reasoningEncryptedContents.length > 0) {
+                reasoningItem.encrypted_content = reasoningEncryptedContents[0];
+            }
+            reasoningItem.status = 'completed';
+        }
+        for (const state of functionCalls.values()) {
+            state.item.arguments = state.arguments;
+            state.item.status = 'completed';
+        }
         responsePayload.status = 'completed';
-        responsePayload.output[0].content[0].text = responsePayload.output_text;
         if (usage) responsePayload.usage = buildResponsesUsage(usage);
         return responsePayload;
     }
 
     function finalizeFailedPayload(errorMessage) {
+        if (textItem) textItem.content[0].text = responsePayload.output_text;
+        if (reasoningItem) {
+            reasoningItem.summary[0].text = reasoningText;
+            if (reasoningEncryptedContents.length > 0) {
+                reasoningItem.encrypted_content = reasoningEncryptedContents[0];
+            }
+            reasoningItem.status = 'incomplete';
+        }
+        for (const state of functionCalls.values()) {
+            state.item.arguments = state.arguments;
+            state.item.status = 'incomplete';
+        }
         responsePayload.status = 'failed';
-        responsePayload.output[0].content[0].text = responsePayload.output_text;
         responsePayload.error = {
             code: 'protocol_bridge_stream_error',
             message: errorMessage || 'Protocol bridge stream ended before completion.'
@@ -582,7 +866,6 @@ function createResponsesStreamTransformer(res, model) {
             res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
             res.setHeader('Cache-Control', 'no-cache, no-transform');
             res.setHeader('Connection', 'keep-alive');
-
             writeSseEvent('response.created', {
                 type: 'response.created',
                 response: {
@@ -594,33 +877,70 @@ function createResponsesStreamTransformer(res, model) {
                     usage: buildResponsesUsage(null)
                 }
             });
+        },
 
-            writeSseEvent('response.output_item.added', {
-                type: 'response.output_item.added',
-                output_index: 0,
-                item: { id: itemId, type: 'message', role: 'assistant', content: [] }
-            });
-
-            writeSseEvent('response.content_part.added', {
-                type: 'response.content_part.added',
-                item_id: itemId,
-                output_index: 0,
-                content_index: 0,
-                part: { type: 'output_text', text: '' }
-            });
+        onReasoning(source, snapshot = false) {
+            const sources = [source];
+            if (terminalEventSent || res.destroyed || res.writableEnded) return;
+            if (!headersSent) this.onStart();
+            const text = extractResponsesReasoningText(...sources);
+            const encryptedContents = extractEncryptedContents(...sources);
+            const textSnapshot = snapshot && (text.length > 0 || REASONING_KEYS.some(key =>
+                key !== 'reasoning_details' && key !== 'reasoningDetails'
+                && Object.prototype.hasOwnProperty.call(source || {}, key)
+                && source[key] !== null && source[key] !== undefined
+            ));
+            if ((!text || text.length === 0) && encryptedContents.length === 0 && !hasReasoningField(...sources) && !textSnapshot) return;
+            const item = ensureReasoningItem();
+            appendReasoningEncryptedContents(sources);
+            if (typeof text !== 'string') return;
+            reasoningSnapshotSeen ||= textSnapshot;
+            reasoningText = textSnapshot ? text : reasoningText + text;
+            item.summary[0].text = reasoningText;
+            if (!reasoningSnapshotSeen) emitReasoningDelta(text);
         },
 
         onDelta(delta) {
             if (terminalEventSent || res.destroyed || res.writableEnded) return;
             if (!headersSent) this.onStart();
+            if (typeof delta !== 'string' || delta.length === 0) return;
+            const item = ensureTextItem();
             responsePayload.output_text += delta;
+            item.content[0].text = responsePayload.output_text;
             writeSseEvent('response.output_text.delta', {
                 type: 'response.output_text.delta',
-                item_id: itemId,
-                output_index: 0,
+                item_id: item.id,
+                output_index: responsePayload.output.indexOf(item),
                 content_index: 0,
                 delta
             });
+        },
+
+        onToolCalls(toolCalls, snapshot = false) {
+            if (terminalEventSent || res.destroyed || res.writableEnded) return;
+            if (!headersSent) this.onStart();
+            if (!Array.isArray(toolCalls)) return;
+            for (const [position, toolCall] of toolCalls.entries()) {
+                const index = Number.isInteger(toolCall?.index) ? toolCall.index : (snapshot ? position : 0);
+                const state = ensureFunctionCall(index, toolCall);
+                const functionData = toolCall?.function || {};
+                const argumentsDelta = typeof functionData.arguments === 'string'
+                    ? functionData.arguments
+                    : (typeof toolCall?.arguments === 'string' ? toolCall.arguments : '');
+                if (!argumentsDelta) continue;
+                const emittedDelta = snapshot && argumentsDelta.startsWith(state.arguments)
+                    ? argumentsDelta.slice(state.arguments.length)
+                    : argumentsDelta;
+                state.arguments = snapshot ? argumentsDelta : state.arguments + argumentsDelta;
+                state.item.arguments = state.arguments;
+                if (!emittedDelta) continue;
+                writeSseEvent('response.function_call_arguments.delta', {
+                    type: 'response.function_call_arguments.delta',
+                    item_id: state.item.id,
+                    output_index: responsePayload.output.indexOf(state.item),
+                    delta: emittedDelta
+                });
+            }
         },
 
         onUsage(usage) {
@@ -634,50 +954,75 @@ function createResponsesStreamTransformer(res, model) {
         onEnd(usage) {
             if (terminalEventSent || res.destroyed || res.writableEnded) return;
             if (!headersSent) this.onStart();
+            if (responsePayload.output.length === 0) ensureTextItem();
 
-            const completedPayload = finalizeCompletedPayload(usage || finalUsage);
+            // 先完成各 output item 的专属内容事件，再按实际 output 顺序发出 done。
+            for (const item of responsePayload.output) {
+                if (item === reasoningItem) {
+                    emitReasoningSummaryDone();
+                } else if (item === textItem) {
+                    writeSseEvent('response.output_text.done', {
+                        type: 'response.output_text.done',
+                        item_id: textItem.id,
+                        output_index: responsePayload.output.indexOf(textItem),
+                        content_index: 0,
+                        text: responsePayload.output_text
+                    });
+                    writeSseEvent('response.content_part.done', {
+                        type: 'response.content_part.done',
+                        item_id: textItem.id,
+                        output_index: responsePayload.output.indexOf(textItem),
+                        content_index: 0,
+                        part: { type: 'output_text', text: responsePayload.output_text }
+                    });
+                } else {
+                    const state = Array.from(functionCalls.values()).find(candidate => candidate.item === item);
+                    if (state) {
+                        state.item.arguments = state.arguments;
+                        writeSseEvent('response.function_call_arguments.done', {
+                            type: 'response.function_call_arguments.done',
+                            item_id: state.item.id,
+                            output_index: responsePayload.output.indexOf(state.item),
+                            arguments: state.arguments
+                        });
+                    }
+                }
+            }
 
-            writeSseEvent('response.output_text.done', {
-                type: 'response.output_text.done',
-                item_id: itemId,
-                output_index: 0,
-                content_index: 0,
-                text: responsePayload.output_text
-            });
-
-            writeSseEvent('response.content_part.done', {
-                type: 'response.content_part.done',
-                item_id: itemId,
-                output_index: 0,
-                content_index: 0,
-                part: { type: 'output_text', text: responsePayload.output_text }
-            });
-
-            writeSseEvent('response.output_item.done', {
-                type: 'response.output_item.done',
-                output_index: 0,
-                item: responsePayload.output[0]
-            });
-
+            for (const item of responsePayload.output) {
+                if (item === reasoningItem) {
+                    item.status = 'completed';
+                } else {
+                    const state = Array.from(functionCalls.values()).find(candidate => candidate.item === item);
+                    if (state) {
+                        state.item.arguments = state.arguments;
+                        state.item.status = 'completed';
+                    }
+                }
+                writeSseEvent('response.output_item.done', {
+                    type: 'response.output_item.done',
+                    output_index: responsePayload.output.indexOf(item),
+                    item
+                });
+            }
             terminalEventSent = true;
             writeSseEvent('response.completed', {
                 type: 'response.completed',
-                response: completedPayload
+                response: finalizeCompletedPayload(usage || finalUsage)
             });
-
             if (!res.destroyed && !res.writableEnded) res.end();
         },
 
         onError(errorMessage) {
             if (terminalEventSent || res.destroyed || res.writableEnded) return;
             if (!headersSent) this.onStart();
-
+            if (reasoningItem) emitReasoningSummaryDone();
+            const failedPayload = finalizeFailedPayload(errorMessage);
             terminalEventSent = true;
             writeSseEvent('response.failed', {
                 type: 'response.failed',
-                response: finalizeFailedPayload(errorMessage)
+                response: failedPayload
             });
-
             if (!res.destroyed && !res.writableEnded) res.end();
         }
     };
@@ -820,20 +1165,13 @@ async function forwardToChatCompletions(req, res, {
     // 原生 function tools 字段不参与 messages/RAG/变量处理；在转发本地 chat 链路前作为受保护字段加回。
     attachProtectedToolFields(chatBody, originalBody);
 
-    // 保留原始请求中可能有用的字段（如 requestId、messageId 等 VCP 特有字段）。
-    // Codex Responses API 通常不会带 VCP 自定义 ID；为同构重试生成稳定 ID，便于主链路识别/缓存/中断追踪。
-    if (originalBody?.requestId) chatBody.requestId = originalBody.requestId;
-    if (originalBody?.messageId) {
-        chatBody.messageId = originalBody.messageId;
-    } else if (outputFormat === 'responses') {
-        chatBody.messageId = buildStableRequestId('responses', {
-            model: chatBody.model,
-            messages: chatBody.messages,
-            temperature: chatBody.temperature,
-            top_p: chatBody.top_p,
-            max_tokens: chatBody.max_tokens,
-            stream: chatBody.stream
-        });
+    // 主链路按 requestId/messageId 缓存响应，而桥接后的客户端 IP 均为 loopback。
+    // Responses 端点不能把客户端 ID 或请求内容哈希直接作为内部缓存键。
+    if (outputFormat === 'responses') {
+        chatBody.messageId = buildBridgeRequestId();
+    } else {
+        if (originalBody?.requestId) chatBody.requestId = originalBody.requestId;
+        if (originalBody?.messageId) chatBody.messageId = originalBody.messageId;
     }
 
     if (DEBUG_MODE) {
@@ -936,9 +1274,28 @@ async function forwardToChatCompletions(req, res, {
 
                 try {
                     const json = JSON.parse(data);
-                    const delta = json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.message?.content;
+                    const choice = json?.choices?.[0];
+                    if (typeof transformer.onReasoning === 'function') {
+                        if (hasReasoningField(choice?.delta) || extractEncryptedContents(choice?.delta).length) {
+                            transformer.onReasoning(choice.delta);
+                        } else if (REASONING_KEYS.some(key => Object.prototype.hasOwnProperty.call(choice?.message || {}, key)) || extractEncryptedContents(choice?.message).length) {
+                            transformer.onReasoning(choice.message, true);
+                        } else {
+                            transformer.onReasoning(choice);
+                        }
+                    }
+                    const delta = choice?.delta?.content ?? choice?.message?.content;
                     if (typeof delta === 'string' && delta.length > 0) {
                         transformer.onDelta(delta);
+                    }
+                    const deltaToolCalls = choice?.delta?.tool_calls;
+                    const snapshotToolCalls = choice?.message?.tool_calls;
+                    if (typeof transformer.onToolCalls === 'function') {
+                        if (Array.isArray(deltaToolCalls)) {
+                            transformer.onToolCalls(deltaToolCalls);
+                        } else if (Array.isArray(snapshotToolCalls)) {
+                            transformer.onToolCalls(snapshotToolCalls, true);
+                        }
                     }
                     if (json?.usage) {
                         lastUsage = json.usage;
@@ -982,7 +1339,7 @@ async function forwardToChatCompletions(req, res, {
  */
 router.post('/v1/responses', async (req, res) => {
     const body = req.body || {};
-    const messages = extractMessagesFromResponsesInput(body.input);
+    const messages = extractMessagesFromResponsesInput(body.input, body.instructions);
 
     if (messages.length === 0) {
         return res.status(400).json({
@@ -994,28 +1351,6 @@ router.post('/v1/responses', async (req, res) => {
     }
 
     const wantsStream = body.stream === true || String(req.headers.accept || '').includes('text/event-stream');
-    if (!body.messageId && !body.requestId) {
-        body.messageId = buildStableRequestId('responses', {
-            model: body.model || 'gpt-4.1-mini',
-            messages,
-            temperature: body.temperature,
-            top_p: body.top_p,
-            max_tokens: body.max_output_tokens || body.max_tokens,
-            stream: wantsStream
-        });
-    }
-
-    const stableRequestId = body.messageId || body.requestId;
-    if (isSuppressedDuplicateResponsesRequest(stableRequestId)) {
-        if (DEBUG_MODE) {
-            console.warn(`[ProtocolBridge] Suppressed duplicate /v1/responses retry: ${stableRequestId}`);
-        }
-        return sendImmediateResponsesResult(res, {
-            model: body.model || 'gpt-4.1-mini',
-            stream: wantsStream,
-            text: '[VCP_PROTOCOL_BRIDGE] 检测到客户端短时间内重复提交同一 Responses 请求；已抑制重复转发以避免重复触发 RAG 与上游重试。请稍后重试或检查上游 API 可用性。'
-        });
-    }
 
     await forwardToChatCompletions(req, res, {
         messages,

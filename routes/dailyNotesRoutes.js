@@ -1,6 +1,8 @@
 const express = require('express');
 const fs = require('fs').promises;
+const { constants: fsConstants } = require('fs');
 const path = require('path');
+const { randomUUID } = require('crypto');
 const { Worker } = require('worker_threads');
 
 /**
@@ -763,10 +765,10 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE, options = {}) {
         }
     });
 
-    // POST /note/:folderName/:fileName - 保存笔记
+    // POST /note/:folderName/:fileName - 保存笔记 (支持重命名与内容同时修改)
     router.post('/note/:folderName/:fileName', async (req, res) => {
         const { folderName, fileName } = req.params;
-        const { content } = req.body;
+        let { content, newFileName } = req.body;
 
         if (typeof content !== 'string') {
             return res.status(400).json({ error: 'Invalid request body' });
@@ -779,32 +781,139 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE, options = {}) {
         }
 
         const targetFolderPath = path.join(dailyNoteRootPath, folderName);
-        const filePath = path.join(targetFolderPath, fileName);
+        const oldFilePath = path.join(targetFolderPath, fileName);
 
-        if (!isPathSafe(filePath, dailyNoteRootPath)) {
+        if (!isPathSafe(oldFilePath, dailyNoteRootPath)) {
             return res.status(403).json({ error: 'Invalid file path' });
         }
 
+        // 处理新文件名逻辑
+        let actualNewFileName = fileName;
+        let isRename = false;
+
+        if (typeof newFileName === 'string' && newFileName.trim()) {
+            let cleanNewName = newFileName.trim();
+
+            // 1. 判断新名字是否已经以白名单扩展名（如 .txt / .md）结尾
+            const hasValidExt = allowedExtensions.some(ext => cleanNewName.toLowerCase().endsWith(`.${ext}`));
+            if (!hasValidExt) {
+                // 2. 新名字未带合法扩展名时：优先寻找原文件名中的合法扩展名；若原文件也无合法扩展名，兜底采用 .txt
+                const matchedOldExt = allowedExtensions.find(ext => fileName.toLowerCase().endsWith(`.${ext}`));
+                const validExtToAppend = matchedOldExt ? `.${matchedOldExt}` : (allowedExtensions[0] ? `.${allowedExtensions[0]}` : '.txt');
+                cleanNewName += validExtToAppend;
+            }
+
+            if (cleanNewName.includes('..') || cleanNewName.includes('/') || cleanNewName.includes('\\')) {
+                return res.status(403).json({ error: 'Invalid new file name' });
+            }
+
+            if (cleanNewName !== fileName) {
+                actualNewFileName = cleanNewName;
+                isRename = true;
+            }
+        }
+
+        const newFilePath = path.join(targetFolderPath, actualNewFileName);
+        if (!isPathSafe(newFilePath, dailyNoteRootPath)) {
+            return res.status(403).json({ error: 'Invalid new file path' });
+        }
+
         try {
+            const mutationKey = isRename
+                ? `rename-save:${folderName}/${fileName}->${actualNewFileName}`
+                : `save:${folderName}/${fileName}`;
+
             const result = await executeFileMutation(
-                `save:${folderName}/${fileName}`,
+                mutationKey,
                 async () => {
                     await fs.mkdir(targetFolderPath, { recursive: true });
-                    await fs.writeFile(filePath, content, 'utf-8');
-                    dirCache.invalidate(targetFolderPath);
-                    return {
-                        status: 'success',
-                        mutationPaths: {
-                            upserts: [filePath],
-                            deletes: [],
-                        },
-                        response: { message: 'Saved successfully' },
-                    };
+
+                    if (isRename) {
+                        let sameFile = false;
+                        try {
+                            const [sourceStat, targetStat] = await Promise.all([
+                                fs.stat(oldFilePath), fs.stat(newFilePath)
+                            ]);
+                            sameFile = fileName.toLowerCase() === actualNewFileName.toLowerCase()
+                                && sourceStat.dev === targetStat.dev
+                                && sourceStat.ino === targetStat.ino;
+                            if (!sameFile) {
+                                const err = new Error(`文件 "${actualNewFileName}" 已存在，请使用其他名称`);
+                                err.code = 'EEXIST';
+                                throw err;
+                            }
+                        } catch (err) {
+                            if (err.code !== 'ENOENT') throw err;
+                        }
+
+                        // Case-insensitive filesystems resolve both spellings to the
+                        // same inode. Move the original aside before exclusively
+                        // creating the new spelling so rollback can restore it.
+                        const holdingPath = sameFile
+                            ? path.join(targetFolderPath, `.vcp-rename-${randomUUID()}`)
+                            : null;
+                        if (holdingPath) await fs.rename(oldFilePath, holdingPath);
+                        let destinationCreated = false;
+                        try {
+                            const destination = await fs.open(newFilePath, 'wx');
+                            destinationCreated = true;
+                            try {
+                                await destination.writeFile(content, 'utf-8');
+                            } finally {
+                                await destination.close();
+                            }
+                            await fs.unlink(holdingPath || oldFilePath);
+                        } catch (mutationError) {
+                            const rollbackErrors = [];
+                            if (destinationCreated) {
+                                try { await fs.unlink(newFilePath); } catch (error) { rollbackErrors.push(error); }
+                            }
+                            if (holdingPath) {
+                                try {
+                                    await fs.copyFile(holdingPath, oldFilePath, fsConstants.COPYFILE_EXCL);
+                                    await fs.unlink(holdingPath);
+                                } catch (error) { rollbackErrors.push(error); }
+                            }
+                            if (rollbackErrors.length) {
+                                throw new AggregateError([mutationError, ...rollbackErrors], 'Could not roll back failed note rename');
+                            }
+                            throw mutationError;
+                        }
+
+                        dirCache.invalidate(targetFolderPath);
+                        return {
+                            status: 'success',
+                            mutationPaths: {
+                                upserts: [newFilePath],
+                                deletes: [oldFilePath],
+                            },
+                            response: {
+                                message: 'Saved and renamed successfully',
+                                savedFileName: actualNewFileName,
+                            },
+                        };
+                    } else {
+                        // 未重命名：原位覆写
+                        await fs.writeFile(oldFilePath, content, 'utf-8');
+                        dirCache.invalidate(targetFolderPath);
+                        return {
+                            status: 'success',
+                            mutationPaths: {
+                                upserts: [oldFilePath],
+                                deletes: [],
+                            },
+                            response: {
+                                message: 'Saved successfully',
+                                savedFileName: fileName,
+                            },
+                        };
+                    }
                 }
             );
             res.json(result.response);
         } catch (error) {
-            res.status(500).json({ error: 'Failed to save file', details: error.message });
+            const status = error.code === 'EEXIST' || error.message.includes('已存在') ? 409 : 500;
+            res.status(status).json({ error: 'Failed to save file', details: error.message });
         }
     });
 

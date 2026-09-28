@@ -35,7 +35,6 @@
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "flatted": "^3.3.3",
-    "hnswlib-node": "^1.4.2",
     "https-browserify": "^1.0.0",
     "https-proxy-agent": "^7.0.4",
     "ioredis": "^5.6.1",
@@ -69,6 +68,9 @@
     "uuid": "^14.0.0",
     "winston": "^3.17.0",
     "ws": "^8.17.0"
+  },
+  "optionalDependencies": {
+    "@napi-rs/canvas-linux-x64-gnu": "^1.0.9"
   },
   "overrides": {
     "deepmerge-ts": "8.0.2",
