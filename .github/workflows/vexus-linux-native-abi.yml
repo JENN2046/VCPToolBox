@@ -62,20 +62,27 @@ jobs:
           set -euo pipefail
           build_once() {
             local root="$1"
+            local iteration="$2"
             rm -rf "$root"
             mkdir -p "$root"
             cp -a rust-vexus-lite "$root/rust-vexus-lite"
             find "$root/rust-vexus-lite" -maxdepth 1 -type f -name '*.node' -delete
             rm -rf "$root/rust-vexus-lite/target"
             pushd "$root/rust-vexus-lite" >/dev/null
-            CC=gcc-12 CXX=g++-12 RUSTUP_TOOLCHAIN=1.89.0 \
-              /tmp/napi-cli/node_modules/.bin/napi build --platform --release --cargo-flags="--locked"
-            test -f vexus-lite.linux-x64-gnu.node
+            if ! CC=gcc-12 CXX=g++-12 RUSTUP_TOOLCHAIN=1.89.0 \
+              /tmp/napi-cli/node_modules/.bin/napi build --platform --release --cargo-flags="--locked"; then
+              printf '::error file=rust-vexus-lite/Cargo.toml,title=Vexus native build failed::iteration=%s; napi build exited unsuccessfully\n' "$iteration"
+              return 1
+            fi
+            if [[ ! -f vexus-lite.linux-x64-gnu.node ]]; then
+              printf '::error file=rust-vexus-lite/Cargo.toml,title=Vexus artifact missing::iteration=%s; napi build did not create the Linux x64 GNU artifact\n' "$iteration"
+              return 1
+            fi
             popd >/dev/null
           }
 
-          build_once /tmp/vexus-abi-build-1
-          build_once /tmp/vexus-abi-build-2
+          build_once /tmp/vexus-abi-build-1 1
+          build_once /tmp/vexus-abi-build-2 2
 
           B1=/tmp/vexus-abi-build-1/rust-vexus-lite/vexus-lite.linux-x64-gnu.node
           B2=/tmp/vexus-abi-build-2/rust-vexus-lite/vexus-lite.linux-x64-gnu.node
@@ -84,9 +91,14 @@ jobs:
           SHA2="$(sha256sum "$B2" | awk '{print $1}')"
           TRACKED_SHA="$(sha256sum "$TRACKED" | awk '{print $1}')"
 
-          test "$SHA1" = "$SHA2"
-          cmp -s "$B1" "$B2"
-          test "$SHA1" = "$TRACKED_SHA"
+          if [[ "$SHA1" != "$SHA2" ]] || ! cmp -s "$B1" "$B2"; then
+            printf '::error file=rust-vexus-lite/vexus-lite.linux-x64-gnu.node,title=Vexus source builds differ::build_1_sha256=%s; build_2_sha256=%s\n' "$SHA1" "$SHA2"
+            exit 1
+          fi
+          if [[ "$SHA1" != "$TRACKED_SHA" ]]; then
+            printf '::error file=rust-vexus-lite/vexus-lite.linux-x64-gnu.node,title=Vexus tracked artifact differs::source_sha256=%s; tracked_sha256=%s\n' "$SHA1" "$TRACKED_SHA"
+            exit 1
+          fi
 
           printf 'SOURCE_BUILD_SHA256=%s\nTRACKED_BINARY_SHA256=%s\nREPRODUCIBLE=PASS\nSOURCE_ARTIFACT_MATCH=PASS\n' \
             "$SHA1" "$TRACKED_SHA"
