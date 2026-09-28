@@ -10,6 +10,12 @@ const DEFAULT_DECISION_PROMPT_PATH = path.join(__dirname, '..', 'TVStxt', 'JevTo
 const IMAGE_URL_RE = /^(?:https?:\/\/|file:\/\/|data:image\/)/i;
 const BILIBILI_RESOURCE_RE = /(?:bilibili\.com\/video\/|b23\.tv\/|^BV[0-9A-Za-z]+(?:\?p=\d+)?$|^av\d+$)/i;
 const EXPLICIT_SIZE_RE = /\b(\d{3,4})\s*[x×:]\s*(\d{3,4})\b/i;
+const SEMANTIC_ENVELOPE_MAX_BYTES = 16 * 1024;
+const SEMANTIC_LIST_MAX_ITEMS = 32;
+const SEMANTIC_ITEM_MAX_BYTES = 4 * 1024;
+const SEMANTIC_RESOURCE_MAX_ITEMS = 8;
+const SEMANTIC_RESOURCE_MAX_ITEM_BYTES = 2 * 1024;
+const SEMANTIC_RESOURCE_MAX_BYTES = 8 * 1024;
 
 function normalizeText(value) {
     return String(value || '').trim();
@@ -247,9 +253,10 @@ class JevToolCallExp {
             if (!tool) throw new Error(`JEV 配置缺少工具 "${toolKey}"。`);
 
             let args;
-            if (tool.argumentMode === 'semantic_passthrough') {
+            const hasArgumentMode = Object.hasOwn(tool, 'argumentMode');
+            if (hasArgumentMode && tool.argumentMode === 'semantic_passthrough') {
                 args = this._buildSemanticPassthroughArgs(toolKey, tool, parsed);
-            } else if (tool.argumentMode) {
+            } else if (hasArgumentMode) {
                 throw new Error('JEV 工具 "' + toolKey + '" 使用了不支持的 argumentMode "' + tool.argumentMode + '"。');
             } else if (parsed.categoryKey === 'web_search') {
                 args = await this._buildWebSearchArgs(toolKey, tool, parsed);
@@ -291,19 +298,51 @@ class JevToolCallExp {
     }
 
     _buildSemanticPassthroughArgs(toolKey, tool, parsed) {
+        const boundedList = (values, label, {
+            maxItems = SEMANTIC_LIST_MAX_ITEMS,
+            maxItemBytes = SEMANTIC_ITEM_MAX_BYTES,
+            maxTotalBytes = SEMANTIC_ENVELOPE_MAX_BYTES
+        } = {}) => {
+            if (values.length > maxItems) {
+                throw new Error(`JEV ${label} 超过最大条目数 ${maxItems}。`);
+            }
+            let totalBytes = 0;
+            const result = values.map(value => {
+                const text = String(value);
+                const bytes = Buffer.byteLength(text, 'utf8');
+                if (bytes > maxItemBytes) {
+                    throw new Error(`JEV ${label} 单项超过最大字节数 ${maxItemBytes}。`);
+                }
+                totalBytes += bytes;
+                return text;
+            });
+            if (totalBytes > maxTotalBytes) {
+                throw new Error(`JEV ${label} 超过最大总字节数 ${maxTotalBytes}。`);
+            }
+            return result;
+        };
+
+        if (Buffer.byteLength(parsed.raw, 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
+            throw new Error(`JEV semantic envelope 超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
+        }
+
         const args = { ...(tool.fixedArgs || {}) };
         args.jev_expression = parsed.raw;
         args.jev_category = parsed.categoryKey;
         args.jev_tool = toolKey;
 
         if (parsed.primary.length > 0) {
-            args.jev_primary = parsed.primary.slice();
+            args.jev_primary = boundedList(parsed.primary, 'semantic primary');
         }
         if (parsed.constraints.length > 0) {
-            args.jev_constraints = parsed.constraints.slice();
+            args.jev_constraints = boundedList(parsed.constraints, 'semantic constraints');
         }
         if (parsed.imageUrls.length > 0) {
-            args.jev_resources = parsed.imageUrls.slice();
+            args.jev_resources = boundedList(parsed.imageUrls, 'semantic resources', {
+                maxItems: SEMANTIC_RESOURCE_MAX_ITEMS,
+                maxItemBytes: SEMANTIC_RESOURCE_MAX_ITEM_BYTES,
+                maxTotalBytes: SEMANTIC_RESOURCE_MAX_BYTES
+            });
         }
 
         return args;

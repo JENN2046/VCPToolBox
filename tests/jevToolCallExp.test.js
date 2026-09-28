@@ -193,6 +193,81 @@ test('semantic_passthrough 对未知 argumentMode fail closed', async () => {
     );
 });
 
+test('任何显式 falsy argumentMode 都 fail closed 而不是回落旧 builder', async () => {
+    for (const argumentMode of ['', false, 0, null]) {
+        const planner = new JevToolCallExp({
+            config: {
+                version: 1,
+                virtualToolName: 'JEV',
+                maxExpandedCalls: 5,
+                categories: {
+                    daily_tools: {
+                        aliases: ['业务运营'],
+                        defaultTool: 'calculator',
+                        tools: {
+                            calculator: {
+                                plugin: 'ExternalOperations',
+                                argumentMode
+                            }
+                        }
+                    }
+                }
+            },
+            decisionPrompts: {},
+            jevClient: { isConfigured() { return false; } }
+        });
+
+        await assert.rejects(
+            planner.plan('{业务运营}计算【2+2】'),
+            /不支持的 argumentMode/
+        );
+    }
+});
+
+test('semantic_passthrough 对资源数量、单项字节和总 envelope 做硬上限', async () => {
+    const planner = new JevToolCallExp({
+        config: {
+            version: 1,
+            virtualToolName: 'JEV',
+            maxExpandedCalls: 5,
+            categories: {
+                operations: {
+                    aliases: ['业务运营'],
+                    defaultTool: 'ops',
+                    tools: {
+                        ops: {
+                            plugin: 'ExternalOperations',
+                            argumentMode: 'semantic_passthrough'
+                        }
+                    }
+                }
+            }
+        },
+        decisionPrompts: {},
+        jevClient: { isConfigured() { return false; } }
+    });
+
+    const manyResources = Array.from(
+        { length: 9 },
+        (_, index) => `[https://example.com/${index}]`
+    ).join('');
+    await assert.rejects(
+        planner.plan(`{业务运营}【批量资源】${manyResources}`),
+        /semantic resources 超过最大条目数 8/
+    );
+
+    const oversizedResource = 'https://example.com/' + 'a'.repeat(2050);
+    await assert.rejects(
+        planner.plan(`{业务运营}【单个资源】[${oversizedResource}]`),
+        /semantic resources 单项超过最大字节数 2048/
+    );
+
+    await assert.rejects(
+        planner.plan('{业务运营}【' + 'x'.repeat(17000) + '】'),
+        /semantic envelope 超过最大字节数 16384/
+    );
+});
+
 test('联网搜索默认使用 VSearch grounding 模板且不调用 Jev', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     const calls = await planner.plan(
