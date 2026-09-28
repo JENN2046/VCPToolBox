@@ -24,6 +24,13 @@ let apiBasePort = 443;
 let apiImagePath = USE_PLAN_API ? '/api/plan/v3/images/generations' : '/api/v3/images/generations';
 let apiModelsPath = '/api/v3/models';
 
+function deriveModelsPath(imagePath) {
+    const pathname = imagePath.split('?')[0].replace(/\/$/, '');
+    if (pathname === '/api/plan/v3/images/generations') return '/api/v3/models';
+    const match = pathname.match(/^(.*)\/images\/generations$/);
+    return match ? `${match[1]}/models` : null;
+}
+
 if (RAW_API_URL) {
     try {
         const parsedUrl = new URL(RAW_API_URL);
@@ -31,12 +38,26 @@ if (RAW_API_URL) {
         apiBaseHost = parsedUrl.hostname;
         apiBasePort = parsedUrl.port ? parseInt(parsedUrl.port, 10) : (apiProtocol === 'http:' ? 80 : 443);
         apiImagePath = parsedUrl.pathname + parsedUrl.search;
-        // 如果是 plan 路径，models 默认还是回退到 /api/v3/models
-        apiModelsPath = '/api/v3/models';
+        apiModelsPath = deriveModelsPath(apiImagePath);
     } catch (e) {
         console.error(`[DoubaoGen] 解析自定义 VOLCENGINE_API_URL 失败: ${e.message}，将使用默认配置`);
     }
 }
+
+// Never reuse models fetched from a different relay, plan mode, or endpoint.
+// Hash the URL components so any query credentials are never stored verbatim.
+function modelCacheScope(protocol, host, port, imagePath, modelsPath) {
+    return crypto.createHash('sha256').update(JSON.stringify({
+        protocol,
+        host: host.toLowerCase(),
+        port,
+        imagePath,
+        modelsPath
+    })).digest('hex');
+}
+const MODEL_CACHE_SCOPE = modelCacheScope(
+    apiProtocol, apiBaseHost, apiBasePort, apiImagePath, apiModelsPath
+);
 
 const DEFAULT_MODEL_ID = process.env.SEEDREAM_MODEL_ID || (USE_PLAN_API ? 'doubao-seedream-5.0-lite' : 'doubao-seedream-5-0-260128');
 const DEFAULT_RESOLUTION = process.env.DEFAULT_RESOLUTION || '2K';
@@ -313,6 +334,7 @@ async function callAPI(requestBody, retryCount = 0, _failedModels = null) {
 
 async function discoverFallbackModel(excludeModels) {
     try {
+        if (!apiModelsPath) return null;
         const cached = loadModelCache();
         if (cached && cached.length > 0) {
             const alt = cached.find(m => !excludeModels.has(m.id));
@@ -549,7 +571,10 @@ function loadModelCache() {
     try {
         if (existsSync(CACHE_FILE_PATH)) {
             const data = JSON.parse(readFileSync(CACHE_FILE_PATH, 'utf8'));
-            if (data.models && data.modelsCachedAt && Date.now() - data.modelsCachedAt < MODEL_CACHE_TTL_MS) {
+            if (data.modelCacheScope === MODEL_CACHE_SCOPE
+                && Array.isArray(data.models)
+                && data.modelsCachedAt
+                && Date.now() - data.modelsCachedAt < MODEL_CACHE_TTL_MS) {
                 debugLog(`使用缓存的模型列表 (${data.models.length}个)`);
                 return data.models;
             }
@@ -566,6 +591,7 @@ function saveModelCache(models) {
         } catch { /* ignore */ }
         cache.models = models;
         cache.modelsCachedAt = Date.now();
+        cache.modelCacheScope = MODEL_CACHE_SCOPE;
         writeFileSync(CACHE_FILE_PATH, JSON.stringify(cache, null, 2));
     } catch (e) {
         log('warn', `模型缓存写入失败: ${e.message}`);
@@ -573,6 +599,9 @@ function saveModelCache(models) {
 }
 
 async function handleListModels(args) {
+    if (!apiModelsPath) {
+        throw new Error('无法从自定义图像 API 地址推断模型目录；请直接指定 model。');
+    }
     const forceRefresh = args.refresh === true;
 
     if (!forceRefresh) {

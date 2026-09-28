@@ -218,6 +218,12 @@ test('case-only note rename restores the original if cleanup fails', async () =>
 
 test('Doubao model discovery sends its credential only to the configured endpoint origin', async () => {
   const source = fs.readFileSync(path.join(__dirname, '../Plugin/DoubaoGen/DoubaoGen.js'), 'utf8');
+  const deriveSource = source.match(/function deriveModelsPath\([\s\S]*?\n\}/u)?.[0];
+  const deriveModelsPath = vm.runInNewContext(`${deriveSource}\nderiveModelsPath`);
+  assert.equal(deriveModelsPath('/api/plan/v3/images/generations'), '/api/v3/models');
+  assert.equal(deriveModelsPath('/v1/images/generations'), '/v1/models');
+  assert.equal(deriveModelsPath('/relay/v1/images/generations?token=hidden'), '/relay/v1/models');
+  assert.equal(deriveModelsPath('/custom/generate'), null);
   const discovery = source.match(/async function discoverFallbackModel\([\s\S]*?\n\}/u)?.[0];
   const listModels = source.match(/async function handleListModels\([\s\S]*?\n\}/u)?.[0];
   for (const method of [discovery, listModels]) {
@@ -235,13 +241,57 @@ test('Doubao model discovery sends its credential only to the configured endpoin
       return { statusCode: 200, body: { data: [{ id: 'seedream-test' }] } };
     },
     apiProtocol: 'http:', apiBaseHost: 'relay.example.test', apiBasePort: 18765,
-    apiModelsPath: '/api/v3/models', saveModelCache: () => {}
+    apiModelsPath: deriveModelsPath('/v1/images/generations'), saveModelCache: () => {}
   });
   assert.equal(await discover(new Set()), 'seedream-test');
   assert.equal(request.protocol, 'http:');
   assert.equal(request.hostname, 'relay.example.test');
   assert.equal(request.port, 18765);
+  assert.equal(request.path, '/v1/models');
   assert.equal(request.headers.Authorization, 'Bearer test-key');
+
+  let attemptedRequest = false;
+  const noCatalog = vm.runInNewContext(`${discovery}\ndiscoverFallbackModel`, {
+    apiModelsPath: null,
+    loadModelCache: () => { throw new Error('cache must not be read'); },
+    netRequest: () => { attemptedRequest = true; }
+  });
+  assert.equal(await noCatalog(new Set()), null);
+  assert.equal(attemptedRequest, false);
+});
+
+test('Doubao model cache rejects entries from another endpoint or legacy cache', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../Plugin/DoubaoGen/DoubaoGen.js'), 'utf8');
+  const scopeSource = source.match(/function modelCacheScope\([\s\S]*?\n\}/u)?.[0];
+  const modelCacheScope = vm.runInNewContext(`${scopeSource}\nmodelCacheScope`, {
+    crypto: require('node:crypto')
+  });
+  const planScope = modelCacheScope('https:', 'ark.cn-beijing.volces.com', 443,
+    '/api/plan/v3/images/generations', '/api/v3/models');
+  assert.notEqual(planScope, modelCacheScope('https:', 'relay.example.test', 443,
+    '/api/plan/v3/images/generations', '/api/v3/models'));
+  assert.notEqual(planScope, modelCacheScope('https:', 'ark.cn-beijing.volces.com', 443,
+    '/api/v3/images/generations', '/api/v3/models'));
+  const loadSource = source.match(/function loadModelCache\([\s\S]*?\n\}/u)?.[0];
+  const saveSource = source.match(/function saveModelCache\([\s\S]*?\n\}/u)?.[0];
+  let stored = JSON.stringify({ models: [{ id: 'stale' }], modelsCachedAt: Date.now(), modelCacheScope: 'other' });
+  const { loadModelCache, saveModelCache } = vm.runInNewContext(
+    `${loadSource}\n${saveSource}\n({ loadModelCache, saveModelCache })`,
+    {
+      CACHE_FILE_PATH: 'isolated-test-cache', MODEL_CACHE_SCOPE: 'current-catalog',
+      MODEL_CACHE_TTL_MS: 24 * 60 * 60 * 1000,
+      existsSync: () => true,
+      readFileSync: () => stored,
+      writeFileSync: (_path, content) => { stored = content; },
+      debugLog: () => {}, log: () => {}
+    }
+  );
+  assert.equal(loadModelCache(), null);
+  stored = JSON.stringify({ models: [{ id: 'legacy' }], modelsCachedAt: Date.now() });
+  assert.equal(loadModelCache(), null);
+  saveModelCache([{ id: 'current' }]);
+  assert.equal(JSON.parse(stored).modelCacheScope, 'current-catalog');
+  assert.equal(loadModelCache()[0].id, 'current');
 });
 
 test('DreamWave narrows public diary files before native TopK', async () => {

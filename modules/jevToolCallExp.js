@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const defaultJevClient = require('./jevClient');
+const { getSleepDurationMs } = require('../Plugin/VCPSleep/sleepDuration');
 
 const DEFAULT_CONFIG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_tool_call_exp.json');
 const DEFAULT_DECISION_PROMPT_PATH = path.join(__dirname, '..', 'TVStxt', 'JevToolCallDecision.txt');
@@ -265,13 +266,16 @@ class JevToolCallExp {
                 args.tool_password = inheritedArgs.tool_password;
             }
 
+            const plannedRiver = toolKey === 'agent_assistant' ? args.river : null;
+            if (plannedRiver) delete args.river;
+
             calls.push({
                 name: tool.plugin,
                 args,
                 archery: inheritedMeta.archery === true,
                 archeryNoReply: inheritedMeta.archeryNoReply === true,
                 markHistory: inheritedMeta.markHistory === true,
-                river: inheritedMeta.river || null,
+                river: inheritedMeta.river || plannedRiver || null,
                 vref: inheritedMeta.vref || null,
                 jev: {
                     category: parsed.categoryKey,
@@ -597,10 +601,17 @@ class JevToolCallExp {
         }
 
         if (toolKey === 'sleep') {
-            const duration = constraints.find(value => (
-                /\d+\s*(?:秒|分钟|小时|天)|半小时|一会儿|片刻/.test(value)
-            ));
-            if (!duration) throw new Error('睡眠需要在 [] 中提供时长。');
+            const duration = constraints.map(value => (
+                value.trim() === '半小时' ? '30分钟' : value.trim()
+            )).find(value => {
+                try {
+                    getSleepDurationMs({ sleepTime: value });
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            });
+            if (!duration) throw new Error('睡眠需要在 [] 中提供 0-12 小时的明确有效时长。');
             args.sleeptime = duration;
             if (main) args.tips = main;
             return args;

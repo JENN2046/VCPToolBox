@@ -484,9 +484,9 @@ test('日用工具动作词确定性路由到六类真实插件', async () => {
         agent_name: '小娜',
         prompt: '我是Nova，我想请你检查这份方案',
         temporary_contact: 'true',
-        task_delegation: 'true',
-        river: 'last:3'
+        task_delegation: 'true'
     });
+    assert.equal(assistant.river, 'last:3');
 
     const [sleep] = await planner.plan(
         '请使用 {日用工具} 睡眠[10分钟]，醒来后提醒【重新检查异步任务状态】。'
@@ -504,6 +504,18 @@ test('日用工具动作词确定性路由到六类真实插件', async () => {
     assert.equal(music.args.stageMode, 'starborn');
 
     assert.equal(decisions.length, 0);
+});
+
+test('JEV 睡眠只展开 VCPSleep 可接受的时长', async () => {
+    const { planner } = makePlanner();
+    const [halfHour] = await planner.plan('请使用 {日用工具} 睡眠[半小时]，醒来后提醒【继续任务】。');
+    assert.equal(halfHour.args.sleeptime, '30分钟');
+    for (const duration of ['1天', '一会儿', '片刻', '13小时', '0秒']) {
+        await assert.rejects(
+            planner.plan(`请使用 {日用工具} 睡眠[${duration}]，醒来后提醒【继续任务】。`),
+            /0-12 小时的明确有效时长/
+        );
+    }
 });
 
 test('LightMemo 支持全知识库、默认数量和显式索引前缀', async () => {
