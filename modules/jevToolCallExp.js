@@ -247,7 +247,11 @@ class JevToolCallExp {
             if (!tool) throw new Error(`JEV 配置缺少工具 "${toolKey}"。`);
 
             let args;
-            if (parsed.categoryKey === 'web_search') {
+            if (tool.argumentMode === 'semantic_passthrough') {
+                args = this._buildSemanticPassthroughArgs(toolKey, tool, parsed);
+            } else if (tool.argumentMode) {
+                throw new Error('JEV 工具 "' + toolKey + '" 使用了不支持的 argumentMode "' + tool.argumentMode + '"。');
+            } else if (parsed.categoryKey === 'web_search') {
                 args = await this._buildWebSearchArgs(toolKey, tool, parsed);
             } else if (parsed.categoryKey === 'image_generation') {
                 args = await this._buildImageArgs(toolKey, tool, parsed);
@@ -284,6 +288,25 @@ class JevToolCallExp {
             });
         }
         return calls;
+    }
+
+    _buildSemanticPassthroughArgs(toolKey, tool, parsed) {
+        const args = { ...(tool.fixedArgs || {}) };
+        args.jev_expression = parsed.raw;
+        args.jev_category = parsed.categoryKey;
+        args.jev_tool = toolKey;
+
+        if (parsed.primary.length > 0) {
+            args.jev_primary = parsed.primary.slice();
+        }
+        if (parsed.constraints.length > 0) {
+            args.jev_constraints = parsed.constraints.slice();
+        }
+        if (parsed.imageUrls.length > 0) {
+            args.jev_resources = parsed.imageUrls.slice();
+        }
+
+        return args;
     }
 
     _normalizeBilibiliSelection(toolKeys, parsed) {
