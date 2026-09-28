@@ -786,7 +786,18 @@ async function injectStaticPluginPlaceholdersInMessages(messages, context = {}) 
     if (!Array.isArray(messages)) return messages;
 
     for (const message of messages) {
-        if (!message || message.role !== 'system') continue;
+        const systemMarkers = ['[系统提示:]', '[系统邀请指令:]', '[系统通知:]', '[系统通知]'];
+        const firstText = typeof message?.content === 'string'
+            ? message.content
+            : Array.isArray(message?.content)
+                ? message.content.find(part => part?.type === 'text' && typeof part.text === 'string')?.text
+                : undefined;
+        const isSystemLike = message?.role === 'system' || (
+            message?.role === 'user' &&
+            typeof firstText === 'string' &&
+            systemMarkers.some(marker => firstText.startsWith(marker))
+        );
+        if (!isSystemLike) continue;
 
         if (typeof message.content === 'string') {
             message.content = await injectStaticPluginPlaceholders(message.content, {

@@ -346,7 +346,15 @@ function createDefaultExecutionBridgeRegistry() {
             );
 
             if (context.toolName === 'VCPSleep') {
-                context.triggerSleepDream(plugin, toolArgs);
+                // Keep the dream parallel with sleep, but only for a duration the
+                // stdio plugin itself will accept. Invalid calls still reach the
+                // plugin so its existing error response remains authoritative.
+                try {
+                    require('../Plugin/VCPSleep/sleepDuration').getSleepDurationMs(toolArgs);
+                    context.triggerSleepDream(plugin, toolArgs);
+                } catch (_) {
+                    // The plugin reports the validation error below.
+                }
             }
 
             const pluginOutput = await context.executeStdio(

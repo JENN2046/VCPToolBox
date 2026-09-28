@@ -311,6 +311,37 @@ test('Responses stream emits text and multiple function-call events', async t =>
   ]);
 });
 
+test('Responses stream keeps complete snapshot tool calls separate', async t => {
+  const upstream = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    const snapshot = { choices: [{ index: 0, message: {
+      role: 'assistant', tool_calls: [
+        { id: 'call_a', type: 'function', function: { name: 'first', arguments: '{"a":1}' } },
+        { id: 'call_b', type: 'function', function: { name: 'second', arguments: '{"b":2}' } }
+      ]
+    }, finish_reason: 'tool_calls' }] };
+    res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+    res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+    res.end('data: [DONE]\n\n');
+  });
+  const upstreamInfo = await listen(upstream);
+  process.env.PORT = String(upstreamInfo.port);
+  const bridgeInfo = await listen(http.createServer(createBridgeApp()));
+  t.after(async () => { await close(bridgeInfo.server); await close(upstreamInfo.server); });
+  const response = await fetch(`http://127.0.0.1:${bridgeInfo.port}/v1/responses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({ model: 'test-model', stream: true, input: 'run tools' })
+  });
+  const events = parseSseEvents(await response.text());
+  const calls = events.find(event => event.event === 'response.completed').data.response.output
+    .filter(item => item.type === 'function_call');
+  assert.deepEqual(calls.map(call => [call.call_id, call.name, call.arguments]), [
+    ['call_a', 'first', '{"a":1}'],
+    ['call_b', 'second', '{"b":2}']
+  ]);
+});
+
 
 test('Responses non-streaming reasoning stays native and precedes visible output and tool calls', async t => {
   const upstream = express();

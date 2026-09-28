@@ -2068,11 +2068,16 @@ class KnowledgeBaseManager {
         );
 
         const placeholders = diaryNames.map(() => '?').join(',');
-        const allowedFileIds = this.db.prepare(
+        let allowedFileIds = this.db.prepare(
             `SELECT id FROM files WHERE diary_name IN (${placeholders})`
         ).all(...diaryNames)
             .map(row => Number(row.id))
             .filter(Number.isSafeInteger);
+        // A caller may narrow, but never widen, the SQL-derived diary scope.
+        if (Array.isArray(options.fileIdFilter)) {
+            const requestedIds = new Set(options.fileIdFilter.filter(Number.isSafeInteger));
+            allowedFileIds = allowedFileIds.filter(id => requestedIds.has(id));
+        }
         if (allowedFileIds.length === 0) {
             const error = new Error(
                 'Native River query resolved an empty file permission scope'

@@ -896,25 +896,29 @@ function createResponsesStreamTransformer(res, model) {
             });
         },
 
-        onToolCalls(toolCalls) {
+        onToolCalls(toolCalls, snapshot = false) {
             if (terminalEventSent || res.destroyed || res.writableEnded) return;
             if (!headersSent) this.onStart();
             if (!Array.isArray(toolCalls)) return;
-            for (const toolCall of toolCalls) {
-                const index = Number.isInteger(toolCall?.index) ? toolCall.index : 0;
+            for (const [position, toolCall] of toolCalls.entries()) {
+                const index = Number.isInteger(toolCall?.index) ? toolCall.index : (snapshot ? position : 0);
                 const state = ensureFunctionCall(index, toolCall);
                 const functionData = toolCall?.function || {};
                 const argumentsDelta = typeof functionData.arguments === 'string'
                     ? functionData.arguments
                     : (typeof toolCall?.arguments === 'string' ? toolCall.arguments : '');
                 if (!argumentsDelta) continue;
-                state.arguments += argumentsDelta;
+                const emittedDelta = snapshot && argumentsDelta.startsWith(state.arguments)
+                    ? argumentsDelta.slice(state.arguments.length)
+                    : argumentsDelta;
+                state.arguments = snapshot ? argumentsDelta : state.arguments + argumentsDelta;
                 state.item.arguments = state.arguments;
+                if (!emittedDelta) continue;
                 writeSseEvent('response.function_call_arguments.delta', {
                     type: 'response.function_call_arguments.delta',
                     item_id: state.item.id,
                     output_index: responsePayload.output.indexOf(state.item),
-                    delta: argumentsDelta
+                    delta: emittedDelta
                 });
             }
         },
@@ -1258,9 +1262,14 @@ async function forwardToChatCompletions(req, res, {
                     if (typeof delta === 'string' && delta.length > 0) {
                         transformer.onDelta(delta);
                     }
-                    const toolCalls = choice?.delta?.tool_calls || choice?.message?.tool_calls;
-                    if (Array.isArray(toolCalls) && typeof transformer.onToolCalls === 'function') {
-                        transformer.onToolCalls(toolCalls);
+                    const deltaToolCalls = choice?.delta?.tool_calls;
+                    const snapshotToolCalls = choice?.message?.tool_calls;
+                    if (typeof transformer.onToolCalls === 'function') {
+                        if (Array.isArray(deltaToolCalls)) {
+                            transformer.onToolCalls(deltaToolCalls);
+                        } else if (Array.isArray(snapshotToolCalls)) {
+                            transformer.onToolCalls(snapshotToolCalls, true);
+                        }
                     }
                     if (json?.usage) {
                         lastUsage = json.usage;

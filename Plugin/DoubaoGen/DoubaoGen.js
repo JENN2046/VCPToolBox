@@ -327,9 +327,9 @@ async function discoverFallbackModel(excludeModels) {
         if (!kc) return null;
 
         const res = await netRequest({
-            protocol: 'https:',
-            hostname: 'ark.cn-beijing.volces.com',
-            port: 443,
+            protocol: apiProtocol,
+            hostname: apiBaseHost,
+            port: apiBasePort,
             path: apiModelsPath,
             method: 'GET',
             headers: { 'Authorization': `Bearer ${kc.key}` }
@@ -589,9 +589,9 @@ async function handleListModels(args) {
     if (!kc) throw new Error('没有可用的 API 密钥');
 
     const res = await netRequest({
-        protocol: 'https:',
-        hostname: 'ark.cn-beijing.volces.com',
-        port: 443,
+        protocol: apiProtocol,
+        hostname: apiBaseHost,
+        port: apiBasePort,
         path: apiModelsPath,
         method: 'GET',
         headers: { 'Authorization': `Bearer ${kc.key}` }

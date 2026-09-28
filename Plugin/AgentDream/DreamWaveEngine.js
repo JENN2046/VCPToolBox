@@ -418,6 +418,23 @@ class DreamWaveEngine {
         const observationText = String(queryText || '').substring(0, 4000);
         let allResults = [];
         let riverMemoUsed = false;
+        let fileIdFilter;
+        if (this.db && typeof this.db.prepare === 'function') {
+            const placeholders = indices.map(() => '?').join(',');
+            const scopedFiles = this.db.prepare(
+                `SELECT id, path FROM files WHERE diary_name IN (${placeholders})`
+            ).all(...indices);
+            fileIdFilter = [];
+            for (const file of scopedFiles) {
+                const absolutePath = path.resolve(DAILY_NOTE_ROOT, file.path);
+                const relativePath = path.relative(DAILY_NOTE_ROOT, absolutePath);
+                if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) continue;
+                if (await this._isDiaryBelongsToAgent(absolutePath, agentName)) {
+                    fileIdFilter.push(Number(file.id));
+                }
+            }
+            if (fileIdFilter.length === 0) return [];
+        }
 
         if (typeof this.kb.executeNativeRiverQuery === 'function') {
             try {
@@ -429,6 +446,7 @@ class DreamWaveEngine {
                     {
                         agentId: agentName,
                         diaryNames: indices,
+                        fileIdFilter,
                         topK: oversampleK,
                         sourceObservationConfig: {
                             baseTagBoost: 0.6,

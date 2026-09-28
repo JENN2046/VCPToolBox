@@ -1,6 +1,8 @@
 const express = require('express');
 const fs = require('fs').promises;
+const { constants: fsConstants } = require('fs');
 const path = require('path');
+const { randomUUID } = require('crypto');
 const { Worker } = require('worker_threads');
 
 /**
@@ -827,34 +829,55 @@ module.exports = function (dailyNoteRootPath, DEBUG_MODE, options = {}) {
                     await fs.mkdir(targetFolderPath, { recursive: true });
 
                     if (isRename) {
-                        // 检查新目标文件是否已存在（防止冲突静默覆盖已有日记）
+                        let sameFile = false;
                         try {
-                            await fs.access(newFilePath);
-                            const err = new Error(`文件 "${actualNewFileName}" 已存在，请使用其他名称`);
-                            err.code = 'EEXIST';
-                            throw err;
+                            const [sourceStat, targetStat] = await Promise.all([
+                                fs.stat(oldFilePath), fs.stat(newFilePath)
+                            ]);
+                            sameFile = fileName.toLowerCase() === actualNewFileName.toLowerCase()
+                                && sourceStat.dev === targetStat.dev
+                                && sourceStat.ino === targetStat.ino;
+                            if (!sameFile) {
+                                const err = new Error(`文件 "${actualNewFileName}" 已存在，请使用其他名称`);
+                                err.code = 'EEXIST';
+                                throw err;
+                            }
                         } catch (err) {
                             if (err.code !== 'ENOENT') throw err;
                         }
 
-                        // 1. 写入新文件（内容是最新编辑的 content）
-                        await fs.writeFile(newFilePath, content, 'utf-8');
-
-                        // 2. 物理删除旧文件
+                        // Case-insensitive filesystems resolve both spellings to the
+                        // same inode. Move the original aside before exclusively
+                        // creating the new spelling so rollback can restore it.
+                        const holdingPath = sameFile
+                            ? path.join(targetFolderPath, `.vcp-rename-${randomUUID()}`)
+                            : null;
+                        if (holdingPath) await fs.rename(oldFilePath, holdingPath);
+                        let destinationCreated = false;
                         try {
-                            await fs.unlink(oldFilePath);
-                        } catch (unlinkErr) {
-                            if (unlinkErr.code !== 'ENOENT') {
-                                try {
-                                    await fs.unlink(newFilePath);
-                                } catch (rollbackErr) {
-                                    throw new AggregateError(
-                                        [unlinkErr, rollbackErr],
-                                        `Could not delete the original file or roll back the new file: ${unlinkErr.message}; ${rollbackErr.message}`
-                                    );
-                                }
-                                throw unlinkErr;
+                            const destination = await fs.open(newFilePath, 'wx');
+                            destinationCreated = true;
+                            try {
+                                await destination.writeFile(content, 'utf-8');
+                            } finally {
+                                await destination.close();
                             }
+                            await fs.unlink(holdingPath || oldFilePath);
+                        } catch (mutationError) {
+                            const rollbackErrors = [];
+                            if (destinationCreated) {
+                                try { await fs.unlink(newFilePath); } catch (error) { rollbackErrors.push(error); }
+                            }
+                            if (holdingPath) {
+                                try {
+                                    await fs.copyFile(holdingPath, oldFilePath, fsConstants.COPYFILE_EXCL);
+                                    await fs.unlink(holdingPath);
+                                } catch (error) { rollbackErrors.push(error); }
+                            }
+                            if (rollbackErrors.length) {
+                                throw new AggregateError([mutationError, ...rollbackErrors], 'Could not roll back failed note rename');
+                            }
+                            throw mutationError;
                         }
 
                         dirCache.invalidate(targetFolderPath);
