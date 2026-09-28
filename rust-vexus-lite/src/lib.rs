@@ -5,6 +5,7 @@ mod memo_artifact_builder;
 mod memo_dtsc;
 mod memo_pipeline;
 mod memo_sensing;
+mod memo_thinking;
 mod result_deduplicator;
 mod rivermemo_topology_v3;
 
@@ -914,6 +915,23 @@ impl VexusIndex {
         memo_artifact_builder::rebuild_with_runtime(self.memo_runtime.clone(), db_path, input_json)
     }
 
+    /// 从已有 Sense 观测构建方法模块框架，不重新感应或修改图资产。
+    /// 输入仅包含观测句柄、显式思维簇范围、候选 ID 与阶段配额。
+    #[napi]
+    pub fn plan_memo_thinking(
+        &self,
+        db_path: String,
+        artifact_sig: String,
+        input_json: String,
+    ) -> AsyncTask<memo_thinking::ThinkingTask> {
+        AsyncTask::new(memo_thinking::ThinkingTask {
+            runtime: self.memo_runtime.clone(),
+            db_path,
+            artifact_sig,
+            input_json,
+        })
+    }
+
     /// 释放本索引持有的统一 Memo 图快照。
     #[napi]
     pub fn clear_memo_runtime(&self) -> Result<()> {
@@ -1535,13 +1553,17 @@ fn sqlite_database_identity(db_path: &str) -> String {
         .to_lowercase()
 }
 
+fn json_string(value: &str) -> String {
+    // 正确处理引号、反斜杠和所有控制字符
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
+}
+
+/// 仅返回 JSON 字符串字面量的内部转义内容（不含外层引号），
+/// 供手工拼接 `"\"{}\""` 形式的 JSON 片段使用。
 fn json_escape(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
+    let quoted = json_string(value);
+    // serde_json 输出恒为 `"..."`，去掉首尾引号即得转义正文
+    quoted[1..quoted.len() - 1].to_string()
 }
 
 fn f32_slice_to_base64(values: &[f32]) -> String {
