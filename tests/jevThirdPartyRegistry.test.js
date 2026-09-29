@@ -281,7 +281,7 @@ test('parameter provider state excludes consumed selectors while text retains or
                 urgent: type === 'boolean' ? String(urgent) : urgent ? 'Send' : 'normal',
                 text: remaining.filter(tag => !tag.startsWith('user:')).join('\n') });
             const { state, questions } = decisions.at(-1);
-            assert.deepEqual(state.constraints, remaining);
+            assert.deepEqual(state.constraints, remaining.filter(tag => !tag.startsWith('user:')));
             assert.deepEqual(state.primary, ['目标']);
             assert.equal(state.command, 'Send');
             assert.equal(Object.hasOwn(state, 'raw'), false);
@@ -289,6 +289,67 @@ test('parameter provider state excludes consumed selectors while text retains or
         }
         assert.equal(decisions.length, 4);
     }
+});
+
+function makeParameterControlManifest(pendingType = 'boolean') {
+    const manifest = makeMessageManifest();
+    manifest.jev.commands[0].parameters = {
+        mode: { type: 'enum', description: '模式', prefixes: ['mode'], values: { cool: '制冷', heat: '制热' }, aliases: { cool: ['制冷'] }, required: true },
+        power: { type: 'boolean', description: '开关', trueAliases: ['power-on', '开启'], falseAliases: ['power-off', '关闭'], required: true },
+        recipient: { type: 'text', source: 'constraints', prefixes: ['user'], required: true },
+        note: { type: 'text', source: 'constraints' },
+        urgent: pendingType === 'boolean'
+            ? { type: 'boolean', description: '是否紧急', default: false }
+            : { type: 'enum', description: '紧急程度', values: { normal: '普通', express: '紧急' }, default: 'normal' }
+    };
+    return manifest;
+}
+
+test('parameter provider cannot reuse consumed enum boolean or prefixed text controls', async () => {
+    for (const type of ['boolean', 'enum']) {
+        for (const configured of [false, true]) {
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest: makeParameterControlManifest(type) }], configured,
+                answers: state => {
+                    const reusedControl = state.constraints.some(value => value !== 'hello');
+                    return { p_urgent: type === 'boolean'
+                        ? { type: 'noul', noul: reusedControl ? 1 : 0 }
+                        : { type: 'choice', choice: reusedControl ? 'express' : 'normal', confidence: 1 } };
+                }
+            });
+            assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+            for (const [tags, mode, power] of [
+                [['mode:cool', 'power-on', 'user:Alice', '发送', 'hello'], 'cool', 'true'],
+                [['发送', 'COOL', '制冷', '开启', '开启', 'user:Alice', 'hello', 'SEND'], 'cool', 'true'],
+                [['user:Alice', '关闭', 'mode:heat', 'hello', '发送'], 'heat', 'false'],
+                [['发送', 'hello', 'MODE：cool', 'POWER_OFF', 'user:Alice'], 'cool', 'false'],
+                [['发送', 'mode:cool', 'power-on', 'user:Alice'], 'cool', 'true']
+            ]) {
+                const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【目标】${tags.map(tag => `[${tag}]`).join('')}`);
+                assert.deepEqual(call.args, { command: 'Send', mode, power, recipient: 'Alice',
+                    urgent: type === 'boolean' ? 'false' : 'normal', ...(tags.includes('hello') ? { note: 'hello' } : {}) });
+                if (configured) {
+                    assert.deepEqual(decisions.at(-1).state.constraints, tags.includes('hello') ? ['hello'] : []);
+                    assert.deepEqual(Object.keys(decisions.at(-1).questions), ['p_urgent']);
+                }
+            }
+            assert.equal(decisions.length, configured ? 5 : 0);
+        }
+    }
+});
+
+test('provider keeps unconsumed semantic hints primary and URLs after parameter controls', async () => {
+    const { planner, decisions } = makePlanner({ items: [{ manifest: makeParameterControlManifest() }], configured: true,
+        answers: state => ({ p_urgent: { type: 'noul', noul: state.constraints.includes('请尽快处理') ? 1 : 0 } }) });
+    const [call] = await planner.plan('{物联网控制} `SmartAC` 【目标】[mode:cool][发送][user:Alice][请尽快处理][关闭][hello][https://example.test/a.png]');
+    assert.deepEqual(call.args, { command: 'Send', mode: 'cool', power: 'false', recipient: 'Alice', urgent: 'true', note: '请尽快处理\nhello' });
+    assert.equal(decisions.length, 1);
+    const { state, questions } = decisions[0];
+    assert.deepEqual(state.constraints, ['请尽快处理', 'hello']);
+    assert.deepEqual(state.primary, ['目标']);
+    assert.deepEqual(state.urls, ['https://example.test/a.png']);
+    assert.equal(state.command, 'Send');
+    assert.equal(Object.hasOwn(state, 'raw'), false);
+    assert.deepEqual(Object.keys(questions), ['p_urgent']);
 });
 
 test('parameter provider retains constraints that did not select the command', async () => {

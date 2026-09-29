@@ -1237,7 +1237,13 @@ class JevToolCallExp {
                         instructions: this._thirdPartyInstructions(entry, `${task}。判断该参数是否应为真。`)
                     };
             }
-            const answers = await this._decideThirdParty(entry, parameterParsed, command.commandIdentifier, questions);
+            // consumed uses original constraint indices, not the already filtered
+            // parameter view; resolved controls must not influence other answers.
+            const providerParsed = {
+                ...parameterParsed,
+                constraints: constraints.filter((_, index) => !consumed.has(index))
+            };
+            const answers = await this._decideThirdParty(entry, providerParsed, command.commandIdentifier, questions);
             for (const item of pending) {
                 const answer = answers?.[`p_${item.name}`];
                 const decided = item.param.type === 'enum'
