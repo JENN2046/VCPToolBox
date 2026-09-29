@@ -174,6 +174,61 @@ test('disjoint boolean aliases remain executable in both directions', async () =
     assert.equal(decisions.length, 0);
 });
 
+test('boolean cross-value substring collisions reject explicit input before fallback', async () => {
+    for (const pair of [['on', 'only'], ['POWER_ON', 'power_only'], ['静音', '不要静音']]) {
+        for (const [trueAlias, falseAlias] of [pair, [...pair].reverse()]) {
+            for (const configured of [false, true]) {
+                const manifest = makeAcManifest();
+                manifest.jev.commands = [manifest.jev.commands[0]];
+                manifest.jev.commands[0].parameters = { power: {
+                    type: 'boolean', description: '开关', required: true, default: false,
+                    trueAliases: [trueAlias], falseAliases: [falseAlias]
+                } };
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, 'invalid');
+                assert.match(entry.validation.errors.join(), /子串包含/);
+                assert.equal(entry.callTemplate, null);
+                for (const input of pair) {
+                    for (const expression of [
+                        `{物联网控制} \`SmartAC\` 【${input}】`,
+                        `{物联网控制} \`SmartAC\` ${input}【目标】`,
+                        `{物联网控制} \`SmartAC\` 【目标】[${input}]`
+                    ]) {
+                        await assert.rejects(planner.plan(expression), /未通过校验/);
+                    }
+                }
+                assert.equal(decisions.length, 0);
+            }
+        }
+    }
+});
+
+test('boolean retains same-value containment and exact-only single-character aliases', async () => {
+    for (const pair of [[['on', 'only'], ['stop']], [['开'], ['打开']]]) {
+        for (const [trueAliases, falseAliases] of [pair, [...pair].reverse()]) {
+            for (const configured of [false, true]) {
+                const manifest = makeAcManifest();
+                manifest.jev.commands = [manifest.jev.commands[0]];
+                manifest.jev.commands[0].parameters = { power: {
+                    type: 'boolean', description: '开关', required: true, trueAliases, falseAliases
+                } };
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+                for (const [aliases, expected] of [[trueAliases, 'true'], [falseAliases, 'false']]) {
+                    for (const input of aliases) {
+                        for (const expression of [`{物联网控制} \`SmartAC\` 【${input}】`, `{物联网控制} \`SmartAC\` 【目标】[${input}]`]) {
+                            const [call] = await planner.plan(expression);
+                            assert.equal(call.args.power, expected);
+                        }
+                    }
+                }
+                assert.equal(decisions.length, 0);
+            }
+        }
+    }
+});
+
 test('boolean prefixes are rejected before defaults or provider decisions can hide explicit input', async () => {
     for (const configured of [false, true]) {
         for (const required of [false, true]) {

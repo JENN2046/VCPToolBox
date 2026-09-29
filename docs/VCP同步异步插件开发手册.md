@@ -1106,6 +1106,7 @@ JEV:「始」{物联网控制} `SmartAC` 打开空调【把客厅弄凉快些】
 - JEV 答案必须落在候选内，choice 置信度低于 0.55、或 noul 概率介于 0.3~0.7 时，视为未决，回退 `default`；没有 `default` 就不传该参数；
 - `prefixes` 仅支持 enum 和 `source: "constraints"` 的 text 参数，匹配 `[前缀:值]` 形式的约束；enum 前缀值不在选项中会直接报错；
 - boolean 不支持非空 `prefixes`，声明时会被拒绝；请用 `trueAliases` / `falseAliases` 声明值并直接传入 `[on]` / `[off]` 等约束，而非 `[power:on]`。省略 `prefixes` 或设置为空数组均可；
+- boolean 的 `trueAliases` 与 `falseAliases` 也必须避免归一化相等或多字符子串包含（如 `only` / `on`、`静音` / `不要静音`），否则声明无效；将这类正反别名改成互不包含的词，例如 `静音` / `有声`。同一布尔值内的包含、跨值的单字精确匹配规则仍保留；
 - 没有 `prefixes` 的 `constraints` 文本参数会接收剩余未被消费的约束；
 - `required: true` 的参数最终缺失时，调用直接报错，不会执行插件；
 - 参数名不能使用协议保留字段（`command`、`maid`、`tool_password`、`timely_contact`、`river` 等）或字符级精准类禁用名。
