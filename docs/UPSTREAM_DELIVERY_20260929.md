@@ -1,5 +1,14 @@
 # Upstream integration — 2026-09-29
 
+## Final bounded repair batch
+
+Jenn authorized repairing the two remaining review findings and then merging after validation/review gates. Production deployment/restarts are not part of this batch; third-party JEV remains disabled by default.
+
+- Aborted plugin discovery now invalidates executable JEV entries and advances the generation, including failures before the rebuild method runs. Pending older rebuilds cannot restore stale entries; notification failures are contained. Rejection during the earlier read-only manifest preflight preserves unchanged running state.
+- Shared third-party decision builders enforce a 64 KiB UTF-8 JSON budget for `{state, questions}`. Registration checks all normalized candidate criteria and repeated instructions using the default protocol. Runtime checks actual inputs/custom protocols before any provider call or default fallback. This is separate from the 16 KiB final-call limit and is not a model-token guarantee; model name/HTTP headers are outside this decision-data budget.
+- Seven added tests cover discovery/partial-registration failure, recovery, pending rebuild races, throwing notifications, intact preflight rejection, oversized aggregate criteria/instructions, exact escaped/multibyte byte boundaries, runtime custom protocol/input rejection and unchanged valid provider answers. Windows isolated regression: **304/304**, zero failed/skipped. Final Linux/build results and exact commit are recorded in the PR evidence.
+- No dependency/native/CI/runtime configuration changes; no real provider calls or production access in this repair batch.
+
 ## Scope and ancestry
 
 - Delivery branch: `codex/vcptoolbox-upstream-20260929`.

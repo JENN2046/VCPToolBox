@@ -18,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { SEMANTIC_ENVELOPE_MAX_BYTES, buildExpandedCallEnvelope } = require('./jevCallEnvelope');
+const { validateDeclarationDecisionSize } = require('./jevThirdPartyDecision');
 
 const DEFAULT_CATALOG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_third_party_catalog.json');
 const DEFAULT_OFFICIAL_CONFIG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_tool_call_exp.json');
@@ -693,6 +694,11 @@ class JevThirdPartyRegistry {
             }
         }
 
+        try {
+            validateDeclarationDecisionSize(entry);
+        } catch (error) {
+            errors.push(error.message);
+        }
         entry.validation.status = errors.length > 0 ? 'invalid' : 'valid';
         if (entry.validation.status === 'valid' && entry.pluginEnabled && entry.jevEnabled
             && entry.categoryLabel && entry.toolName) {

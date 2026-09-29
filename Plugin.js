@@ -1527,8 +1527,20 @@ class PluginManager extends EventEmitter {
 
             console.log(`[PluginManager] Plugin discovery finished. Loaded ${this.plugins.size} plugins.`);
         } catch (error) {
+            // Discovery can abort before buildJevPromptRegistry is reached.
+            // Supersede in-flight rebuilds as well as revoking the old entries.
+            ++this.jevRegistryGeneration;
+            const snapshot = jevThirdPartyRegistry.invalidate();
+            try {
+                this.emit('jev_registry_changed', {
+                    reason: 'local_reload_failed', total: snapshot.total,
+                    validCount: snapshot.validCount, invalidCount: snapshot.invalidCount
+                });
+            } catch {
+                console.warn('[PluginManager] JEV registry failure notification could not be delivered.');
+            }
             if (error.code === 'ENOENT') console.error(`[PluginManager] Plugin directory ${PLUGIN_DIR} not found.`);
-            else console.error('[PluginManager] Error reading plugin directory:', error);
+            else console.error('[PluginManager] Plugin discovery failed; JEV entries cleared.');
         }
     }
 

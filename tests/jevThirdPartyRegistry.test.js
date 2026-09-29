@@ -202,6 +202,158 @@ function makePlanner({ items = [{ manifest: makeAcManifest() }], env = EXP_ON, c
     return { planner, registry, decisions };
 }
 
+function makeDiscoveryHarness(registry) {
+    const { manager, events } = makeRegistryRebuildHarness(registry);
+    const source = require('node:fs').readFileSync(path.join(__dirname, '..', 'Plugin.js'), 'utf8');
+    const start = source.indexOf('    async _loadPluginsOnce() {');
+    const end = source.indexOf('    buildVCPDescription()', start);
+    assert.ok(start >= 0 && end > start);
+    const method = require('node:vm').runInNewContext(`({${source.slice(start, end)}})._loadPluginsOnce`, {
+        jevThirdPartyRegistry: registry, console: { log() {}, warn() {}, error() {} },
+        PREPROCESSOR_VIRTUAL_STAGES: {}, PREPROCESSOR_ORDER_FILE: 'synthetic-order.json', PLUGIN_DIR: 'synthetic-plugins',
+        fs: { async readFile() { return '[]'; } }
+    });
+    Object.assign(manager, {
+        messagePreprocessors: new Map(), serviceModules: new Map(), staticPluginsInitialized: false,
+        async _validateLocalPluginManifestsBeforeReload() {},
+        async _discoverLegacyPluginManifests() { throw new Error('synthetic discovery failure'); },
+        buildVCPDescription() {}, _cancelObsoleteStaticPluginJobs() {}, _loadPluginsOnce: method
+    });
+    return { manager, events };
+}
+
+test('aborted plugin discovery revokes JEV entries before rebuild, including partial discovery', async () => {
+    for (const partial of [false, true]) {
+        const { registry, planner, decisions } = makePlanner({ configured: true });
+        const { manager, events } = makeDiscoveryHarness(registry);
+        if (partial) {
+            manager._discoverLegacyPluginManifests = async () => [makeAcManifest({ name: 'NewAC' })];
+            manager._registerLocalPlugin = async manifest => {
+                manager.plugins.set(manifest.name, manifest);
+                throw new Error('synthetic registration failure');
+            };
+        }
+        await manager._loadPluginsOnce();
+        assert.equal(registry.getSnapshot().total, 0);
+        assert.ok(registry.getSnapshot().catalogError);
+        assert.equal(events.at(-1).reason, 'local_reload_failed');
+        await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【随意】'));
+        assert.equal(decisions.length, 0);
+        manager.plugins.set('SmartAC', makeAcManifest());
+        assert.equal((await manager.buildJevPromptRegistry('recovery')).validCount, partial ? 2 : 1);
+        assert.equal(registry.getSnapshot().catalogError, null);
+    }
+});
+
+test('discovery failure supersedes pending rebuild and survives a throwing notification', async () => {
+    for (const throwingObserver of [false, true]) {
+        const registry = makeRegistry([{ manifest: makeAcManifest() }]);
+        const { manager } = makeDiscoveryHarness(registry);
+        let finish;
+        manager._discoverDisabledPluginManifests = () => new Promise(resolve => { finish = resolve; });
+        const pending = manager.buildJevPromptRegistry('old');
+        if (throwingObserver) manager.emit = () => { throw new Error('synthetic observer failure'); };
+        await manager._loadPluginsOnce();
+        assert.equal(registry.getSnapshot().total, 0);
+        finish([]);
+        assert.equal(await pending, null);
+        assert.equal(registry.getSnapshot().total, 0);
+        assert.ok(registry.getSnapshot().catalogError);
+    }
+});
+
+test('preflight rejection preserves unchanged plugin state and successful discovery rebuilds', async () => {
+    const registry = makeRegistry([{ manifest: makeAcManifest() }]);
+    const { manager } = makeDiscoveryHarness(registry);
+    manager._validateLocalPluginManifestsBeforeReload = async () => { throw new Error('synthetic preflight'); };
+    await assert.rejects(manager._loadPluginsOnce(), /synthetic preflight/);
+    assert.ok(registry.getRunnableEntry('SmartAC'));
+    assert.ok(manager.plugins.has('SmartAC'));
+    manager._validateLocalPluginManifestsBeforeReload = async () => {};
+    manager._discoverLegacyPluginManifests = async () => [];
+    await manager._loadPluginsOnce();
+    assert.equal(registry.getSnapshot().total, 0);
+    assert.equal(registry.getSnapshot().catalogError, null);
+});
+
+function makeDecisionBudgetManifest(count = 16, choices = 64, description = 'x'.repeat(300)) {
+    return makeAcManifest({ jev: { commands: [{ commandIdentifier: 'SetAC', parameters:
+        Object.fromEntries(Array.from({ length: count }, (_, p) => [`param${p}`, {
+            type: 'enum', description: 'Choose a setting', required: true,
+            values: Object.fromEntries(Array.from({ length: choices }, (_, v) => [
+                `p${String(p).padStart(2, '0')}v${String(v).padStart(2, '0')}`, description
+            ]))
+        }]))
+    }] } });
+}
+
+test('aggregate decision criteria and repeated instructions invalidate oversized declarations', async () => {
+    for (const kind of ['criteria', 'instructions']) {
+        const manifest = kind === 'criteria' ? makeDecisionBudgetManifest() : makeAcManifest({ jev: {
+            jevPrompt: '规'.repeat(1500), commands: [{ commandIdentifier: 'SetAC', parameters:
+                Object.fromEntries(Array.from({ length: 16 }, (_, p) => [`param${p}`, {
+                    type: 'boolean', description: 'Whether enabled', default: false
+                }]))
+            }]
+        } });
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+        const entry = registry.getEntry('SmartAC');
+        assert.equal(entry.validation.status, 'invalid');
+        assert.ok(entry.validation.errors.some(e => /decision payload/.test(e)));
+        assert.equal(entry.callTemplate, null);
+        await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【随意】'), /decision payload/);
+        assert.equal(decisions.length, 0);
+    }
+});
+
+test('decision byte budget accounts for UTF-8 and JSON escaping at exact boundaries', () => {
+    const { THIRD_PARTY_DECISION_MAX_BYTES: max, assertDecisionSize } = require('../modules/jevThirdPartyDecision');
+    for (const unit of ['a', '界', '"', '\n']) {
+        const overhead = Buffer.byteLength(JSON.stringify({ state: { text: '' }, questions: {} }));
+        const cost = Buffer.byteLength(JSON.stringify(unit)) - 2;
+        for (const size of [max - 1, max, max + 1]) {
+            const budget = size - overhead;
+            const state = { text: unit.repeat(Math.floor(budget / cost)) + 'a'.repeat(budget % cost) };
+            assert.equal(Buffer.byteLength(JSON.stringify({ state, questions: {} })), size);
+            if (size > max) assert.throws(() => assertDecisionSize(state, {}), /decision payload/);
+            else assert.doesNotThrow(() => assertDecisionSize(state, {}));
+        }
+    }
+});
+
+test('actual input and custom protocol overflow reject before provider/default fallback', async () => {
+    for (const configured of [false, true]) {
+        const { registry, planner, decisions } = makePlanner({ configured });
+        const entry = registry.getEntry('SmartAC');
+        const oversized = { primary: ['界'.repeat(23000)], constraints: [], imageUrls: [] };
+        await assert.rejects(planner._decideThirdParty(entry, oversized, 'SetAC', {
+            field: { type: 'noul', instructions: 'Choose a setting' }
+        }), /decision payload/);
+        planner.decisionPrompts = { THIRD_PARTY_PROTOCOL: 'x'.repeat(65536) };
+        // Exercise command selection and the separate parameter-decision path.
+        await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【随意】'), /decision payload/);
+        await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【随意】[设置]'), /decision payload/);
+        assert.equal(decisions.length, 0);
+    }
+});
+
+test('bounded parameter decisions preserve the shared payload and provider answers', async () => {
+    const manifest = makeDecisionBudgetManifest(3, 4, 'A valid choice');
+    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true,
+        answers: (_, questions) => Object.fromEntries(Object.entries(questions).map(([name, question]) => [name, {
+            type: 'choice', confidence: 1, choice: Object.keys(question.criteria)[0]
+        }])) });
+    assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+    const [call] = await planner.plan('{物联网控制} `SmartAC` 【随意】');
+    assert.equal(decisions.length, 1);
+    const { buildParameterQuestions, assertDecisionSize } = require('../modules/jevThirdPartyDecision');
+    const entry = registry.getEntry('SmartAC');
+    assert.deepEqual(decisions[0].questions, buildParameterQuestions(entry,
+        Object.entries(entry.commands[0].parameters).map(([name, param]) => ({ name, param, options: param.values }))));
+    assert.doesNotThrow(() => assertDecisionSize(decisions[0].state, decisions[0].questions));
+    assert.deepEqual(call.args, { command: 'SetAC', param0: 'p00v00', param1: 'p01v00', param2: 'p02v00' });
+});
+
 test('normalized default and configured virtual tool names cannot register as third-party tools', () => {
     for (const [virtualToolName, names] of [
         [undefined, ['JEV', 'jev', 'J-E_V']],
