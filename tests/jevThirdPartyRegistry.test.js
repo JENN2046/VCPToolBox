@@ -142,6 +142,38 @@ test('one catch-all text parameter coexists with multiple prefixed parameters', 
     assert.deepEqual(call.args, { command: 'SetAC', room: '客厅', owner: '测试', note: '安静\n节能' });
 });
 
+test('overlapping normalized boolean aliases fail before planning', async () => {
+    for (const [trueAlias, falseAlias] of [
+        ['power-on', 'power_on'], ['ON', 'on'], ['power on', 'poweron'], ['打开', '打开']
+    ]) {
+        const manifest = makeAcManifest();
+        manifest.jev.commands[0].parameters.power = {
+            type: 'boolean', description: '是否开机', trueAliases: [trueAlias], falseAliases: [falseAlias], default: true
+        };
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+        const entry = registry.getEntry('SmartAC');
+        assert.equal(entry.validation.status, 'invalid');
+        assert.match(entry.validation.errors.join(), /归一化后不能重叠/);
+        assert.equal(entry.callTemplate, null);
+        await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 设置【空调】[${trueAlias}]`), /未通过校验/);
+        assert.equal(decisions.length, 0);
+    }
+});
+
+test('disjoint boolean aliases remain executable in both directions', async () => {
+    const manifest = makeAcManifest();
+    manifest.jev.commands[0].parameters.power = {
+        type: 'boolean', description: '是否开机', trueAliases: ['power-on', 'power_on'], falseAliases: ['power-off'], default: false
+    };
+    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+    assert.equal(registry.getEntry('SmartAC').validation.status, 'valid', registry.getEntry('SmartAC').validation.errors.join());
+    for (const [alias, expected] of [['POWER_ON', 'true'], ['power off', 'false']]) {
+        const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 设置【空调】[制冷][${alias}]`);
+        assert.equal(call.args.power, expected);
+    }
+    assert.equal(decisions.length, 0);
+});
+
 test('third-party input and final inherited metadata remain UTF-8 byte bounded', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 调节【' + '汉'.repeat(6000) + '】'), /最大字节数/);

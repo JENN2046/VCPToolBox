@@ -69,3 +69,9 @@ Addressed three P2 findings with regressions: palette keyboard scrolling now com
 **Windows isolated browser layout PASS:** actual Login.vue CSS with synthetic login content in a fresh headless Chromium session, network requests blocked, at 1024x300, 667x375, 320x240, 390x844 and 1280x900. The card top remained reachable and the bottom button was reachable by scrolling. This is a layout regression check, not authenticated browser end-to-end testing.
 
 Linux validation of the earlier `9d9da273` snapshot passed 215/215 plus the admin build, as recorded in the PR. That result does not cover this second review batch: its exact-commit Linux rerun and final result will be recorded in the PR after publication. No native code or dependency lock changed; no Vexus rebuild is required.
+
+### Boolean alias follow-up
+
+The five-fix snapshot `565946fb` subsequently passed Linux 226/226 and the admin build; the full evidence is in the PR. Review of that snapshot identified one more ambiguity: true and false aliases could normalize to the same token. Validation now rejects that overlap, while variants on the same side remain valid. Added rejection cases for punctuation, case, spacing and identical Chinese aliases, plus deterministic positive/negative expansion checks.
+
+Windows final regression: **228/228, zero failed/skipped**; admin typecheck/build passed again with no bundle changes. The new positive fixture initially omitted the required boolean description; the fixture was corrected before the final passing run. The final exact-commit Linux rerun is recorded separately in the PR, not inferred from the prior 226-test result.

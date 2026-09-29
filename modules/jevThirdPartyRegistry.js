@@ -304,6 +304,10 @@ class JevThirdPartyRegistry {
         } else if (type === 'boolean') {
             normalized.trueAliases = this._checkStringList(`${label}.${name}.trueAliases`, spec.trueAliases, limits, errors);
             normalized.falseAliases = this._checkStringList(`${label}.${name}.falseAliases`, spec.falseAliases, limits, errors);
+            const trueAliases = new Set(normalized.trueAliases.map(normalizeAlias));
+            if (normalized.falseAliases.some(alias => trueAliases.has(normalizeAlias(alias)))) {
+                errors.push(`${label}.${name} 的 trueAliases 与 falseAliases 归一化后不能重叠。`);
+            }
             if (spec.default !== undefined) {
                 if (typeof spec.default !== 'boolean') errors.push(`${label}.${name}.default 必须是布尔值。`);
                 else normalized.default = spec.default;
