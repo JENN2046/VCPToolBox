@@ -910,7 +910,12 @@ class JevToolCallExp {
 
         const matchLayers = this._thirdPartyMatchLayers(parsed);
         const { command, consumedConstraints } = await this._selectThirdPartyCommand(entry, parsed, matchLayers);
-        const args = await this._buildThirdPartyArgs(entry, command, parsed, matchLayers, consumedConstraints);
+        const consumed = new Set(consumedConstraints);
+        const parameterMatchLayers = this._thirdPartyMatchLayers({
+            ...parsed,
+            constraints: parsed.constraints.filter((_, index) => !consumed.has(index))
+        });
+        const args = await this._buildThirdPartyArgs(entry, command, parsed, parameterMatchLayers, consumed);
 
         return [this._buildExpandedCall(entry.toolName, args, inheritedCall, {
             category: parsed.categoryKey,

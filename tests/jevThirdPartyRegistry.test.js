@@ -194,6 +194,38 @@ test('command selection preserves text tags not responsible for deterministic se
     assert.equal(semantic.decisions.length, 1);
 });
 
+test('consumed command selectors cannot also set enum or boolean parameters', async () => {
+    for (const type of ['boolean', 'enum']) {
+        for (const configured of [false, true]) {
+            const manifest = makeMessageManifest();
+            manifest.jev.commands[0].parameters.urgent = type === 'boolean'
+                ? { type, description: '是否紧急', trueAliases: ['发送', 'Send'], falseAliases: ['普通'], default: false }
+                : { type, description: '是否紧急', values: { Send: '紧急', normal: '普通' }, aliases: { Send: ['发送'] }, default: 'normal' };
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+            assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+            for (const selector of ['发送', 'SEND']) {
+                const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【目标】[${selector}][你好]`);
+                assert.deepEqual(call.args, { command: 'Send', urgent: type === 'boolean' ? 'false' : 'normal', text: '你好' });
+            }
+            assert.equal(decisions.length, configured ? 2 : 0);
+            if (configured) assert.ok(decisions.every(({ questions }) => questions.p_urgent));
+        }
+    }
+});
+
+test('unconsumed explicit parameter tags still match after command selection', async () => {
+    const manifest = makeMessageManifest();
+    manifest.jev.commands[0].parameters.urgent = {
+        type: 'boolean', description: '是否紧急', trueAliases: ['发送', '加急'], falseAliases: ['普通'], default: false
+    };
+    const { planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+    for (const [tag, value] of [['加急', 'true'], ['普通', 'false']]) {
+        const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【目标】[发送][${tag}][你好]`);
+        assert.deepEqual(call.args, { command: 'Send', urgent: value, text: '你好' });
+    }
+    assert.equal(decisions.length, 0);
+});
+
 test('shared prefixes across enum and text parameters fail before planning', async () => {
     for (const types of [['enum', 'enum'], ['enum', 'text'], ['text', 'enum'], ['text', 'text']]) {
         for (const prefixes of [['value', 'value'], ['VALUE', 'value'], [' value ', 'VALUE'], ['值', '值']]) {
