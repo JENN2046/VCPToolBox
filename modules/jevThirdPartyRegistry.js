@@ -506,6 +506,13 @@ class JevThirdPartyRegistry {
         if (freeTextParameters.length > 1) {
             errors.push(`${label}.parameters 最多允许一个无 prefixes 的 constraints 文本参数。`);
         }
+        // The planner maps source=url to the first URL, not positional slots.
+        const urlParameters = Object.values(normalized.parameters).filter(param => (
+            param.type === 'text' && param.source === 'url'
+        ));
+        if (urlParameters.length > 1) {
+            errors.push(`${label}.parameters 最多允许一个 source=url 的文本参数。`);
+        }
         return normalized;
     }
 
