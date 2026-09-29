@@ -1109,7 +1109,8 @@ class JevToolCallExp {
         for (const [name, param] of paramEntries) {
             if (param.type === 'enum') {
                 const keys = Object.keys(param.values);
-                const aliasesOf = key => [key, ...((param.aliases || {})[key] || [])];
+                const aliasesOf = key => [key, ...(Object.prototype.hasOwnProperty.call(param.aliases || {}, key)
+                    ? param.aliases[key] : [])];
                 const prefixed = this._takePrefixedConstraint(constraints, param.prefixes, consumed);
                 let matched;
                 if (prefixed !== null) {

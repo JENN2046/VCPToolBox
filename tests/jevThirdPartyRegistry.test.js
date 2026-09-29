@@ -287,6 +287,21 @@ test('enum same-option equivalent keys and aliases stay valid and match determin
     }
 });
 
+test('enum validation and planning only read own alias lists', async () => {
+    const manifest = makeAcManifest();
+    manifest.jev.commands[0].parameters = {
+        mode: { type: 'enum', description: '选项', values: { toString: '选项一', hasOwnProperty: '选项二' } }
+    };
+    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+    const entry = registry.getEntry('SmartAC');
+    assert.equal(entry.validation.status, 'valid');
+    for (const input of ['toString', 'hasOwnProperty']) {
+        const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 设置【空调】[${input}]`);
+        assert.equal(call.args.mode, input);
+    }
+    assert.equal(decisions.length, 0);
+});
+
 test('third-party input and final inherited metadata remain UTF-8 byte bounded', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 调节【' + '汉'.repeat(6000) + '】'), /最大字节数/);

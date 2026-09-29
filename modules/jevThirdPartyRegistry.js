@@ -297,7 +297,8 @@ class JevThirdPartyRegistry {
             // The planner matches both keys and aliases using normalizeAlias.
             const aliasOwners = new Map();
             for (const key of Object.keys(normalized.values)) {
-                const tokens = new Set([key, ...(normalized.aliases[key] || [])].map(normalizeAlias));
+                const aliases = Object.prototype.hasOwnProperty.call(normalized.aliases, key) ? normalized.aliases[key] : [];
+                const tokens = new Set([key, ...aliases].map(normalizeAlias));
                 for (const token of tokens) {
                     if (aliasOwners.has(token) && aliasOwners.get(token) !== key) {
                         errors.push(`${label}.${name} 的不同 enum 选项 "${aliasOwners.get(token)}" 与 "${key}" 的键或别名归一化后不能重叠。`);
