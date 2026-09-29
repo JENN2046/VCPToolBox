@@ -268,6 +268,59 @@ test('prefix uniqueness uses parser case folding without conflating punctuation 
     }
 });
 
+test('parameter prefixes cannot compete with another parameter deterministic alias', async () => {
+    for (const prefixType of ['text', 'enum']) {
+        for (const aliasType of ['enum', 'true', 'false']) {
+            for (const [prefix, aliasPrefix, separator] of [['user', 'user', ':'], ['user', 'USER', '：'], ['user-name', 'USER_NAME', ':'], ['user name', 'username', '：'], ['用户', '用户', ':']]) {
+                for (const reverse of [false, true]) {
+                    for (const configured of [false, true]) {
+                        const alias = `${aliasPrefix}${separator}a`;
+                        const params = [
+                            ['recipient', prefixType === 'text'
+                                ? { type: 'text', source: 'constraints', prefixes: [prefix], required: true }
+                                : { type: 'enum', description: '接收者', prefixes: [prefix], values: { a: '一', b: '二' }, required: true }],
+                            ['choice', aliasType === 'enum'
+                                ? { type: 'enum', description: '选择', values: { pick: '选择', idle: '默认' }, aliases: { pick: [alias] }, default: 'idle' }
+                                : { type: 'boolean', description: '开关', trueAliases: aliasType === 'true' ? [alias] : [], falseAliases: aliasType === 'false' ? [alias] : [], default: false }]
+                        ];
+                        const manifest = makeMessageManifest(true);
+                        manifest.jev.commands[0].parameters = Object.fromEntries(reverse ? params.reverse() : params);
+                        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                        const entry = registry.getEntry('SmartAC');
+                        assert.equal(entry.validation.status, 'invalid');
+                        assert.match(entry.validation.errors.join(), /prefixes.*其他参数.*别名/);
+                        assert.equal(entry.callTemplate, null);
+                        await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【目标】[${prefix}${separator}a]`), /未通过校验/);
+                        assert.equal(decisions.length, 0);
+                    }
+                }
+            }
+        }
+    }
+});
+
+test('prefix alias checks preserve same-owner and non-competing parameter syntax', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeMessageManifest();
+        for (const command of manifest.jev.commands) {
+            command.parameters = {
+                recipient: { type: 'text', source: 'constraints', prefixes: ['user'], required: true },
+                mode: { type: 'enum', description: '模式', values: { a: '一', b: '二' }, prefixes: ['mode'], aliases: { a: ['mode:a'] }, required: true },
+                flag: { type: 'boolean', description: '标志', trueAliases: ['username:alice'], falseAliases: ['superuser:bob'], default: false }
+            };
+        }
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        for (const command of ['Send', 'Inspect']) {
+            for (const [tag, flag] of [['username:alice', 'true'], ['superuser:bob', 'false']]) {
+                const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【${command}】[user:Alice][mode:a][${tag}]`);
+                assert.deepEqual(call.args, { command, recipient: 'Alice', mode: 'a', flag });
+            }
+        }
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('deterministic aliases cannot belong to multiple parameters', async () => {
     const makeParam = (kind, token, index) => kind.startsWith('boolean') ? {
         type: 'boolean', description: '开关', trueAliases: kind === 'boolean' ? [token] : [],

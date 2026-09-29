@@ -470,6 +470,18 @@ class JevThirdPartyRegistry {
                 }
             }
         }
+        for (const [prefix, prefixOwner] of prefixOwners) {
+            // A prefixed constraint also enters the normalized exact-tag layer.
+            // Compare at the parser delimiter, not arbitrary substring matches.
+            const normalizedPrefix = normalizeAlias(prefix);
+            for (const [alias, aliasOwner] of parameterAliasOwners) {
+                if (prefixOwner !== aliasOwner && (
+                    alias.startsWith(`${normalizedPrefix}:`) || alias.startsWith(`${normalizedPrefix}：`)
+                )) {
+                    errors.push(`${label}.parameters.${prefixOwner}.prefixes "${prefix}" 与其他参数 "${aliasOwner}" 的确定性别名冲突。`);
+                }
+            }
+        }
         const freeTextParameters = Object.values(normalized.parameters).filter(param => (
             param.type === 'text' && param.source === 'constraints' && param.prefixes.length === 0
         ));
