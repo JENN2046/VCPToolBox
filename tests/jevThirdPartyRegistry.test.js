@@ -226,6 +226,67 @@ test('enum and constraints text prefixes remain valid and preserve explicit valu
     assert.equal(decisions.length, 0);
 });
 
+for (const [kind, examples] of [
+    ['alias/alias', [
+        { values: { cool: '制冷', heat: '制热' }, aliases: { cool: ['power-on'], heat: ['power_on'] }, input: 'power-on' },
+        { values: { cool: '制冷', heat: '制热' }, aliases: { cool: ['ON'], heat: ['on'] }, input: 'ON' },
+        { values: { cool: '制冷', heat: '制热' }, aliases: { cool: ['power on'], heat: ['poweron'] }, input: 'power on' },
+        { values: { cool: '制冷', heat: '制热' }, aliases: { cool: ['开启'], heat: ['开启'] }, input: '开启' }
+    ]],
+    ['key/key', [
+        { values: { 'power-on': '制冷', power_on: '制热' }, input: 'power-on' },
+        { values: { ON: '制冷', on: '制热' }, input: 'ON' }
+    ]],
+    ['key/alias', [
+        { values: { 'power-on': '制冷', heat: '制热' }, aliases: { heat: ['power_on'] }, input: 'power-on' },
+        { values: { heat: '制热', 'power-on': '制冷' }, aliases: { heat: ['power_on'] }, input: 'power-on' }
+    ]]
+]) {
+    test(`enum normalized ${kind} collisions reject before provider or default selection`, async () => {
+        for (const { input, ...schema } of examples) {
+            for (const configured of [false, true]) {
+                for (const usePrefix of [false, true]) {
+                    const manifest = makeAcManifest();
+                    manifest.jev.commands[0].parameters = {
+                        mode: { type: 'enum', description: '运行模式', ...schema,
+                            default: Object.keys(schema.values)[1], prefixes: usePrefix ? ['模式'] : [] }
+                    };
+                    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                    const entry = registry.getEntry('SmartAC');
+                    assert.equal(entry.validation.status, 'invalid');
+                    assert.match(entry.validation.errors.join(), /不同 enum 选项.*归一化后不能重叠/);
+                    assert.equal(entry.callTemplate, null);
+                    await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 设置【空调】[${usePrefix ? '模式:' : ''}${input}]`), /未通过校验/);
+                    assert.equal(decisions.length, 0);
+                }
+            }
+        }
+    });
+}
+
+test('enum same-option equivalent keys and aliases stay valid and match deterministically', async () => {
+    for (const configured of [false, true]) {
+        for (const usePrefix of [false, true]) {
+            const manifest = makeAcManifest();
+            manifest.jev.commands[0].parameters = {
+                mode: {
+                    type: 'enum', description: '运行模式', required: true,
+                    values: { 'power-on': '开启', 'power-off': '关闭' },
+                    aliases: { 'power-on': ['POWER_ON', 'power on', '开启', '开启'], 'power-off': ['POWER_OFF', '关闭'] },
+                    prefixes: usePrefix ? ['模式'] : [], default: 'power-off'
+                }
+            };
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+            assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+            for (const [input, expected] of [['power-on', 'power-on'], ['POWER_ON', 'power-on'], ['开启', 'power-on'], ['POWER_OFF', 'power-off']]) {
+                const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 设置【空调】[${usePrefix ? '模式:' : ''}${input}]`);
+                assert.equal(call.args.mode, expected);
+            }
+            assert.equal(decisions.length, 0);
+        }
+    }
+});
+
 test('third-party input and final inherited metadata remain UTF-8 byte bounded', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 调节【' + '汉'.repeat(6000) + '】'), /最大字节数/);

@@ -81,3 +81,9 @@ Windows final regression: **228/228, zero failed/skipped**; admin typecheck/buil
 Review of `ca2f9321` identified that boolean planning does not consume prefixed constraints. Reject non-empty boolean `prefixes` during declaration validation rather than accepting a non-executable schema. Omitted/empty prefixes remain compatible; enum and constraints-text prefixes retain their behavior. Updated the plugin developer manual with the supported syntax.
 
 The new rejection regression failed against the previous implementation, then passed after the fix. Added coverage for required/optional parameters, defaults and offline/configured mock-provider paths, including no provider call or callable template for invalid declarations. Windows full regression: **231/231, zero failed/skipped**; admin typecheck/build passed with no dist change. The exact-commit Linux result is recorded in the PR after publication. No real configuration, native code, dependency lock or CI workflow changes.
+
+### Enum key/alias ownership
+
+Review of `4d1a137c` identified cross-option normalized enum collisions. Validation now assigns each normalized option key and alias to one option within that enum parameter and rejects ownership conflicts. Equivalent spellings within the same option remain valid. Updated the developer manual with this rule.
+
+Three rejection regressions reproduced alias/alias, key/key and key/alias collisions on the old implementation. All pass after the fix, including prefixed/unprefixed inputs, offline/configured mock-provider modes and reversed option order. A positive regression preserves same-option duplicates and deterministic matching without provider calls. Windows full regression: **235/235, zero failed/skipped**; admin typecheck/build passed without dist changes. Exact-commit Linux results follow in the PR; no runtime configuration, dependency, native or CI change.

@@ -294,6 +294,18 @@ class JevThirdPartyRegistry {
                     }
                 }
             }
+            // The planner matches both keys and aliases using normalizeAlias.
+            const aliasOwners = new Map();
+            for (const key of Object.keys(normalized.values)) {
+                const tokens = new Set([key, ...(normalized.aliases[key] || [])].map(normalizeAlias));
+                for (const token of tokens) {
+                    if (aliasOwners.has(token) && aliasOwners.get(token) !== key) {
+                        errors.push(`${label}.${name} 的不同 enum 选项 "${aliasOwners.get(token)}" 与 "${key}" 的键或别名归一化后不能重叠。`);
+                    } else {
+                        aliasOwners.set(token, key);
+                    }
+                }
+            }
             if (spec.default !== undefined) {
                 if (!Object.prototype.hasOwnProperty.call(normalized.values, spec.default)) {
                     errors.push(`${label}.${name}.default 必须是 values 中的选项。`);

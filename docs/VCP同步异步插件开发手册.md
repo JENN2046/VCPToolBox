@@ -1099,6 +1099,7 @@ JEV:「始」{物联网控制} `SmartAC` 打开空调【把客厅弄凉快些】
 
 规则要点：
 
+- 同一个 enum 参数的各选项，其 `values` 键和 `aliases` 在归一化（忽略大小写、空白、下划线、连字符）后不能跨选项重叠；同一选项内的等价拼写允许。冲突声明会在注册校验阶段被拒绝，不交给 JEV 或 `default` 消解；
 - 多个模糊的 enum/boolean 参数会合并为**一次** JEV 请求；
 - JEV 答案必须落在候选内，choice 置信度低于 0.55、或 noul 概率介于 0.3~0.7 时，视为未决，回退 `default`；没有 `default` 就不传该参数；
 - `prefixes` 仅支持 enum 和 `source: "constraints"` 的 text 参数，匹配 `[前缀:值]` 形式的约束；enum 前缀值不在选项中会直接报错；
