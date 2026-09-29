@@ -302,6 +302,52 @@ test('enum validation and planning only read own alias lists', async () => {
     assert.equal(decisions.length, 0);
 });
 
+for (const [kind, commands] of [
+    ['alias/alias', [{ commandIdentifier: 'Start', aliases: ['power-on'] }, { commandIdentifier: 'Stop', aliases: ['power_on'] }]],
+    ['identifier/identifier', [{ commandIdentifier: 'power-on' }, { commandIdentifier: 'power_on' }]],
+    ['identifier/alias', [{ commandIdentifier: 'power-on' }, { commandIdentifier: 'Stop', aliases: ['POWER_ON'] }]]
+]) {
+    test(`normalized command ${kind} collisions reject before default or provider selection`, async () => {
+        for (const ordered of [commands, [...commands].reverse()]) {
+            for (const configured of [false, true]) {
+                const manifest = makeAcManifest({
+                    capabilities: { invocationCommands: ordered.map(({ commandIdentifier }) => ({ commandIdentifier })) },
+                    jev: { commands: ordered, defaultCommand: ordered[1].commandIdentifier }
+                });
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, 'invalid');
+                assert.match(entry.validation.errors.join(), /不同命令.*归一化后不能重叠/);
+                assert.equal(entry.callTemplate, null);
+                await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【空调】[power-on]'), /未通过校验/);
+                assert.equal(decisions.length, 0);
+            }
+        }
+    });
+}
+
+test('same-command normalized aliases remain valid and explicit actions avoid fallback', async () => {
+    const commands = [
+        { commandIdentifier: 'power-on', aliases: ['POWER_ON', 'power on', '开启', '开启'] },
+        { commandIdentifier: 'power-off', aliases: ['POWER_OFF', '关闭'] }
+    ];
+    for (const configured of [false, true]) {
+        const manifest = makeAcManifest({
+            capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) },
+            jev: { commands, defaultCommand: 'power-off' }
+        });
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        for (const [input, expected] of [['POWER_ON', 'power-on'], ['power on', 'power-on'], ['开启', 'power-on'], ['关闭', 'power-off']]) {
+            for (const expression of [`{物联网控制} \`SmartAC\` 【空调】[${input}]`, `{物联网控制} \`SmartAC\` ${input}【空调】`]) {
+                const [call] = await planner.plan(expression);
+                assert.equal(call.args.command, expected);
+            }
+        }
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('third-party input and final inherited metadata remain UTF-8 byte bounded', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 调节【' + '汉'.repeat(6000) + '】'), /最大字节数/);

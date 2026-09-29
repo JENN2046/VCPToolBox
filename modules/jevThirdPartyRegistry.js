@@ -535,6 +535,7 @@ class JevThirdPartyRegistry {
             errors.push(`jev.commands 必须是 1~${limits.maxCommands} 项的数组。`);
         } else {
             const seen = new Set();
+            const commandAliasOwners = new Map();
             jev.commands.forEach((cmd, index) => {
                 const normalized = this._validateCommand(index, cmd, invocationIds, limits, forbidden, errors);
                 if (!normalized) return;
@@ -543,6 +544,14 @@ class JevThirdPartyRegistry {
                     return;
                 }
                 seen.add(normalized.commandIdentifier);
+                const commandId = normalized.commandIdentifier;
+                for (const token of new Set([commandId, ...normalized.aliases].map(normalizeAlias))) {
+                    if (commandAliasOwners.has(token) && commandAliasOwners.get(token) !== commandId) {
+                        errors.push(`jev.commands 中不同命令 "${commandAliasOwners.get(token)}" 与 "${commandId}" 的标识符或别名归一化后不能重叠。`);
+                    } else {
+                        commandAliasOwners.set(token, commandId);
+                    }
+                }
                 if (Object.keys(normalized.parameters).length === 0 && Object.keys(normalized.fixedArgs).length === 0) {
                     warnings.push(`命令 ${normalized.commandIdentifier} 没有声明参数，JEV 只能做命令选择。`);
                 }
