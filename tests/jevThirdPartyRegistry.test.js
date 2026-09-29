@@ -268,6 +268,84 @@ test('prefix uniqueness uses parser case folding without conflating punctuation 
     }
 });
 
+for (const kind of ['enum key', 'command identifier']) {
+    test(`${kind} erased by normalization rejects before fallback`, async () => {
+        for (const token of ['---', '___', '-_-']) {
+            for (const configured of [false, true]) {
+                const commands = kind === 'enum key'
+                    ? [{ commandIdentifier: 'Send', parameters: { mode: {
+                        type: 'enum', description: '模式', values: { [token]: '显式项', valid: '默认项' }, default: 'valid'
+                    } } }]
+                    : [{ commandIdentifier: token }, { commandIdentifier: 'Other' }];
+                const manifest = makeAcManifest({
+                    capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) },
+                    jev: { commands, defaultCommand: commands.at(-1).commandIdentifier }
+                });
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, 'invalid');
+                assert.match(entry.validation.errors.join(), /归一化后不能为空/);
+                assert.equal(entry.callTemplate, null);
+                await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【目标】[${token}]`), /未通过校验/);
+                assert.equal(decisions.length, 0);
+            }
+        }
+    });
+}
+
+test('nonempty normalized enum keys and command identifiers preserve exact emitted values', async () => {
+    const commands = [
+        { commandIdentifier: '--Send__', parameters: { mode: { type: 'enum', description: '模式', values: { '--a__': '一', b: '二' }, default: 'b' } } },
+        { commandIdentifier: 'Other' }
+    ];
+    const manifest = makeAcManifest({ capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) }, jev: { commands, defaultCommand: 'Other' } });
+    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+    assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+    const [call] = await planner.plan('{物联网控制} `SmartAC` 【目标】[SEND][a]');
+    assert.deepEqual(call.args, { command: '--Send__', mode: '--a__' });
+    assert.equal(decisions.length, 0);
+});
+
+test('command selectors cannot consume their own parameter prefixes', async () => {
+    for (const kind of ['alias', 'identifier']) {
+        for (const type of ['text', 'enum']) {
+            for (const [prefix, token] of [['user', 'user:a'], ['user', 'USER：a'], ['user-name', 'USER_NAME:a']]) {
+                for (const configured of [false, true]) {
+                    const commands = [
+                        { commandIdentifier: kind === 'identifier' ? token : 'Send', aliases: kind === 'alias' ? [token] : [], parameters: { recipient: type === 'text'
+                            ? { type, source: 'constraints', prefixes: [prefix], required: true }
+                            : { type, description: '接收者', prefixes: [prefix], values: { a: '一', b: '二' }, required: true }
+                        } },
+                        { commandIdentifier: 'Other' }
+                    ];
+                    const manifest = makeAcManifest({ capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) }, jev: { commands, defaultCommand: 'Other' } });
+                    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                    const entry = registry.getEntry('SmartAC');
+                    assert.equal(entry.validation.status, 'invalid');
+                    assert.match(entry.validation.errors.join(), /命令选择词.*prefixes.*冲突/);
+                    assert.equal(entry.callTemplate, null);
+                    await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【目标】[${token}]`), /未通过校验/);
+                    assert.equal(decisions.length, 0);
+                }
+            }
+        }
+    }
+});
+
+test('non-competing and single-command selectors leave prefixed values executable', async () => {
+    for (const single of [false, true]) {
+        const commands = [{ commandIdentifier: 'Send', aliases: [single ? 'user:a' : 'username:a'], parameters: {
+            text: { type: 'text', source: 'constraints', prefixes: ['user'], required: true }
+        } }, ...(!single ? [{ commandIdentifier: 'Other' }] : [])];
+        const manifest = makeAcManifest({ capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) }, jev: { commands, defaultCommand: 'Send' } });
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【目标】${single ? '' : '[username:a]'}[user:a]`);
+        assert.deepEqual(call.args, { command: 'Send', text: 'a' });
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('aliases erased by normalization reject declarations before fallback', async () => {
     for (const kind of ['command', 'enum', 'true', 'false']) {
         for (const alias of ['---', '___', ' -_ \t- ']) {

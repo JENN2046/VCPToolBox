@@ -83,6 +83,11 @@ function findConflictingAliasOwner(owners, token, owner) {
     return undefined;
 }
 
+function normalizedTokenMatchesPrefix(token, prefix) {
+    const normalizedPrefix = normalizeAlias(prefix);
+    return token.startsWith(`${normalizedPrefix}:`) || token.startsWith(`${normalizedPrefix}：`);
+}
+
 function isPlainObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -297,6 +302,10 @@ class JevThirdPartyRegistry {
                     errors.push(`${label}.${name}.values 的键 "${key}" 不合法。`);
                     continue;
                 }
+                if (!normalizeAlias(key)) {
+                    errors.push(`${label}.${name}.values 的键归一化后不能为空。`);
+                    continue;
+                }
                 if (['__proto__', 'prototype', 'constructor'].includes(key)
                     || typeof values[key] !== 'string' || !values[key].trim()
                     || values[key].length > limits.maxParamDescriptionLength) {
@@ -392,6 +401,10 @@ class JevThirdPartyRegistry {
             errors.push(`${label}.commandIdentifier "${id}" 必须与 capabilities.invocationCommands 中的命令完全一致。`);
             return null;
         }
+        if (!normalizeAlias(id)) {
+            errors.push(`${label}.commandIdentifier 归一化后不能为空。`);
+            return null;
+        }
 
         const normalized = {
             commandIdentifier: id,
@@ -481,11 +494,8 @@ class JevThirdPartyRegistry {
         for (const [prefix, prefixOwner] of prefixOwners) {
             // A prefixed constraint also enters the normalized exact-tag layer.
             // Compare at the parser delimiter, not arbitrary substring matches.
-            const normalizedPrefix = normalizeAlias(prefix);
             for (const [alias, aliasOwner] of parameterAliasOwners) {
-                if (prefixOwner !== aliasOwner && (
-                    alias.startsWith(`${normalizedPrefix}:`) || alias.startsWith(`${normalizedPrefix}：`)
-                )) {
+                if (prefixOwner !== aliasOwner && normalizedTokenMatchesPrefix(alias, prefix)) {
                     errors.push(`${label}.parameters.${prefixOwner}.prefixes "${prefix}" 与其他参数 "${aliasOwner}" 的确定性别名冲突。`);
                 }
             }
@@ -612,6 +622,15 @@ class JevThirdPartyRegistry {
                 seen.add(normalized.commandIdentifier);
                 const commandId = normalized.commandIdentifier;
                 for (const token of new Set([commandId, ...normalized.aliases].map(normalizeAlias))) {
+                    // Multi-command selection consumes exact selector tags before
+                    // parameter parsing; a selector must not also carry a value.
+                    if (jev.commands.length > 1) {
+                        for (const [name, param] of Object.entries(normalized.parameters)) {
+                            if (param.prefixes.some(prefix => normalizedTokenMatchesPrefix(token, prefix))) {
+                                errors.push(`命令 "${commandId}" 的命令选择词与参数 "${name}" 的 prefixes 冲突。`);
+                            }
+                        }
+                    }
                     const conflict = findConflictingAliasOwner(commandAliasOwners, token, commandId);
                     if (conflict !== undefined) {
                         errors.push(`jev.commands 中不同命令 "${conflict}" 与 "${commandId}" 的标识符或别名归一化后不能重叠（相等或子串包含）。`);
