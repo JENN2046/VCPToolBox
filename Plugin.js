@@ -37,6 +37,7 @@ const {
     createDefaultDependencyBridgeRegistry,
     createDefaultExecutionBridgeRegistry
 } = require('./modules/pluginBridgeRegistry');
+const jevThirdPartyRegistry = require('./modules/jevThirdPartyRegistry');
 
 const PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const manifestFileName = 'plugin-manifest.json';
@@ -241,6 +242,7 @@ class PluginManager extends EventEmitter {
         });
         this.dependencyBridgeRegistry = createDefaultDependencyBridgeRegistry();
         this.executionBridgeRegistry = createDefaultExecutionBridgeRegistry();
+        this.jevRegistryGeneration = 0; // 防止并发重建时旧结果覆盖新结果
     }
 
     _createRuntimePluginEntryFromNativeManifest(nativeManifest) {
@@ -1512,6 +1514,7 @@ class PluginManager extends EventEmitter {
             }
 
             this.buildVCPDescription();
+            await this.buildJevPromptRegistry('local_reload');
             this.emit('tools_changed', { reason: 'local_reload' });
 
             // 首次启动由 server.js 显式初始化静态插件；后续重载则在这里协调
@@ -1524,8 +1527,20 @@ class PluginManager extends EventEmitter {
 
             console.log(`[PluginManager] Plugin discovery finished. Loaded ${this.plugins.size} plugins.`);
         } catch (error) {
+            // Discovery can abort before buildJevPromptRegistry is reached.
+            // Supersede in-flight rebuilds as well as revoking the old entries.
+            ++this.jevRegistryGeneration;
+            const snapshot = jevThirdPartyRegistry.invalidate();
+            try {
+                this.emit('jev_registry_changed', {
+                    reason: 'local_reload_failed', total: snapshot.total,
+                    validCount: snapshot.validCount, invalidCount: snapshot.invalidCount
+                });
+            } catch {
+                console.warn('[PluginManager] JEV registry failure notification could not be delivered.');
+            }
             if (error.code === 'ENOENT') console.error(`[PluginManager] Plugin directory ${PLUGIN_DIR} not found.`);
-            else console.error('[PluginManager] Error reading plugin directory:', error);
+            else console.error('[PluginManager] Plugin discovery failed; JEV entries cleared.');
         }
     }
 
@@ -1569,6 +1584,88 @@ class PluginManager extends EventEmitter {
     // New method to get all individual descriptions
     getIndividualPluginDescriptions() {
         return this.individualPluginDescriptions;
+    }
+
+    /**
+     * JEV 第三方声明注册表（实验）。只收集和校验 manifest.jev，不改变任何运行时行为；
+     * 声明错误仅标记为 invalid，永不阻断普通插件加载。
+     */
+    async buildJevPromptRegistry(reason = 'rebuild') {
+        const generation = ++this.jevRegistryGeneration;
+        try {
+            const items = [];
+            for (const manifest of this.plugins.values()) {
+                if (!manifest || manifest.jev === undefined) continue;
+                items.push({
+                    manifest,
+                    enabled: true,
+                    origin: manifest.isDistributed ? 'cloud' : 'local',
+                    serverId: manifest.serverId || null,
+                    manifestFile: manifest.basePath
+                        ? path.relative(__dirname, path.join(manifest.basePath, manifestFileName))
+                        : null
+                });
+            }
+
+            let disabledPlugins = [];
+            try {
+                disabledPlugins = await this._discoverDisabledPluginManifests();
+            } catch (error) {
+                if (this.debugMode) console.warn(`[PluginManager] JEV registry skipped disabled manifests: ${error.message}`);
+            }
+            // 禁用插件只作为“不可用素材”展示，永远不可执行。
+            for (const item of disabledPlugins) {
+                if (item.manifest.jev === undefined || this.plugins.has(item.manifest.name)) continue;
+                items.push({
+                    manifest: item.manifest,
+                    enabled: false,
+                    origin: 'local',
+                    serverId: null,
+                    manifestFile: path.relative(__dirname, item.manifestPath)
+                });
+            }
+
+            if (generation !== this.jevRegistryGeneration) return null; // 已有更新的一轮重建
+            jevThirdPartyRegistry.reloadConfig();
+            const snapshot = jevThirdPartyRegistry.build(items);
+            if (snapshot.total > 0 || this.debugMode) {
+                console.log(`[PluginManager] JEV third-party registry rebuilt (${reason}): ${snapshot.validCount} valid, ${snapshot.invalidCount} invalid.`);
+            }
+            this.emit('jev_registry_changed', {
+                reason,
+                total: snapshot.total,
+                validCount: snapshot.validCount,
+                invalidCount: snapshot.invalidCount
+            });
+            return snapshot;
+        } catch (error) {
+            if (generation !== this.jevRegistryGeneration) return null;
+            const snapshot = jevThirdPartyRegistry.invalidate();
+            console.error(`[PluginManager] Failed to build JEV third-party registry (${reason}); previous entries cleared.`);
+            try {
+                this.emit('jev_registry_changed', {
+                    reason,
+                    total: snapshot.total,
+                    validCount: snapshot.validCount,
+                    invalidCount: snapshot.invalidCount
+                });
+            } catch {
+                // Observer failure must not undo fail-closed state or block
+                // ordinary plugin loading, which is independent of JEV.
+                console.warn('[PluginManager] JEV registry failure notification could not be delivered.');
+            }
+            return null;
+        }
+    }
+
+    getJevPromptRegistry() {
+        return jevThirdPartyRegistry.getSnapshot();
+    }
+
+    _scheduleJevRegistryRebuild(reason) {
+        this.buildJevPromptRegistry(reason).catch(error => {
+            console.error(`[PluginManager] JEV registry rebuild failed (${reason}):`, error.message);
+        });
     }
 
     getAllPlaceholderValues() {
@@ -2485,6 +2582,7 @@ class PluginManager extends EventEmitter {
         }
         // 注册后重建描述，以包含新插件
         this.buildVCPDescription();
+        this._scheduleJevRegistryRebuild('distributed_register');
         this.emit('tools_changed', { reason: 'distributed_register', serverId });
     }
 
@@ -2512,6 +2610,7 @@ class PluginManager extends EventEmitter {
             console.log(`[PluginManager] Unregistered ${unregisteredCount} tools from server ${serverId}.`);
             // 注销后重建描述
             this.buildVCPDescription();
+            this._scheduleJevRegistryRebuild('distributed_unregister');
         }
 
         // 新增：清理分布式静态占位符
@@ -3041,6 +3140,9 @@ class PluginManager extends EventEmitter {
                 description: freshManifest.description || '',
                 version: freshManifest.version,
                 author: freshManifest.author,
+                // JEV declarations affect executable routing, not just display.
+                // A running direct plugin retains its native runtime contract
+                // until reload; do not mix fresh JEV rules with old authority.
                 capabilities: mergedCapabilities
             };
             const effectiveNativeManifest = buildDirectRefreshEffectiveNativeManifest(
@@ -3072,6 +3174,7 @@ class PluginManager extends EventEmitter {
         if (!refreshResult.refreshed) return refreshResult;
 
         this.buildVCPDescription();
+        await this.buildJevPromptRegistry('manifest_metadata_refresh');
         this.emit('tools_changed', {
             reason: 'manifest_metadata_refresh',
             pluginNames: [refreshResult.pluginName],
@@ -3130,6 +3233,7 @@ class PluginManager extends EventEmitter {
 
                 if (metadataOnly && refreshedNames.length > 0) {
                     this.buildVCPDescription();
+                    await this.buildJevPromptRegistry('manifest_metadata_refresh');
                     this.emit('tools_changed', {
                         reason: 'manifest_metadata_refresh',
                         pluginNames: refreshedNames,

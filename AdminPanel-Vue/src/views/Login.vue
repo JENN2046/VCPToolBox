@@ -145,14 +145,20 @@ async function handleLogin() {
 
 <style scoped>
 .login-page {
-  min-height: var(--app-viewport-height, 100vh);
+  height: var(--app-viewport-height, 100vh);
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: var(--primary-bg);
 }
 
 .login-container {
+  margin-block: auto;
+  flex-shrink: 0;
+  box-sizing: border-box;
   width: 100%;
   max-width: 420px;
   padding: var(--space-5);
@@ -244,8 +250,6 @@ form {
 
 @media (max-width: 480px) {
   .login-page {
-    align-items: stretch;
-    overflow-y: auto;
     padding: var(--space-4) 0;
   }
 

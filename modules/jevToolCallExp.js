@@ -4,18 +4,25 @@ const fs = require('fs');
 const path = require('path');
 const defaultJevClient = require('./jevClient');
 const { getSleepDurationMs } = require('../Plugin/VCPSleep/sleepDuration');
+const defaultThirdPartyRegistry = require('./jevThirdPartyRegistry');
+const { SEMANTIC_ENVELOPE_MAX_BYTES, buildExpandedCallEnvelope } = require('./jevCallEnvelope');
+const { buildParameterQuestions, buildCommandQuestions, buildDecisionState, assertDecisionSize } = require('./jevThirdPartyDecision');
 
 const DEFAULT_CONFIG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_tool_call_exp.json');
 const DEFAULT_DECISION_PROMPT_PATH = path.join(__dirname, '..', 'TVStxt', 'JevToolCallDecision.txt');
 const IMAGE_URL_RE = /^(?:https?:\/\/|file:\/\/|data:image\/)/i;
 const BILIBILI_RESOURCE_RE = /(?:bilibili\.com\/video\/|b23\.tv\/|^BV[0-9A-Za-z]+(?:\?p=\d+)?$|^av\d+$)/i;
 const EXPLICIT_SIZE_RE = /\b(\d{3,4})\s*[x×:]\s*(\d{3,4})\b/i;
-const SEMANTIC_ENVELOPE_MAX_BYTES = 16 * 1024;
 const SEMANTIC_LIST_MAX_ITEMS = 32;
 const SEMANTIC_ITEM_MAX_BYTES = 4 * 1024;
 const SEMANTIC_RESOURCE_MAX_ITEMS = 8;
 const SEMANTIC_RESOURCE_MAX_ITEM_BYTES = 2 * 1024;
 const SEMANTIC_RESOURCE_MAX_BYTES = 8 * 1024;
+
+const THIRD_PARTY_CHOICE_MIN_CONFIDENCE = 0.55;
+const THIRD_PARTY_NOUL_TRUE_THRESHOLD = 0.7;
+const THIRD_PARTY_NOUL_FALSE_THRESHOLD = 0.3;
+const INHERITED_ARG_KEYS = ['maid', 'valet', 'timely_contact', 'tool_password'];
 
 function normalizeText(value) {
     return String(value || '').trim();
@@ -64,6 +71,8 @@ class JevToolCallExp {
         this.configPath = options.configPath || DEFAULT_CONFIG_PATH;
         this.decisionPromptPath = options.decisionPromptPath || DEFAULT_DECISION_PROMPT_PATH;
         this.jevClient = options.jevClient || defaultJevClient;
+        this.thirdPartyRegistry = options.thirdPartyRegistry || defaultThirdPartyRegistry;
+        this.env = options.env || process.env;
         this.config = options.config || this._readJson(this.configPath);
         this.decisionPrompts = options.decisionPrompts || this._readDecisionPrompts();
     }
@@ -107,8 +116,10 @@ class JevToolCallExp {
         const toolSelectionText = raw
             .replace(/【[\s\S]*?】/g, ' ')
             .replace(/\[[\s\S]*?\]/g, ' ');
+        // 反引号单独保留：第三方插件只认反引号内逐字精确的 manifest.name。
+        const backtickTools = extractMarkedValues(toolSelectionText, '`', '`');
         const quotedTools = [
-            ...extractMarkedValues(toolSelectionText, '`', '`'),
+            ...backtickTools,
             ...extractMarkedValues(toolSelectionText, '\'', '\''),
             ...extractMarkedValues(toolSelectionText, '“', '”'),
             ...extractMarkedValues(toolSelectionText, '"', '"')
@@ -126,7 +137,18 @@ class JevToolCallExp {
             throw new Error('一个 JEV 块只能包含一个能力目录。');
         }
 
-        const categoryKey = this._resolveCategory(categories[0]);
+        // 官方目录优先；仅在官方目录不匹配且实验开关开启时才尝试第三方目录，
+        // 开关关闭时错误信息与官方行为完全一致。
+        let categoryKey;
+        let thirdParty = false;
+        try {
+            categoryKey = this._resolveCategory(categories[0]);
+        } catch (error) {
+            const thirdPartyKey = this._resolveThirdPartyCategory(categories[0]);
+            if (!thirdPartyKey) throw error;
+            categoryKey = thirdPartyKey;
+            thirdParty = true;
+        }
         const imageUrls = [];
         const semanticConstraints = [];
         for (const value of constraints) {
@@ -135,7 +157,7 @@ class JevToolCallExp {
         }
 
         const uniqueUrls = uniqueStrings(imageUrls);
-        const allowsUrlAsPrimary = categoryKey === 'web_search' && uniqueUrls.length > 0;
+        const allowsUrlAsPrimary = (categoryKey === 'web_search' || thirdParty) && uniqueUrls.length > 0;
         if (primary.length === 0 && !allowsUrlAsPrimary) {
             throw new Error('JEV 表达式缺少主要内容，请使用【主要内容】。打开网页时也可直接把 URL 放入 [URL]。');
         }
@@ -147,8 +169,23 @@ class JevToolCallExp {
             primary,
             constraints: semanticConstraints,
             imageUrls: uniqueUrls,
-            quotedTools: uniqueStrings(quotedTools)
+            quotedTools: uniqueStrings(quotedTools),
+            backtickTools: uniqueStrings(backtickTools),
+            thirdParty
         };
+    }
+
+    _resolveThirdPartyCategory(label) {
+        const registry = this.thirdPartyRegistry;
+        if (!registry || !registry.isExperimentEnabled(this.env)) return null;
+        try {
+            return registry.resolveCategory(label);
+        } catch (error) {
+            if (this.env.DebugMode === 'true') {
+                console.warn(`[JevToolCallExp] 第三方能力目录读取失败: ${error.message}`);
+            }
+            return null;
+        }
     }
 
     _inferImplicitCategory(raw) {
@@ -226,6 +263,9 @@ class JevToolCallExp {
 
     async plan(expression, inheritedCall = {}) {
         const parsed = this.parse(expression);
+        if (parsed.thirdParty) {
+            return this._planThirdParty(parsed, inheritedCall || {});
+        }
         const category = this.config.categories[parsed.categoryKey];
         let toolKeys = this._resolveRequestedTools(parsed, category);
 
@@ -817,6 +857,390 @@ class JevToolCallExp {
             return wantsHighResolution ? areaB - areaA : areaA - areaB;
         });
         return pool[0].key;
+    }
+
+    // ================= 第三方插件路由（实验） =================
+    // 不变量：
+    // 1. 必须用反引号写出唯一且逐字精确的 manifest.name，不做别名/大小写/模糊匹配；
+    // 2. 插件注册的目录必须与 {} 目录一致；
+    // 3. 裁决只发生在该插件声明的命令与参数内部，JEV 只选择 enum/boolean；
+    // 4. text 参数只能从【】/[]/URL 原样搬运，长度超限直接报错，不截断不改写。
+
+    async _planThirdParty(parsed, inheritedCall) {
+        if (Buffer.byteLength(parsed.raw, 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
+            throw new Error(`JEV third-party expression 超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
+        }
+        const registry = this.thirdPartyRegistry;
+        const label = parsed.categoryLabel;
+
+        if (parsed.backtickTools.length === 0) {
+            throw new Error(`第三方能力目录 {${label}} 必须用反引号写出精确工具名，例如 {${label}} \`ToolName\` 【主要内容】。`);
+        }
+        if (parsed.backtickTools.length > 1) {
+            throw new Error('第三方能力目录的一个 JEV 块只能指定一个工具。');
+        }
+
+        const toolName = parsed.backtickTools[0];
+        const allowlist = registry.getAllowlist(this.env);
+        if (allowlist && !allowlist.includes(toolName)) {
+            throw new Error(`工具 "${toolName}" 不在 JEV_THIRD_PARTY_ALLOWLIST 中。`);
+        }
+
+        const entry = registry.getEntry(toolName);
+        if (!entry) {
+            const near = registry.listEntries().find(item => (
+                item.pluginName && item.pluginName.toLowerCase() === toolName.toLowerCase()
+            ));
+            throw new Error(near
+                ? `JEV 第三方注册表中没有工具 "${toolName}"。工具名必须逐字精确，是否指 "${near.pluginName}"？`
+                : `JEV 第三方注册表中没有工具 "${toolName}"。`);
+        }
+        if (entry.validation?.status !== 'valid') {
+            const reasons = (entry.validation?.errors || []).slice(0, 3).join('；');
+            throw new Error(`工具 "${toolName}" 的 JEV 声明未通过校验：${reasons}`);
+        }
+        if (entry.pluginEnabled !== true) {
+            throw new Error(`工具 "${toolName}" 当前处于禁用状态，不能通过 JEV 调用。`);
+        }
+        if (entry.category !== parsed.categoryKey) {
+            throw new Error(`工具 "${toolName}" 注册在 {${entry.categoryLabel}}，不能通过 {${label}} 调用。`);
+        }
+
+        const matchLayers = this._thirdPartyMatchLayers(parsed);
+        const { command, consumedConstraints } = await this._selectThirdPartyCommand(entry, parsed, matchLayers);
+        const consumed = new Set(consumedConstraints);
+        const parameterParsed = {
+            ...parsed,
+            constraints: parsed.constraints.filter((_, index) => !consumed.has(index))
+        };
+        const args = await this._buildThirdPartyArgs(entry, command, parsed, parameterParsed, consumed);
+
+        return [this._buildExpandedCall(entry.toolName, args, inheritedCall, {
+            category: parsed.categoryKey,
+            toolKey: entry.toolName,
+            command: command.commandIdentifier,
+            thirdParty: true
+        })];
+    }
+
+    /**
+     * 确定性匹配的分层文本（已归一化）：
+     * 1. 锚点层：去掉目录、工具名与【】，只含动作词和 [] 约束，优先级最高；
+     * 2. 全文层：在锚点层无命中时回退，包含【】内容。
+     *    “执行【关闭台灯】”这类写法的意图完全在【】里，不能因此落入 JEV 的随机裁决。
+     */
+    _thirdPartyMatchLayers(parsed) {
+        // 按语义锚点主次排序，返回别名判定器数组；某层有命中即停止，低层不能覆盖高层：
+        // 1. 【】主要目标：子串匹配；
+        // 2. [] 次要约束：仅当整条约束与别名完全相等（标签式，如 [制冷]）才命中，
+        //    [] 中的自由文本（台词、说明）绝不参与子串匹配，只交给 text 参数原样搬运；
+        // 3. 锚点之外的自然语言动作词（如“打开”“查询”）：兜底。
+        const primaryText = normalizeAlias(parsed.primary.join(' '));
+        const constraintTags = new Set(parsed.constraints.map(normalizeAlias).filter(Boolean));
+        const wrapperText = normalizeAlias(parsed.raw
+            .replace(/【[\s\S]*?】/g, ' ')
+            .replace(/\[[\s\S]*?\]/g, ' ')
+            .replace(/`[^`]*`/g, ' ')
+            .replace(/\{[^{}]*\}/g, ' '));
+        return [
+            alias => this._textHasAlias(primaryText, alias),
+            alias => constraintTags.has(normalizeAlias(alias)),
+            alias => this._textHasAlias(wrapperText, alias)
+        ];
+    }
+
+    /** 按层依次尝试，返回第一层的非空命中结果。 */
+    _firstLayerHits(layers, collect) {
+        for (const text of layers) {
+            const hits = collect(text);
+            if (hits.length > 0) return hits;
+        }
+        return [];
+    }
+
+    _textHasAlias(normalizedText, alias) {
+        const normalized = normalizeAlias(alias);
+        // Single-character aliases are valid, but only an exact layer match is
+        // unambiguous; do not interpret 开场 as the device-control alias 开.
+        return normalized.length === 1
+            ? normalizedText === normalized
+            : normalized.length >= 2 && normalizedText.includes(normalized);
+    }
+
+    _buildExpandedCall(name, args, inheritedCall, jevMeta) {
+        const inheritedArgs = (
+            inheritedCall.args
+            && typeof inheritedCall.args === 'object'
+        ) ? inheritedCall.args : inheritedCall;
+        const inheritedMeta = (
+            inheritedCall.args
+            && typeof inheritedCall.args === 'object'
+        ) ? inheritedCall : {};
+
+        for (const key of INHERITED_ARG_KEYS) {
+            if (inheritedArgs[key] && !args[key]) args[key] = inheritedArgs[key];
+        }
+        const call = buildExpandedCallEnvelope(name, args, jevMeta, inheritedMeta);
+        if (Buffer.byteLength(JSON.stringify(call), 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
+            throw new Error(`JEV final third-party call 超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
+        }
+        return call;
+    }
+
+    async _decideThirdParty(entry, parsed, commandIdentifier, questions) {
+        const state = buildDecisionState(entry, parsed, commandIdentifier);
+        // Local budget failures must not be mistaken for a provider outage or
+        // silently select defaults. Include custom protocol and actual input.
+        assertDecisionSize(state, questions);
+        if (!this.jevClient?.isConfigured?.()) return null;
+        try {
+            const response = await this.jevClient.decide(state, questions);
+            return response?.answers || null;
+        } catch (error) {
+            if (this.env.DebugMode === 'true') {
+                console.warn(`[JevToolCallExp] 第三方插件 ${entry.toolName} 裁决失败，使用回退值。`);
+            }
+            return null;
+        }
+    }
+
+    _readChoice(answer, options) {
+        if (answer?.type !== 'choice' || !Number.isFinite(answer.confidence)
+            || answer.confidence < THIRD_PARTY_CHOICE_MIN_CONFIDENCE || answer.confidence > 1) return null;
+        const choice = answer?.choice;
+        if (!Object.prototype.hasOwnProperty.call(options, choice)) return null;
+        return choice;
+    }
+
+    _readNoul(answer) {
+        const probability = answer?.noul;
+        if (answer?.type !== 'noul' || !Number.isFinite(probability) || probability < 0 || probability > 1) return null;
+        if (probability >= THIRD_PARTY_NOUL_TRUE_THRESHOLD) return 'true';
+        if (probability <= THIRD_PARTY_NOUL_FALSE_THRESHOLD) return 'false';
+        return null;
+    }
+
+    async _selectThirdPartyCommand(entry, parsed, matchLayers) {
+        const commands = entry.commands;
+        if (commands.length === 1) return { command: commands[0], consumedConstraints: [] };
+
+        // Contradictory exact selectors are invalid even if primary text wins;
+        // never hand them to the provider/default path as ordinary payload.
+        const taggedCommands = commands.filter(cmd => (
+            [cmd.commandIdentifier, ...cmd.aliases].some(matchLayers[1])
+        ));
+        if (taggedCommands.length > 1) {
+            throw new Error('显式命令约束标签冲突，请只指定一个命令。');
+        }
+
+        let matched = [];
+        let matchedLayer = -1;
+        for (const [index, hit] of matchLayers.entries()) {
+            matched = commands.filter(cmd => (
+                [cmd.commandIdentifier, ...cmd.aliases].some(alias => hit(alias))
+            ));
+            if (matched.length > 0) {
+                matchedLayer = index;
+                break;
+            }
+        }
+        if (matched.length === 1) {
+            const command = matched[0];
+            const consumedConstraints = new Set();
+            // Only exact tags in the winning [] layer selected this command.
+            // Primary/wrapper, single-command and semantic/default selection
+            // must not erase payload tags that merely resemble command aliases.
+            if (matchedLayer === 1) {
+                this._markExactConstraints(parsed.constraints, [command.commandIdentifier, ...command.aliases], consumedConstraints);
+            }
+            return { command, consumedConstraints };
+        }
+
+        const candidates = matched.length > 1 ? matched : commands;
+        const options = Object.fromEntries(candidates.map(cmd => [
+            cmd.commandIdentifier,
+            cmd.description || cmd.commandIdentifier
+        ]));
+        const answers = await this._decideThirdParty(entry, parsed, null,
+            buildCommandQuestions(entry, candidates, this.decisionPrompts.THIRD_PARTY_PROTOCOL || undefined));
+        const choice = this._readChoice(answers?.command, options);
+        const chosen = choice
+            ? candidates.find(cmd => cmd.commandIdentifier === choice)
+            : candidates.find(cmd => cmd.commandIdentifier === entry.defaultCommand);
+        if (!chosen) {
+            throw new Error(`无法确定工具 "${entry.toolName}" 的命令，请在约束中写明命令，或由插件声明 defaultCommand。`);
+        }
+        return { command: chosen, consumedConstraints: [] };
+    }
+
+    /** 取出形如 [前缀:值] 的约束，值原样返回（仅去掉首尾空白）。 */
+    _takePrefixedConstraint(constraints, prefixes, consumed) {
+        if (!prefixes || prefixes.length === 0) return null;
+        let matchedIndex = -1;
+        let value = null;
+        for (let i = 0; i < constraints.length; i++) {
+            if (consumed.has(i)) continue;
+            const text = constraints[i];
+            for (const prefix of prefixes) {
+                if (text.length <= prefix.length) continue;
+                const head = text.slice(0, prefix.length);
+                const separator = text[prefix.length];
+                if (head.toLowerCase() === prefix.toLowerCase() && (separator === ':' || separator === '：')) {
+                    if (matchedIndex !== -1) throw new Error('同一参数不能重复提供前缀约束。');
+                    matchedIndex = i;
+                    value = text.slice(prefix.length + 1).trim();
+                    break; // Equivalent declared prefixes must not count one tag twice.
+                }
+            }
+        }
+        if (matchedIndex !== -1) consumed.add(matchedIndex);
+        return value;
+    }
+
+    _markExactConstraints(constraints, aliases, consumed) {
+        const targets = new Set(aliases.map(normalizeAlias).filter(Boolean));
+        constraints.forEach((value, index) => {
+            if (targets.has(normalizeAlias(value))) consumed.add(index);
+        });
+    }
+
+    async _buildThirdPartyArgs(entry, command, parsed, parameterParsed, consumedConstraints = []) {
+        const args = { ...command.fixedArgs };
+        if (command.injectCommand) args.command = command.commandIdentifier;
+
+        // Deterministic and provider decisions share the selector-free view.
+        // Keep the original constraints/indices for exact text extraction below.
+        const matchLayers = this._thirdPartyMatchLayers(parameterParsed);
+        const constraints = parsed.constraints;
+        const consumed = new Set(consumedConstraints);
+        const pending = [];
+        const paramEntries = Object.entries(command.parameters || {});
+        // Reserve prefixed values and reject duplicates before any parameter
+        // decision, including text parameters otherwise extracted after JEV.
+        const prefixedValues = new Map();
+        for (const [name, param] of paramEntries) {
+            if (param.prefixes.length > 0) {
+                prefixedValues.set(name, this._takePrefixedConstraint(constraints, param.prefixes, consumed));
+            }
+        }
+
+        // 第一轮：enum/boolean 确定性匹配，未决者交给 JEV 批量裁决。
+        for (const [name, param] of paramEntries) {
+            if (param.type === 'enum') {
+                const keys = Object.keys(param.values);
+                const aliasesOf = key => [key, ...(Object.prototype.hasOwnProperty.call(param.aliases || {}, key)
+                    ? param.aliases[key] : [])];
+                const taggedKeys = keys.filter(key => aliasesOf(key).some(matchLayers[1]));
+                if (taggedKeys.length > 1) {
+                    throw new Error(`参数 ${name} 的显式枚举约束标签冲突。`);
+                }
+                // Exact enum tags are control data even when primary text wins.
+                this._markExactConstraints(constraints, taggedKeys.flatMap(aliasesOf), consumed);
+                const prefixed = prefixedValues.get(name) ?? null;
+                let matched;
+                if (prefixed !== null) {
+                    const target = normalizeAlias(prefixed);
+                    matched = keys.filter(key => aliasesOf(key).some(alias => normalizeAlias(alias) === target));
+                    if (matched.length === 0) {
+                        throw new Error(`参数 ${name} 的取值 "${prefixed}" 不在允许选项中：${keys.join('、')}。`);
+                    }
+                    if (taggedKeys.some(key => !matched.includes(key))) {
+                        throw new Error(`参数 ${name} 的前缀值与显式枚举约束标签冲突。`);
+                    }
+                } else {
+                    matched = this._firstLayerHits(matchLayers, hit => keys.filter(key => (
+                        aliasesOf(key).some(alias => hit(alias))
+                    )));
+                }
+                if (matched.length === 1) {
+                    args[name] = matched[0];
+                    this._markExactConstraints(constraints, aliasesOf(matched[0]), consumed);
+                    continue;
+                }
+                const optionKeys = matched.length > 1 ? matched : keys;
+                pending.push({
+                    name,
+                    param,
+                    options: Object.fromEntries(optionKeys.map(key => [key, param.values[key]]))
+                });
+            } else if (param.type === 'boolean') {
+                // Validate exact [] tags independently of higher-priority primary
+                // text, and keep all recognized control tags out of free text.
+                const falseTags = param.falseAliases.filter(matchLayers[1]);
+                const trueTags = param.trueAliases.filter(matchLayers[1]);
+                if (falseTags.length > 0 && trueTags.length > 0) {
+                    throw new Error(`参数 ${name} 的显式真假约束标签冲突。`);
+                }
+                this._markExactConstraints(constraints, [...falseTags, ...trueTags], consumed);
+                // 否定词优先，避免“不要静音”被识别为“静音”。
+                // 同一层内否定词优先；锚点层有任意命中时不再看全文层。
+                let falseHit = [];
+                let trueHit = [];
+                for (const hit of matchLayers) {
+                    falseHit = param.falseAliases.filter(alias => hit(alias));
+                    trueHit = param.trueAliases.filter(alias => hit(alias));
+                    if (falseHit.length > 0 || trueHit.length > 0) break;
+                }
+                if (falseHit.length > 0) {
+                    args[name] = 'false';
+                    this._markExactConstraints(constraints, falseHit, consumed);
+                } else if (trueHit.length > 0) {
+                    args[name] = 'true';
+                    this._markExactConstraints(constraints, trueHit, consumed);
+                } else {
+                    pending.push({ name, param });
+                }
+            }
+        }
+
+        if (pending.length > 0) {
+            const questions = buildParameterQuestions(entry, pending,
+                this.decisionPrompts.THIRD_PARTY_PROTOCOL || undefined);
+            // consumed uses original constraint indices, not the already filtered
+            // parameter view; resolved controls must not influence other answers.
+            const providerParsed = {
+                ...parameterParsed,
+                constraints: constraints.filter((_, index) => !consumed.has(index))
+            };
+            const answers = await this._decideThirdParty(entry, providerParsed, command.commandIdentifier, questions);
+            for (const item of pending) {
+                const answer = answers?.[`p_${item.name}`];
+                const decided = item.param.type === 'enum'
+                    ? this._readChoice(answer, item.options)
+                    : this._readNoul(answer);
+                if (decided !== null) args[item.name] = decided;
+                else if (item.param.default !== undefined) args[item.name] = String(item.param.default);
+            }
+        }
+
+        // 第二轮：text 参数原样搬运。先处理带前缀的约束，再把剩余约束交给第一个无前缀参数。
+        const textParams = paramEntries.filter(([, param]) => param.type === 'text');
+        const assignText = (name, param, value) => {
+            if (value === null || value === undefined || value === '') return;
+            if (value.length > param.maxLength) {
+                throw new Error(`参数 ${name} 长度 ${value.length} 超过上限 ${param.maxLength}，JEV 不会截断文本。`);
+            }
+            args[name] = value;
+        };
+        for (const [name, param] of textParams) {
+            if (param.source === 'primary') assignText(name, param, parsed.primary.join('\n'));
+            else if (param.source === 'url') assignText(name, param, parsed.imageUrls[0]);
+            else if (param.prefixes.length > 0) {
+                assignText(name, param, prefixedValues.get(name));
+            }
+        }
+        const freeText = textParams.find(([, param]) => param.source === 'constraints' && param.prefixes.length === 0);
+        if (freeText) {
+            const remaining = constraints.filter((_, index) => !consumed.has(index));
+            if (remaining.length > 0) assignText(freeText[0], freeText[1], remaining.join('\n'));
+        }
+
+        for (const [name, param] of paramEntries) {
+            if (param.required && (args[name] === undefined || args[name] === '')) {
+                throw new Error(`工具 "${entry.toolName}" 命令 ${command.commandIdentifier} 缺少必填参数 ${name}。`);
+            }
+        }
+        return args;
     }
 
     async _chooseWithJev({ decisionType, state, options, fallback }) {
