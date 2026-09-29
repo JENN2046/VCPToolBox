@@ -1328,6 +1328,80 @@ test('malformed confidence and probability never become executable decisions', a
     }
 });
 
+function makeFixedEnvelopeManifest(fixedArgs, injectCommand = true, commandIdentifier = 'Send') {
+    const manifest = makeMessageManifest(true);
+    manifest.capabilities.invocationCommands = [{ commandIdentifier }];
+    manifest.jev.commands = [{ commandIdentifier, injectCommand, fixedArgs }];
+    manifest.jev.defaultCommand = commandIdentifier;
+    return manifest;
+}
+
+function expectedFixedEnvelope(manifest) {
+    const cmd = manifest.jev.commands[0];
+    const args = Object.fromEntries(Object.entries(cmd.fixedArgs).map(([key, value]) => [key, String(value)]));
+    if (cmd.injectCommand !== false) args.command = cmd.commandIdentifier;
+    return { name: manifest.name, args, archery: false, archeryNoReply: false, markHistory: false,
+        river: null, vref: null, jev: { category: 'iot_control', toolKey: manifest.name, command: cmd.commandIdentifier, thirdParty: true } };
+}
+
+test('aggregate fixed call size rejects individually legal oversized declarations', async () => {
+    const examples = [
+        Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`arg${i}`, 'x'.repeat(2000)])),
+        { first: '中'.repeat(2000), second: '文'.repeat(2000), third: '字'.repeat(2000) },
+        Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`arg${i}`, '"'.repeat(2000)])),
+        { first: '\u0000'.repeat(2000), second: '\n'.repeat(2000), third: '\\'.repeat(2000) },
+        { ['k'.repeat(16384)]: '' }
+    ];
+    for (const configured of [false, true]) {
+        for (const fixedArgs of examples) {
+            const manifest = makeFixedEnvelopeManifest(fixedArgs);
+            assert.ok(Buffer.byteLength(JSON.stringify(expectedFixedEnvelope(manifest)), 'utf8') > 16384);
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+            const entry = registry.getEntry('SmartAC');
+            assert.equal(entry.validation.status, 'invalid');
+            assert.match(entry.validation.errors.join(), /fixedArgs.*16384/);
+            assert.equal(entry.callTemplate, null);
+            await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【目标】'), /未通过校验/);
+            assert.equal(decisions.length, 0);
+        }
+    }
+});
+
+test('fixed envelope boundary includes metadata keys and optional injected command', async () => {
+    for (const injectCommand of [false, true]) {
+        for (const commandIdentifier of ['Send', '执行动作']) {
+            for (const delta of [-1, 0, 1]) {
+                const fixedArgs = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`arg${i}`, 'x'.repeat(1900)]));
+                fixedArgs.padding = '';
+                const manifest = makeFixedEnvelopeManifest(fixedArgs, injectCommand, commandIdentifier);
+                const baseSize = Buffer.byteLength(JSON.stringify(expectedFixedEnvelope(manifest)), 'utf8');
+                fixedArgs.padding = 'x'.repeat(16384 + delta - baseSize);
+                assert.ok(fixedArgs.padding.length <= 2000);
+                const expected = expectedFixedEnvelope(manifest);
+                assert.equal(Buffer.byteLength(JSON.stringify(expected), 'utf8'), 16384 + delta);
+                const { registry, planner } = makePlanner({ items: [{ manifest }] });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, delta > 0 ? 'invalid' : 'valid');
+                if (delta > 0) {
+                    assert.equal(entry.callTemplate, null);
+                    assert.match(entry.validation.errors.join(), /fixedArgs.*16384/);
+                } else {
+                    assert.ok(entry.callTemplate);
+                    assert.deepEqual((await planner.plan('{物联网控制} `SmartAC` 【目标】'))[0], expected);
+                    await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【目标】', { args: { maid: 'extra' } }), /final third-party call/);
+                }
+            }
+        }
+    }
+});
+
+test('fixed scalar values keep runtime string conversion in the envelope', async () => {
+    const manifest = makeFixedEnvelopeManifest({ count: 3, enabled: false, empty: '', text: '中文"\\\n' });
+    const { registry, planner } = makePlanner({ items: [{ manifest }] });
+    assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+    assert.deepEqual((await planner.plan('{物联网控制} `SmartAC` 【目标】'))[0], expectedFixedEnvelope(manifest));
+});
+
 test('reserved object keys and unbounded declaration values are rejected', () => {
     const mutations = [
         cmd => { cmd.parameters = JSON.parse('{"__proto__":{"type":"text","source":"primary"}}'); },

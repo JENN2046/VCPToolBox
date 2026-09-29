@@ -5,13 +5,13 @@ const path = require('path');
 const defaultJevClient = require('./jevClient');
 const { getSleepDurationMs } = require('../Plugin/VCPSleep/sleepDuration');
 const defaultThirdPartyRegistry = require('./jevThirdPartyRegistry');
+const { SEMANTIC_ENVELOPE_MAX_BYTES, buildExpandedCallEnvelope } = require('./jevCallEnvelope');
 
 const DEFAULT_CONFIG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_tool_call_exp.json');
 const DEFAULT_DECISION_PROMPT_PATH = path.join(__dirname, '..', 'TVStxt', 'JevToolCallDecision.txt');
 const IMAGE_URL_RE = /^(?:https?:\/\/|file:\/\/|data:image\/)/i;
 const BILIBILI_RESOURCE_RE = /(?:bilibili\.com\/video\/|b23\.tv\/|^BV[0-9A-Za-z]+(?:\?p=\d+)?$|^av\d+$)/i;
 const EXPLICIT_SIZE_RE = /\b(\d{3,4})\s*[x×:]\s*(\d{3,4})\b/i;
-const SEMANTIC_ENVELOPE_MAX_BYTES = 16 * 1024;
 const SEMANTIC_LIST_MAX_ITEMS = 32;
 const SEMANTIC_ITEM_MAX_BYTES = 4 * 1024;
 const SEMANTIC_RESOURCE_MAX_ITEMS = 8;
@@ -982,16 +982,7 @@ class JevToolCallExp {
         for (const key of INHERITED_ARG_KEYS) {
             if (inheritedArgs[key] && !args[key]) args[key] = inheritedArgs[key];
         }
-        const call = {
-            name,
-            args,
-            archery: inheritedMeta.archery === true,
-            archeryNoReply: inheritedMeta.archeryNoReply === true,
-            markHistory: inheritedMeta.markHistory === true,
-            river: inheritedMeta.river || null,
-            vref: inheritedMeta.vref || null,
-            jev: jevMeta
-        };
+        const call = buildExpandedCallEnvelope(name, args, jevMeta, inheritedMeta);
         if (Buffer.byteLength(JSON.stringify(call), 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
             throw new Error(`JEV final third-party call 超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
         }

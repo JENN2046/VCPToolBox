@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { SEMANTIC_ENVELOPE_MAX_BYTES, buildExpandedCallEnvelope } = require('./jevCallEnvelope');
 
 const DEFAULT_CATALOG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_third_party_catalog.json');
 const DEFAULT_OFFICIAL_CONFIG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_tool_call_exp.json');
@@ -632,6 +633,19 @@ class JevThirdPartyRegistry {
             jev.commands.forEach((cmd, index) => {
                 const normalized = this._validateCommand(index, cmd, invocationIds, limits, forbidden, errors);
                 if (!normalized) return;
+                // Size the default fixed call exactly as the planner serializes
+                // it, including UTF-8, JSON escaping, keys and JEV metadata.
+                const fixedArgs = { ...normalized.fixedArgs };
+                if (normalized.injectCommand) fixedArgs.command = normalized.commandIdentifier;
+                const fixedCall = buildExpandedCallEnvelope(entry.toolName, fixedArgs, {
+                    category: entry.category,
+                    toolKey: entry.toolName,
+                    command: normalized.commandIdentifier,
+                    thirdParty: true
+                });
+                if (Buffer.byteLength(JSON.stringify(fixedCall), 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
+                    errors.push(`jev.commands[${index}].fixedArgs 的完整固定调用超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
+                }
                 if (seen.has(normalized.commandIdentifier)) {
                     errors.push(`jev.commands 中命令 "${normalized.commandIdentifier}" 重复。`);
                     return;
