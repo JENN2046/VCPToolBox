@@ -1150,6 +1150,12 @@ class JevToolCallExp {
                 const keys = Object.keys(param.values);
                 const aliasesOf = key => [key, ...(Object.prototype.hasOwnProperty.call(param.aliases || {}, key)
                     ? param.aliases[key] : [])];
+                const taggedKeys = keys.filter(key => aliasesOf(key).some(matchLayers[1]));
+                if (taggedKeys.length > 1) {
+                    throw new Error(`参数 ${name} 的显式枚举约束标签冲突。`);
+                }
+                // Exact enum tags are control data even when primary text wins.
+                this._markExactConstraints(constraints, taggedKeys.flatMap(aliasesOf), consumed);
                 const prefixed = prefixedValues.get(name) ?? null;
                 let matched;
                 if (prefixed !== null) {
@@ -1157,6 +1163,9 @@ class JevToolCallExp {
                     matched = keys.filter(key => aliasesOf(key).some(alias => normalizeAlias(alias) === target));
                     if (matched.length === 0) {
                         throw new Error(`参数 ${name} 的取值 "${prefixed}" 不在允许选项中：${keys.join('、')}。`);
+                    }
+                    if (taggedKeys.some(key => !matched.includes(key))) {
+                        throw new Error(`参数 ${name} 的前缀值与显式枚举约束标签冲突。`);
                     }
                 } else {
                     matched = this._firstLayerHits(matchLayers, hit => keys.filter(key => (

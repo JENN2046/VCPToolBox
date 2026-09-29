@@ -753,6 +753,55 @@ test('overlapping normalized boolean aliases fail before planning', async () => 
     }
 });
 
+function makeEnumTagManifest() {
+    const manifest = makeMessageManifest(true);
+    manifest.jev.commands[0].parameters = {
+        mode: { type: 'enum', description: '模式', prefixes: ['mode', '模式'],
+            values: { cool: '制冷', heat: '制热' }, aliases: { cool: ['制冷', 'power-cool'], heat: ['制热', 'power-heat'] }, default: 'cool' },
+        note: { type: 'text', source: 'constraints', required: true }
+    };
+    return manifest;
+}
+
+test('conflicting enum control tags reject before provider decisions and text extraction', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeEnumTagManifest();
+        manifest.jev.commands[0].parameters.urgent = { type: 'boolean', description: '是否紧急', default: false };
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        for (const primary of ['目标', 'cool', 'heat']) {
+            for (const tags of [
+                '[mode:cool][heat]', '[heat][mode:cool]', '[MODE：POWER_COOL][制热]',
+                '[模式:heat][制冷]', '[cool][heat]', '[POWER_HEAT][power_cool]', '[制冷][制热][制热]'
+            ]) {
+                for (const note of ['', '[hello]']) {
+                    await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【${primary}】${tags}${note}`), /mode.*枚举.*冲突/);
+                }
+            }
+        }
+        assert.equal(decisions.length, 0);
+    }
+});
+
+test('recognized enum tags never become text while matching precedence stays intact', async () => {
+    for (const configured of [false, true]) {
+        const { planner, decisions } = makePlanner({ items: [{ manifest: makeEnumTagManifest() }], configured });
+        for (const [primary, tags, mode] of [
+            ['目标', '[mode:cool][COOL][制冷][power_cool]', 'cool'],
+            ['目标', '[heat][制热][heat]', 'heat'],
+            ['heat', '[mode:cool][制冷]', 'cool'],
+            ['cool', '[heat][制热]', 'cool'],
+            ['heat', '[制冷]', 'heat']
+        ]) {
+            const expression = `{物联网控制} \`SmartAC\` 【${primary}】${tags}`;
+            await assert.rejects(planner.plan(expression), /缺少必填参数 note/);
+            assert.deepEqual((await planner.plan(`${expression}[hello][请制热附件][note:cool]`))[0].args,
+                { command: 'Send', mode, note: 'hello\n请制热附件\nnote:cool' });
+        }
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('opposing explicit boolean tags reject before free text or provider decisions', async () => {
     for (const configured of [false, true]) {
         const manifest = makeMessageManifest(true);
