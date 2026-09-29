@@ -601,24 +601,51 @@ test('multiple catch-all constraints parameters fail validation before planning'
     }
 });
 
-test('multiple URL-sourced text parameters reject before planning', async () => {
+for (const source of ['url', 'primary']) {
+test(`multiple ${source}-sourced text parameters reject before planning`, async () => {
     for (const configured of [false, true]) {
         for (const required of [false, true]) {
             for (const reverse of [false, true]) {
                 const manifest = makeMessageManifest(true);
                 const parameters = [
-                    ['first', { type: 'text', source: 'url', required }],
-                    ['second', { type: 'text', source: 'url', prefixes: [], required: !required }]
+                    ['first', { type: 'text', source, required }],
+                    ['second', { type: 'text', source, prefixes: [], required: !required }]
                 ];
                 manifest.jev.commands[0].parameters = Object.fromEntries(reverse ? parameters.reverse() : parameters);
                 const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
                 const entry = registry.getEntry('SmartAC');
                 assert.equal(entry.validation.status, 'invalid');
-                assert.match(entry.validation.errors.join(), /最多允许一个.*url/);
+                assert.match(entry.validation.errors.join(), new RegExp(`最多允许一个.*${source}`));
                 assert.equal(entry.callTemplate, null);
-                await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【目标】[https://example.test/a.png][https://example.test/b.png]'), /未通过校验/);
+                await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【Title】【Body】[https://example.test/a.png][https://example.test/b.png]'), /未通过校验/);
                 assert.equal(decisions.length, 0);
             }
+        }
+    }
+});
+}
+
+test('one primary parameter per command preserves joined payload and required semantics', async () => {
+    for (const configured of [false, true]) {
+        for (const required of [false, true]) {
+            const manifest = makeMessageManifest();
+            for (const command of manifest.jev.commands) {
+                command.parameters = {
+                    title: { type: 'text', source: 'primary', required },
+                    image: { type: 'text', source: 'url', required: true }
+                };
+            }
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+            assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+            for (const command of ['Send', 'Inspect']) {
+                const expression = `{物联网控制} \`SmartAC\` [${command}][https://example.test/a.png]`;
+                const expected = { command, image: 'https://example.test/a.png' };
+                assert.deepEqual((await planner.plan(`${expression}【Title】【Body】`))[0].args,
+                    { ...expected, title: 'Title\nBody' });
+                if (required) await assert.rejects(planner.plan(expression), /缺少必填参数 title/);
+                else assert.deepEqual((await planner.plan(expression))[0].args, expected);
+            }
+            assert.equal(decisions.length, 0);
         }
     }
 });

@@ -161,3 +161,9 @@ The state-dependent mock-provider regression fails on `e9dc9b73` by emitting `ur
 Registry validation rejects multiple `source: "url"` text parameters in one command, matching the existing planner's first-URL semantics instead of introducing positional URL assignment. Invalid declarations have no callable template and fail before provider decisions. Each separate command may still declare its own single URL parameter; required/optional missing-URL behavior remains unchanged.
 
 The rejection regression fails on `48d0280d`; the positive compatibility test already passes there. Two matrix tests cover reversed parameter order, required/optional parameters, offline/configured mock providers, two distinct URLs, exact first-URL output, independent commands, primary/prefixed/free text coexistence and missing URLs. Windows: **273/273, zero failed/skipped**, admin typecheck/build passed. Final exact-commit Linux evidence follows in the PR. No real configuration/provider/production access or native/dependency/CI changes.
+
+### One primary-sourced text parameter per command
+
+Follow-up review identified the same ambiguity for `source: "primary"`: the planner supplies the complete newline-joined primary payload rather than positional values. The shared validation now limits both URL and primary sources to one text parameter per command. Each source may coexist with the other; separate commands retain independent declarations.
+
+The primary rejection regression fails on `2566ee7b`, while positive controls preserve joined primary text, required/optional absence with URL-only requests and per-command ownership. Windows: **275/275, zero failed/skipped**, admin typecheck/build passed. Linux validation and the developer host disk-capacity limitation are recorded in the PR; unchanged lockfiles permit reuse of previously validated isolated dependencies. No real configuration/provider/production access or native/dependency/CI changes.
