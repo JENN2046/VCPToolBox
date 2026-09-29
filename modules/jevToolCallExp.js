@@ -911,11 +911,11 @@ class JevToolCallExp {
         const matchLayers = this._thirdPartyMatchLayers(parsed);
         const { command, consumedConstraints } = await this._selectThirdPartyCommand(entry, parsed, matchLayers);
         const consumed = new Set(consumedConstraints);
-        const parameterMatchLayers = this._thirdPartyMatchLayers({
+        const parameterParsed = {
             ...parsed,
             constraints: parsed.constraints.filter((_, index) => !consumed.has(index))
-        });
-        const args = await this._buildThirdPartyArgs(entry, command, parsed, parameterMatchLayers, consumed);
+        };
+        const args = await this._buildThirdPartyArgs(entry, command, parsed, parameterParsed, consumed);
 
         return [this._buildExpandedCall(entry.toolName, args, inheritedCall, {
             category: parsed.categoryKey,
@@ -1119,10 +1119,13 @@ class JevToolCallExp {
         });
     }
 
-    async _buildThirdPartyArgs(entry, command, parsed, matchLayers, consumedConstraints = []) {
+    async _buildThirdPartyArgs(entry, command, parsed, parameterParsed, consumedConstraints = []) {
         const args = { ...command.fixedArgs };
         if (command.injectCommand) args.command = command.commandIdentifier;
 
+        // Deterministic and provider decisions share the selector-free view.
+        // Keep the original constraints/indices for exact text extraction below.
+        const matchLayers = this._thirdPartyMatchLayers(parameterParsed);
         const constraints = parsed.constraints;
         const consumed = new Set(consumedConstraints);
         const pending = [];
@@ -1195,7 +1198,7 @@ class JevToolCallExp {
                         instructions: this._thirdPartyInstructions(entry, `${task}。判断该参数是否应为真。`)
                     };
             }
-            const answers = await this._decideThirdParty(entry, parsed, command.commandIdentifier, questions);
+            const answers = await this._decideThirdParty(entry, parameterParsed, command.commandIdentifier, questions);
             for (const item of pending) {
                 const answer = answers?.[`p_${item.name}`];
                 const decided = item.param.type === 'enum'

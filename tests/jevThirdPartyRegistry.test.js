@@ -83,7 +83,7 @@ function makePlanner({ items = [{ manifest: makeAcManifest() }], env = EXP_ON, c
         isConfigured: () => configured,
         async decide(state, questions) {
             decisions.push({ state, questions });
-            return { answers };
+            return { answers: typeof answers === 'function' ? answers(state, questions) : answers };
         }
     };
     const planner = new JevToolCallExp({
@@ -210,6 +210,65 @@ test('consumed command selectors cannot also set enum or boolean parameters', as
             assert.equal(decisions.length, configured ? 2 : 0);
             if (configured) assert.ok(decisions.every(({ questions }) => questions.p_urgent));
         }
+    }
+});
+
+test('parameter provider state excludes consumed selectors while text retains original indices', async () => {
+    for (const type of ['boolean', 'enum']) {
+        const manifest = makeMessageManifest();
+        Object.assign(manifest.jev.commands[0].parameters, {
+            recipient: { type: 'text', source: 'constraints', prefixes: ['user'], required: true },
+            urgent: type === 'boolean'
+                ? { type, description: '是否紧急', trueAliases: ['发送', 'Send'], falseAliases: ['普通'] }
+                : { type, description: '是否紧急', values: { Send: '紧急', normal: '普通' }, aliases: { Send: ['发送'] } }
+        });
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true,
+            answers: state => {
+                const urgent = state.constraints.some(value => /^(发送|send)$/i.test(value) || value === '请尽快处理');
+                return { p_urgent: type === 'boolean'
+                    ? { type: 'noul', noul: urgent ? 1 : 0 }
+                    : { type: 'choice', choice: urgent ? 'Send' : 'normal', confidence: 0.9 } };
+            }
+        });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        for (const tags of [
+            ['发送', 'user:Alice', '你好', '再见'],
+            ['user:Alice', '你好', 'SEND', '再见'],
+            ['发送', '你好', 'SEND', 'user:Alice', '再见'],
+            ['发送', 'user:Alice', '请尽快处理', '再见']
+        ]) {
+            const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【目标】${tags.map(tag => `[${tag}]`).join('')}`);
+            const remaining = tags.filter(tag => !/^(发送|send)$/i.test(tag));
+            const urgent = remaining.includes('请尽快处理');
+            assert.deepEqual(call.args, { command: 'Send', recipient: 'Alice',
+                urgent: type === 'boolean' ? String(urgent) : urgent ? 'Send' : 'normal',
+                text: remaining.filter(tag => !tag.startsWith('user:')).join('\n') });
+            const { state, questions } = decisions.at(-1);
+            assert.deepEqual(state.constraints, remaining);
+            assert.deepEqual(state.primary, ['目标']);
+            assert.equal(state.command, 'Send');
+            assert.equal(Object.hasOwn(state, 'raw'), false);
+            assert.deepEqual(Object.keys(questions), ['p_urgent']);
+        }
+        assert.equal(decisions.length, 4);
+    }
+});
+
+test('parameter provider retains constraints that did not select the command', async () => {
+    for (const [singleCommand, expression, expected] of [
+        [false, '【发送】[发送][你好]', ['发送', '你好']],
+        [true, '【目标】[发送][你好]', ['发送', '你好']],
+        [false, '【目标】[发送][检查][你好]', ['发送', '检查', '你好']],
+        [false, '【目标】[你好]', ['你好']]
+    ]) {
+        const manifest = makeMessageManifest(singleCommand);
+        manifest.jev.commands[0].parameters.urgent = { type: 'boolean', description: '是否紧急' };
+        const { planner, decisions } = makePlanner({ items: [{ manifest }], configured: true,
+            answers: { p_urgent: { type: 'noul', noul: 0 } } });
+        const [call] = await planner.plan(`{物联网控制} \`SmartAC\` ${expression}`);
+        assert.deepEqual(call.args, { command: 'Send', urgent: 'false', text: expected.join('\n') });
+        assert.deepEqual(decisions.at(-1).state.constraints, expected);
+        assert.ok(decisions.at(-1).questions.p_urgent);
     }
 });
 
