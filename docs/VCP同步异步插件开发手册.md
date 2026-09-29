@@ -1085,7 +1085,7 @@ JEV:「始」{物联网控制} `SmartAC` 打开空调【把客厅弄凉快些】
 | `commands[].fixedArgs` | 否 | 固定参数，值为字符串/数字/布尔 |
 | `commands[].parameters` | 否 | 参数 schema，见 A.5 |
 
-`jevDescPrompt`、`jevPrompt`、`agentPrompt` 中若出现指令覆写（如“忽略之前规则”）、秘密读取或代码执行类内容，声明会被判为 invalid。
+`jevDescPrompt`、`jevPrompt`、`agentPrompt`、命令与参数的 `description`、枚举 `values` 选项说明共用注入检测规则。若命中指令覆写（如“忽略之前规则”）、秘密读取或代码执行类模式，声明会被判为 invalid，且不提供调用模板或进入 JEV 裁决。此为已知模式筛查，不代表能识别所有提示词注入，第三方声明仍需审阅。
 
 ### A.5 参数类型
 

@@ -194,6 +194,12 @@ class JevThirdPartyRegistry {
 
     // ---------- 声明校验 ----------
 
+    _screenPromptContent(label, text, errors) {
+        if (PROMPT_INJECTION_PATTERNS.some(re => re.test(text))) {
+            errors.push(`${label} 含有指令覆写、秘密读取或代码执行类内容，已拒绝。`);
+        }
+    }
+
     _checkPrompt(field, value, { required, maxLength }, errors) {
         if (value === undefined || value === null || value === '') {
             if (required) errors.push(`jev.${field} 必填。`);
@@ -208,9 +214,7 @@ class JevThirdPartyRegistry {
         if (text.length > maxLength) {
             errors.push(`jev.${field} 超过长度上限 ${maxLength}（当前 ${text.length}）。`);
         }
-        if (PROMPT_INJECTION_PATTERNS.some(re => re.test(text))) {
-            errors.push(`jev.${field} 含有指令覆写、秘密读取或代码执行类内容，已拒绝。`);
-        }
+        this._screenPromptContent(`jev.${field}`, text, errors);
         return text;
     }
 
@@ -284,6 +288,7 @@ class JevThirdPartyRegistry {
             errors.push(`${label}.${name} 为 ${type} 类型，必须提供 description 供 JEV 裁决。`);
         }
         normalized.description = description;
+        this._screenPromptContent(`${label}.${name}.description`, description, errors);
         normalized.prefixes = this._checkStringList(`${label}.${name}.prefixes`, spec.prefixes, limits, errors);
         if (normalized.prefixes.some(prefix => /[:：]/.test(prefix))) {
             errors.push(`${label}.${name}.prefixes 不能包含解析分隔符 : 或 ：。`);
@@ -313,6 +318,7 @@ class JevThirdPartyRegistry {
                     continue;
                 }
                 normalized.values[key] = values[key].trim();
+                this._screenPromptContent(`${label}.${name}.values.${key}`, normalized.values[key], errors);
             }
             normalized.aliases = {};
             if (spec.aliases !== undefined) {
@@ -423,6 +429,7 @@ class JevThirdPartyRegistry {
                 errors.push(`${label}.description 超过长度上限 ${limits.maxParamDescriptionLength}。`);
             } else normalized.description = cmd.description.trim();
         }
+        this._screenPromptContent(`${label}.description`, normalized.description, errors);
 
         if (cmd.fixedArgs !== undefined) {
             if (!isPlainObject(cmd.fixedArgs)) {
