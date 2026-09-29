@@ -91,3 +91,9 @@ Three rejection regressions reproduced alias/alias, key/key and key/alias collis
 ### Command identifier/alias ownership
 
 Review of `5c4fc2d6` identified the corresponding cross-command ambiguity. Declaration validation now requires normalized command identifiers and aliases to have a single owning command, while preserving same-command equivalent spellings and exact identifier validation against capabilities. Added three failing-before/passing-after collision tests plus deterministic same-command compatibility across constraint/wrapper inputs, with offline/configured mock-provider modes and reversed command order. Windows full regression: **240/240, zero failed/skipped**; admin typecheck/build passed with no bundle changes. The exact-commit Linux result is recorded in the PR after publication, separately from the previous 236-test snapshot.
+
+### Substring containment in enum and command aliases
+
+The collision check now mirrors the planner's actual substring rule: across different enum options or commands, reject normalized equality and containment by a token of at least two characters. Preserve same-owner containment and the existing exact-only single-character behavior. The planner and ordinary plugin loading are unchanged; affected third-party JEV declarations need non-ambiguous keys/aliases before becoming valid again.
+
+Both new rejection tests fail on `c45221aa` and pass after this fix. Added enum/command matrices for key/key, alias/alias and key/alias containment, normalized case/punctuation, Chinese aliases, reverse order, primary/wrapper inputs, offline/configured mock-provider modes, plus same-owner and single-character positive controls. Windows regression: **244/244, zero failed/skipped**; admin typecheck/build passed with no bundle changes. The exact-commit Linux result is recorded in the PR after publication. No production configuration, provider, native, dependency or CI changes.

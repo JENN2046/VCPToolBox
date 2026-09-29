@@ -348,6 +348,70 @@ test('same-command normalized aliases remain valid and explicit actions avoid fa
     }
 });
 
+for (const kind of ['enum', 'command']) {
+    test(`${kind} cross-owner substring collisions reject explicit requests before fallback`, async () => {
+        for (const [short, long, forms] of [
+            ['on', 'only', ['key/key', 'alias/alias', 'key/alias']],
+            ['POWER_ON', 'power_only', ['key/key', 'alias/alias', 'key/alias']],
+            ['冷气', '开冷气', ['alias/alias']]
+        ]) {
+            for (const form of forms) {
+                const candidates = [
+                    { key: form.startsWith('key/') ? short : 'Alpha', aliases: form.startsWith('key/') ? [] : [short] },
+                    { key: form.endsWith('/key') ? long : 'Bravo', aliases: form.endsWith('/key') ? [] : [long] }
+                ];
+                for (const ordered of [candidates, [...candidates].reverse()]) {
+                    for (const configured of [false, true]) {
+                        const commands = kind === 'command'
+                            ? ordered.map(({ key, aliases }) => ({ commandIdentifier: key, aliases }))
+                            : [{ commandIdentifier: 'SetAC', parameters: { mode: {
+                                type: 'enum', description: '模式', values: Object.fromEntries(ordered.map(({ key }) => [key, key])),
+                                aliases: Object.fromEntries(ordered.map(({ key, aliases }) => [key, aliases])), default: ordered[0].key
+                            } } }];
+                        const manifest = makeAcManifest({
+                            capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) },
+                            jev: { commands, defaultCommand: commands[0].commandIdentifier }
+                        });
+                        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                        assert.equal(registry.getEntry('SmartAC').validation.status, 'invalid');
+                        assert.match(registry.getEntry('SmartAC').validation.errors.join(), /子串包含/);
+                        assert.equal(registry.getEntry('SmartAC').callTemplate, null);
+                        for (const expression of [`{物联网控制} \`SmartAC\` 【${long}】`, `{物联网控制} \`SmartAC\` ${long}【目标】`]) {
+                            await assert.rejects(planner.plan(expression), /未通过校验/);
+                        }
+                        assert.equal(decisions.length, 0);
+                    }
+                }
+            }
+        }
+    });
+
+    test(`${kind} retains same-owner containment and exact-only single-character aliases`, async () => {
+        for (const aliases of [{ Alpha: ['on', 'only'], Bravo: ['stop'] }, { Alpha: ['开'], Bravo: ['打开'] }]) {
+            for (const configured of [false, true]) {
+                const commands = kind === 'command'
+                    ? Object.entries(aliases).map(([commandIdentifier, list]) => ({ commandIdentifier, aliases: list }))
+                    : [{ commandIdentifier: 'SetAC', parameters: { mode: {
+                        type: 'enum', description: '模式', values: { Alpha: '选项一', Bravo: '选项二' }, aliases, default: 'Bravo'
+                    } } }];
+                const manifest = makeAcManifest({
+                    capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) },
+                    jev: { commands, defaultCommand: commands.at(-1).commandIdentifier }
+                });
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+                for (const [owner, list] of Object.entries(aliases)) {
+                    for (const input of list) {
+                        const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【${input}】`);
+                        assert.equal(call.args[kind === 'command' ? 'command' : 'mode'], owner);
+                    }
+                }
+                assert.equal(decisions.length, 0);
+            }
+        }
+    });
+}
+
 test('third-party input and final inherited metadata remain UTF-8 byte bounded', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 调节【' + '汉'.repeat(6000) + '】'), /最大字节数/);

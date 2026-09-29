@@ -70,6 +70,19 @@ function normalizeAlias(value) {
         .replace(/[\s_\-]+/g, '');
 }
 
+// Mirror _textHasAlias: multi-character tokens match substrings, but a
+// single-character token only matches a complete layer (or exact [] tag).
+function findConflictingAliasOwner(owners, token, owner) {
+    for (const [other, otherOwner] of owners) {
+        if (otherOwner !== owner && (token === other
+            || (token.length >= 2 && other.includes(token))
+            || (other.length >= 2 && token.includes(other)))) {
+            return otherOwner;
+        }
+    }
+    return undefined;
+}
+
 function isPlainObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -300,8 +313,9 @@ class JevThirdPartyRegistry {
                 const aliases = Object.prototype.hasOwnProperty.call(normalized.aliases, key) ? normalized.aliases[key] : [];
                 const tokens = new Set([key, ...aliases].map(normalizeAlias));
                 for (const token of tokens) {
-                    if (aliasOwners.has(token) && aliasOwners.get(token) !== key) {
-                        errors.push(`${label}.${name} 的不同 enum 选项 "${aliasOwners.get(token)}" 与 "${key}" 的键或别名归一化后不能重叠。`);
+                    const conflict = findConflictingAliasOwner(aliasOwners, token, key);
+                    if (conflict !== undefined) {
+                        errors.push(`${label}.${name} 的不同 enum 选项 "${conflict}" 与 "${key}" 的键或别名归一化后不能重叠（相等或子串包含）。`);
                     } else {
                         aliasOwners.set(token, key);
                     }
@@ -546,8 +560,9 @@ class JevThirdPartyRegistry {
                 seen.add(normalized.commandIdentifier);
                 const commandId = normalized.commandIdentifier;
                 for (const token of new Set([commandId, ...normalized.aliases].map(normalizeAlias))) {
-                    if (commandAliasOwners.has(token) && commandAliasOwners.get(token) !== commandId) {
-                        errors.push(`jev.commands 中不同命令 "${commandAliasOwners.get(token)}" 与 "${commandId}" 的标识符或别名归一化后不能重叠。`);
+                    const conflict = findConflictingAliasOwner(commandAliasOwners, token, commandId);
+                    if (conflict !== undefined) {
+                        errors.push(`jev.commands 中不同命令 "${conflict}" 与 "${commandId}" 的标识符或别名归一化后不能重叠（相等或子串包含）。`);
                     } else {
                         commandAliasOwners.set(token, commandId);
                     }
