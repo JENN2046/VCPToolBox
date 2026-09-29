@@ -138,3 +138,68 @@ test('login owns viewport scrolling with overflow-safe vertical centering at eve
     assert.match(container, /flex-shrink:\s*0/);
     assert.doesNotMatch(view, /align-items:\s*(?:center|stretch)/);
 });
+
+function baseConfigHarness(content, exampleContent) {
+    const envScope = { exports: {} };
+    vm.runInNewContext(transpile(source('utils/env.ts')), envScope);
+    const view = source('views/BaseConfig.vue');
+    const start = view.indexOf('async function loadConfig()');
+    const end = view.indexOf('\nwatch(', start);
+    assert.ok(start >= 0 && end > start);
+    const saved = [];
+    const scope = {
+        ...envScope.exports,
+        configEntries: { value: [] }, isLoading: { value: false }, statusMessage: { value: '' },
+        statusType: { value: 'info' }, configDocumentation: { value: {} },
+        DEFAULT_GROUP_TITLE: '未分类配置',
+        createEmptyDocumentationMetadata: () => ({}),
+        buildDocumentationMetadata: () => ({ keyMetadataMap: {}, groupDescriptionMap: {} }),
+        extractFallbackGroupMarkers: () => [],
+        resolveFallbackGroupInfo: () => ({ groupTitle: '', sectionTitle: '' }),
+        normalizeValue: value => String(value),
+        showMessage: (message, type) => { if (type === 'error') throw new Error(message); },
+        adminConfigApi: {
+            getMainConfig: async () => ({ content, exampleContent }),
+            saveMainConfig: async value => { saved.push(value); content = value; }
+        }
+    };
+    vm.runInNewContext(transpile(view.slice(start, end)) + '\nthis.load = loadConfig; this.save = handleSubmit;', scope);
+    return { scope, saved };
+}
+
+test('base config supplements template-only settings without reordering existing entries', async () => {
+    const h = baseConfigHarness('# custom order\nZ=9\nA=mine\n# keep\nCUSTOM=hello',
+        'A=template\nJEV_THIRD_PARTY_EXP=false\nZ=1\nNEW_TEXT=default');
+    await h.scope.load();
+    assert.deepEqual(Array.from(h.scope.configEntries.value.filter(e => e.key), e => e.key),
+        ['Z', 'A', 'CUSTOM', 'JEV_THIRD_PARTY_EXP', 'NEW_TEXT']);
+    assert.equal(h.saved.length, 0, 'loading must not write configuration');
+    h.scope.configEntries.value.find(e => e.key === 'JEV_THIRD_PARTY_EXP').value = 'true';
+    h.scope.configEntries.value.find(e => e.key === 'NEW_TEXT').value = 'new text';
+    await h.scope.save();
+    assert.equal(h.saved[0], '# custom order\nZ=9\nA=mine\n# keep\nCUSTOM=hello\nJEV_THIRD_PARTY_EXP=true\nNEW_TEXT=new text');
+    assert.equal(h.scope.configEntries.value.filter(e => e.key === 'JEV_THIRD_PARTY_EXP').length, 1);
+});
+
+test('base config handles empty sources, duplicate keys and multiline template values', async () => {
+    for (const content of [undefined, '', ' \n']) {
+        const h = baseConfigHarness(content, '# template\nNEW=true');
+        await h.scope.load();
+        assert.equal(h.scope.configEntries.value.find(e => e.key === 'NEW').value, 'true');
+        assert.equal(h.saved.length, 0);
+    }
+    const h = baseConfigHarness('EXIST=\nDUP=one\nDUP=two\n# NEW=disabled',
+        'EXIST=replacement\nNEW="line1\nline2"\nNEW=ignored\n# COMMENT_ONLY=value');
+    await h.scope.load();
+    const entries = h.scope.configEntries.value;
+    assert.equal(entries.find(e => e.key === 'EXIST').value, '');
+    assert.deepEqual(Array.from(entries.filter(e => e.key === 'DUP'), e => e.value), ['one', 'two']);
+    assert.equal(entries.filter(e => e.key === 'NEW').length, 1);
+    assert.equal(entries.find(e => e.key === 'NEW').value, 'line1\nline2');
+    assert.equal(entries.find(e => e.key === 'NEW').isMultilineQuoted, true);
+    assert.equal(entries.find(e => e.key === 'NEW').originalLineNumStart, -1);
+    assert.equal(entries.some(e => e.key === 'COMMENT_ONLY'), false);
+    const noTemplate = baseConfigHarness('ONLY=kept', undefined);
+    await noTemplate.scope.load();
+    assert.deepEqual(Array.from(noTemplate.scope.configEntries.value, e => e.key), ['ONLY']);
+});

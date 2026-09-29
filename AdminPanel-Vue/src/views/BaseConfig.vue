@@ -929,10 +929,17 @@ async function loadConfig() {
       loadingKey: 'base-config.load'
     })
 
-    // 直接使用 config.env 原始内容，不再按 example 自动整理重排；
-    // 仅当 config.env 为空时回退到 example 作为初始内容。
+    // 保留 config.env 条目顺序；模板只补充缺失键，不覆盖已有值或重排文件。
+    // 空配置仍以完整模板初始化；这里只构建表单，用户提交时才保存。
     const configContent = result.content?.trim() ? result.content : (result.exampleContent || '')
     const entries = parseEnvToList(configContent)
+    const existingKeys = new Set(entries.filter(entry => entry.key).map(entry => entry.key))
+    for (const entry of parseEnvToList(result.exampleContent || '')) {
+      if (!entry.key || existingKeys.has(entry.key)) continue
+      // Template line numbers must not inherit unrelated custom-file group markers.
+      entries.push({ ...entry, originalLineNumStart: -1, originalLineNumEnd: -1 })
+      existingKeys.add(entry.key)
+    }
     const documentationSource = result.exampleContent || configContent
     const documentationMetadata = buildDocumentationMetadata(documentationSource)
     const fallbackMarkers = extractFallbackGroupMarkers(configContent)
