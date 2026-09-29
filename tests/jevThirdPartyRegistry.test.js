@@ -679,6 +679,49 @@ test('one URL parameter per command preserves first URL and required semantics',
     }
 });
 
+test('duplicate prefixed constraints reject before provider decisions or free-text extraction', async () => {
+    for (const type of ['enum', 'text']) {
+        for (const configured of [false, true]) {
+            const manifest = makeMessageManifest(true);
+            manifest.jev.commands[0].parameters = {
+                urgent: { type: 'boolean', description: '是否紧急', default: false },
+                mode: { type, prefixes: ['mode', 'MODE', '模式'], required: true,
+                    ...(type === 'enum' ? { description: '模式', values: { on: '启用', off: '停用' } } : { source: 'constraints' }) },
+                note: { type: 'text', source: 'constraints', required: true }
+            };
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+            assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+            for (const tags of [
+                '[mode:on][mode:off]', '[mode:on][mode:on]',
+                '[MODE：on][模式:off]', '[模式:on][mode：on]',
+                '[mode:][MODE:on]', '[mode:on][mode:]'
+            ]) {
+                for (const note of ['', '[真实备注]']) {
+                    await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【目标】${tags}${note}`), /重复.*前缀/);
+                }
+            }
+            assert.equal(decisions.length, 0);
+        }
+    }
+});
+
+test('single prefixed constraints keep exact values and cannot satisfy a required note', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeMessageManifest(true);
+        manifest.jev.commands[0].parameters = {
+            mode: { type: 'enum', description: '模式', prefixes: ['mode', 'MODE'], values: { on: '启用', off: '停用' }, required: true },
+            recipient: { type: 'text', source: 'constraints', prefixes: ['user', 'USER'], required: true },
+            note: { type: 'text', source: 'constraints', required: true }
+        };
+        const { planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        const expression = '{物联网控制} `SmartAC` 【目标】[MODE：on][user:Alice:mode：off]';
+        await assert.rejects(planner.plan(expression), /缺少必填参数 note/);
+        assert.deepEqual((await planner.plan(`${expression}[真实备注][username:Bob]`))[0].args,
+            { command: 'Send', mode: 'on', recipient: 'Alice:mode：off', note: '真实备注\nusername:Bob' });
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('one catch-all text parameter coexists with multiple prefixed parameters', async () => {
     const manifest = makeAcManifest();
     manifest.jev.commands[0].parameters = {

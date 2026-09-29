@@ -1096,6 +1096,8 @@ class JevToolCallExp {
     /** 取出形如 [前缀:值] 的约束，值原样返回（仅去掉首尾空白）。 */
     _takePrefixedConstraint(constraints, prefixes, consumed) {
         if (!prefixes || prefixes.length === 0) return null;
+        let matchedIndex = -1;
+        let value = null;
         for (let i = 0; i < constraints.length; i++) {
             if (consumed.has(i)) continue;
             const text = constraints[i];
@@ -1104,12 +1106,15 @@ class JevToolCallExp {
                 const head = text.slice(0, prefix.length);
                 const separator = text[prefix.length];
                 if (head.toLowerCase() === prefix.toLowerCase() && (separator === ':' || separator === '：')) {
-                    consumed.add(i);
-                    return text.slice(prefix.length + 1).trim();
+                    if (matchedIndex !== -1) throw new Error('同一参数不能重复提供前缀约束。');
+                    matchedIndex = i;
+                    value = text.slice(prefix.length + 1).trim();
+                    break; // Equivalent declared prefixes must not count one tag twice.
                 }
             }
         }
-        return null;
+        if (matchedIndex !== -1) consumed.add(matchedIndex);
+        return value;
     }
 
     _markExactConstraints(constraints, aliases, consumed) {
@@ -1130,6 +1135,14 @@ class JevToolCallExp {
         const consumed = new Set(consumedConstraints);
         const pending = [];
         const paramEntries = Object.entries(command.parameters || {});
+        // Reserve prefixed values and reject duplicates before any parameter
+        // decision, including text parameters otherwise extracted after JEV.
+        const prefixedValues = new Map();
+        for (const [name, param] of paramEntries) {
+            if (param.prefixes.length > 0) {
+                prefixedValues.set(name, this._takePrefixedConstraint(constraints, param.prefixes, consumed));
+            }
+        }
 
         // 第一轮：enum/boolean 确定性匹配，未决者交给 JEV 批量裁决。
         for (const [name, param] of paramEntries) {
@@ -1137,7 +1150,7 @@ class JevToolCallExp {
                 const keys = Object.keys(param.values);
                 const aliasesOf = key => [key, ...(Object.prototype.hasOwnProperty.call(param.aliases || {}, key)
                     ? param.aliases[key] : [])];
-                const prefixed = this._takePrefixedConstraint(constraints, param.prefixes, consumed);
+                const prefixed = prefixedValues.get(name) ?? null;
                 let matched;
                 if (prefixed !== null) {
                     const target = normalizeAlias(prefixed);
@@ -1222,7 +1235,7 @@ class JevToolCallExp {
             if (param.source === 'primary') assignText(name, param, parsed.primary.join('\n'));
             else if (param.source === 'url') assignText(name, param, parsed.imageUrls[0]);
             else if (param.prefixes.length > 0) {
-                assignText(name, param, this._takePrefixedConstraint(constraints, param.prefixes, consumed));
+                assignText(name, param, prefixedValues.get(name));
             }
         }
         const freeText = textParams.find(([, param]) => param.source === 'constraints' && param.prefixes.length === 0);
