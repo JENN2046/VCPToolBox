@@ -1175,6 +1175,14 @@ class JevToolCallExp {
                     options: Object.fromEntries(optionKeys.map(key => [key, param.values[key]]))
                 });
             } else if (param.type === 'boolean') {
+                // Validate exact [] tags independently of higher-priority primary
+                // text, and keep all recognized control tags out of free text.
+                const falseTags = param.falseAliases.filter(matchLayers[1]);
+                const trueTags = param.trueAliases.filter(matchLayers[1]);
+                if (falseTags.length > 0 && trueTags.length > 0) {
+                    throw new Error(`参数 ${name} 的显式真假约束标签冲突。`);
+                }
+                this._markExactConstraints(constraints, [...falseTags, ...trueTags], consumed);
                 // 否定词优先，避免“不要静音”被识别为“静音”。
                 // 同一层内否定词优先；锚点层有任意命中时不再看全文层。
                 let falseHit = [];

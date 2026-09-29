@@ -753,6 +753,50 @@ test('overlapping normalized boolean aliases fail before planning', async () => 
     }
 });
 
+test('opposing explicit boolean tags reject before free text or provider decisions', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeMessageManifest(true);
+        manifest.jev.commands[0].parameters = {
+            urgent: { type: 'boolean', description: '是否紧急', default: false },
+            power: { type: 'boolean', description: '开关', trueAliases: ['on', 'power-on', '开启'], falseAliases: ['off', 'power-off', '关闭'] },
+            note: { type: 'text', source: 'constraints', required: true }
+        };
+        const { planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        for (const primary of ['目标', 'power-on', 'power-off']) {
+            for (const tags of ['[on][off]', '[off][on]', '[power-on][power-off]', '[POWER_OFF][power_on]', '[开启][关闭]', '[关闭][开启][开启]']) {
+                for (const note of ['', '[hello]']) {
+                    await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【${primary}】${tags}${note}`), /power.*真假.*冲突/);
+                }
+            }
+        }
+        assert.equal(decisions.length, 0);
+    }
+});
+
+test('boolean control tags are consumed without changing primary precedence or payload text', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeMessageManifest(true);
+        manifest.jev.commands[0].parameters = {
+            power: { type: 'boolean', description: '开关', trueAliases: ['power-on', '开启'], falseAliases: ['power-off', '关闭'] },
+            note: { type: 'text', source: 'constraints', required: true }
+        };
+        const { planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        for (const [primary, tags, value] of [
+            ['目标', '[POWER_ON][开启][开启]', 'true'],
+            ['目标', '[关闭][power_off]', 'false'],
+            ['power-on', '[开启]', 'true'],
+            ['power-off', '[power-on]', 'false'],
+            ['power-on', '[关闭]', 'true']
+        ]) {
+            const expression = `{物联网控制} \`SmartAC\` 【${primary}】${tags}`;
+            await assert.rejects(planner.plan(expression), /缺少必填参数 note/);
+            assert.deepEqual((await planner.plan(`${expression}[hello][请开启附件][note:power-off]`))[0].args,
+                { command: 'Send', power: value, note: 'hello\n请开启附件\nnote:power-off' });
+        }
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('disjoint boolean aliases remain executable in both directions', async () => {
     const manifest = makeAcManifest();
     manifest.jev.commands[0].parameters.power = {
