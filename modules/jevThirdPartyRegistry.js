@@ -441,6 +441,19 @@ class JevThirdPartyRegistry {
                 }
             }
         }
+        const prefixOwners = new Map();
+        for (const [name, param] of Object.entries(normalized.parameters)) {
+            for (const prefix of param.prefixes) {
+                // Match _takePrefixedConstraint: prefixes ignore case, not
+                // punctuation or internal whitespace like ordinary aliases.
+                const token = prefix.toLowerCase();
+                if (prefixOwners.has(token) && prefixOwners.get(token) !== name) {
+                    errors.push(`${label}.parameters 的 prefixes "${prefix}" 不能由不同参数 "${prefixOwners.get(token)}" 与 "${name}" 共享。`);
+                } else {
+                    prefixOwners.set(token, name);
+                }
+            }
+        }
         const freeTextParameters = Object.values(normalized.parameters).filter(param => (
             param.type === 'text' && param.source === 'constraints' && param.prefixes.length === 0
         ));

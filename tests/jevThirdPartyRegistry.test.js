@@ -194,6 +194,48 @@ test('command selection preserves text tags not responsible for deterministic se
     assert.equal(semantic.decisions.length, 1);
 });
 
+test('shared prefixes across enum and text parameters fail before planning', async () => {
+    for (const types of [['enum', 'enum'], ['enum', 'text'], ['text', 'enum'], ['text', 'text']]) {
+        for (const prefixes of [['value', 'value'], ['VALUE', 'value'], [' value ', 'VALUE'], ['值', '值']]) {
+            for (const configured of [false, true]) {
+                const manifest = makeMessageManifest(true);
+                manifest.jev.commands[0].parameters = Object.fromEntries(types.map((type, index) => [
+                    `arg${index}`, { type, prefixes: [prefixes[index]], required: true,
+                        ...(type === 'enum' ? { description: '选项', values: { a: '一', b: '二' }, default: 'b' } : { source: 'constraints' }) }
+                ]));
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, 'invalid');
+                assert.match(entry.validation.errors.join(), /prefixes.*不同参数/);
+                assert.equal(entry.callTemplate, null);
+                await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【目标】[${prefixes[0].trim()}:a]`), /未通过校验/);
+                assert.equal(decisions.length, 0);
+            }
+        }
+    }
+});
+
+test('prefix uniqueness uses parser case folding without conflating punctuation or commands', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeMessageManifest();
+        for (const command of manifest.jev.commands) {
+            command.parameters = {
+                mode: { type: 'enum', description: '选项', values: { a: '一', b: '二' }, prefixes: ['mode', 'MODE'], required: true },
+                first: { type: 'text', source: 'constraints', prefixes: ['user-name', 'USER-NAME'], required: true },
+                second: { type: 'text', source: 'constraints', prefixes: ['user_name'], required: true },
+                third: { type: 'text', source: 'constraints', prefixes: ['user'], required: true }
+            };
+        }
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        for (const command of ['Send', 'Inspect']) {
+            const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【${command}】[MODE：a][USER-NAME:甲][user_name:乙][user:丙]`);
+            assert.deepEqual(call.args, { command, mode: 'a', first: '甲', second: '乙', third: '丙' });
+        }
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('multiple catch-all constraints parameters fail validation before planning', async () => {
     for (const required of [true, false]) {
         const manifest = makeAcManifest();
