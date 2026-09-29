@@ -112,6 +112,88 @@ test('normalized default and configured virtual tool names cannot register as th
     }
 });
 
+test('required prompts reject whitespace-only values before planning', async () => {
+    for (const field of ['jevDescPrompt', 'jevPrompt']) {
+        for (const blank of [' ', '\t\r\n', '\u00a0\u3000']) {
+            for (const configured of [false, true]) {
+                const manifest = makeAcManifest({ jev: { [field]: blank } });
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, 'invalid');
+                assert.ok(entry.validation.errors.includes(`jev.${field} 必填。`));
+                assert.equal(entry.callTemplate, null);
+                await assert.rejects(planner.plan('{物联网控制} `SmartAC` 查询【空调】'), /未通过校验/);
+                assert.equal(decisions.length, 0);
+            }
+        }
+    }
+});
+
+test('valid required prompts are trimmed and optional blank prompts stay valid', () => {
+    const manifest = makeAcManifest({ jev: { jevDescPrompt: '  插件说明\n', jevPrompt: '\t决策规则  ', agentPrompt: ' \t\u3000' } });
+    const entry = makeRegistry([{ manifest }]).getEntry('SmartAC');
+    assert.equal(entry.validation.status, 'valid');
+    assert.equal(entry.jevDescPrompt, '插件说明');
+    assert.equal(entry.jevPrompt, '决策规则');
+    assert.equal(entry.agentPrompt, '');
+    assert.ok(entry.callTemplate);
+});
+
+function makeMessageManifest(singleCommand = false) {
+    const commands = [
+        { commandIdentifier: 'Send', aliases: ['发送', 'send-message'], parameters: {
+            text: { type: 'text', source: 'constraints', required: true }
+        } },
+        { commandIdentifier: 'Inspect', aliases: ['检查'], parameters: {
+            text: { type: 'text', source: 'constraints', required: true }
+        } }
+    ].slice(0, singleCommand ? 1 : 2);
+    return makeAcManifest({
+        capabilities: { invocationCommands: commands.map(({ commandIdentifier }) => ({ commandIdentifier })) },
+        jev: { commands, defaultCommand: 'Send' }
+    });
+}
+
+test('command selector tags are consumed before collecting free text', async () => {
+    for (const configured of [false, true]) {
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest: makeMessageManifest() }], configured });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        for (const tag of ['发送', 'Send', 'SEND_MESSAGE']) {
+            for (const tags of [`[${tag}][你好][请发送附件]`, `[你好][${tag}][请发送附件]`, `[${tag}][你好][${tag}][请发送附件]`]) {
+                const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【目标】${tags}`);
+                assert.deepEqual(call.args, { command: 'Send', text: '你好\n请发送附件' });
+            }
+        }
+        await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【目标】[发送]'), /缺少必填参数 text/);
+        assert.equal(decisions.length, 0);
+    }
+});
+
+test('command selection preserves text tags not responsible for deterministic selection', async () => {
+    for (const configured of [false, true]) {
+        const { planner } = makePlanner({ items: [{ manifest: makeMessageManifest() }], configured });
+        for (const [expression, expected] of [
+            ['【发送】[发送][你好]', '发送\n你好'],
+            ['发送【目标】[请发送附件]', '请发送附件'],
+            ['【目标】[你好]', '你好'],
+            ['【目标】[发送][检查][你好]', '发送\n检查\n你好']
+        ]) {
+            const [call] = await planner.plan(`{物联网控制} \`SmartAC\` ${expression}`);
+            assert.deepEqual(call.args, { command: 'Send', text: expected });
+        }
+        const single = makePlanner({ items: [{ manifest: makeMessageManifest(true) }], configured });
+        const [call] = await single.planner.plan('{物联网控制} `SmartAC` 【目标】[发送][你好]');
+        assert.deepEqual(call.args, { command: 'Send', text: '发送\n你好' });
+        assert.equal(single.decisions.length, 0);
+    }
+    const semantic = makePlanner({ items: [{ manifest: makeMessageManifest() }], configured: true,
+        answers: { command: { type: 'choice', choice: 'Inspect', confidence: 0.9 } }
+    });
+    const [call] = await semantic.planner.plan('{物联网控制} `SmartAC` 【目标】[发送][检查][你好]');
+    assert.deepEqual(call.args, { command: 'Inspect', text: '发送\n检查\n你好' });
+    assert.equal(semantic.decisions.length, 1);
+});
+
 test('multiple catch-all constraints parameters fail validation before planning', async () => {
     for (const required of [true, false]) {
         const manifest = makeAcManifest();

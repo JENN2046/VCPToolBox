@@ -909,8 +909,8 @@ class JevToolCallExp {
         }
 
         const matchLayers = this._thirdPartyMatchLayers(parsed);
-        const command = await this._selectThirdPartyCommand(entry, parsed, matchLayers);
-        const args = await this._buildThirdPartyArgs(entry, command, parsed, matchLayers);
+        const { command, consumedConstraints } = await this._selectThirdPartyCommand(entry, parsed, matchLayers);
+        const args = await this._buildThirdPartyArgs(entry, command, parsed, matchLayers, consumedConstraints);
 
         return [this._buildExpandedCall(entry.toolName, args, inheritedCall, {
             category: parsed.categoryKey,
@@ -1041,12 +1041,30 @@ class JevToolCallExp {
 
     async _selectThirdPartyCommand(entry, parsed, matchLayers) {
         const commands = entry.commands;
-        if (commands.length === 1) return commands[0];
+        if (commands.length === 1) return { command: commands[0], consumedConstraints: [] };
 
-        const matched = this._firstLayerHits(matchLayers, hit => commands.filter(cmd => (
-            [cmd.commandIdentifier, ...cmd.aliases].some(alias => hit(alias))
-        )));
-        if (matched.length === 1) return matched[0];
+        let matched = [];
+        let matchedLayer = -1;
+        for (const [index, hit] of matchLayers.entries()) {
+            matched = commands.filter(cmd => (
+                [cmd.commandIdentifier, ...cmd.aliases].some(alias => hit(alias))
+            ));
+            if (matched.length > 0) {
+                matchedLayer = index;
+                break;
+            }
+        }
+        if (matched.length === 1) {
+            const command = matched[0];
+            const consumedConstraints = new Set();
+            // Only exact tags in the winning [] layer selected this command.
+            // Primary/wrapper, single-command and semantic/default selection
+            // must not erase payload tags that merely resemble command aliases.
+            if (matchedLayer === 1) {
+                this._markExactConstraints(parsed.constraints, [command.commandIdentifier, ...command.aliases], consumedConstraints);
+            }
+            return { command, consumedConstraints };
+        }
 
         const candidates = matched.length > 1 ? matched : commands;
         const options = Object.fromEntries(candidates.map(cmd => [
@@ -1067,7 +1085,7 @@ class JevToolCallExp {
         if (!chosen) {
             throw new Error(`无法确定工具 "${entry.toolName}" 的命令，请在约束中写明命令，或由插件声明 defaultCommand。`);
         }
-        return chosen;
+        return { command: chosen, consumedConstraints: [] };
     }
 
     /** 取出形如 [前缀:值] 的约束，值原样返回（仅去掉首尾空白）。 */
@@ -1096,12 +1114,12 @@ class JevToolCallExp {
         });
     }
 
-    async _buildThirdPartyArgs(entry, command, parsed, matchLayers) {
+    async _buildThirdPartyArgs(entry, command, parsed, matchLayers, consumedConstraints = []) {
         const args = { ...command.fixedArgs };
         if (command.injectCommand) args.command = command.commandIdentifier;
 
         const constraints = parsed.constraints;
-        const consumed = new Set();
+        const consumed = new Set(consumedConstraints);
         const pending = [];
         const paramEntries = Object.entries(command.parameters || {});
 

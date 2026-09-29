@@ -199,6 +199,7 @@ class JevThirdPartyRegistry {
             return '';
         }
         const text = value.trim();
+        if (required && !text) errors.push(`jev.${field} 必填。`);
         if (text.length > maxLength) {
             errors.push(`jev.${field} 超过长度上限 ${maxLength}（当前 ${text.length}）。`);
         }
