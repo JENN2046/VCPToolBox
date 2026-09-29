@@ -176,7 +176,7 @@ test('command selection preserves text tags not responsible for deterministic se
             ['【发送】[发送][你好]', '发送\n你好'],
             ['发送【目标】[请发送附件]', '请发送附件'],
             ['【目标】[你好]', '你好'],
-            ['【目标】[发送][检查][你好]', '发送\n检查\n你好']
+            ['【目标】[请发送附件][请检查附件][你好]', '请发送附件\n请检查附件\n你好']
         ]) {
             const [call] = await planner.plan(`{物联网控制} \`SmartAC\` ${expression}`);
             assert.deepEqual(call.args, { command: 'Send', text: expected });
@@ -189,9 +189,46 @@ test('command selection preserves text tags not responsible for deterministic se
     const semantic = makePlanner({ items: [{ manifest: makeMessageManifest() }], configured: true,
         answers: { command: { type: 'choice', choice: 'Inspect', confidence: 0.9 } }
     });
-    const [call] = await semantic.planner.plan('{物联网控制} `SmartAC` 【目标】[发送][检查][你好]');
-    assert.deepEqual(call.args, { command: 'Inspect', text: '发送\n检查\n你好' });
+    const [call] = await semantic.planner.plan('{物联网控制} `SmartAC` 【目标】[请发送附件][请检查附件][你好]');
+    assert.deepEqual(call.args, { command: 'Inspect', text: '请发送附件\n请检查附件\n你好' });
     assert.equal(semantic.decisions.length, 1);
+});
+
+test('conflicting exact command tags reject before provider or default selection', async () => {
+    for (const configured of [false, true]) {
+        for (const defaultCommand of ['Send', 'Inspect']) {
+            const manifest = makeMessageManifest();
+            manifest.jev.defaultCommand = defaultCommand;
+            manifest.jev.commands[0].aliases.push('start');
+            manifest.jev.commands[1].aliases.push('stop');
+            const { planner, decisions } = makePlanner({ items: [{ manifest }], configured,
+                answers: { command: { type: 'choice', choice: defaultCommand, confidence: 1 } } });
+            for (const primary of ['目标', '发送', 'Inspect']) {
+                for (const tags of [
+                    '[start][stop]', '[stop][start]', '[发送][检查]',
+                    '[S_E_N_D][inspect]', '[SEND_MESSAGE][检查][发送]'
+                ]) {
+                    for (const text of ['', '[hello]']) {
+                        await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【${primary}】${tags}${text}`), /显式命令.*冲突/);
+                    }
+                }
+            }
+            assert.equal(decisions.length, 0);
+        }
+    }
+});
+
+test('same-command aliases remain one selector and consume all matching tags', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeMessageManifest();
+        manifest.jev.defaultCommand = 'Inspect';
+        const { planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        const expression = '{物联网控制} `SmartAC` 【目标】[Send][发送][SEND_MESSAGE][发送]';
+        await assert.rejects(planner.plan(expression), /缺少必填参数 text/);
+        assert.deepEqual((await planner.plan(`${expression}[hello][请检查附件]`))[0].args,
+            { command: 'Send', text: 'hello\n请检查附件' });
+        assert.equal(decisions.length, 0);
+    }
 });
 
 test('consumed command selectors cannot also set enum or boolean parameters', async () => {
@@ -258,7 +295,7 @@ test('parameter provider retains constraints that did not select the command', a
     for (const [singleCommand, expression, expected] of [
         [false, '【发送】[发送][你好]', ['发送', '你好']],
         [true, '【目标】[发送][你好]', ['发送', '你好']],
-        [false, '【目标】[发送][检查][你好]', ['发送', '检查', '你好']],
+        [false, '【目标】[请发送附件][请检查附件][你好]', ['请发送附件', '请检查附件', '你好']],
         [false, '【目标】[你好]', ['你好']]
     ]) {
         const manifest = makeMessageManifest(singleCommand);

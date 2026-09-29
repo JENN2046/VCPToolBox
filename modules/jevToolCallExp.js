@@ -1048,6 +1048,15 @@ class JevToolCallExp {
         const commands = entry.commands;
         if (commands.length === 1) return { command: commands[0], consumedConstraints: [] };
 
+        // Contradictory exact selectors are invalid even if primary text wins;
+        // never hand them to the provider/default path as ordinary payload.
+        const taggedCommands = commands.filter(cmd => (
+            [cmd.commandIdentifier, ...cmd.aliases].some(matchLayers[1])
+        ));
+        if (taggedCommands.length > 1) {
+            throw new Error('显式命令约束标签冲突，请只指定一个命令。');
+        }
+
         let matched = [];
         let matchedLayer = -1;
         for (const [index, hit] of matchLayers.entries()) {
