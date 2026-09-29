@@ -221,14 +221,13 @@ function scrollActiveItemIntoView() {
     if (!activeItem) return;
     const container = activeItem.closest<HTMLElement>(".command-results");
     if (container) {
-      const cTop = container.scrollTop;
+      const cTop = container.getBoundingClientRect().top + container.clientTop;
       const cBottom = cTop + container.clientHeight;
-      const itemTop = activeItem.offsetTop;
-      const itemBottom = itemTop + activeItem.offsetHeight;
+      const { top: itemTop, bottom: itemBottom } = activeItem.getBoundingClientRect();
       if (itemTop < cTop) {
-        container.scrollTop = itemTop;
+        container.scrollTop += itemTop - cTop;
       } else if (itemBottom > cBottom) {
-        container.scrollTop = itemBottom - container.clientHeight;
+        container.scrollTop += itemBottom - cBottom;
       }
     }
   });

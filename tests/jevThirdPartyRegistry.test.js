@@ -177,6 +177,59 @@ test('admin plan-preview uses an isolated offline planner, never the shared prov
 
 // ---------- 注册与校验 ----------
 
+test('call templates are available only for valid and enabled declarations', () => {
+    const valid = makeAcManifest();
+    const invalid = makeAcManifest({ name: 'InvalidAC', requiresAdmin: true });
+    const disabled = makeAcManifest({ name: 'DisabledAC' });
+    const registry = makeRegistry([{ manifest: valid }, { manifest: invalid }, { manifest: disabled, enabled: false }]);
+    assert.ok(registry.getEntry('SmartAC').callTemplate);
+    assert.equal(registry.getEntry('InvalidAC').callTemplate, null);
+    assert.equal(registry.getEntry('DisabledAC').callTemplate, null);
+    assert.equal(registry.validateDeclaration(makeAcManifest({ jev: { enabled: false } })).callTemplate, null);
+    const snapshot = registry.getSnapshot({});
+    assert.equal(snapshot.entries.filter(entry => entry.callTemplate).length, 1);
+});
+
+test('single-character aliases match exact primary and wrapper layers, not substrings', async () => {
+    const manifest = makeAcManifest();
+    manifest.jev.commands[0].parameters.power.trueAliases = ['开'];
+    manifest.jev.commands[0].parameters.power.falseAliases = ['关'];
+    const { planner, decisions } = makePlanner({ items: [{ manifest }], configured: false });
+    for (const [expression, expected] of [
+        ['{物联网控制} `SmartAC` 调节【开】', 'true'],
+        ['{物联网控制} `SmartAC` 调节【关】', 'false'],
+        ['{物联网控制} `SmartAC` 开【空调】', 'true'],
+        ['{物联网控制} `SmartAC` 关【空调】', 'false'],
+        ['{物联网控制} `SmartAC` 调节【开场】', undefined]
+    ]) {
+        const [call] = await planner.plan(expression);
+        assert.equal(call.args.power, expected, expression);
+    }
+    assert.equal(decisions.length, 0);
+});
+
+test('command palette scrolls within its viewport regardless of item offset parent', () => {
+    const fs = require('node:fs');
+    const vm = require('node:vm');
+    const source = fs.readFileSync(path.join(__dirname, '../AdminPanel-Vue/src/components/layout/GlobalCommandPalette.vue'), 'utf8');
+    const start = source.indexOf('function scrollActiveItemIntoView()');
+    const end = source.indexOf('function moveSelection(', start);
+    assert.ok(start >= 0 && end > start);
+    const scroll = source.slice(start, end).replaceAll('<HTMLElement>', '');
+    for (const [top, bottom, expected] of [[450, 474, 192], [280, 304, 98], [320, 344, 120]]) {
+        const container = { scrollTop: 120, clientTop: 2, clientHeight: 100, getBoundingClientRect: () => ({ top: 300 }) };
+        const item = {
+            closest: () => container,
+            get offsetTop() { throw new Error('offsetTop uses the wrong coordinate system'); },
+            getBoundingClientRect: () => ({ top, bottom })
+        };
+        vm.runInNewContext(scroll + '\nscrollActiveItemIntoView();', {
+            nextTick: fn => fn(), activeIndex: { value: 12 }, document: { querySelector: () => item }
+        });
+        assert.equal(container.scrollTop, expected);
+    }
+});
+
 test('官方第三方目录与官方 JEV 目录及别名无冲突', () => {
     const registry = new JevThirdPartyRegistry();
     assert.deepEqual(registry.getCatalogConflicts(), []);

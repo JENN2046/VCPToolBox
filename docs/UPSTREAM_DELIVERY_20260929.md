@@ -28,7 +28,7 @@
 
 Windows isolated regression and admin build were explicitly authorized for this batch. Environment: Node.js `v24.21.0`, npm `11.19.0`.
 
-**PASS: 212 tests, zero failed/skipped**, using synthetic fixtures, temporary directories, mocked providers and loopback protocol tests:
+**PASS: 215 tests, zero failed/skipped**, using synthetic fixtures, temporary directories, mocked providers and loopback protocol tests:
 
 ```text
 node --require ./tests/fixtures/offlineRegressionSetup.cjs --test tests/pr280SelfAudit.test.cjs tests/protocolBridgeResponses.test.js tests/jevClient.test.js tests/jevToolCallExp.test.js tests/jevThirdPartyRegistry.test.js tests/jevBladeGame.test.js tests/jevTableLampRemote.test.js tests/jevRiverRerank.test.js tests/upstreamDeliveryReviewFixes.test.cjs tests/chromeBridge/runtime-core-test.js tests/chromeBridge/page-runtime-handle-test.js tests/chromeBridge/page-runtime-image-test.js tests/chromeBridge/contenteditable-reply-editor-test.js tests/plugin-external-runtime-registration-gate.test.js tests/plugin-external-runtime-env-sandbox.test.js tests/plugin-external-runtime-direct-policy.test.js tests/plugin-external-dirs.test.js tests/externalPluginSafetyGate.test.js tests/externalPluginAllowPolicy.test.js tests/vcpToolBridgeNativeManifest.test.js
@@ -51,3 +51,7 @@ The explicit target prevents Vite configuration from reading root `config.env`. 
 **NOT RUN:** Linux runtime/native rebuild, real providers, real distributed hardware, production startup, browser end-to-end tests. Native code is unchanged. Local build success is not production readiness.
 
 CI limitations: the main workflow targets `main`, not this PR's `master`; native ABI CI has path filters that this change does not touch. No workflow changes or manual release/build dispatch are part of this delivery. PR checks and review threads must still be inspected after opening; absent CI is not a passing CI run.
+
+## PR #282 review follow-up
+
+Addressed three P2 findings with regressions: palette keyboard scrolling now compares viewport-relative rectangles (including container border); disabled/invalid declarations do not expose call templates; single-character aliases match exact primary/wrapper text, without unsafe substring matching. Re-ran the complete 215-test batch and rebuilt the admin bundle after these changes.

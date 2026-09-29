@@ -528,7 +528,9 @@ class JevThirdPartyRegistry {
             }
         }
 
-        if (entry.categoryLabel && entry.toolName) {
+        entry.validation.status = errors.length > 0 ? 'invalid' : 'valid';
+        if (entry.validation.status === 'valid' && entry.pluginEnabled && entry.jevEnabled
+            && entry.categoryLabel && entry.toolName) {
             entry.callTemplate = `{${entry.categoryLabel}} \`${entry.toolName}\` 【主要内容】[约束]`;
         }
         entry.promptHash = hashText(JSON.stringify({
@@ -537,7 +539,6 @@ class JevThirdPartyRegistry {
             agentPrompt: entry.agentPrompt,
             commands: entry.commands
         }));
-        entry.validation.status = errors.length > 0 ? 'invalid' : 'valid';
         return entry;
     }
 

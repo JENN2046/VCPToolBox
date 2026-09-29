@@ -957,7 +957,11 @@ class JevToolCallExp {
 
     _textHasAlias(normalizedText, alias) {
         const normalized = normalizeAlias(alias);
-        return normalized.length >= 2 && normalizedText.includes(normalized);
+        // Single-character aliases are valid, but only an exact layer match is
+        // unambiguous; do not interpret 开场 as the device-control alias 开.
+        return normalized.length === 1
+            ? normalizedText === normalized
+            : normalized.length >= 2 && normalizedText.includes(normalized);
     }
 
     _buildExpandedCall(name, args, inheritedCall, jevMeta) {
