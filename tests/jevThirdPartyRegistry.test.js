@@ -268,6 +268,47 @@ test('prefix uniqueness uses parser case folding without conflating punctuation 
     }
 });
 
+test('aliases erased by normalization reject declarations before fallback', async () => {
+    for (const kind of ['command', 'enum', 'true', 'false']) {
+        for (const alias of ['---', '___', ' -_ \t- ']) {
+            for (const configured of [false, true]) {
+                const manifest = makeMessageManifest();
+                manifest.jev.defaultCommand = 'Inspect';
+                const command = manifest.jev.commands[0];
+                if (kind === 'command') command.aliases = [alias];
+                else command.parameters = { flag: kind === 'enum'
+                    ? { type: 'enum', description: '选项', values: { a: '一', b: '二' }, aliases: { a: [alias] }, default: 'b' }
+                    : { type: 'boolean', description: '开关', trueAliases: kind === 'true' ? [alias] : [], falseAliases: kind === 'false' ? [alias] : [], default: false }
+                };
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, 'invalid');
+                assert.match(entry.validation.errors.join(), /别名归一化后不能为空/);
+                assert.equal(entry.callTemplate, null);
+                await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【目标】[${alias}][你好]`), /未通过校验/);
+                assert.equal(decisions.length, 0);
+            }
+        }
+    }
+});
+
+test('nonempty normalized aliases and literal punctuation prefixes stay executable', async () => {
+    const manifest = makeMessageManifest();
+    manifest.jev.commands[0].aliases = ['-s_e-n_d-'];
+    manifest.jev.commands[0].parameters = {
+        mode: { type: 'enum', description: '模式', values: { a: '一', b: '二' }, aliases: { a: ['--a--'] } },
+        power: { type: 'boolean', description: '开关', trueAliases: ['-o_n-'], falseAliases: [] },
+        text: { type: 'text', source: 'constraints', prefixes: ['---'], required: true }
+    };
+    for (const configured of [false, true]) {
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        const [call] = await planner.plan('{物联网控制} `SmartAC` 【目标】[-s_e-n_d-][--a--][-o_n-][---:你好]');
+        assert.deepEqual(call.args, { command: 'Send', mode: 'a', power: 'true', text: '你好' });
+        assert.equal(decisions.length, 0);
+    }
+});
+
 test('parameter prefixes cannot compete with another parameter deterministic alias', async () => {
     for (const prefixType of ['text', 'enum']) {
         for (const aliasType of ['enum', 'true', 'false']) {

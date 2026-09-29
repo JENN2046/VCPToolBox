@@ -226,6 +226,14 @@ class JevThirdPartyRegistry {
         return result;
     }
 
+    _checkAliases(label, value, limits, errors) {
+        return this._checkStringList(label, value, limits, errors).filter(alias => {
+            if (normalizeAlias(alias)) return true;
+            errors.push(`${label} 的别名归一化后不能为空。`);
+            return false;
+        });
+    }
+
     _checkParamName(label, name, forbidden, errors) {
         if (!PARAM_NAME_RE.test(name)) {
             errors.push(`${label} 参数名 "${name}" 不合法。`);
@@ -307,7 +315,7 @@ class JevThirdPartyRegistry {
                             errors.push(`${label}.${name}.aliases 引用了不存在的选项 "${key}"。`);
                             continue;
                         }
-                        normalized.aliases[key] = this._checkStringList(`${label}.${name}.aliases.${key}`, list, limits, errors);
+                        normalized.aliases[key] = this._checkAliases(`${label}.${name}.aliases.${key}`, list, limits, errors);
                     }
                 }
             }
@@ -336,8 +344,8 @@ class JevThirdPartyRegistry {
             if (normalized.prefixes.length > 0) {
                 errors.push(`${label}.${name} 为 boolean 类型，不支持非空 prefixes；请使用 trueAliases/falseAliases。`);
             }
-            normalized.trueAliases = this._checkStringList(`${label}.${name}.trueAliases`, spec.trueAliases, limits, errors);
-            normalized.falseAliases = this._checkStringList(`${label}.${name}.falseAliases`, spec.falseAliases, limits, errors);
+            normalized.trueAliases = this._checkAliases(`${label}.${name}.trueAliases`, spec.trueAliases, limits, errors);
+            normalized.falseAliases = this._checkAliases(`${label}.${name}.falseAliases`, spec.falseAliases, limits, errors);
             const trueAliases = new Map(normalized.trueAliases.map(alias => [normalizeAlias(alias), 'true']));
             if (normalized.falseAliases.some(alias => (
                 findConflictingAliasOwner(trueAliases, normalizeAlias(alias), 'false') !== undefined
@@ -388,7 +396,7 @@ class JevThirdPartyRegistry {
         const normalized = {
             commandIdentifier: id,
             description: '',
-            aliases: this._checkStringList(`${label}.aliases`, cmd.aliases, limits, errors),
+            aliases: this._checkAliases(`${label}.aliases`, cmd.aliases, limits, errors),
             injectCommand: cmd.injectCommand !== false,
             fixedArgs: {},
             parameters: {}
