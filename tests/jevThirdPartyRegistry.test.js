@@ -174,6 +174,58 @@ test('disjoint boolean aliases remain executable in both directions', async () =
     assert.equal(decisions.length, 0);
 });
 
+test('boolean prefixes are rejected before defaults or provider decisions can hide explicit input', async () => {
+    for (const configured of [false, true]) {
+        for (const required of [false, true]) {
+            for (const defaults of [{}, { default: false }]) {
+                const manifest = makeAcManifest();
+                manifest.jev.commands[0].parameters.power = {
+                    type: 'boolean', description: '是否开机', required,
+                    prefixes: ['power'], trueAliases: ['on'], falseAliases: ['off'], ...defaults
+                };
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, 'invalid');
+                assert.equal(entry.validation.errors.length, 1);
+                assert.match(entry.validation.errors[0], /boolean.*不支持非空 prefixes/);
+                assert.equal(entry.callTemplate, null);
+                await assert.rejects(planner.plan('{物联网控制} `SmartAC` 设置【空调】[制冷][power:on]'), /未通过校验/);
+                assert.equal(decisions.length, 0);
+            }
+        }
+    }
+});
+
+test('omitted or empty boolean prefixes retain deterministic on/off matching', async () => {
+    for (const prefixes of [undefined, []]) {
+        for (const configured of [false, true]) {
+            const manifest = makeAcManifest();
+            manifest.jev.commands[0].parameters.power = {
+                type: 'boolean', description: '是否开机', required: true,
+                trueAliases: ['on'], falseAliases: ['off'],
+                ...(prefixes === undefined ? {} : { prefixes })
+            };
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+            assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+            for (const [alias, expected] of [['on', 'true'], ['off', 'false']]) {
+                const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 设置【空调】[制冷][${alias}]`);
+                assert.equal(call.args.power, expected);
+            }
+            assert.equal(decisions.length, 0);
+        }
+    }
+});
+
+test('enum and constraints text prefixes remain valid and preserve explicit values', async () => {
+    const manifest = makeAcManifest();
+    manifest.jev.commands[0].parameters.mode.prefixes = ['模式'];
+    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+    assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+    const [call] = await planner.plan('{物联网控制} `SmartAC` 设置【空调】[模式:制冷][房间:客厅][开启]');
+    assert.deepEqual(call.args, { command: 'SetAC', mode: 'cool', power: 'true', room: '客厅' });
+    assert.equal(decisions.length, 0);
+});
+
 test('third-party input and final inherited metadata remain UTF-8 byte bounded', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 调节【' + '汉'.repeat(6000) + '】'), /最大字节数/);

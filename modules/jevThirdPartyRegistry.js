@@ -302,6 +302,9 @@ class JevThirdPartyRegistry {
                 }
             }
         } else if (type === 'boolean') {
+            if (normalized.prefixes.length > 0) {
+                errors.push(`${label}.${name} 为 boolean 类型，不支持非空 prefixes；请使用 trueAliases/falseAliases。`);
+            }
             normalized.trueAliases = this._checkStringList(`${label}.${name}.trueAliases`, spec.trueAliases, limits, errors);
             normalized.falseAliases = this._checkStringList(`${label}.${name}.falseAliases`, spec.falseAliases, limits, errors);
             const trueAliases = new Set(normalized.trueAliases.map(normalizeAlias));

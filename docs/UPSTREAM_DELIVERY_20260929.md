@@ -75,3 +75,9 @@ Linux validation of the earlier `9d9da273` snapshot passed 215/215 plus the admi
 The five-fix snapshot `565946fb` subsequently passed Linux 226/226 and the admin build; the full evidence is in the PR. Review of that snapshot identified one more ambiguity: true and false aliases could normalize to the same token. Validation now rejects that overlap, while variants on the same side remain valid. Added rejection cases for punctuation, case, spacing and identical Chinese aliases, plus deterministic positive/negative expansion checks.
 
 Windows final regression: **228/228, zero failed/skipped**; admin typecheck/build passed again with no bundle changes. The new positive fixture initially omitted the required boolean description; the fixture was corrected before the final passing run. The final exact-commit Linux rerun is recorded separately in the PR, not inferred from the prior 226-test result.
+
+### Boolean prefix validation
+
+Review of `ca2f9321` identified that boolean planning does not consume prefixed constraints. Reject non-empty boolean `prefixes` during declaration validation rather than accepting a non-executable schema. Omitted/empty prefixes remain compatible; enum and constraints-text prefixes retain their behavior. Updated the plugin developer manual with the supported syntax.
+
+The new rejection regression failed against the previous implementation, then passed after the fix. Added coverage for required/optional parameters, defaults and offline/configured mock-provider paths, including no provider call or callable template for invalid declarations. Windows full regression: **231/231, zero failed/skipped**; admin typecheck/build passed with no dist change. The exact-commit Linux result is recorded in the PR after publication. No real configuration, native code, dependency lock or CI workflow changes.
