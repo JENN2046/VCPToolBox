@@ -272,6 +272,9 @@ class JevThirdPartyRegistry {
         }
         normalized.description = description;
         normalized.prefixes = this._checkStringList(`${label}.${name}.prefixes`, spec.prefixes, limits, errors);
+        if (normalized.prefixes.some(prefix => /[:：]/.test(prefix))) {
+            errors.push(`${label}.${name}.prefixes 不能包含解析分隔符 : 或 ：。`);
+        }
 
         if (type === 'enum') {
             const values = spec.values;
@@ -442,7 +445,20 @@ class JevThirdPartyRegistry {
             }
         }
         const prefixOwners = new Map();
+        const parameterAliasOwners = new Map();
         for (const [name, param] of Object.entries(normalized.parameters)) {
+            // Prefixed enums still fall back to the shared match layers.
+            const aliases = param.type === 'enum'
+                ? Object.keys(param.values).flatMap(key => [key, ...(Object.prototype.hasOwnProperty.call(param.aliases, key) ? param.aliases[key] : [])])
+                : param.type === 'boolean' ? [...param.trueAliases, ...param.falseAliases] : [];
+            for (const token of new Set(aliases.map(normalizeAlias))) {
+                const conflict = findConflictingAliasOwner(parameterAliasOwners, token, name);
+                if (conflict !== undefined) {
+                    errors.push(`${label}.parameters 的不同参数 "${conflict}" 与 "${name}" 的键或别名归一化后不能重叠（相等或子串包含）。`);
+                } else {
+                    parameterAliasOwners.set(token, name);
+                }
+            }
             for (const prefix of param.prefixes) {
                 // Match _takePrefixedConstraint: prefixes ignore case, not
                 // punctuation or internal whitespace like ordinary aliases.

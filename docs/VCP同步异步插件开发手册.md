@@ -1107,6 +1107,8 @@ JEV:「始」{物联网控制} `SmartAC` 打开空调【把客厅弄凉快些】
 - JEV 答案必须落在候选内，choice 置信度低于 0.55、或 noul 概率介于 0.3~0.7 时，视为未决，回退 `default`；没有 `default` 就不传该参数；
 - `prefixes` 仅支持 enum 和 `source: "constraints"` 的 text 参数，匹配 `[前缀:值]` 形式的约束；enum 前缀值不在选项中会直接报错；
 - 同一命令内，每个 `prefixes` 前缀忽略大小写后只能属于一个参数，包括 enum/text 之间；同参数等价拼写及不同命令复用允许。前缀不使用普通别名的去标点归一化，`user-name` 与 `user_name` 仍为不同前缀；
+- `prefixes` 本身不能含 `:` 或 `：`，避免 `user` / `user:name` 等声明按参数顺序抢占同一标签；值中的冒号不受此限制；
+- 同一命令内，不同 enum/boolean 参数的确定性匹配词（enum 键与别名、boolean 真假别名）也必须互斥，拒绝归一化相等或多字符包含。即使 enum 有独立前缀也适用，因为未提供前缀时仍参与共享匹配；请给不同参数使用独立词汇。跨命令复用、同一值内的等价词及单字精确匹配保持兼容；
 - boolean 不支持非空 `prefixes`，声明时会被拒绝；请用 `trueAliases` / `falseAliases` 声明值并直接传入 `[on]` / `[off]` 等约束，而非 `[power:on]`。省略 `prefixes` 或设置为空数组均可；
 - boolean 的 `trueAliases` 与 `falseAliases` 也必须避免归一化相等或多字符子串包含（如 `only` / `on`、`静音` / `不要静音`），否则声明无效；将这类正反别名改成互不包含的词，例如 `静音` / `有声`。同一布尔值内的包含、跨值的单字精确匹配规则仍保留；
 - 没有 `prefixes` 的 `constraints` 文本参数会接收剩余未被消费的约束；

@@ -236,6 +236,91 @@ test('prefix uniqueness uses parser case folding without conflating punctuation 
     }
 });
 
+test('deterministic aliases cannot belong to multiple parameters', async () => {
+    const makeParam = (kind, token, index) => kind.startsWith('boolean') ? {
+        type: 'boolean', description: '开关', trueAliases: kind === 'boolean' ? [token] : [],
+        falseAliases: kind === 'booleanFalse' ? [token] : [], default: false
+    } : {
+        type: 'enum', description: '选项', prefixes: [`slot${index}`],
+        values: kind === 'key' ? { [token]: '选中', [`idle${index}`]: '默认' } : { [`pick${index}`]: '选中', [`idle${index}`]: '默认' },
+        aliases: kind === 'key' ? {} : { [`pick${index}`]: [token] }, default: `idle${index}`
+    };
+    for (const kinds of [['boolean', 'boolean'], ['boolean', 'booleanFalse'], ['booleanFalse', 'booleanFalse'], ['enum', 'boolean'], ['boolean', 'enum'], ['enum', 'booleanFalse'], ['enum', 'enum'], ['key', 'boolean'], ['key', 'enum'], ['key', 'key']]) {
+        for (const pair of [['on', 'ON'], ['power-on', 'power_on'], ['on', 'only'], ...(!kinds.includes('key') ? [['冷气', '开冷气']] : [])]) {
+            for (const tokens of [pair, [...pair].reverse()]) {
+                for (const configured of [false, true]) {
+                    const manifest = makeMessageManifest(true);
+                    manifest.jev.commands[0].parameters = Object.fromEntries(kinds.map((kind, index) => [`arg${index}`, makeParam(kind, tokens[index], index)]));
+                    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
+                    const entry = registry.getEntry('SmartAC');
+                    assert.equal(entry.validation.status, 'invalid');
+                    assert.match(entry.validation.errors.join(), /不同参数.*键或别名.*重叠/);
+                    assert.equal(entry.callTemplate, null);
+                    for (const expression of [`【${tokens[1]}】`, `【目标】[${tokens[1]}]`]) {
+                        await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` ${expression}`), /未通过校验/);
+                    }
+                    assert.equal(decisions.length, 0);
+                }
+            }
+        }
+    }
+});
+
+test('disjoint parameter aliases preserve ownership and cross-command reuse', async () => {
+    for (const configured of [false, true]) {
+        const manifest = makeMessageManifest();
+        for (const command of manifest.jev.commands) {
+            command.parameters = {
+                power: { type: 'boolean', description: '电源', trueAliases: ['开', '开'], falseAliases: ['关'], default: false },
+                alarm: { type: 'boolean', description: '闹钟', trueAliases: ['打开'], falseAliases: ['停用'], default: false },
+                mode: { type: 'enum', description: '模式', values: { quiet: '安静', loud: '响亮' }, aliases: { quiet: ['安静', '保持安静'] }, default: 'loud' }
+            };
+        }
+        const { registry, planner } = makePlanner({ items: [{ manifest }], configured });
+        assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+        for (const command of ['Send', 'Inspect']) {
+            const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【${command}】[开]`);
+            assert.deepEqual(call.args, { command, power: 'true', alarm: 'false', mode: 'loud' });
+            const [all] = await planner.plan(`{物联网控制} \`SmartAC\` 【${command}】[关][打开][保持安静]`);
+            assert.deepEqual(all.args, { command, power: 'false', alarm: 'true', mode: 'quiet' });
+        }
+    }
+});
+
+test('parameter prefixes reject parser delimiters before order-dependent consumption', async () => {
+    for (const delimiter of [':', '：']) {
+        for (const type of ['enum', 'text']) {
+            for (const reverse of [false, true]) {
+                const manifest = makeMessageManifest(true);
+                const params = [
+                    ['first', { type: 'text', source: 'constraints', prefixes: ['user'], required: true }],
+                    ['second', { type, prefixes: [`user${delimiter}name`], required: true,
+                        ...(type === 'enum' ? { description: '选项', values: { Alice: '一', Bob: '二' } } : { source: 'constraints' }) }]
+                ];
+                manifest.jev.commands[0].parameters = Object.fromEntries(reverse ? params.reverse() : params);
+                const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+                assert.equal(registry.getEntry('SmartAC').validation.status, 'invalid');
+                assert.match(registry.getEntry('SmartAC').validation.errors.join(), /prefixes.*分隔符/);
+                assert.equal(registry.getEntry('SmartAC').callTemplate, null);
+                await assert.rejects(planner.plan(`{物联网控制} \`SmartAC\` 【目标】[user${delimiter}name:Alice]`), /未通过校验/);
+                assert.equal(decisions.length, 0);
+            }
+        }
+    }
+});
+
+test('delimiters inside a prefixed text value remain untouched', async () => {
+    const manifest = makeMessageManifest(true);
+    manifest.jev.commands[0].parameters = { text: { type: 'text', source: 'constraints', prefixes: ['user'], required: true } };
+    const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured: true });
+    assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+    for (const delimiter of [':', '：']) {
+        const [call] = await planner.plan(`{物联网控制} \`SmartAC\` 【目标】[user${delimiter}name:Alice：你好]`);
+        assert.deepEqual(call.args, { command: 'Send', text: 'name:Alice：你好' });
+    }
+    assert.equal(decisions.length, 0);
+});
+
 test('multiple catch-all constraints parameters fail validation before planning', async () => {
     for (const required of [true, false]) {
         const manifest = makeAcManifest();
