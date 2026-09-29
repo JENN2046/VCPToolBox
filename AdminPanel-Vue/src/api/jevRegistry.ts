@@ -3,7 +3,11 @@ import {
   type RequestUiOptions,
 } from "./requestWithUi";
 
-const DEFAULT_READ_UI_OPTIONS: RequestUiOptions = { showLoader: false };
+// This optional lookup reports missing/failed entries inline in PluginConfig.
+const DEFAULT_READ_UI_OPTIONS: RequestUiOptions = {
+  showLoader: false,
+  suppressErrorMessage: true,
+};
 
 export interface JevRegistryValidation {
   status: "valid" | "invalid" | string;
@@ -67,7 +71,7 @@ export const jevRegistryApi = {
       {
         url: `/admin_api/jev/registry/${encodeURIComponent(pluginName)}`,
       },
-      uiOptions
+      { ...DEFAULT_READ_UI_OPTIONS, ...uiOptions }
     );
     return response.entry;
   },

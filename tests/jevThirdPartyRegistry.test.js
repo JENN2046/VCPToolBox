@@ -96,6 +96,52 @@ function makePlanner({ items = [{ manifest: makeAcManifest() }], env = EXP_ON, c
     return { planner, registry, decisions };
 }
 
+test('normalized default and configured virtual tool names cannot register as third-party tools', () => {
+    for (const [virtualToolName, names] of [
+        [undefined, ['JEV', 'jev', 'J-E_V']],
+        ['Custom_JEV', ['Custom_JEV', 'custom-jev', 'C_u_s_t_o_m_J_E_V']]
+    ]) {
+        const registry = new JevThirdPartyRegistry({ officialConfig: { virtualToolName } });
+        for (const name of names) {
+            const entry = registry.validateDeclaration(makeAcManifest({ name }));
+            assert.equal(entry.validation.status, 'invalid');
+            assert.match(entry.validation.errors.join(), /虚拟工具名冲突/);
+            assert.equal(entry.callTemplate, null);
+        }
+        assert.equal(registry.validateDeclaration(makeAcManifest()).validation.status, 'valid');
+    }
+});
+
+test('multiple catch-all constraints parameters fail validation before planning', async () => {
+    for (const required of [true, false]) {
+        const manifest = makeAcManifest();
+        manifest.jev.commands[0].parameters = {
+            first: { type: 'text', source: 'constraints', required },
+            second: { type: 'text', source: 'constraints', prefixes: [], required }
+        };
+        const { registry, planner, decisions } = makePlanner({ items: [{ manifest }] });
+        const entry = registry.getEntry('SmartAC');
+        assert.equal(entry.validation.status, 'invalid');
+        assert.match(entry.validation.errors.join(), /最多允许一个/);
+        assert.equal(entry.callTemplate, null);
+        await assert.rejects(planner.plan('{物联网控制} `SmartAC` 设置【空调】[客厅][冷气]'), /未通过校验/);
+        assert.equal(decisions.length, 0);
+    }
+});
+
+test('one catch-all text parameter coexists with multiple prefixed parameters', async () => {
+    const manifest = makeAcManifest();
+    manifest.jev.commands[0].parameters = {
+        note: { type: 'text', source: 'constraints', required: true },
+        room: { type: 'text', source: 'constraints', prefixes: ['房间'], required: true },
+        owner: { type: 'text', source: 'constraints', prefixes: ['用户'], required: true }
+    };
+    const { registry, planner } = makePlanner({ items: [{ manifest }] });
+    assert.equal(registry.getEntry('SmartAC').validation.status, 'valid');
+    const [call] = await planner.plan('{物联网控制} `SmartAC` 设置【空调】[房间:客厅][安静][用户:测试][节能]');
+    assert.deepEqual(call.args, { command: 'SetAC', room: '客厅', owner: '测试', note: '安静\n节能' });
+});
+
 test('third-party input and final inherited metadata remain UTF-8 byte bounded', async () => {
     const { planner, decisions } = makePlanner({ configured: true });
     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 调节【' + '汉'.repeat(6000) + '】'), /最大字节数/);

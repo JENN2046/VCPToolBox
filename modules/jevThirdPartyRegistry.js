@@ -404,6 +404,12 @@ class JevThirdPartyRegistry {
                 }
             }
         }
+        const freeTextParameters = Object.values(normalized.parameters).filter(param => (
+            param.type === 'text' && param.source === 'constraints' && param.prefixes.length === 0
+        ));
+        if (freeTextParameters.length > 1) {
+            errors.push(`${label}.parameters 最多允许一个无 prefixes 的 constraints 文本参数。`);
+        }
         return normalized;
     }
 
@@ -424,6 +430,10 @@ class JevThirdPartyRegistry {
 
         if (typeof name !== 'string' || !TOOL_NAME_RE.test(name)) {
             errors.push(`manifest.name "${name}" 不是合法的精确工具名（字母开头，仅含字母、数字、下划线、连字符）。`);
+        }
+        const virtualToolName = this.getOfficialConfig().virtualToolName || 'JEV';
+        if (typeof name === 'string' && normalizeAlias(name) === normalizeAlias(virtualToolName)) {
+            errors.push(`manifest.name "${name}" 与保留的 JEV 虚拟工具名冲突。`);
         }
         if (denyPlugins.has(name)) {
             errors.push(`插件 ${name} 属于系统维护/文件/代码/命令行类插件，暂不开放 JEV 接入。`);

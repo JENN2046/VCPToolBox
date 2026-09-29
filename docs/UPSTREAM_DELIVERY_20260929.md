@@ -48,10 +48,24 @@ npm run build
 
 The explicit target prevents Vite configuration from reading root `config.env`. No frontend runtime env files were present. Tracked `dist` is intentionally regenerated; no source maps or local workspace paths were found in the bundle.
 
-**NOT RUN:** Linux runtime/native rebuild, real providers, real distributed hardware, production startup, browser end-to-end tests. Native code is unchanged. Local build success is not production readiness.
+**NOT RUN in the initial Windows batch:** Linux regression, native rebuild, real providers, real distributed hardware, production startup, browser end-to-end tests. Subsequent Linux results are recorded below and in the PR. Native code is unchanged. Local build success is not production readiness.
 
 CI limitations: the main workflow targets `main`, not this PR's `master`; native ABI CI has path filters that this change does not touch. No workflow changes or manual release/build dispatch are part of this delivery. PR checks and review threads must still be inspected after opening; absent CI is not a passing CI run.
 
 ## PR #282 review follow-up
 
 Addressed three P2 findings with regressions: palette keyboard scrolling now compares viewport-relative rectangles (including container border); disabled/invalid declarations do not expose call templates; single-character aliases match exact primary/wrapper text, without unsafe substring matching. Re-ran the complete 215-test batch and rebuilt the admin bundle after these changes.
+
+### Second review batch
+
+- Reject third-party names that normalize to the configured virtual JEV tool name, including case, hyphen and underscore variants.
+- Reject multiple unprefixed `constraints` text parameters per command; retain one catch-all alongside explicitly prefixed fields.
+- Give the login page its own viewport-height scroll container and overflow-safe vertical centering, including mobile widths.
+- Suppress global error toasts for the optional registry lookup by default; missing entries and other failures remain distinct inline messages. Explicit caller overrides still work.
+- Guard registry lookup success and failure against navigation, declaration changes, overlapping refreshes and component unmount.
+
+**Windows PASS: 226/226, zero failed/skipped.** Run the command above with `tests/pr282AdminReview.test.cjs` appended. The new admin tests transpile actual source using the frontend's locked TypeScript dependency; install both root and frontend dependencies before running this expanded batch. Admin typecheck/build also passed and the tracked bundle was rebuilt. Existing ineffective dynamic-import warnings remain non-fatal.
+
+**Windows isolated browser layout PASS:** actual Login.vue CSS with synthetic login content in a fresh headless Chromium session, network requests blocked, at 1024x300, 667x375, 320x240, 390x844 and 1280x900. The card top remained reachable and the bottom button was reachable by scrolling. This is a layout regression check, not authenticated browser end-to-end testing.
+
+Linux validation of the earlier `9d9da273` snapshot passed 215/215 plus the admin build, as recorded in the PR. That result does not cover this second review batch: its exact-commit Linux rerun and final result will be recorded in the PR after publication. No native code or dependency lock changed; no Vexus rebuild is required.

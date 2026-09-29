@@ -391,7 +391,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { pluginApi, jevRegistryApi, type JevRegistryEntry } from '@/api'
@@ -408,6 +408,7 @@ import UiTextarea from '@/components/ui/UiTextarea.vue'
 import { useMarkdownRenderer } from '@/composables/useMarkdownRenderer'
 import { usePluginConfigStore, type InvocationCommand } from '@/stores/pluginConfig'
 import { showMessage } from '@/utils'
+import { isHttpError } from '@/platform/http/errors'
 
 type TextareaValue = string | number | readonly string[] | null
 
@@ -456,15 +457,26 @@ function displayPrompt(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value : '（未填写）'
 }
 
+let jevEntryRequestId = 0
+onBeforeUnmount(() => { jevEntryRequestId += 1 })
+
 async function loadJevEntry(name: string) {
+  const requestId = ++jevEntryRequestId
+  const declaration = manifestJev.value
+  const isCurrent = () => requestId === jevEntryRequestId
+    && name === pluginName.value && declaration === manifestJev.value
   jevEntry.value = null
   jevEntryError.value = ''
-  if (!manifestJev.value || !name) return
+  if (!declaration || !name) return
   try {
-    jevEntry.value = await jevRegistryApi.getEntry(name)
-  } catch {
+    const entry = await jevRegistryApi.getEntry(name)
+    if (isCurrent()) jevEntry.value = entry
+  } catch (error) {
+    if (!isCurrent()) return
     // enabled 不为 true 的声明不会进入注册表，属于正常情况。
-    jevEntryError.value = '未进入注册表（jev.enabled 不为 true 或尚未重建）'
+    jevEntryError.value = isHttpError(error) && error.status === 404
+      ? '未进入注册表（jev.enabled 不为 true 或尚未重建）'
+      : '注册表暂时无法读取，请稍后重试'
   }
 }
 
