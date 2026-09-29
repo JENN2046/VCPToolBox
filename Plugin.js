@@ -1627,7 +1627,21 @@ class PluginManager extends EventEmitter {
             });
             return snapshot;
         } catch (error) {
-            console.error(`[PluginManager] Failed to build JEV third-party registry (${reason}):`, error.message);
+            if (generation !== this.jevRegistryGeneration) return null;
+            const snapshot = jevThirdPartyRegistry.invalidate();
+            console.error(`[PluginManager] Failed to build JEV third-party registry (${reason}); previous entries cleared.`);
+            try {
+                this.emit('jev_registry_changed', {
+                    reason,
+                    total: snapshot.total,
+                    validCount: snapshot.validCount,
+                    invalidCount: snapshot.invalidCount
+                });
+            } catch {
+                // Observer failure must not undo fail-closed state or block
+                // ordinary plugin loading, which is independent of JEV.
+                console.warn('[PluginManager] JEV registry failure notification could not be delivered.');
+            }
             return null;
         }
     }

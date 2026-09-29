@@ -28,6 +28,7 @@ const PARAM_TYPES = new Set(['enum', 'boolean', 'text']);
 const TEXT_SOURCES = new Set(['primary', 'constraints', 'url']);
 const TOOL_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const PARAM_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const MAX_PARAM_NAME_LENGTH = 64;
 const ENUM_KEY_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 // 由调用协议或 ToolExecutor 统一承载的字段，插件声明不能占用。
@@ -109,6 +110,7 @@ class JevThirdPartyRegistry {
         this._officialConfig = options.officialConfig || null;
         this.entries = new Map();
         this.builtAt = null;
+        this._buildError = null;
     }
 
     // ---------- 配置 ----------
@@ -245,6 +247,10 @@ class JevThirdPartyRegistry {
     }
 
     _checkParamName(label, name, forbidden, errors) {
+        if (name.length > MAX_PARAM_NAME_LENGTH) {
+            errors.push(`${label} 参数名长度不能超过 ${MAX_PARAM_NAME_LENGTH} 个字符。`);
+            return false;
+        }
         if (!PARAM_NAME_RE.test(name)) {
             errors.push(`${label} 参数名 "${name}" 不合法。`);
             return false;
@@ -637,6 +643,9 @@ class JevThirdPartyRegistry {
                 // it, including UTF-8, JSON escaping, keys and JEV metadata.
                 const fixedArgs = { ...normalized.fixedArgs };
                 if (normalized.injectCommand) fixedArgs.command = normalized.commandIdentifier;
+                for (const [name, param] of Object.entries(normalized.parameters)) {
+                    if (param.default !== undefined) fixedArgs[name] = String(param.default);
+                }
                 const fixedCall = buildExpandedCallEnvelope(entry.toolName, fixedArgs, {
                     category: entry.category,
                     toolKey: entry.toolName,
@@ -644,7 +653,7 @@ class JevThirdPartyRegistry {
                     thirdParty: true
                 });
                 if (Buffer.byteLength(JSON.stringify(fixedCall), 'utf8') > SEMANTIC_ENVELOPE_MAX_BYTES) {
-                    errors.push(`jev.commands[${index}].fixedArgs 的完整固定调用超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
+                    errors.push(`jev.commands[${index}].fixedArgs 和默认参数的完整调用超过最大字节数 ${SEMANTIC_ENVELOPE_MAX_BYTES}。`);
                 }
                 if (seen.has(normalized.commandIdentifier)) {
                     errors.push(`jev.commands 中命令 "${normalized.commandIdentifier}" 重复。`);
@@ -729,6 +738,15 @@ class JevThirdPartyRegistry {
         }
         this.entries = entries;
         this.builtAt = new Date().toISOString();
+        this._buildError = null;
+        return this.getSnapshot();
+    }
+
+    // No config reads or stale executable entries survive a failed rebuild.
+    invalidate() {
+        this.entries = new Map();
+        this.builtAt = new Date().toISOString();
+        this._buildError = 'JEV registry rebuild failed; third-party calls are unavailable.';
         return this.getSnapshot();
     }
 
@@ -750,11 +768,13 @@ class JevThirdPartyRegistry {
     getSnapshot(env = process.env) {
         const entries = this.listEntries();
         let catalogConflicts = [];
-        let catalogError = null;
-        try {
-            catalogConflicts = this.getCatalogConflicts();
-        } catch (error) {
-            catalogError = error.message;
+        let catalogError = this._buildError;
+        if (!catalogError) {
+            try {
+                catalogConflicts = this.getCatalogConflicts();
+            } catch (error) {
+                catalogError = error.message;
+            }
         }
         return {
             builtAt: this.builtAt,

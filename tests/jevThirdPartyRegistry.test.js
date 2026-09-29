@@ -76,6 +76,112 @@ function makeRegistry(items) {
     return registry;
 }
 
+function makeRegistryRebuildHarness(registry, manifest = makeAcManifest()) {
+    const fs = require('node:fs');
+    const vm = require('node:vm');
+    const source = fs.readFileSync(path.join(__dirname, '..', 'Plugin.js'), 'utf8');
+    const start = source.indexOf("    async buildJevPromptRegistry(reason = 'rebuild') {");
+    const end = source.indexOf('    getJevPromptRegistry()', start);
+    assert.ok(start >= 0 && end > start);
+    const events = [];
+    const method = vm.runInNewContext(`({${source.slice(start, end)}}).buildJevPromptRegistry`, {
+        jevThirdPartyRegistry: registry, path, __dirname: path.join(__dirname, '..'), manifestFileName: 'plugin-manifest.json',
+        console: { log() {}, warn() {}, error() {} }
+    });
+    const manager = { plugins: new Map([[manifest.name, manifest]]), jevRegistryGeneration: 0, debugMode: false,
+        async _discoverDisabledPluginManifests() { return []; },
+        emit(name, payload) { events.push({ name, ...payload }); }, buildJevPromptRegistry: method };
+    return { manager, events };
+}
+
+test('current registry rebuild failures revoke old entries and recover on success', async () => {
+    for (const failingMethod of ['reloadConfig', 'build']) {
+        const { planner, registry, decisions } = makePlanner({ configured: true });
+        const { manager, events } = makeRegistryRebuildHarness(registry);
+        assert.ok(registry.getRunnableEntry('SmartAC'));
+        const original = registry[failingMethod];
+        registry[failingMethod] = () => { throw new Error('synthetic configuration failure'); };
+        manager.plugins.clear();
+        assert.equal(await manager.buildJevPromptRegistry('test-failure'), null);
+        assert.equal(registry.getEntry('SmartAC'), null);
+        assert.equal(registry.getRunnableEntry('SmartAC'), null);
+        const snapshot = registry.getSnapshot();
+        assert.equal(snapshot.total, 0);
+        assert.equal(snapshot.validCount, 0);
+        assert.ok(snapshot.catalogError);
+        assert.equal(snapshot.catalogError.includes('synthetic configuration failure'), false);
+        assert.equal(events.at(-1).name, 'jev_registry_changed');
+        assert.equal(events.at(-1).total, 0);
+        await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【随意】'));
+        assert.equal(decisions.length, 0);
+        registry[failingMethod] = original;
+        manager.plugins.set('SmartAC', makeAcManifest());
+        assert.equal((await manager.buildJevPromptRegistry('test-recovery')).validCount, 1);
+        assert.ok(registry.getRunnableEntry('SmartAC'));
+        assert.equal(registry.getSnapshot().catalogError, null);
+    }
+});
+
+test('stale failed rebuild cannot clear a newer successful registry', async () => {
+    const registry = makeRegistry([{ manifest: makeAcManifest() }]);
+    const { manager, events } = makeRegistryRebuildHarness(registry);
+    let completeOldDiscovery;
+    manager._discoverDisabledPluginManifests = () => new Promise(resolve => { completeOldDiscovery = resolve; });
+    const old = manager.buildJevPromptRegistry('old');
+    const replacement = makeAcManifest({ name: 'NewAC' });
+    manager.plugins = new Map([['NewAC', replacement]]);
+    manager._discoverDisabledPluginManifests = async () => [];
+    assert.equal((await manager.buildJevPromptRegistry('new')).validCount, 1);
+    const eventCount = events.length;
+    const builtAt = registry.builtAt;
+    completeOldDiscovery([{ get manifest() { throw new Error('stale synthetic failure'); } }]);
+    assert.equal(await old, null);
+    assert.ok(registry.getRunnableEntry('NewAC'));
+    assert.equal(registry.getEntry('SmartAC'), null);
+    assert.equal(registry.builtAt, builtAt);
+    assert.equal(registry.getSnapshot().catalogError, null);
+    assert.equal(events.length, eventCount);
+});
+
+test('stale successful rebuild cannot restore entries after a newer failure', async () => {
+    const registry = makeRegistry([{ manifest: makeAcManifest() }]);
+    const { manager, events } = makeRegistryRebuildHarness(registry);
+    let completeOldDiscovery;
+    manager._discoverDisabledPluginManifests = () => new Promise(resolve => { completeOldDiscovery = resolve; });
+    const old = manager.buildJevPromptRegistry('old');
+    manager._discoverDisabledPluginManifests = async () => [];
+    registry.reloadConfig = () => { throw new Error('current synthetic failure'); };
+    assert.equal(await manager.buildJevPromptRegistry('new'), null);
+    completeOldDiscovery([]);
+    assert.equal(await old, null);
+    assert.equal(registry.getSnapshot().total, 0);
+    assert.ok(registry.getSnapshot().catalogError);
+    assert.equal(events.length, 1);
+});
+
+test('invalidated registry snapshots do not reread broken configuration', () => {
+    const registry = makeRegistry([{ manifest: makeAcManifest() }]);
+    registry.getCatalogConflicts = () => { throw new Error('must not read broken configuration'); };
+    const snapshot = registry.invalidate();
+    assert.equal(snapshot.total, 0);
+    assert.equal(snapshot.validCount, 0);
+    assert.equal(snapshot.invalidCount, 0);
+    assert.equal(snapshot.catalogError, 'JEV registry rebuild failed; third-party calls are unavailable.');
+    assert.deepEqual(snapshot.entries, []);
+    assert.equal(registry.getSnapshot().catalogError, snapshot.catalogError);
+});
+
+test('registry notification failures remain fail closed without escaping plugin load', async () => {
+    const registry = makeRegistry([{ manifest: makeAcManifest() }]);
+    const { manager } = makeRegistryRebuildHarness(registry);
+    let notifications = 0;
+    manager.emit = () => { notifications++; throw new Error('synthetic listener failure'); };
+    assert.equal(await manager.buildJevPromptRegistry('listener-failure'), null);
+    assert.equal(registry.getSnapshot().total, 0);
+    assert.ok(registry.getSnapshot().catalogError);
+    assert.equal(notifications, 2);
+});
+
 function makePlanner({ items = [{ manifest: makeAcManifest() }], env = EXP_ON, configured = false, answers = {} } = {}) {
     const decisions = [];
     const registry = makeRegistry(items);
@@ -1340,6 +1446,9 @@ function expectedFixedEnvelope(manifest) {
     const cmd = manifest.jev.commands[0];
     const args = Object.fromEntries(Object.entries(cmd.fixedArgs).map(([key, value]) => [key, String(value)]));
     if (cmd.injectCommand !== false) args.command = cmd.commandIdentifier;
+    for (const [name, param] of Object.entries(cmd.parameters || {})) {
+        if (param.default !== undefined) args[name] = String(param.default);
+    }
     return { name: manifest.name, args, archery: false, archeryNoReply: false, markHistory: false,
         river: null, vref: null, jev: { category: 'iot_control', toolKey: manifest.name, command: cmd.commandIdentifier, thirdParty: true } };
 }
@@ -1359,7 +1468,7 @@ test('aggregate fixed call size rejects individually legal oversized declaration
             const { registry, planner, decisions } = makePlanner({ items: [{ manifest }], configured });
             const entry = registry.getEntry('SmartAC');
             assert.equal(entry.validation.status, 'invalid');
-            assert.match(entry.validation.errors.join(), /fixedArgs.*16384/);
+            assert.match(entry.validation.errors.join(), /fixedArgs.*(?:16384|64)/);
             assert.equal(entry.callTemplate, null);
             await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【目标】'), /未通过校验/);
             assert.equal(decisions.length, 0);
@@ -1389,6 +1498,58 @@ test('fixed envelope boundary includes metadata keys and optional injected comma
                     assert.ok(entry.callTemplate);
                     assert.deepEqual((await planner.plan('{物联网控制} `SmartAC` 【目标】'))[0], expected);
                     await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【目标】', { args: { maid: 'extra' } }), /final third-party call/);
+                }
+            }
+        }
+    }
+});
+
+test('parameter and fixed argument names are bounded to 64 characters', async () => {
+    for (const length of [64, 65, 16384]) {
+        for (const type of ['boolean', 'enum', 'text', 'fixed']) {
+            const name = 'p'.repeat(length);
+            const manifest = makeFixedEnvelopeManifest(type === 'fixed' ? { [name]: 'value' } : {});
+            if (type !== 'fixed') manifest.jev.commands[0].parameters = { [name]: {
+                type, required: true, ...(type === 'text' ? { source: 'primary' }
+                    : type === 'boolean' ? { description: '开关', default: true }
+                        : { description: '模式', values: { cool: '制冷', heat: '制热' }, default: 'cool' })
+            } };
+            const { registry, planner, decisions } = makePlanner({ items: [{ manifest }] });
+            const entry = registry.getEntry('SmartAC');
+            assert.equal(entry.validation.status, length <= 64 ? 'valid' : 'invalid', `${type}/${length}`);
+            if (length > 64) {
+                assert.match(entry.validation.errors.join(), /参数名.*64/);
+                assert.equal(entry.callTemplate, null);
+                await assert.rejects(planner.plan('{物联网控制} `SmartAC` 【目标】'), /未通过校验/);
+            } else {
+                const [call] = await planner.plan('{物联网控制} `SmartAC` 【目标】');
+                assert.equal(call.args[name], type === 'text' ? '目标' : type === 'boolean' ? 'true' : type === 'enum' ? 'cool' : 'value');
+            }
+            assert.equal(decisions.length, 0);
+        }
+    }
+});
+
+test('known boolean and enum defaults count toward the exact call envelope', async () => {
+    for (const injectCommand of [false, true]) {
+        for (const enabled of [false, true]) {
+            for (const delta of [-1, 0, 1]) {
+                const fixedArgs = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`arg${i}`, 'x'.repeat(1900)]));
+                fixedArgs.padding = '';
+                const manifest = makeFixedEnvelopeManifest(fixedArgs, injectCommand);
+                manifest.jev.commands[0].parameters = {
+                    ['p'.repeat(64)]: { type: 'boolean', description: '开关', required: true, default: enabled },
+                    mode: { type: 'enum', description: '模式', values: { cool: '制冷', heat: '制热' }, default: 'cool' }
+                };
+                fixedArgs.padding = 'x'.repeat(16384 + delta - Buffer.byteLength(JSON.stringify(expectedFixedEnvelope(manifest)), 'utf8'));
+                const { registry, planner } = makePlanner({ items: [{ manifest }] });
+                const entry = registry.getEntry('SmartAC');
+                assert.equal(entry.validation.status, delta > 0 ? 'invalid' : 'valid');
+                if (delta > 0) {
+                    assert.equal(entry.callTemplate, null);
+                    assert.match(entry.validation.errors.join(), /默认.*16384/);
+                } else {
+                    assert.deepEqual((await planner.plan('{物联网控制} `SmartAC` 【目标】'))[0], expectedFixedEnvelope(manifest));
                 }
             }
         }
