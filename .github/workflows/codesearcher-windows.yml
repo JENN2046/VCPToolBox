@@ -41,8 +41,9 @@ jobs:
           $bundledHash = (Get-FileHash -Algorithm SHA256 $bundled).Hash.ToLowerInvariant()
           Write-Output "rebuilt SHA256: $rebuiltHash"
           Write-Output "bundled SHA256: $bundledHash"
-          if ($rebuiltHash -ne $bundledHash) {
-            throw 'Bundled CodeSearcher differs from the locked-source Windows rebuild.'
+          node .github/scripts/verify-windows-pe.cjs $bundled $rebuilt
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Bundled CodeSearcher code differs from the locked-source Windows rebuild.'
           }
           $ok = '{"query":"fn main","search_path":"Plugin/CodeSearcher/src/src/main.rs","max_results":1}' | & $rebuilt | ConvertFrom-Json
           if (-not $ok.result.content[0].text.Contains('fn main')) {
