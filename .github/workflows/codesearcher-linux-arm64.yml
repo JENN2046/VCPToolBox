@@ -30,6 +30,12 @@ jobs:
           grep -q HARD_MAX_RESULTS <<< "$positive"
           blocked="$(printf '%s\n' '{"query":"HARD_MAX_RESULTS","search_path":"../"}' | "$binary")"
           grep -q '"status":"error"' <<< "$blocked"
+      - name: Verify Linux bridge selection
+        run: node --test tests/codeSearcherBridge.test.js
+      - name: Compare bundled ARM64 executable with locked-source rebuild
+        run: |
+          cmp Plugin/CodeSearcher/CodeSearcher-aarch64-unknown-linux-gnu Plugin/CodeSearcher/src/target/release/CodeSearcher
+          sha256sum Plugin/CodeSearcher/CodeSearcher-aarch64-unknown-linux-gnu Plugin/CodeSearcher/src/target/release/CodeSearcher
       - name: Preserve rebuilt ARM64 artifact for review
         uses: actions/upload-artifact@v4
         with:
