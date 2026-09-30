@@ -15,3 +15,17 @@ test('Linux host selects the source-matched rebuilt artifact', { skip: process.p
     const selected = bridge.findExecutable();
     assert.equal(path.basename(selected), `CodeSearcher-${bridge.getTarget().triple}`);
 });
+
+test('Linux selects the declared libc and musl never falls back to host GNU builds', () => {
+    for (const arch of ['x64', 'arm64']) {
+        for (const libc of ['gnu', 'musl']) {
+            const target = bridge.getTarget('linux', arch, libc);
+            assert.ok(target.triple.endsWith(`-linux-${libc}`));
+            const candidates = bridge.getCandidates(target);
+            if (libc === 'musl') {
+                assert.ok(candidates.every(candidate => candidate.includes('linux-musl')));
+            }
+        }
+    }
+    assert.equal(bridge.getTarget('linux', 'x64', 'unknown'), null);
+});

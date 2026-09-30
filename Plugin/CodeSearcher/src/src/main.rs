@@ -500,7 +500,7 @@ fn is_sensitive(path: &Path) -> bool {
     if name.ends_with(".example") || name.ends_with(".sample") || name.ends_with(".template") {
         return false;
     }
-    name == ".env" || name.starts_with(".env.") || name.ends_with(".env")
+    name == ".env" || name.contains(".env.") || name.ends_with(".env")
 }
 
 fn ext_allowed(path: &Path, exts: &HashSet<String>) -> bool {
@@ -810,7 +810,7 @@ fn render_file(hit: &FileHit, take: usize, context_lines: usize) -> String {
     }
 
     let by_line: HashMap<usize, &LineMatch> =
-        hit.matches.iter().map(|m| (m.line_idx, m)).collect();
+        hit.matches[..take].iter().map(|m| (m.line_idx, m)).collect();
 
     // 合并相邻/重叠的上下文窗口，避免重复输出
     let mut groups: Vec<(usize, usize)> = Vec::new();

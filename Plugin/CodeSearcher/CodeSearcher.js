@@ -4,12 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-function getTarget(platform = process.platform, arch = process.arch) {
+function getTarget(platform = process.platform, arch = process.arch, libc) {
+    const abi = libc || (process.platform === 'linux' && process.report?.getReport?.().header?.glibcVersionRuntime ? 'gnu' : 'musl');
+    if (platform === 'linux' && !['gnu', 'musl'].includes(abi)) return null;
     const targets = {
         'win32:x64': { triple: 'x86_64-pc-windows-msvc', extension: '.exe', legacy: ['CodeSearcher.exe'] },
         'win32:arm64': { triple: 'aarch64-pc-windows-msvc', extension: '.exe', legacy: [] },
-        'linux:x64': { triple: 'x86_64-unknown-linux-gnu', extension: '', legacy: [] },
-        'linux:arm64': { triple: 'aarch64-unknown-linux-gnu', extension: '', legacy: [] },
+        'linux:x64': { triple: `x86_64-unknown-linux-${abi}`, extension: '', legacy: [] },
+        'linux:arm64': { triple: `aarch64-unknown-linux-${abi}`, extension: '', legacy: [] },
         'darwin:x64': { triple: 'x86_64-apple-darwin', extension: '', legacy: [] },
         'darwin:arm64': { triple: 'aarch64-apple-darwin', extension: '', legacy: [] }
     };
@@ -18,13 +20,14 @@ function getTarget(platform = process.platform, arch = process.arch) {
 
 function getCandidates(target) {
     const binaryName = `CodeSearcher${target.extension}`;
+    const allowHostFallback = !target.triple.endsWith('-linux-musl');
     return [
         path.join(__dirname, `CodeSearcher-${target.triple}${target.extension}`),
         ...target.legacy.map(name => path.join(__dirname, name)),
         path.join(__dirname, 'src', 'target', target.triple, 'release', binaryName),
-        path.join(__dirname, 'src', 'target', 'release', binaryName),
+        ...(allowHostFallback ? [path.join(__dirname, 'src', 'target', 'release', binaryName)] : []),
         path.join(__dirname, 'src', 'target', target.triple, 'debug', binaryName),
-        path.join(__dirname, 'src', 'target', 'debug', binaryName)
+        ...(allowHostFallback ? [path.join(__dirname, 'src', 'target', 'debug', binaryName)] : [])
     ];
 }
 
