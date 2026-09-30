@@ -1,6 +1,9 @@
 // modules/vcpLoop/toolCallParser.js
 const toolMarkerFuzzyMatcher = require('./toolMarkerFuzzyMatcher');
 
+// Known scalar controls retain legacy padding tolerance; payloads keep indentation.
+const STRUCTURAL_ARG_KEY = /^(?:command|action|operation|executionType|encoding|mode|format|type|maid|valet|showbase64|return_base64|watermark)\d*$/i;
+
 class ToolCallParser {
   static MARKERS = {
     START: '<<<[TOOL_REQUEST]>>>',
@@ -156,7 +159,10 @@ class ToolCallParser {
       } else if (field.key === 'vref') {
         vref = trimmedValue;
       } else {
-        args[field.key] = trimmedValue;
+        // 控制字段容忍标记内的空白；正文/代码等负载继续保留前导缩进。
+        args[field.key] = STRUCTURAL_ARG_KEY.test(field.key)
+          ? trimmedValue
+          : this._normalizeFieldValue(field.value);
       }
     }
 
@@ -279,6 +285,19 @@ class ToolCallParser {
     }
 
     return fields;
+  }
+
+  /**
+   * 规范化参数字段值：
+   * 保护首行与各行的代码/文本前导缩进（禁止直接使用全量 trim()）。
+   * 1. 若首字符紧跟换行（\r\n 或 \n），剥离该换行符，但保留第一行代码的缩进空格。
+   * 2. 剥离末尾的换行及尾随空白。
+   * @param {string} value
+   * @returns {string}
+   */
+  static _normalizeFieldValue(value) {
+    if (typeof value !== 'string') return '';
+    return value.replace(/^(?:\r?\n)/, '').replace(/(?:\r?\n)?[ \t]*$/, '');
   }
 
   static _restoreEscapedLiterals(content) {
