@@ -4,16 +4,16 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-function getTarget() {
+function getTarget(platform = process.platform, arch = process.arch) {
     const targets = {
         'win32:x64': { triple: 'x86_64-pc-windows-msvc', extension: '.exe', legacy: ['CodeSearcher.exe'] },
         'win32:arm64': { triple: 'aarch64-pc-windows-msvc', extension: '.exe', legacy: [] },
-        'linux:x64': { triple: 'x86_64-unknown-linux-gnu', extension: '', legacy: ['CodeSearcher-linux-x64-musl'] },
-        'linux:arm64': { triple: 'aarch64-unknown-linux-musl', extension: '', legacy: ['CodeSearcher-linux-arm64'] },
+        'linux:x64': { triple: 'x86_64-unknown-linux-gnu', extension: '', legacy: [] },
+        'linux:arm64': { triple: 'aarch64-unknown-linux-gnu', extension: '', legacy: [] },
         'darwin:x64': { triple: 'x86_64-apple-darwin', extension: '', legacy: [] },
         'darwin:arm64': { triple: 'aarch64-apple-darwin', extension: '', legacy: [] }
     };
-    return targets[`${process.platform}:${process.arch}`] || null;
+    return targets[`${platform}:${arch}`] || null;
 }
 
 function getCandidates(target) {
@@ -97,4 +97,6 @@ function main() {
     process.once('SIGTERM', () => killChild(child));
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { getTarget, getCandidates, findExecutable };

@@ -118,3 +118,19 @@ test('审核关闭时一律放行', () => {
     const m = createManager({ enabled: false, approvalList: ['FileOperator'] });
     assert.equal(m.shouldApprove('FileOperator', {}), false);
 });
+
+test('白名单不能豁免另一参数触发的审批，也不能遮盖并行审批规则', () => {
+    const m = createManager({
+        approvalList: ['FileOperator:Path:[C:]', 'FileOperator:sourcePath:[H:/safe]'],
+        whitelist: ['FileOperator:sourcePath:[H:/safe]']
+    });
+    assert.equal(m.shouldApprove('FileOperator', { sourcePath: 'H:/safe/a', destinationPath: 'C:/Windows/system.ini' }), true);
+    assert.equal(m.shouldApprove('FileOperator', { sourcePath: 'H:/safe/a' }), false);
+    assert.equal(m.shouldApprove('FileOperator', { sourcePath: 'H:/safe/a', destinationPath: 'H:/other/b' }), false);
+});
+
+test('同一虚拟路径组仅在所有路径值均获白名单覆盖时豁免', () => {
+    const m = createManager({ approvalList: ['FileOperator:Path:[C:]'], whitelist: ['FileOperator:Path:[C:/safe]'] });
+    assert.equal(m.shouldApprove('FileOperator', { sourcePath: 'C:/safe/a', destinationPath: 'C:/Windows/b' }), true);
+    assert.equal(m.shouldApprove('FileOperator', { sourcePath: 'C:/safe/a' }), false);
+});

@@ -401,19 +401,16 @@ class ToolApprovalManager {
      *   （防止 command1 白名单 + command2 危险命令的批量绕过）；
      * - 命令类参数若含串联/管道/子表达式等元字符，白名单一律不生效。
      */
-    _findWhitelistMatch(toolName, toolArgs) {
+    _findWhitelistMatch(toolName, toolArgs, approvalMatches) {
         const rules = this._getParsedRules('whitelist').filter(rule => this._toolNameMatches(rule.toolName, toolName));
         if (rules.length === 0) return null;
 
-        let best = null;
-        const consider = candidate => {
-            if (!best || candidate.specificity > best.specificity) best = candidate;
-        };
+        const candidates = [];
 
         const groups = new Map();
         for (const rule of rules) {
             if (rule.type === 'tool') {
-                consider({ rawRule: rule.rawRule, specificity: 1 });
+                candidates.push({ rawRule: rule.rawRule, specificity: 1, type: 'tool' });
                 continue;
             }
             if (!groups.has(rule.paramKeyLower)) groups.set(rule.paramKeyLower, []);
@@ -452,11 +449,20 @@ class ToolApprovalManager {
             }
 
             if (satisfied) {
-                consider({ rawRule: Array.from(hitRules).join(' + '), specificity: minSpecificity });
+                candidates.push({ rawRule: Array.from(hitRules).join(' + '), specificity: minSpecificity, paramKeyLower: ruleKeyLower });
             }
         }
 
-        return best;
+        // A whitelist for one parameter must not exempt a different triggering rule.
+        const used = new Set();
+        for (const approval of approvalMatches) {
+            const candidate = candidates.find(item => item.specificity >= approval.specificity &&
+                (approval.type === 'tool' || approval.type === 'all' ||
+                    item.paramKeyLower === approval.paramKeyLower));
+            if (!candidate) return null;
+            used.add(candidate.rawRule);
+        }
+        return used.size > 0 ? { rawRule: Array.from(used).join(' + ') } : null;
     }
 
     getApprovalDecision(toolName, toolArgs = {}) {
@@ -474,6 +480,7 @@ class ToolApprovalManager {
         }
 
         let bestMatch = null;
+        const approvalMatches = [];
 
         if (this.config.approveAll) {
             bestMatch = {
@@ -483,6 +490,7 @@ class ToolApprovalManager {
                 type: 'all',
                 matchedValue: null
             };
+            approvalMatches.push(bestMatch);
         } else {
             const considerMatch = (rule, matchedValue) => {
                 const candidate = { ...rule, matchedValue };
@@ -502,7 +510,10 @@ class ToolApprovalManager {
             for (const rule of this._getParsedRules('approvalList')) {
                 if (!this._toolNameMatches(rule.toolName, toolName)) continue;
                 const result = this._matchApprovalRule(rule, toolArgs);
-                if (result.matched) considerMatch(rule, result.matchedValue);
+                if (result.matched) {
+                    considerMatch(rule, result.matchedValue);
+                    approvalMatches.push(rule);
+                }
             }
         }
 
@@ -516,10 +527,10 @@ class ToolApprovalManager {
         }
 
         // 白名单：具体程度不低于命中的审核规则时豁免（同级时白名单优先）
-        const whitelistMatch = this._findWhitelistMatch(toolName, toolArgs);
-        if (whitelistMatch && whitelistMatch.specificity >= bestMatch.specificity) {
+        const whitelistMatch = this._findWhitelistMatch(toolName, toolArgs, approvalMatches);
+        if (whitelistMatch) {
             console.log(
-                `[ToolApprovalManager] ✅ [${toolName}] 命中${SPECIFICITY_LABELS[whitelistMatch.specificity]}白名单 [${whitelistMatch.rawRule}]，豁免审核规则 [${bestMatch.rawRule}]`
+                `[ToolApprovalManager] ✅ [${toolName}] 命中白名单 [${whitelistMatch.rawRule}]，豁免审核规则 [${bestMatch.rawRule}]`
             );
             return {
                 ...defaultDecision,
