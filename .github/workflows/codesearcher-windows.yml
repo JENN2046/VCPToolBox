@@ -47,3 +47,8 @@ jobs:
           $ok = '{"query":"fn main","search_path":"Plugin/CodeSearcher/src/src/main.rs","max_results":1}' | & $rebuilt | ConvertFrom-Json
           if (-not $ok.result.content[0].text.Contains('fn main')) {
             throw 'CodeSearcher positive smoke failed.'
+          }
+          $blocked = '{"query":"fn main","search_path":"../"}' | & $rebuilt | ConvertFrom-Json
+          if ($blocked.status -ne 'error' -or -not $blocked.error.Contains('search_path')) {
+            throw 'CodeSearcher path traversal rejection smoke failed.'
+          }
