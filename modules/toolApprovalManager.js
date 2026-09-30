@@ -35,6 +35,22 @@ const SPECIFICITY_LABELS = {
     3: '参数级'
 };
 
+// FileOperator consumes these aliases as the same operand. Keep source and
+// destination separate; do not infer alias semantics for unrelated plugins.
+function logicalPathArgKey(key, toolName) {
+    const lower = String(key || '').toLowerCase();
+    if (String(toolName || '').toLowerCase() !== 'fileoperator') return lower;
+    const match = /^(path|filepath|directorypath|searchpath|url|source|sourcepath|destination|destinationpath)(\d*)$/.exec(lower);
+    if (!match) return lower;
+    const group = match[1].startsWith('source') ? 'sourcepath'
+        : match[1].startsWith('destination') ? 'destinationpath' : 'filepath';
+    return group + match[2];
+}
+
+function logicalRuleKey(key, toolName) {
+    return key === PATH_VIRTUAL_KEY || key === ANY_ARG_KEY ? key : logicalPathArgKey(key, toolName);
+}
+
 function stripWrappingQuotes(value) {
     if (value.length >= 2) {
         const first = value[0];
@@ -342,19 +358,20 @@ class ToolApprovalManager {
         return String(ruleToolName).toLowerCase() === String(toolName || '').toLowerCase();
     }
 
-    _argKeyMatches(argKey, ruleKeyLower) {
-        const lower = argKey.toLowerCase();
+    _argKeyMatches(argKey, ruleKeyLower, toolName) {
+        const lower = logicalPathArgKey(argKey, toolName);
         if (ruleKeyLower === ANY_ARG_KEY) return !WILDCARD_EXCLUDED_ARG_KEYS.has(lower);
         if (ruleKeyLower === PATH_VIRTUAL_KEY) return PATH_LIKE_ARG_KEY_REGEX.test(lower);
+        ruleKeyLower = logicalRuleKey(ruleKeyLower, toolName);
         if (lower === ruleKeyLower) return true;
         return lower.startsWith(ruleKeyLower) && /^\d+$/.test(lower.slice(ruleKeyLower.length));
     }
 
-    _collectArgValues(toolArgs, ruleKeyLower) {
+    _collectArgValues(toolArgs, ruleKeyLower, toolName) {
         if (!toolArgs || typeof toolArgs !== 'object' || Array.isArray(toolArgs)) return [];
         const results = [];
         for (const [argKey, raw] of Object.entries(toolArgs)) {
-            if (!this._argKeyMatches(argKey, ruleKeyLower)) continue;
+            if (!this._argKeyMatches(argKey, ruleKeyLower, toolName)) continue;
             for (const value of flattenStringValues(raw)) {
                 const trimmed = value.trim();
                 if (trimmed) results.push({ argKey, value: trimmed });
@@ -364,7 +381,7 @@ class ToolApprovalManager {
     }
 
     _isPathContext(ruleKeyLower, argKey) {
-        return ruleKeyLower === PATH_VIRTUAL_KEY || PATH_LIKE_ARG_KEY_REGEX.test(argKey);
+        return ruleKeyLower === PATH_VIRTUAL_KEY || PATH_LIKE_ARG_KEY_REGEX.test(ruleKeyLower) || PATH_LIKE_ARG_KEY_REGEX.test(argKey);
     }
 
     _matchValue(rawValue, rule, isPath) {
@@ -396,9 +413,9 @@ class ToolApprovalManager {
         if (rule.type === 'tool') {
             return { matched: true, matchedValue: null };
         }
-        const values = this._collectArgValues(toolArgs, rule.paramKeyLower);
+        const values = this._collectArgValues(toolArgs, rule.paramKeyLower, rule.toolName);
         for (const { argKey, value } of values) {
-            const isPath = this._isPathContext(rule.paramKeyLower, argKey);
+            const isPath = this._isPathContext(logicalRuleKey(rule.paramKeyLower, rule.toolName), argKey);
             if ((isPath && requiresConservativePathApproval(value)) || this._matchValue(value, rule, isPath)) {
                 return { matched: true, matchedValue: value };
             }
@@ -425,12 +442,13 @@ class ToolApprovalManager {
                 candidates.push({ rawRule: rule.rawRule, specificity: 1, type: 'tool' });
                 continue;
             }
-            if (!groups.has(rule.paramKeyLower)) groups.set(rule.paramKeyLower, []);
-            groups.get(rule.paramKeyLower).push(rule);
+            const groupKey = logicalRuleKey(rule.paramKeyLower, toolName);
+            if (!groups.has(groupKey)) groups.set(groupKey, []);
+            groups.get(groupKey).push(rule);
         }
 
         for (const [ruleKeyLower, groupRules] of groups) {
-            const values = this._collectArgValues(toolArgs, ruleKeyLower);
+            const values = this._collectArgValues(toolArgs, ruleKeyLower, toolName);
             if (values.length === 0) continue;
 
             let satisfied = true;
@@ -474,7 +492,9 @@ class ToolApprovalManager {
         for (const approval of approvalMatches) {
             const candidate = candidates.find(item => item.specificity >= approval.specificity &&
                 (approval.type === 'tool' || approval.type === 'all' ||
-                    item.paramKeyLower === approval.paramKeyLower));
+                    item.paramKeyLower === logicalRuleKey(approval.paramKeyLower, toolName) ||
+                    (item.paramKeyLower === PATH_VIRTUAL_KEY &&
+                        PATH_LIKE_ARG_KEY_REGEX.test(logicalRuleKey(approval.paramKeyLower, toolName)))));
             if (!candidate) return null;
             used.add(candidate.rawRule);
         }

@@ -13,7 +13,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codesearcher-regression-'));
 const marker = 'synthetic_fixture_marker';
 let checks = 0;
 function invoke(searchPath, extra = {}) {
-    const env = { PATH: process.env.PATH || '', TEMP: root, TMP: root, LANG: 'C.UTF-8' };
+    const env = { PATH: process.env.PATH || '', TEMP: root, TMP: root, LANG: 'C.UTF-8', ALLOWED_EXTENSIONS: '.js' };
     if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot;
     const child = spawnSync(binary, [], {
         cwd: root, env, encoding: 'utf8', windowsHide: true,
@@ -28,6 +28,9 @@ function invoke(searchPath, extra = {}) {
 function text(result) {
     assert.equal(result.status, 'success');
     return result.result.content.map(part => part.text || '').join('\n');
+}
+function listedFiles(result) {
+    return text(result).split('\n').filter(line => line.startsWith('### ')).join('\n');
 }
 try {
     fs.writeFileSync(path.join(root, 'package.json'), '{}');
@@ -47,6 +50,27 @@ try {
     const rendered = text(invoke('dense.txt', { max_results: 1, context_lines: 20 }));
     assert.equal((rendered.match(/^\d+:\d+:synthetic_fixture_marker$/gm) || []).length, 1);
     assert.equal((rendered.match(/^\d+-synthetic_fixture_marker$/gm) || []).length, 20);
+    fs.mkdirSync(path.join(root, 'filters'));
+    for (const name of ['a.js', 'a.rs', 'a.min.js', 'blocked.rs', 'config.env']) {
+        fs.writeFileSync(path.join(root, 'filters', name), marker + '\n');
+    }
+    const defaultFilter = listedFiles(invoke('filters'));
+    assert.ok(defaultFilter.includes('a.js'));
+    assert.ok(!defaultFilter.includes('a.rs'));
+    const negative = listedFiles(invoke('filters', { include: '!*.min.js' }));
+    assert.ok(negative.includes('a.rs'));
+    assert.ok(negative.includes('a.js'));
+    assert.ok(!negative.includes('a.min.js'));
+    assert.ok(!negative.includes('config.env'));
+    const positive = listedFiles(invoke('filters', { include: '*.rs' }));
+    assert.ok(positive.includes('a.rs'));
+    assert.ok(!positive.includes('a.js'));
+    const mixed = listedFiles(invoke('filters', { include: '*.rs,!blocked.rs' }));
+    assert.ok(mixed.includes('a.rs'));
+    assert.ok(!mixed.includes('blocked.rs'));
+    assert.ok(!mixed.includes('a.js'));
+    const emptyFilter = listedFiles(invoke('filters', { include: ' , ' }));
+    assert.ok(!emptyFilter.includes('a.rs'));
     assert.equal(invoke('../').status, 'error');
     console.log(`CodeSearcher native regression: ${checks} isolated checks passed.`);
 } finally {

@@ -44,3 +44,39 @@ test('Windows root-relative paths fail closed while POSIX paths remain unchanged
         }
     }
 });
+
+
+test('FileOperator concrete path rules cover every equivalent operand alias', () => {
+    const groups = [
+        ['filePath', 'path', 'directoryPath', 'searchPath', 'url'],
+        ['sourcePath', 'source'], ['destinationPath', 'destination'],
+    ];
+    for (const group of groups) for (const ruleKey of group.filter(key => key !== 'path')) {
+        const manager = createManager({ approvalList: [`FileOperator:${ruleKey}:[C:]`] });
+        for (const alias of group) for (const suffix of ['', '2']) {
+            assert.equal(manager.shouldApprove('FileOperator', { [alias.toUpperCase() + suffix]: 'C:/Windows/system.ini' }), true, `${ruleKey}/${alias}${suffix}`);
+        }
+    }
+    const unrelated = createManager({ approvalList: ['OtherPlugin:filePath:[C:]'] });
+    assert.equal(unrelated.shouldApprove('OtherPlugin', { path: 'C:/x' }), false);
+});
+
+test('alias whitelist groups validate all equivalent values, never the other operand', () => {
+    const manager = createManager({ approvalList: ['FileOperator:sourcePath:[C:]'], whitelist: ['FileOperator:source:[C:/safe]'] });
+    assert.equal(manager.shouldApprove('FileOperator', { sourcePath: 'C:/safe/a' }), false);
+    assert.equal(manager.shouldApprove('FileOperator', { source: 'C:/safe/a', sourcePath: 'C:/Windows/a' }), true);
+    const other = createManager({ approvalList: ['FileOperator:destinationPath:[C:]'], whitelist: ['FileOperator:source:[H:/safe]'] });
+    assert.equal(other.shouldApprove('FileOperator', { source: 'H:/safe/a', destination: 'C:/Windows/a' }), true);
+});
+
+test('virtual Path whitelist covers concrete path rules only in the safe direction', () => {
+    for (const ruleKey of ['filePath', 'sourcePath', 'destinationPath']) {
+        const manager = createManager({ approvalList: [`FileOperator:${ruleKey}:[C:]`], whitelist: ['FileOperator:Path:[C:/safe]'] });
+        assert.equal(manager.shouldApprove('FileOperator', { [ruleKey]: 'C:/safe/a' }), false);
+        assert.equal(manager.shouldApprove('FileOperator', { [ruleKey]: 'C:/safe/a', directoryPath: 'C:/Windows/b' }), true);
+    }
+    const reverse = createManager({ approvalList: ['FileOperator:Path:[C:]'], whitelist: ['FileOperator:filePath:[C:/safe]'] });
+    assert.equal(reverse.shouldApprove('FileOperator', { filePath: 'C:/safe/a', destination: 'C:/Windows/b' }), true);
+    const nonPath = createManager({ approvalList: ['FileOperator:command:[DeleteFile]'], whitelist: ['FileOperator:Path:[C:/safe]'] });
+    assert.equal(nonPath.shouldApprove('FileOperator', { command: 'DeleteFile', path: 'C:/safe/a' }), true);
+});

@@ -600,7 +600,8 @@ fn process_entry(
         let allowed = match include.map(|o| o.matched(path, false)) {
             Some(m) if m.is_whitelist() => true,
             Some(m) if m.is_ignore() => false,
-            _ => ext_allowed(path, exts),
+            Some(_) => true, // Negative-only overrides include unmatched files.
+            None => ext_allowed(path, exts),
         };
         if !allowed {
             return WalkState::Continue;
