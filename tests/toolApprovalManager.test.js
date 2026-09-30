@@ -134,3 +134,35 @@ test('同一虚拟路径组仅在所有路径值均获白名单覆盖时豁免',
     assert.equal(m.shouldApprove('FileOperator', { sourcePath: 'C:/safe/a', destinationPath: 'C:/Windows/b' }), true);
     assert.equal(m.shouldApprove('FileOperator', { sourcePath: 'C:/safe/a' }), false);
 });
+
+test('FileOperator source/destination aliases cannot bypass virtual Path approval', () => {
+    const manager = createManager({ approvalList: ['FileOperator:Path:[C:]'], whitelist: ['FileOperator:Path:[H:/safe]'] });
+    for (const key of ['source', 'destination', 'SOURCE', 'Destination', 'source2', 'destination3']) {
+        assert.equal(manager.shouldApprove('FileOperator', { command: 'CopyFile', sourcePath: 'H:/safe/a', [key]: 'C:/Windows/system.ini' }), true, key);
+    }
+    assert.equal(manager.shouldApprove('FileOperator', { source: 'H:/safe/a', destination: 'H:/safe/b' }), false);
+});
+
+test('Windows ambiguous paths require approval and cannot receive path whitelist exemptions', () => {
+    const manager = createManager({ approvalList: ['FileOperator:Path:[C:]'], whitelist: ['FileOperator:Path:[*]'] });
+    for (const filePath of [String.raw`\Windows\system.ini`, String.raw`\\?\C:\Windows\system.ini`, String.raw`\\.\C:\Windows\system.ini`, 'C:Windows/system.ini', String.raw`\\?\Volume{test}\file`]) {
+        assert.equal(manager.shouldApprove('FileOperator', { filePath }), true, filePath);
+    }
+});
+
+test('Windows root-relative and relative paths fail closed while POSIX absolute paths keep their semantics', () => {
+    const vm = require('node:vm');
+    const { createRequire } = require('node:module');
+    const filename = require.resolve('../modules/toolApprovalManager');
+    const source = fs.readFileSync(filename, 'utf8');
+    for (const platform of ['win32', 'linux']) {
+        const context = { module: { exports: {} }, require: createRequire(filename), process: { platform }, console };
+        vm.runInNewContext(source, context);
+        const manager = Object.create(context.module.exports.prototype);
+        manager.config = { enabled: true, approveAll: false, approvalList: ['FileOperator:Path:[C:]'], whitelist: ['FileOperator:Path:[*]'] };
+        manager._ruleCache = {};
+        for (const filePath of ['/Windows/system.ini', 'Windows/system.ini']) {
+            assert.equal(manager.shouldApprove('FileOperator', { filePath }), platform === 'win32', `${platform}: ${filePath}`);
+        }
+    }
+});

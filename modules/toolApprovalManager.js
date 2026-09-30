@@ -14,7 +14,7 @@ const PATH_VIRTUAL_KEY = 'path';
 const ANY_ARG_KEY = '*';
 
 // 路径类参数名：filePath/sourcePath/destinationPath/directoryPath/searchPath/downloadDir/cwd... 及其编号变体
-const PATH_LIKE_ARG_KEY_REGEX = /(?:path|dir|directory|folder)\d*$|^cwd\d*$/i;
+const PATH_LIKE_ARG_KEY_REGEX = /(?:path|dir|directory|folder)\d*$|^(?:cwd|source|destination)\d*$/i;
 
 // 命令类参数名：白名单对这些参数额外做命令串联防护
 const COMMAND_LIKE_ARG_KEY_REGEX = /^(?:command|cmd|script|shell|code)\d*$/i;
@@ -44,6 +44,17 @@ function stripWrappingQuotes(value) {
         }
     }
     return value;
+}
+
+// Without the executing node's drive context these forms cannot safely be
+// compared to an absolute allowlist. Fail closed for approval AND whitelist.
+function requiresConservativePathApproval(raw) {
+    const rawValue = stripWrappingQuotes(String(raw).trim()).trim();
+    const value = rawValue.replace(/\\/g, '/');
+    if (/^\/\/[?.]\//.test(value) || /^[a-zA-Z]:(?:$|[^/])/.test(value)) return true;
+    if (/^\\(?!\\)/.test(rawValue)) return true;
+    return process.platform === 'win32' &&
+        !/^(?:[a-zA-Z]:\/|\/\/|file:\/\/\/[a-zA-Z]:\/)/i.test(value);
 }
 
 function normalizePathValue(raw) {
@@ -387,7 +398,8 @@ class ToolApprovalManager {
         }
         const values = this._collectArgValues(toolArgs, rule.paramKeyLower);
         for (const { argKey, value } of values) {
-            if (this._matchValue(value, rule, this._isPathContext(rule.paramKeyLower, argKey))) {
+            const isPath = this._isPathContext(rule.paramKeyLower, argKey);
+            if ((isPath && requiresConservativePathApproval(value)) || this._matchValue(value, rule, isPath)) {
                 return { matched: true, matchedValue: value };
             }
         }
@@ -434,6 +446,10 @@ class ToolApprovalManager {
                     break;
                 }
                 const isPath = this._isPathContext(ruleKeyLower, argKey);
+                if (isPath && requiresConservativePathApproval(value)) {
+                    satisfied = false;
+                    break;
+                }
                 let hit = null;
                 for (const rule of groupRules) {
                     if (this._matchValue(value, rule, isPath) && (!hit || rule.specificity > hit.specificity)) {
