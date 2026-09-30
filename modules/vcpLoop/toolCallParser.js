@@ -2,7 +2,7 @@
 const toolMarkerFuzzyMatcher = require('./toolMarkerFuzzyMatcher');
 
 // Known scalar controls retain legacy padding tolerance; payloads keep indentation.
-const STRUCTURAL_ARG_KEY = /^(?:command|action|operation|executionType|encoding|mode|format|type|maid|valet)\d*$/i;
+const STRUCTURAL_ARG_KEY = /^(?:command|action|operation|executionType|encoding|mode|format|type|maid|valet|showbase64|return_base64|watermark)\d*$/i;
 
 class ToolCallParser {
   static MARKERS = {

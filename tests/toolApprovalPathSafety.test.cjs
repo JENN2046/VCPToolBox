@@ -8,7 +8,7 @@ const filename = require.resolve('../modules/toolApprovalManager');
 const source = fs.readFileSync(filename, 'utf8');
 function loadManager(platform = process.platform) {
     const localRequire = createRequire(filename);
-    const context = { module: { exports: {} }, process: { platform }, console: { log() {} }, require: name => {
+    const context = { module: { exports: {} }, process: { platform }, console: { log() {}, warn() {} }, require: name => {
         if (name === 'chokidar') return { watch() { throw new Error('No watchers in isolated tests'); } };
         return localRequire(name);
     } };
@@ -119,4 +119,36 @@ test('tool parser trims structural padding without stripping content indentation
         assert.equal(call.name, 'Demo');
         for (const [key, , expected] of fields) assert.equal(call.args[key], expected, `${start}/${key}`);
     }
+});
+
+
+test('boolean controls trim padding while boolean-looking payloads keep indentation', () => {
+    const Parser = require('../modules/vcpLoop/toolCallParser');
+    for (const [start, end] of [['「始」', '「末」'], ['「始ESCAPE」', '「末ESCAPE」']]) {
+        for (const key of ['showbase64', 'showBase64', 'return_base64', 'watermark', 'SHOWBASE642', 'watermark2']) {
+            for (const value of ['true', 'false']) {
+                const call = Parser.parseBlock(`tool_name:「始」Demo「末」\n${key}:${start} \t${value}\r\n ${end}\ncontent:${start}  ${value}${end}\nprompt:${start}  ${value}${end}`);
+                assert.equal(call.args[key], value, `${start}/${key}/${value}`);
+                assert.equal(call.args.content, `  ${value}`);
+                assert.equal(call.args.prompt, `  ${value}`);
+            }
+        }
+    }
+});
+
+test('SilentReject whitelist entries never turn into approval exemptions', () => {
+    for (const rule of ['FileOperator', 'FileOperator:DeleteFile', 'FileOperator:filePath:[C:]', 'FileOperator:Path:[C:]', 'FileOperator:*:[*]']) {
+        const manager = createManager({ approvalList: ['FileOperator'], whitelist: [`  ${rule}::SilentReject  `] });
+        assert.equal(manager.shouldApprove('FileOperator', { command: 'DeleteFile', filePath: 'C:/a' }), true, rule);
+        assert.equal(manager._getParsedRules('whitelist').length, 0, rule);
+        manager.config.whitelist = [rule];
+        assert.equal(manager.shouldApprove('FileOperator', { command: 'DeleteFile', filePath: 'C:/a' }), false, rule);
+    }
+    const mixed = createManager({ approvalList: ['FileOperator'], whitelist: ['FileOperator::SilentReject', 'FileOperator:ReadFile'] });
+    assert.equal(mixed.shouldApprove('FileOperator', { command: 'DeleteFile' }), true);
+    assert.equal(mixed.shouldApprove('FileOperator', { command: 'ReadFile' }), false);
+    const silent = createManager({ approvalList: ['FileOperator::SilentReject'] });
+    const decision = silent.getApprovalDecision('FileOperator', { command: 'DeleteFile' });
+    assert.equal(decision.requiresApproval, true);
+    assert.equal(decision.notifyAiOnReject, false);
 });

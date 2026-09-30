@@ -328,6 +328,11 @@ class ToolApprovalManager {
         for (const entry of entries) {
             const parsed = this.parseApprovalRule(entry);
             if (!parsed) continue;
+            // SilentReject is approval-only; never broaden an invalid whitelist entry.
+            if (!allowSilent && !parsed.notifyAiOnReject) {
+                console.warn('[ToolApprovalManager] Ignoring whitelist rule with unsupported SilentReject suffix.');
+                continue;
+            }
             const definition = this.parseRuleDefinition(parsed.baseRule);
             if (!definition) {
                 console.warn(`[ToolApprovalManager] 忽略无效规则: ${parsed.rawRule}`);
