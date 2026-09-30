@@ -463,7 +463,7 @@ class ToolApprovalManager {
                     satisfied = false;
                     break;
                 }
-                const isPath = this._isPathContext(ruleKeyLower, argKey);
+                const isPath = this._isPathContext(ruleKeyLower, logicalPathArgKey(argKey, toolName));
                 if (isPath && requiresConservativePathApproval(value)) {
                     satisfied = false;
                     break;
@@ -483,7 +483,8 @@ class ToolApprovalManager {
             }
 
             if (satisfied) {
-                candidates.push({ rawRule: Array.from(hitRules).join(' + '), specificity: minSpecificity, paramKeyLower: ruleKeyLower });
+                candidates.push({ rawRule: Array.from(hitRules).join(' + '), specificity: minSpecificity, paramKeyLower: ruleKeyLower,
+                    coveredArgKeys: new Set(values.map(({ argKey }) => argKey)) });
             }
         }
 
@@ -493,6 +494,9 @@ class ToolApprovalManager {
             const candidate = candidates.find(item => item.specificity >= approval.specificity &&
                 (approval.type === 'tool' || approval.type === 'all' ||
                     item.paramKeyLower === logicalRuleKey(approval.paramKeyLower, toolName) ||
+                    (item.paramKeyLower === ANY_ARG_KEY &&
+                        this._collectArgValues(toolArgs, approval.paramKeyLower, toolName)
+                            .every(({ argKey }) => item.coveredArgKeys.has(argKey))) ||
                     (item.paramKeyLower === PATH_VIRTUAL_KEY &&
                         PATH_LIKE_ARG_KEY_REGEX.test(logicalRuleKey(approval.paramKeyLower, toolName)))));
             if (!candidate) return null;

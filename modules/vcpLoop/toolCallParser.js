@@ -1,6 +1,9 @@
 // modules/vcpLoop/toolCallParser.js
 const toolMarkerFuzzyMatcher = require('./toolMarkerFuzzyMatcher');
 
+// Known scalar controls retain legacy padding tolerance; payloads keep indentation.
+const STRUCTURAL_ARG_KEY = /^(?:command|action|operation|executionType|encoding|mode|format|type|maid|valet)\d*$/i;
+
 class ToolCallParser {
   static MARKERS = {
     START: '<<<[TOOL_REQUEST]>>>',
@@ -156,8 +159,10 @@ class ToolCallParser {
       } else if (field.key === 'vref') {
         vref = trimmedValue;
       } else {
-        // 工具参数：保留前导缩进（仅剥离首行紧贴标记的单次换行，以及末尾的单次换行/空白）
-        args[field.key] = this._normalizeFieldValue(field.value);
+        // 控制字段容忍标记内的空白；正文/代码等负载继续保留前导缩进。
+        args[field.key] = STRUCTURAL_ARG_KEY.test(field.key)
+          ? trimmedValue
+          : this._normalizeFieldValue(field.value);
       }
     }
 

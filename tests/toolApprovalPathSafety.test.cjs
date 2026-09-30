@@ -80,3 +80,43 @@ test('virtual Path whitelist covers concrete path rules only in the safe directi
     const nonPath = createManager({ approvalList: ['FileOperator:command:[DeleteFile]'], whitelist: ['FileOperator:Path:[C:/safe]'] });
     assert.equal(nonPath.shouldApprove('FileOperator', { command: 'DeleteFile', path: 'C:/safe/a' }), true);
 });
+
+
+test('wildcard whitelist covers concrete rules only after all public argument values pass', () => {
+    const manager = createManager({ approvalList: ['Demo:command:[git]'], whitelist: ['Demo:*:[git]'] });
+    assert.equal(manager.shouldApprove('Demo', { command: 'git' }), false);
+    assert.equal(manager.shouldApprove('Demo', { command: 'git', other: 'rm' }), true);
+    assert.equal(manager.shouldApprove('Demo', { command: 'git', command2: 'rm' }), true);
+    assert.equal(manager.shouldApprove('Demo', { command: 'git && rm' }), true);
+    const internal = createManager({ approvalList: ['Demo:maid:[restricted]'], whitelist: ['Demo:*:[git]'] });
+    assert.equal(internal.shouldApprove('Demo', { command: 'git', maid: 'restricted' }), true);
+});
+
+test('wildcard path coverage still normalizes FileOperator aliases and rejects uncertain paths', () => {
+    const manager = createManager({ approvalList: ['FileOperator:filePath:[C:]'], whitelist: ['FileOperator:*:[C:/safe]'] });
+    assert.equal(manager.shouldApprove('FileOperator', { url: 'C:/safe/a' }), false);
+    assert.equal(manager.shouldApprove('FileOperator', { url: 'C:/safe/../Windows/a' }), true);
+    assert.equal(manager.shouldApprove('FileOperator', { url: String.raw`\Windows\a` }), true);
+    const reverse = createManager({ approvalList: ['Demo:*:[git]'], whitelist: ['Demo:command:[git]'] });
+    assert.equal(reverse.shouldApprove('Demo', { command: 'git', other: 'git' }), true);
+});
+
+test('tool parser trims structural padding without stripping content indentation', () => {
+    const Parser = require('../modules/vcpLoop/toolCallParser');
+    for (const [start, end] of [['「始」', '「末」'], ['「始ESCAPE」', '「末ESCAPE」']]) {
+        const fields = [
+            ['command', ' \tDeleteFile\r\n ', 'DeleteFile'],
+            ['command2', ' CopyFile ', 'CopyFile'],
+            ['executionType', ' background\t ', 'background'],
+            ['encoding', ' utf8 ', 'utf8'],
+            ['mode', ' direct ', 'direct'],
+            ['content', '\n    def run():\n        return 1\n', '    def run():\n        return 1'],
+            ['inline_code', '  const a = 1;', '  const a = 1;'],
+            ['prompt', '  preserve this indent', '  preserve this indent'],
+        ];
+        const block = fields.map(([key, value]) => `${key}:${start}${value}${end}`).join('\n') + '\ntool_name:「始」Demo「末」';
+        const call = Parser.parseBlock(block);
+        assert.equal(call.name, 'Demo');
+        for (const [key, , expected] of fields) assert.equal(call.args[key], expected, `${start}/${key}`);
+    }
+});
