@@ -166,3 +166,34 @@ test('Windows root-relative and relative paths fail closed while POSIX absolute 
         }
     }
 });
+
+test('SUVEI generation and correction execution require explicit approval while read commands stay unaffected', () => {
+    const manager = createManager({
+        approvalList: [
+            'SUVEIStudio:ExecuteAuthorizedGeneration',
+            'SUVEIStudio:ExecuteAuthorizedCorrection'
+        ],
+        whitelist: ['SUVEIStudio']
+    });
+
+    const generation = manager.getApprovalDecision('SUVEIStudio', {
+        command: 'ExecuteAuthorizedGeneration',
+        projectId: '33333333-3333-4333-8333-333333333333',
+        intentId: '44444444-4444-5444-8444-444444444444'
+    });
+    assert.equal(generation.requiresApproval, true);
+    assert.equal(generation.matchedCommand, 'ExecuteAuthorizedGeneration');
+
+    const correction = manager.getApprovalDecision('SUVEIStudio', {
+        command: 'ExecuteAuthorizedCorrection',
+        projectId: '33333333-3333-4333-8333-333333333333',
+        intentId: '44444444-4444-5444-8444-444444444444'
+    });
+    assert.equal(correction.requiresApproval, true);
+    assert.equal(correction.matchedCommand, 'ExecuteAuthorizedCorrection');
+
+    assert.equal(manager.shouldApprove('SUVEIStudio', {
+        command: 'GetExperience'
+    }), false);
+});
+
