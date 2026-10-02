@@ -10,6 +10,8 @@
     "PowerShellExecutor",
     "ServerPowerShellExecutor",
     "FileOperator",
-    "ServerFileOperator"
+    "ServerFileOperator",
+    "SUVEIStudio:ExecuteAuthorizedGeneration",
+    "SUVEIStudio:ExecuteAuthorizedCorrection"
   ]
 }
