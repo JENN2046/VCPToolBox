@@ -1910,6 +1910,7 @@ class PluginManager extends EventEmitter {
                         // 提供稳定的文件变更预览协议，前端无需了解各插件的新旧参数别名。
                         ...(changePreview ? { changePreview } : {}),
                         timestamp: getFormattedLocalTimestamp(),
+                        ...(approvalDecision.requiresTrustedHumanAuthorization === true ? { requiresTrustedHumanAuthorization: true } : {}),
                         approvalTtlMs // 同步给 VCPLog 补发缓存使用,确保超时后能自动清除
                     }
                 };

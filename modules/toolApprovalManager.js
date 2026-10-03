@@ -520,6 +520,19 @@ class ToolApprovalManager {
             whitelistedBy: null
         };
 
+        // Mutation grant requests always reach the exact Human Owner review.
+        // Generic approval settings and whitelists cannot mint Core authority.
+        if (String(toolName).toLowerCase() === 'suveistudio'
+            && this.extractCommands(toolArgs).includes('RequestMutationGrantAuthorization')) {
+            return {
+                ...defaultDecision,
+                requiresApproval: true,
+                matchedRule: 'SUVEIStudio:RequestMutationGrantAuthorization',
+                matchedCommand: 'RequestMutationGrantAuthorization',
+                requiresTrustedHumanAuthorization: true
+            };
+        }
+
         if (!this.config.enabled) {
             return defaultDecision;
         }
