@@ -391,7 +391,7 @@ function initialize(httpServer, config) {
         }
         // 可以根据 ws.clientType 或其他标识符发送不同的欢迎消息
 
-        ws.on('message', (message) => {
+        ws.on('message', async (message) => {
             const messageString = message.toString();
             
             try {
@@ -518,7 +518,7 @@ function initialize(httpServer, config) {
                 } else if (parsedMessage.type === 'tool_approval_response') {
                     const { requestId, approved, reason } = parsedMessage.data || {};
                     if (pluginManager) {
-                        const success = pluginManager.handleApprovalResponse(requestId, approved, reason);
+                        const success = await pluginManager.handleApprovalResponse(requestId, approved, reason);
                         if (serverConfig.debugMode) {
                             const reasonPreview = typeof reason === 'string' && reason.trim()
                                 ? ` Reason: ${reason.trim().substring(0, 200)}`
