@@ -12,6 +12,7 @@
     "FileOperator",
     "ServerFileOperator",
     "SUVEIStudio:ExecuteAuthorizedGeneration",
-    "SUVEIStudio:ExecuteAuthorizedCorrection"
+    "SUVEIStudio:ExecuteAuthorizedCorrection",
+    "SUVEIStudio:RequestMutationGrantAuthorization"
   ]
 }

@@ -197,3 +197,26 @@ test('SUVEI generation and correction execution require explicit approval while 
     }), false);
 });
 
+
+
+test('mutation grant authority request always requires trusted Human review', () => {
+    for (const config of [
+        { enabled: false },
+        { approvalList: [], whitelist: ['SUVEIStudio', 'SUVEIStudio:RequestMutationGrantAuthorization'] },
+        { approveAll: true, whitelist: ['*'] }
+    ]) {
+        const manager = createManager(config);
+        const decision = manager.getApprovalDecision('SUVEIStudio', { command: 'RequestMutationGrantAuthorization' });
+        assert.equal(decision.requiresApproval, true);
+        assert.equal(decision.requiresTrustedHumanAuthorization, true);
+        assert.equal(decision.whitelistedBy, null);
+        assert.equal(decision.matchedCommand, 'RequestMutationGrantAuthorization');
+    }
+});
+
+test('pending mutation proposal and read commands do not require Human approval', () => {
+    const manager = createManager({ approvalList: ['SUVEIStudio:RequestMutationGrantAuthorization'] });
+    for (const command of ['ProposeMutationGrantIntent', 'GetMutationGrantIntent', 'GetMutationGrant', 'PreviewCreativeMutation']) {
+        assert.equal(manager.shouldApprove('SUVEIStudio', { command }), false, command);
+    }
+});

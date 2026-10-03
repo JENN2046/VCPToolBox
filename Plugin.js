@@ -1892,7 +1892,12 @@ class PluginManager extends EventEmitter {
                     resolve,
                     reject,
                     timeoutId,
-                    notifyAiOnReject: approvalDecision.notifyAiOnReject !== false
+                    notifyAiOnReject: approvalDecision.notifyAiOnReject !== false,
+                    trustedAuthorization: approvalDecision.requiresTrustedHumanAuthorization === true
+                        ? Object.freeze({ requestId, toolName,
+                            projectId: String(pluginSpecificArgs.projectId || '').trim().toLowerCase(),
+                            intentId: String(pluginSpecificArgs.intentId || '').trim().toLowerCase() })
+                        : null
                 });
             });
 
@@ -1910,6 +1915,7 @@ class PluginManager extends EventEmitter {
                         // 提供稳定的文件变更预览协议，前端无需了解各插件的新旧参数别名。
                         ...(changePreview ? { changePreview } : {}),
                         timestamp: getFormattedLocalTimestamp(),
+                        ...(approvalDecision.requiresTrustedHumanAuthorization === true ? { requiresTrustedHumanAuthorization: true } : {}),
                         approvalTtlMs // 同步给 VCPLog 补发缓存使用,确保超时后能自动清除
                     }
                 };
@@ -2458,7 +2464,36 @@ class PluginManager extends EventEmitter {
 
     handleApprovalResponse(requestId, approved, reason) {
         const approval = this.pendingApprovals.get(requestId);
-        if (approval) {
+        if (!approval?.trustedAuthorization) return this._settleApprovalResponse(requestId, approved, reason);
+        return this._verifyTrustedMutationApproval(requestId, approved, reason, approval);
+    }
+
+    async _verifyTrustedMutationApproval(requestId, approved, reason, approval) {
+        if (typeof approved !== 'boolean') return false;
+        const target = approval.trustedAuthorization;
+        const service = this.serviceModules.get('SUVEIStudio')?.module;
+        if (String(target.toolName).toLowerCase() !== 'suveistudio'
+            || typeof service?.verifyMutationGrantDecision !== 'function') return false;
+        if (!approval.trustedDecisionCheck) {
+            // Concurrent responses share one fresh authenticated Core GET.
+            approval.trustedDecisionCheck = Promise.resolve()
+                .then(() => service.verifyMutationGrantDecision(target))
+                .catch(() => null)
+                .finally(() => { approval.trustedDecisionCheck = null; });
+        }
+        const proof = await approval.trustedDecisionCheck;
+        if (this.pendingApprovals.get(requestId) !== approval
+            || proof?.schemaVersion !== 'suvei.mutation.grant.decision.v1'
+            || proof.requestId !== requestId || proof.projectId !== target.projectId || proof.intentId !== target.intentId
+            || !Number.isInteger(proof.revision) || proof.revision < 1
+            || !/^[0-9a-f]{64}$/.test(proof.requestFingerprint || '')
+            || (approved ? proof.proposalState !== 'AUTHORIZED' : !['REJECTED', 'REVOKED'].includes(proof.proposalState))) return false;
+        return this._settleApprovalResponse(requestId, approved, reason, approval);
+    }
+
+    _settleApprovalResponse(requestId, approved, reason, expectedApproval) {
+        const approval = this.pendingApprovals.get(requestId);
+        if (approval && (!expectedApproval || expectedApproval === approval)) {
             this.pendingApprovals.delete(requestId);
             clearTimeout(approval.timeoutId);
 
