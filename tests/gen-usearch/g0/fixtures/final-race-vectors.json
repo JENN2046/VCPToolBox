@@ -50,7 +50,10 @@
       },
       "expected": {
         "ok": false,
-        "code": "QUERY_READ_VIEW_PHYSICAL_GAP"
+        "code": "QUERY_READ_VIEW_PHYSICAL_GAP",
+        "missing_vector_ids": [
+          11
+        ]
       }
     },
     {
@@ -141,7 +144,10 @@
       },
       "expected": {
         "ok": false,
-        "code": "QUERY_READ_VIEW_PHYSICAL_GAP"
+        "code": "QUERY_READ_VIEW_PHYSICAL_GAP",
+        "missing_vector_ids": [
+          10
+        ]
       }
     },
     {
@@ -260,7 +266,10 @@
       ],
       "expected": {
         "ok": false,
-        "code": "MANIFEST_SEGMENT_MISSING"
+        "code": "MANIFEST_SEGMENT_MISSING",
+        "missing_segment_ids": [
+          "S11"
+        ]
       }
     },
     {
