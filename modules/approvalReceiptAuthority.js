@@ -368,6 +368,8 @@ class ApprovalReceiptAuthority {
         || receipt.hostBinding.identity !== expected?.hostPendingIdentity
         || receipt.hostApprovalRequestId !== expected?.hostApprovalRequestId
         || receipt.argsDigest !== expected?.targetDigest
+        || typeof expected?.requestId !== 'string' || !expected.requestId
+        || expected?.payload?.requestId !== expected.requestId
         || receipt.argsDigest !== digest(expected?.payload)
         || context.approvalReceiptId !== receipt.receiptId
         || context.approvalExecutionId !== receipt.executionId

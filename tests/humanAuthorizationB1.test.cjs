@@ -263,3 +263,31 @@ test('async Host verifier is rejected, not treated as truthy admission', t => {
   assert.throws(() => authority.snapshot('BoundedTool', r.payload,
     { requiresApproval: true, matchedRule: 'BoundedTool:decision', matchedCommand: 'decision' }, r.config), invalid);
 });
+
+for (const scenario of ['request-missing', 'request-empty', 'request-non-string',
+  'request-changed', 'payload-request-missing', 'payload-request-changed', 'valid-exact']) {
+  test('decision exact request-ID binding: ' + scenario, t => {
+    const f = fixture(t), r = f.issue(); r.bind();
+    const expected = { ...r.expected, payload: { ...r.payload } };
+    if (scenario === 'request-missing') delete expected.requestId;
+    if (scenario === 'request-empty') expected.requestId = '';
+    if (scenario === 'request-non-string') expected.requestId = 42;
+    if (scenario === 'request-changed') expected.requestId = 'target-2';
+    if (scenario === 'payload-request-missing') delete expected.payload.requestId;
+    if (scenario === 'payload-request-changed') expected.payload.requestId = 'target-2';
+    let calls = 0;
+    const dispatch = () => {
+      calls++;
+      assert.equal(f.authority.invocationAudit(r.context).state, 'CONSUMED');
+    };
+    assert.equal(f.authority.invocationAudit(r.context).state, 'ISSUED');
+    if (scenario === 'valid-exact') {
+      f.authority.dispatchDecision(expected, r.context, dispatch);
+      assert.equal(calls, 1);
+    } else {
+      assert.throws(() => f.authority.dispatchDecision(expected, r.context, dispatch), invalid);
+      assert.equal(calls, 0);
+      assert.equal(f.authority.invocationAudit(r.context).state, 'INVALIDATED');
+    }
+  });
+}
