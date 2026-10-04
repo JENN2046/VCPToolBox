@@ -1,0 +1,33 @@
+name: Human Authorization Kernel
+on:
+  push:
+    branches: ['codex/suvei-native-human-approval-b1-kernel']
+  pull_request:
+    branches: [master]
+    paths:
+      - 'modules/humanClientAdmission*.js'
+      - 'modules/approvalReceiptAuthority.js'
+      - 'modules/trustedClient*.js'
+      - 'tests/humanAuthorization*.cjs'
+      - '.github/workflows/human-authorization-kernel.yml'
+permissions:
+  contents: read
+jobs:
+  kernel:
+    strategy:
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Record exact tested source
+        run: git rev-parse HEAD
+      - name: Kernel, lifecycle and adjacent boundary regressions
+        run: node --test tests/humanAuthorizationB1.test.cjs tests/humanAuthorizationKernel.test.cjs tests/rebaselineMigrationMatrix.test.cjs tests/toolApprovalPathSafety.test.cjs
+      - name: Whitespace validation
+        run: git show --check --oneline HEAD

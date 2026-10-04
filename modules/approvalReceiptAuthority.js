@@ -46,9 +46,12 @@ class ApprovalReceiptAuthority {
   #intents = new WeakSet();
   #receipts = new Map();
   #contexts = new WeakMap();
+  #bindings = new WeakMap();
+  #hostPendingVerifier;
 
-  constructor({ now = Date.now, testOnly = false } = {}) {
+  constructor({ now = Date.now, testOnly = false, hostPendingVerifier = null } = {}) {
     this.now = now;
+    this.#hostPendingVerifier = hostPendingVerifier;
     this.testOnly = testOnly === true;
     this.channelTtl = 60000;
     this.connectionTtl = 15 * 60000;
@@ -66,6 +69,7 @@ class ApprovalReceiptAuthority {
       if (record.expiresAt <= now || !this.#live(record)) this.#channels.delete(token);
     }
     for (const [id, receipt] of this.#receipts) {
+      if (receipt.state === 'ISSUED' && !this.#receiptLive(receipt)) receipt.state = 'INVALIDATED';
       if (receipt.expiresAt <= now) {
         if (receipt.state === 'ISSUED') receipt.state = 'EXPIRED';
         this.#receipts.delete(id);
@@ -84,6 +88,23 @@ class ApprovalReceiptAuthority {
     if (!this.#live(record)) return false;
     if (this.testOnly === true) return true;
     return this.#humanAdmission?.productionHuman(record.lease) === true;
+  }
+
+  // This predicate is supplied by the trusted Host, never by request payloads.
+  // It must compare the actual live pending object, not just a string ID.
+  #pendingLive(binding) {
+    if (!binding || binding.expiresAt <= this.now() || typeof this.#hostPendingVerifier !== 'function') return false;
+    try { return this.#hostPendingVerifier(binding) === true; } catch (_) { return false; }
+  }
+
+  #receiptLive(receipt) {
+    try {
+      if (!this.#pendingLive(receipt.hostBinding)) return false;
+      const identity = this.#humanAdmission?.leaseIdentity(receipt.lease);
+      return receipt.expiresAt > this.now()
+        && this.#trusted(receipt)
+        && identity && digest(identity) === receipt.leaseIdentityDigest;
+    } catch (_) { return false; }
   }
 
   assertClientCapacity() {
@@ -153,7 +174,15 @@ class ApprovalReceiptAuthority {
     }));
   }
 
+  // Called by admission lifecycle sweeps; consumption also checks synchronously.
+  reconcileHumanReceipts() {
+    this.#sweep();
+  }
+
   invalidateHumanLease(lease) {
+    for (const receipt of this.#receipts.values()) {
+      if (receipt.lease === lease && receipt.state === 'ISSUED') receipt.state = 'INVALIDATED';
+    }
     for (const [token, channel] of this.#channels) {
       if (channel.lease === lease) this.#channels.delete(token);
     }
@@ -192,8 +221,23 @@ class ApprovalReceiptAuthority {
     const matchedRule = `${toolName}:${command}`;
     if (decision.matchedRule !== matchedRule || decision.matchedCommand !== command) throw invalid();
     const snapshot = freeze(JSON.parse(canonical(args)));
+    const supplied = config.hostPending;
+    if (!supplied || !supplied.identity || typeof supplied.identity !== 'object'
+      || typeof supplied.hostApprovalRequestId !== 'string' || !supplied.hostApprovalRequestId
+      || !Number.isSafeInteger(supplied.expiresAt)) throw invalid();
+    const operation = config.operation || 'authorize';
+    if (!['authorize', 'reject', 'revoke'].includes(operation)) throw invalid();
+    const binding = Object.freeze({
+      identity: supplied.identity,
+      hostApprovalRequestId: supplied.hostApprovalRequestId,
+      expiresAt: supplied.expiresAt,
+      targetDigest: digest(snapshot),
+      operation
+    });
+    if (!this.#pendingLive(binding)) throw invalid();
     const record = Object.freeze({
       canonicalToolName: toolName,
+      operation,
       command,
       matchedRule,
       args: snapshot,
@@ -201,6 +245,7 @@ class ApprovalReceiptAuthority {
       createdAt: this.now(),
       requiresTrustedHumanReceipt: true
     });
+    this.#bindings.set(record, binding);
     this.#pending.add(record);
     return record;
   }
@@ -209,7 +254,8 @@ class ApprovalReceiptAuthority {
     if (!this.#pending.has(record) || !this.isHuman(context)) throw invalid();
     if (!intent || Object.getPrototypeOf(intent) !== Object.prototype) throw invalid();
     if (!['approve', 'deny'].includes(intent.decision)) throw invalid();
-    if (typeof intent.hostApprovalRequestId !== 'string' || !intent.hostApprovalRequestId) throw invalid();
+    const binding = this.#bindings.get(record);
+    if (!this.#pendingLive(binding) || intent.hostApprovalRequestId !== binding.hostApprovalRequestId) throw invalid();
     if (intent.targetDigest !== record.argsDigest) throw invalid();
     const trusted = Object.freeze({
       record,
@@ -224,23 +270,45 @@ class ApprovalReceiptAuthority {
   }
 
   approve(record, trustedIntent) {
+    if (record?.operation !== 'authorize' || trustedIntent?.decision !== 'approve') throw invalid();
+    return this.#issue(record, trustedIntent, 'execution');
+  }
+
+  issueDecisionReceipt(record, trustedIntent) {
+    const expectedDecision = record?.operation === 'authorize' ? 'approve' : 'deny';
+    if (trustedIntent?.decision !== expectedDecision) throw invalid();
+    return this.#issue(record, trustedIntent, 'decision');
+  }
+
+  #issue(record, trustedIntent, kind) {
     if (!this.#pending.has(record) || !this.#intents.has(trustedIntent) || trustedIntent.record !== record) throw invalid();
     this.#intents.delete(trustedIntent);
     this.#pending.delete(record);
-    if (trustedIntent.decision !== 'approve' || !this.isHuman(trustedIntent.context)) throw invalid();
+    if (!this.isHuman(trustedIntent.context)) throw invalid();
+    const hostBinding = this.#bindings.get(record);
+    if (!this.#pendingLive(hostBinding)) throw invalid();
     this.#sweep();
     if (this.#receipts.size >= 4096) throw invalid();
     const connection = this.#connections.get(trustedIntent.context);
+    const leaseIdentity = this.#humanAdmission.leaseIdentity(connection.lease);
+    if (!leaseIdentity) throw invalid();
     const receiptId = randomBytes(32).toString('hex');
     const executionId = randomBytes(32).toString('hex');
     this.#receipts.set(receiptId, {
       ...record,
+      kind,
+      lease: connection.lease,
+      clientEnrollmentId: leaseIdentity.clientEnrollmentId,
+      humanSessionId: leaseIdentity.humanSessionId,
+      implementationProfileId: leaseIdentity.implementationProfileId,
+      leaseIdentityDigest: digest(leaseIdentity),
+      hostBinding,
       hostApprovalRequestId: trustedIntent.hostApprovalRequestId,
       receiptId,
       executionId,
-      decision: 'approved',
+      decision: trustedIntent.decision,
       approvedAt: this.now(),
-      expiresAt: this.now() + this.receiptTtl,
+      expiresAt: Math.min(this.now() + this.receiptTtl, connection.expiresAt, connection.lease.expiresAt, hostBinding.expiresAt),
       sourceClass: 'authenticated_human_client_session',
       clientSurface: 'vcp_chat',
       provenance: connection.provenance,
@@ -252,16 +320,21 @@ class ApprovalReceiptAuthority {
 
   bindInvocation(handle, context, args) {
     const receipt = this.#receipts.get(handle?.approvalReceiptId);
-    if (!context || !receipt || receipt.state !== 'ISSUED' || receipt.executionId !== handle?.approvalExecutionId || receipt.expiresAt <= this.now() || receipt.argsDigest !== digest(args) || receipt.bound) {
+    try {
+      if (!context || typeof context !== 'object' || !Object.isExtensible(context)
+        || this.#contexts.has(context) || !receipt || receipt.state !== 'ISSUED'
+        || receipt.executionId !== handle?.approvalExecutionId || receipt.bound
+        || receipt.argsDigest !== digest(args) || !this.#receiptLive(receipt)) throw invalid();
+      Object.defineProperties(context, {
+        approvalReceiptId: { value: receipt.receiptId, enumerable: false },
+        approvalExecutionId: { value: receipt.executionId, enumerable: false }
+      });
+      receipt.bound = true;
+      this.#contexts.set(context, receipt);
+    } catch (_) {
       if (receipt?.state === 'ISSUED') receipt.state = 'INVALIDATED';
       throw invalid();
     }
-    receipt.bound = true;
-    this.#contexts.set(context, receipt);
-    Object.defineProperties(context, {
-      approvalReceiptId: { value: receipt.receiptId, enumerable: false },
-      approvalExecutionId: { value: receipt.executionId, enumerable: false }
-    });
   }
 
   finishInvocation(context) {
@@ -282,13 +355,45 @@ class ApprovalReceiptAuthority {
     }) : null;
   }
 
+  // No await, scheduler, retry or re-issue between the final check, consume and
+  // dispatch callback. A throw/rejection from dispatch leaves the receipt consumed.
+  dispatchDecision(expected, context, dispatch) {
+    const receipt = context && this.#contexts.get(context);
+    try {
+      if (typeof dispatch !== 'function' || !receipt || receipt.state !== 'ISSUED'
+        || receipt.kind !== 'decision'
+        || receipt.canonicalToolName !== expected?.toolName
+        || receipt.command !== expected?.command
+        || receipt.operation !== expected?.operation
+        || receipt.hostBinding.identity !== expected?.hostPendingIdentity
+        || receipt.hostApprovalRequestId !== expected?.hostApprovalRequestId
+        || receipt.argsDigest !== expected?.targetDigest
+        || receipt.argsDigest !== digest(expected?.payload)
+        || context.approvalReceiptId !== receipt.receiptId
+        || context.approvalExecutionId !== receipt.executionId
+        || !this.#receiptLive(receipt)) throw invalid();
+      receipt.state = 'CONSUMED';
+    } catch (_) {
+      if (receipt?.state === 'ISSUED') receipt.state = 'INVALIDATED';
+      throw invalid();
+    }
+    return dispatch(Object.freeze({
+      operation: receipt.operation,
+      humanDecision: receipt.decision,
+      hostApprovalRequestId: receipt.hostApprovalRequestId,
+      targetDigest: receipt.argsDigest,
+      permitsAgentExecution: false
+    }));
+  }
+
   verifyAuthorization(expected, context) {
     const receipt = context && this.#contexts.get(context);
     try {
       if (!receipt || receipt.state !== 'ISSUED' || receipt.expiresAt <= this.now()
         || receipt.sourceClass !== 'authenticated_human_client_session'
         || receipt.clientSurface !== 'vcp_chat'
-        || receipt.decision !== 'approved'
+        || receipt.kind !== 'execution' || receipt.operation !== 'authorize'
+        || receipt.decision !== 'approve'
         || receipt.canonicalToolName !== expected?.toolName
         || receipt.command !== expected?.command
         || receipt.matchedRule !== `${expected?.toolName}:${expected?.command}`
@@ -297,7 +402,7 @@ class ApprovalReceiptAuthority {
         || expected?.payload?.requestId !== expected?.requestId
         || context.approvalReceiptId !== receipt.receiptId
         || context.approvalExecutionId !== receipt.executionId
-        || !receipt.hostApprovalRequestId) {
+        || !receipt.hostApprovalRequestId || !this.#receiptLive(receipt)) {
         throw invalid();
       }
       receipt.state = 'CONSUMED';
