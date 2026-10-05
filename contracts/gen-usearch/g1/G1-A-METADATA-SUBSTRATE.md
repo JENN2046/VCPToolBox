@@ -1,6 +1,6 @@
 # Gen-USearch G1-A Production Implementation
 
-Status: **IMPLEMENTATION_CANDIDATE**
+Status: **PASS**
 
 Parent authority: G0 R3.1 FROZEN at `4d475a91f416a5951386c3bad8c64879b5a1f107`.
 

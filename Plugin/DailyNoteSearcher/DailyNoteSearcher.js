@@ -16,7 +16,10 @@ let serviceConfig = {
     executablePath: null,
     debug: false,
     genUsearchMode: 'legacy',
-    genUsearchMetadataPath: ''
+    genUsearchMetadataPath: '',
+    genUsearchDimensions: 0,
+    genUsearchEmbeddingFingerprint: '',
+    genUsearchGen0InitialCapacity: '1024'
 };
 
 function createTextResult(text) {
@@ -221,7 +224,10 @@ async function ensureServiceStarted() {
             DAILY_NOTE_SEARCHER_INSTANCE_ID: instanceId,
             DAILY_NOTE_SEARCHER_SHUTDOWN_TOKEN: shutdownToken,
             GEN_USEARCH_MODE: serviceConfig.genUsearchMode,
-            GEN_USEARCH_METADATA_PATH: serviceConfig.genUsearchMetadataPath
+            GEN_USEARCH_METADATA_PATH: serviceConfig.genUsearchMetadataPath,
+            GEN_USEARCH_DIMENSIONS: String(serviceConfig.genUsearchDimensions),
+            GEN_USEARCH_EMBEDDING_FINGERPRINT: serviceConfig.genUsearchEmbeddingFingerprint,
+            GEN_USEARCH_GEN0_INITIAL_CAPACITY: serviceConfig.genUsearchGen0InitialCapacity
         };
 
         const child = spawn(serviceConfig.executablePath, ['--serve'], {
@@ -287,6 +293,19 @@ async function initialize(config = {}) {
     ).trim().toLowerCase();
     serviceConfig.genUsearchMetadataPath = String(
         config.GEN_USEARCH_METADATA_PATH || process.env.GEN_USEARCH_METADATA_PATH || ''
+    ).trim();
+    serviceConfig.genUsearchDimensions = String(
+        config.GEN_USEARCH_DIMENSIONS || process.env.GEN_USEARCH_DIMENSIONS || '0'
+    ).trim();
+    serviceConfig.genUsearchEmbeddingFingerprint = String(
+        config.GEN_USEARCH_EMBEDDING_FINGERPRINT ||
+        process.env.GEN_USEARCH_EMBEDDING_FINGERPRINT ||
+        ''
+    ).trim();
+    serviceConfig.genUsearchGen0InitialCapacity = String(
+        config.GEN_USEARCH_GEN0_INITIAL_CAPACITY ||
+        process.env.GEN_USEARCH_GEN0_INITIAL_CAPACITY ||
+        '1024'
     ).trim();
 
     await ensureServiceStarted();

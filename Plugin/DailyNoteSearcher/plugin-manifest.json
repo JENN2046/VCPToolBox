@@ -56,7 +56,7 @@
     },
     "GEN_USEARCH_MODE": {
       "type": "string",
-      "description": "Gen-USearch engine mode. legacy keeps current behavior; shadow enables only the G1-A metadata/runtime substrate; active is fail-closed until G1-B Gen0/USearch is implemented.",
+      "description": "Gen-USearch engine mode. legacy keeps current behavior; shadow enables the G1-B metadata/runtime + Gen0 USearch substrate; active remains fail-closed until QueryReadView/retrieval routing is implemented.",
       "default": "legacy",
       "enum": [
         "legacy",
@@ -68,6 +68,21 @@
       "type": "string",
       "description": "Gen-USearch SQLite metadata path. Relative paths are resolved from the VCPToolBox project root. Default: VectorStore/GenUSearch/metadata.sqlite3.",
       "default": ""
+    },
+    "GEN_USEARCH_DIMENSIONS": {
+      "type": "integer",
+      "description": "Dense embedding dimensions for the G1-B Gen0 USearch MemTable. Required to be > 0 in shadow mode.",
+      "default": 0
+    },
+    "GEN_USEARCH_EMBEDDING_FINGERPRINT": {
+      "type": "string",
+      "description": "Stable identifier for the embedding model/configuration represented by the Gen0 MemTable. Required in shadow mode.",
+      "default": ""
+    },
+    "GEN_USEARCH_GEN0_INITIAL_CAPACITY": {
+      "type": "integer",
+      "description": "Initial reserved vector capacity for the in-memory Gen0 USearch index.",
+      "default": 1024
     }
   },
   "capabilities": {

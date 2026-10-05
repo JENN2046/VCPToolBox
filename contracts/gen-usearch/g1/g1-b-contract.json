@@ -1,0 +1,47 @@
+{
+  "contract_version": "1.0.0-g1-b",
+  "stage": "G1-B",
+  "name": "gen0_usearch_memtable",
+  "parent_g0_frozen_sha": "4d475a91f416a5951386c3bad8c64879b5a1f107",
+  "parent_g1a_sha": "863944c412f73716ad1d353549673a386e511bea",
+  "status": "IMPLEMENTATION_CANDIDATE",
+  "engine_modes": {
+    "default": "LEGACY",
+    "shadow": "METADATA_PLUS_GEN0_ENABLED",
+    "active": "FAIL_CLOSED_UNTIL_G1_D"
+  },
+  "usearch": {
+    "crate_version": "2.26.3",
+    "default_features": false,
+    "metric": "Cos",
+    "scalar": "F32",
+    "multi": false
+  },
+  "required_capabilities": [
+    "positive_signed_int64_vector_ids_map_losslessly_to_usearch_keys",
+    "runtime_fence_is_memtable_generation",
+    "exact_dimension_validation",
+    "nonfinite_vector_rejection",
+    "duplicate_vector_id_fail_closed",
+    "active_memtable_only_accepts_writes",
+    "sealed_memtable_remains_query_visible",
+    "memtable_lifecycle_matches_g0_states",
+    "reclaimable_memtable_is_not_query_visible",
+    "automatic_capacity_growth",
+    "exact_f32_little_endian_recovery_codec",
+    "gen0_returns_physical_candidates_only",
+    "shadow_runtime_initializes_gen0_without_changing_legacy_results",
+    "active_mode_remains_fail_closed"
+  ],
+  "required_checks": [
+    "cargo_fmt",
+    "cargo_test",
+    "cargo_clippy_deny_warnings",
+    "cross_platform_rust_matrix",
+    "service_build",
+    "legacy_health_smoke",
+    "gen0_shadow_health",
+    "shadow_failure_isolation",
+    "active_fail_closed"
+  ]
+}

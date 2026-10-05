@@ -3,7 +3,7 @@
   "stage": "G1-A",
   "name": "durable_metadata_and_runtime_substrate",
   "parent_g0_frozen_sha": "4d475a91f416a5951386c3bad8c64879b5a1f107",
-  "status": "IMPLEMENTATION_CANDIDATE",
+  "status": "PASS",
   "engine_modes": {
     "default": "LEGACY",
     "shadow": "METADATA_SUBSTRATE_ENABLED",

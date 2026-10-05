@@ -19,6 +19,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+pub mod gen_memtable;
 pub mod gen_usearch;
 
 const MAX_FILE_SIZE: u64 = 1024 * 1024; // 1MB
@@ -309,6 +310,7 @@ struct GenUsearchRuntime {
     store: gen_usearch::MetadataStore,
     lease: gen_usearch::RuntimeLease,
     metadata_path: PathBuf,
+    gen0: gen_memtable::Gen0MemTable,
 }
 
 fn initialize_gen_usearch_runtime(
@@ -318,10 +320,33 @@ fn initialize_gen_usearch_runtime(
     match mode {
         GenUsearchMode::Legacy => Ok(None),
         GenUsearchMode::Active => Err(
-            "ACTIVE_ENGINE_UNAVAILABLE: G1-B Gen0/USearch is not implemented; refusing silent legacy fallback"
+            "ACTIVE_ENGINE_UNAVAILABLE: G1-D QueryReadView/retrieval routing is not implemented; refusing silent legacy fallback"
                 .to_string(),
         ),
         GenUsearchMode::Shadow => {
+            let dimensions = env::var("GEN_USEARCH_DIMENSIONS")
+                .map_err(|_| "GEN0_DIMENSIONS_INVALID: GEN_USEARCH_DIMENSIONS is required in shadow mode".to_string())?
+                .parse::<usize>()
+                .map_err(|_| "GEN0_DIMENSIONS_INVALID: GEN_USEARCH_DIMENSIONS must be a positive integer".to_string())?;
+            let embedding_fingerprint = env::var("GEN_USEARCH_EMBEDDING_FINGERPRINT")
+                .map_err(|_| "GEN0_EMBEDDING_FINGERPRINT_MISSING: GEN_USEARCH_EMBEDDING_FINGERPRINT is required in shadow mode".to_string())?;
+            let initial_capacity = match env::var("GEN_USEARCH_GEN0_INITIAL_CAPACITY") {
+                Ok(value) => value
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|value| *value > 0)
+                    .ok_or_else(|| {
+                        "GEN0_CAPACITY_INVALID: GEN_USEARCH_GEN0_INITIAL_CAPACITY must be a positive integer"
+                            .to_string()
+                    })?,
+                Err(env::VarError::NotPresent) => 1024,
+                Err(error) => {
+                    return Err(format!(
+                        "GEN0_CAPACITY_INVALID: could not read GEN_USEARCH_GEN0_INITIAL_CAPACITY: {error}"
+                    ))
+                }
+            };
+
             let project_root = find_project_root();
             let configured = env::var("GEN_USEARCH_METADATA_PATH").ok();
             let metadata_path = configured
@@ -347,10 +372,25 @@ fn initialize_gen_usearch_runtime(
                 .acquire_runtime(instance_id)
                 .map_err(|error| format!("GEN_USEARCH_RUNTIME_ACQUIRE_FAILED: {error}"))?;
 
+            let gen0 = match gen_memtable::Gen0MemTable::new(
+                lease.fence as u64,
+                dimensions,
+                embedding_fingerprint,
+                initial_capacity,
+            ) {
+                Ok(gen0) => gen0,
+                Err(error) => {
+                    let _ = store.begin_runtime_drain(&lease);
+                    let _ = store.release_runtime(&lease);
+                    return Err(format!("GEN_USEARCH_GEN0_INIT_FAILED: {error}"));
+                }
+            };
+
             Ok(Some(GenUsearchRuntime {
                 store,
                 lease,
                 metadata_path,
+                gen0,
             }))
         }
     }
@@ -539,6 +579,11 @@ struct ServerControl {
     gen_usearch_error: Option<String>,
     gen_usearch_runtime_fence: Option<i64>,
     gen_usearch_metadata_path: Option<String>,
+    gen0_generation: Option<u64>,
+    gen0_dimensions: Option<usize>,
+    gen0_size: Option<usize>,
+    gen0_state: Option<String>,
+    gen0_embedding_fingerprint: Option<String>,
 }
 
 fn start_http_server() {
@@ -613,6 +658,22 @@ fn start_http_server() {
         gen_usearch_metadata_path: gen_usearch_runtime
             .as_ref()
             .map(|runtime| runtime.metadata_path.to_string_lossy().into_owned()),
+        gen0_generation: gen_usearch_runtime
+            .as_ref()
+            .map(|runtime| runtime.gen0.generation_id()),
+        gen0_dimensions: gen_usearch_runtime
+            .as_ref()
+            .map(|runtime| runtime.gen0.dimensions()),
+        gen0_size: gen_usearch_runtime
+            .as_ref()
+            .map(|runtime| runtime.gen0.size()),
+        gen0_state: gen_usearch_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.gen0.state().ok())
+            .map(|state| state.as_str().to_string()),
+        gen0_embedding_fingerprint: gen_usearch_runtime
+            .as_ref()
+            .map(|runtime| runtime.gen0.embedding_fingerprint().to_string()),
     };
 
     // The Node bridge deliberately keeps the child's stdin pipe open. An EOF
@@ -734,12 +795,19 @@ fn handle_http_connection(mut stream: TcpStream, control: ServerControl) -> Resu
             "pid": std::process::id(),
             "instance_id": control.instance_id,
             "gen_usearch": {
-                "phase": "G1-A",
+                "phase": "G1-B",
                 "mode": control.gen_usearch_mode,
                 "status": control.gen_usearch_status,
                 "error": control.gen_usearch_error,
                 "runtime_fence": control.gen_usearch_runtime_fence,
-                "metadata_path": control.gen_usearch_metadata_path
+                "metadata_path": control.gen_usearch_metadata_path,
+                "gen0": {
+                    "generation": control.gen0_generation,
+                    "dimensions": control.gen0_dimensions,
+                    "size": control.gen0_size,
+                    "state": control.gen0_state,
+                    "embedding_fingerprint": control.gen0_embedding_fingerprint
+                }
             }
         });
         write_http_json(&mut stream, 200, &response.to_string())?;

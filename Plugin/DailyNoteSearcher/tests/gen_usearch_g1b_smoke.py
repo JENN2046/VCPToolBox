@@ -86,13 +86,13 @@ def shutdown(process, port, token, instance_id):
 
 def main():
     if len(sys.argv) != 2:
-        raise SystemExit("usage: gen_usearch_g1a_smoke.py <DailyNoteSearcher binary>")
+        raise SystemExit("usage: gen_usearch_g1b_smoke.py <DailyNoteSearcher binary>")
 
     binary = pathlib.Path(sys.argv[1]).resolve()
     if not binary.is_file():
         raise SystemExit(f"binary not found: {binary}")
 
-    temp_root = pathlib.Path(tempfile.mkdtemp(prefix="gen-usearch-g1a-"))
+    temp_root = pathlib.Path(tempfile.mkdtemp(prefix="gen-usearch-g1b-"))
     metadata_db = temp_root / "metadata.sqlite3"
 
     legacy_port = free_port()
@@ -195,7 +195,7 @@ def main():
     assert "ACTIVE_ENGINE_UNAVAILABLE" in active_error
     print("ACTIVE_FAIL_CLOSED=PASS")
 
-    print("G1_A_SERVICE_SMOKE=PASS")
+    print("G1_B_SERVICE_SMOKE=PASS")
 
 
 if __name__ == "__main__":
