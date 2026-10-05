@@ -99,6 +99,10 @@ jobs:
         shell: bash
         run: |
           cd rust-vexus-lite
+          if [ "${{ matrix.musl }}" = "true" ]; then
+            export CXXFLAGS="-x c++"
+            export TARGET_CXXFLAGS="-x c++"
+          fi
           ./node_modules/.bin/napi build --platform --release --target ${{ matrix.target }}
           test -f "${{ matrix.artifact }}"
       - name: Verify key64 ABI on host-native artifacts
