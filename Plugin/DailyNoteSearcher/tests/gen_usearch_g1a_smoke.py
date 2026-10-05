@@ -97,9 +97,17 @@ def main():
     legacy_health = wait_health(legacy, legacy_port)
     assert legacy_health["gen_usearch"]["phase"] == "G1-A"
     assert legacy_health["gen_usearch"]["mode"] == "LEGACY"
+    assert legacy_health["gen_usearch"]["status"] == "DISABLED"
     assert legacy_health["gen_usearch"]["runtime_fence"] is None
     shutdown(legacy, legacy_port, "tok-legacy", "legacy-a")
     print("LEGACY_HEALTH=PASS")
+
+    legacy_root = temp_root / "legacy-search"
+    legacy_root.mkdir()
+    (legacy_root / "note.md").write_text(
+        "shadow isolation keeps legacy search available\n",
+        encoding="utf-8",
+    )
 
     shadow_port = free_port()
     shadow = start(
@@ -112,23 +120,40 @@ def main():
     )
     first_health = wait_health(shadow, shadow_port)
     assert first_health["gen_usearch"]["mode"] == "GENERATIONAL_SHADOW"
+    assert first_health["gen_usearch"]["status"] == "READY"
+    assert first_health["gen_usearch"]["error"] is None
     assert first_health["gen_usearch"]["runtime_fence"] == 1
     assert pathlib.Path(first_health["gen_usearch"]["metadata_path"]) == metadata_db
     print("SHADOW_FIRST_FENCE=1")
 
+    contender_port = free_port()
     contender = start(
         binary,
-        free_port(),
+        contender_port,
         "shadow",
         "shadow-b",
         "tok-shadow-b",
         metadata_db,
     )
-    contender.wait(timeout=5)
-    contender_error = stderr_text(contender)
-    assert contender.returncode != 0
-    assert "INDEX_RUNTIME_ALREADY_OWNED" in contender_error
-    print("SHADOW_EXCLUSIVE_OWNER=PASS")
+    contender_health = wait_health(contender, contender_port)
+    assert contender_health["gen_usearch"]["mode"] == "GENERATIONAL_SHADOW"
+    assert contender_health["gen_usearch"]["status"] == "ERROR"
+    assert contender_health["gen_usearch"]["runtime_fence"] is None
+    assert "INDEX_RUNTIME_ALREADY_OWNED" in contender_health["gen_usearch"]["error"]
+
+    legacy_result = post(
+        contender_port,
+        "/search",
+        {
+            "query": "shadow isolation",
+            "root_path": str(legacy_root),
+            "allowed_extensions": "md",
+        },
+    )
+    assert legacy_result["status"] == "success"
+    assert legacy_result["total"] >= 1
+    shutdown(contender, contender_port, "tok-shadow-b", "shadow-b")
+    print("SHADOW_FAILURE_ISOLATION=PASS")
 
     shutdown(shadow, shadow_port, "tok-shadow-a", "shadow-a")
 

@@ -21,7 +21,9 @@
     "missing_source_not_delete",
     "manifest_embedding_fingerprint_coherence",
     "crashed_runtime_stale_owner_fail_closed",
-    "canonical_source_digest_sha256"
+    "canonical_source_digest_sha256",
+    "segment_physical_reverification_before_manifest_and_recovery_release",
+    "shadow_failure_isolated_from_legacy_search"
   ],
   "required_checks": [
     "cargo_fmt",
@@ -30,7 +32,7 @@
     "service_build",
     "legacy_health_smoke",
     "shadow_first_fence",
-    "shadow_exclusive_owner",
+    "shadow_failure_isolation",
     "shadow_graceful_reacquire",
     "active_fail_closed"
   ]

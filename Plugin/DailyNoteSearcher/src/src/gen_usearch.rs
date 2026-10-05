@@ -937,6 +937,7 @@ impl MetadataStore {
                     "SEGMENT_DURABILITY_UNPROVEN: {segment_id}"
                 )));
             }
+            verify_registered_segment_artifact(&tx, segment_id)?;
         }
 
         let next = current + 1;
@@ -1267,6 +1268,49 @@ fn require_current_manifest_coverage(
             "RECOVERY_ACTIVE_VECTOR_UNRECOVERABLE: vector={vector_id}, segment={segment_id}, manifest_epoch={current_epoch}"
         )));
     }
+
+    verify_registered_segment_artifact(tx, segment_id).map_err(|error| {
+        GenIndexError::Invariant(format!(
+            "RECOVERY_ACTIVE_VECTOR_UNRECOVERABLE: vector={vector_id}, segment={segment_id}, physical verification failed: {error}"
+        ))
+    })?;
+    Ok(())
+}
+
+fn verify_registered_segment_artifact(tx: &Transaction<'_>, segment_id: &str) -> Result<()> {
+    let (artifact_path, expected_digest): (String, String) = tx
+        .query_row(
+            "SELECT artifact_path, artifact_digest
+             FROM segments
+             WHERE segment_id = ?1
+               AND artifact_verified = 1
+               AND final_name_durable = 1",
+            params![segment_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| {
+            GenIndexError::Invariant(format!(
+                "SEGMENT_DURABILITY_UNPROVEN: {segment_id} metadata is not durable"
+            ))
+        })?;
+
+    let path = Path::new(&artifact_path);
+    let actual_digest = sync_and_sha256_file(path).map_err(|error| {
+        GenIndexError::Invariant(format!(
+            "SEGMENT_DURABILITY_UNPROVEN: {segment_id}: {error}"
+        ))
+    })?;
+    if actual_digest != expected_digest {
+        return Err(GenIndexError::Invariant(format!(
+            "SEGMENT_DURABILITY_UNPROVEN: {segment_id} digest mismatch expected={expected_digest} actual={actual_digest}"
+        )));
+    }
+    sync_parent_directory(path).map_err(|error| {
+        GenIndexError::Invariant(format!(
+            "SEGMENT_DURABILITY_UNPROVEN: {segment_id} directory durability failed: {error}"
+        ))
+    })?;
     Ok(())
 }
 
@@ -1515,6 +1559,20 @@ mod tests {
         let early_release = store.release_recovery_material(vector_id);
         assert!(matches!(early_release, Err(GenIndexError::Conflict(_))));
 
+        {
+            let mut file = File::create(&segment_path).unwrap();
+            file.write_all(b"tampered-before-manifest").unwrap();
+            file.sync_all().unwrap();
+        }
+        let tampered_publish = store.publish_manifest(0, "embed-v1", &["segment-1".to_string()]);
+        assert!(matches!(tampered_publish, Err(GenIndexError::Invariant(_))));
+
+        {
+            let mut file = File::create(&segment_path).unwrap();
+            file.write_all(bytes).unwrap();
+            file.sync_all().unwrap();
+        }
+
         let wrong_fingerprint = store.publish_manifest(0, "embed-v2", &["segment-1".to_string()]);
         assert!(matches!(
             wrong_fingerprint,
@@ -1536,6 +1594,23 @@ mod tests {
 
         let stale = store.publish_manifest(0, "embed-v1", &["segment-1".to_string()]);
         assert!(matches!(stale, Err(GenIndexError::Conflict(_))));
+
+        {
+            let mut file = File::create(&segment_path).unwrap();
+            file.write_all(b"tampered-before-recovery-release").unwrap();
+            file.sync_all().unwrap();
+        }
+        let tampered_recovery = store.mark_recovery_segment_covered(vector_id, "segment-1");
+        assert!(matches!(
+            tampered_recovery,
+            Err(GenIndexError::Invariant(_))
+        ));
+
+        {
+            let mut file = File::create(&segment_path).unwrap();
+            file.write_all(bytes).unwrap();
+            file.sync_all().unwrap();
+        }
 
         store
             .mark_recovery_segment_covered(vector_id, "segment-1")

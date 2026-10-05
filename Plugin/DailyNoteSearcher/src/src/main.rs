@@ -535,6 +535,8 @@ struct ServerControl {
     shutdown_token: String,
     shutdown_requested: Arc<AtomicBool>,
     gen_usearch_mode: String,
+    gen_usearch_status: String,
+    gen_usearch_error: Option<String>,
     gen_usearch_runtime_fence: Option<i64>,
     gen_usearch_metadata_path: Option<String>,
 }
@@ -573,20 +575,38 @@ fn start_http_server() {
         std::process::exit(1);
     }
 
+    let mut gen_usearch_error = None;
     let mut gen_usearch_runtime =
         match initialize_gen_usearch_runtime(gen_usearch_mode, &instance_id) {
             Ok(runtime) => runtime,
+            Err(error) if gen_usearch_mode == GenUsearchMode::Shadow => {
+                eprintln!(
+                "[DailyNoteSearcher] Gen-USearch shadow disabled after initialization failure: {}",
+                error
+            );
+                gen_usearch_error = Some(error);
+                None
+            }
             Err(error) => {
                 eprintln!("[DailyNoteSearcher] {error}");
                 std::process::exit(1);
             }
         };
 
+    let gen_usearch_status = match gen_usearch_mode {
+        GenUsearchMode::Legacy => "DISABLED",
+        GenUsearchMode::Shadow if gen_usearch_runtime.is_some() => "READY",
+        GenUsearchMode::Shadow => "ERROR",
+        GenUsearchMode::Active => unreachable!("active mode exits before serving"),
+    };
+
     let control = ServerControl {
         instance_id: instance_id.clone(),
         shutdown_token,
         shutdown_requested: Arc::clone(&shutdown_requested),
         gen_usearch_mode: gen_usearch_mode.as_str().to_string(),
+        gen_usearch_status: gen_usearch_status.to_string(),
+        gen_usearch_error,
         gen_usearch_runtime_fence: gen_usearch_runtime
             .as_ref()
             .map(|runtime| runtime.lease.fence),
@@ -716,6 +736,8 @@ fn handle_http_connection(mut stream: TcpStream, control: ServerControl) -> Resu
             "gen_usearch": {
                 "phase": "G1-A",
                 "mode": control.gen_usearch_mode,
+                "status": control.gen_usearch_status,
+                "error": control.gen_usearch_error,
                 "runtime_fence": control.gen_usearch_runtime_fence,
                 "metadata_path": control.gen_usearch_metadata_path
             }
