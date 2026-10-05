@@ -61,6 +61,31 @@ jobs:
           test -n "$zig_bin"
           sudo ln -sf "$zig_bin" /usr/local/bin/zig
           zig version
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-musl)
+              musl_prefix=x86_64-linux-musl
+              zig_target=x86_64-linux-musl
+              ;;
+            aarch64-unknown-linux-musl)
+              musl_prefix=aarch64-linux-musl
+              zig_target=aarch64-linux-musl
+              ;;
+            *)
+              echo "unsupported musl target: ${{ matrix.target }}" >&2
+              exit 2
+              ;;
+          esac
+          for tool in gcc g++; do
+            driver=cc
+            [ "$tool" = "g++" ] && driver=c++
+            cat > "/tmp/$musl_prefix-$tool" <<EOF
+          #!/bin/sh
+          exec zig $driver -target $zig_target "\$@"
+          EOF
+            chmod +x "/tmp/$musl_prefix-$tool"
+            sudo mv "/tmp/$musl_prefix-$tool" "/usr/local/bin/$musl_prefix-$tool"
+          done
+          "$musl_prefix-g++" --version
       - name: Add Rust target
         shell: bash
         run: rustup target add ${{ matrix.target }}
