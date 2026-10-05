@@ -53,6 +53,21 @@
       "type": "string",
       "description": "允许搜索的文件扩展名白名单，用逗号分隔。用于 knowledge 冷知识库时可覆盖为 .md,.txt,.json,.html。",
       "default": ".md,.txt,.json,.html"
+    },
+    "GEN_USEARCH_MODE": {
+      "type": "string",
+      "description": "Gen-USearch engine mode. legacy keeps current behavior; shadow enables only the G1-A metadata/runtime substrate; active is fail-closed until G1-B Gen0/USearch is implemented.",
+      "default": "legacy",
+      "enum": [
+        "legacy",
+        "shadow",
+        "active"
+      ]
+    },
+    "GEN_USEARCH_METADATA_PATH": {
+      "type": "string",
+      "description": "Gen-USearch SQLite metadata path. Relative paths are resolved from the VCPToolBox project root. Default: VectorStore/GenUSearch/metadata.sqlite3.",
+      "default": ""
     }
   },
   "capabilities": {

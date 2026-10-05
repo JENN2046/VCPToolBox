@@ -11,3 +11,5 @@ regex = "1.5"
 pathdiff = "0.2"
 ignore = "0.4.24"
 chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+sha2 = "0.10"

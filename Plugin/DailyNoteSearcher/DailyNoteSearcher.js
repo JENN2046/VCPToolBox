@@ -14,7 +14,9 @@ let serviceConfig = {
     timeout: 60000,
     shutdownTimeout: 5000,
     executablePath: null,
-    debug: false
+    debug: false,
+    genUsearchMode: 'legacy',
+    genUsearchMetadataPath: ''
 };
 
 function createTextResult(text) {
@@ -217,7 +219,9 @@ async function ensureServiceStarted() {
             DAILY_NOTE_SEARCHER_HOST: serviceConfig.host,
             DAILY_NOTE_SEARCHER_PORT: String(serviceConfig.port),
             DAILY_NOTE_SEARCHER_INSTANCE_ID: instanceId,
-            DAILY_NOTE_SEARCHER_SHUTDOWN_TOKEN: shutdownToken
+            DAILY_NOTE_SEARCHER_SHUTDOWN_TOKEN: shutdownToken,
+            GEN_USEARCH_MODE: serviceConfig.genUsearchMode,
+            GEN_USEARCH_METADATA_PATH: serviceConfig.genUsearchMetadataPath
         };
 
         const child = spawn(serviceConfig.executablePath, ['--serve'], {
@@ -278,6 +282,12 @@ async function initialize(config = {}) {
         10
     ) || 5000;
     serviceConfig.debug = String(config.DebugMode || process.env.DebugMode || 'false').toLowerCase() === 'true';
+    serviceConfig.genUsearchMode = String(
+        config.GEN_USEARCH_MODE || process.env.GEN_USEARCH_MODE || 'legacy'
+    ).trim().toLowerCase();
+    serviceConfig.genUsearchMetadataPath = String(
+        config.GEN_USEARCH_METADATA_PATH || process.env.GEN_USEARCH_METADATA_PATH || ''
+    ).trim();
 
     await ensureServiceStarted();
     console.log(`[DailyNoteSearcher Service] Initialized on http://${serviceConfig.host}:${serviceConfig.port}`);

@@ -19,6 +19,8 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+pub mod gen_usearch;
+
 const MAX_FILE_SIZE: u64 = 1024 * 1024; // 1MB
 const DEFAULT_MAX_RESULTS: usize = 200;
 
@@ -270,6 +272,90 @@ struct AppConfig {
     allowed_extensions: HashSet<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GenUsearchMode {
+    Legacy,
+    Shadow,
+    Active,
+}
+
+impl GenUsearchMode {
+    fn from_env() -> Result<Self, String> {
+        match env::var("GEN_USEARCH_MODE")
+            .unwrap_or_else(|_| "legacy".to_string())
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "legacy" => Ok(Self::Legacy),
+            "shadow" => Ok(Self::Shadow),
+            "active" => Ok(Self::Active),
+            other => Err(format!(
+                "ENGINE_MODE_INVALID: GEN_USEARCH_MODE must be legacy, shadow, or active; got {other}"
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Legacy => "LEGACY",
+            Self::Shadow => "GENERATIONAL_SHADOW",
+            Self::Active => "GENERATIONAL_ACTIVE",
+        }
+    }
+}
+
+struct GenUsearchRuntime {
+    store: gen_usearch::MetadataStore,
+    lease: gen_usearch::RuntimeLease,
+    metadata_path: PathBuf,
+}
+
+fn initialize_gen_usearch_runtime(
+    mode: GenUsearchMode,
+    instance_id: &str,
+) -> Result<Option<GenUsearchRuntime>, String> {
+    match mode {
+        GenUsearchMode::Legacy => Ok(None),
+        GenUsearchMode::Active => Err(
+            "ACTIVE_ENGINE_UNAVAILABLE: G1-B Gen0/USearch is not implemented; refusing silent legacy fallback"
+                .to_string(),
+        ),
+        GenUsearchMode::Shadow => {
+            let project_root = find_project_root();
+            let configured = env::var("GEN_USEARCH_METADATA_PATH").ok();
+            let metadata_path = configured
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from)
+                .map(|path| {
+                    if path.is_absolute() {
+                        path
+                    } else {
+                        project_root.join(path)
+                    }
+                })
+                .unwrap_or_else(|| {
+                    project_root
+                        .join("VectorStore")
+                        .join("GenUSearch")
+                        .join("metadata.sqlite3")
+                });
+
+            let mut store = gen_usearch::MetadataStore::open(&metadata_path)
+                .map_err(|error| format!("GEN_USEARCH_METADATA_INIT_FAILED: {error}"))?;
+            let lease = store
+                .acquire_runtime(instance_id)
+                .map_err(|error| format!("GEN_USEARCH_RUNTIME_ACQUIRE_FAILED: {error}"))?;
+
+            Ok(Some(GenUsearchRuntime {
+                store,
+                lease,
+                metadata_path,
+            }))
+        }
+    }
+}
+
 impl AppConfig {
     fn new(args: &InputArgs) -> Self {
         // 1. 确定日记本根目录
@@ -448,6 +534,9 @@ struct ServerControl {
     instance_id: String,
     shutdown_token: String,
     shutdown_requested: Arc<AtomicBool>,
+    gen_usearch_mode: String,
+    gen_usearch_runtime_fence: Option<i64>,
+    gen_usearch_metadata_path: Option<String>,
 }
 
 fn start_http_server() {
@@ -458,10 +547,12 @@ fn start_http_server() {
     let shutdown_token = env::var("DAILY_NOTE_SEARCHER_SHUTDOWN_TOKEN").unwrap_or_default();
     let address = format!("{}:{}", host, port);
     let shutdown_requested = Arc::new(AtomicBool::new(false));
-    let control = ServerControl {
-        instance_id,
-        shutdown_token,
-        shutdown_requested: Arc::clone(&shutdown_requested),
+    let gen_usearch_mode = match GenUsearchMode::from_env() {
+        Ok(mode) => mode,
+        Err(error) => {
+            eprintln!("[DailyNoteSearcher] {error}");
+            std::process::exit(1);
+        }
     };
 
     let listener = match TcpListener::bind(&address) {
@@ -482,6 +573,28 @@ fn start_http_server() {
         std::process::exit(1);
     }
 
+    let mut gen_usearch_runtime =
+        match initialize_gen_usearch_runtime(gen_usearch_mode, &instance_id) {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                eprintln!("[DailyNoteSearcher] {error}");
+                std::process::exit(1);
+            }
+        };
+
+    let control = ServerControl {
+        instance_id: instance_id.clone(),
+        shutdown_token,
+        shutdown_requested: Arc::clone(&shutdown_requested),
+        gen_usearch_mode: gen_usearch_mode.as_str().to_string(),
+        gen_usearch_runtime_fence: gen_usearch_runtime
+            .as_ref()
+            .map(|runtime| runtime.lease.fence),
+        gen_usearch_metadata_path: gen_usearch_runtime
+            .as_ref()
+            .map(|runtime| runtime.metadata_path.to_string_lossy().into_owned()),
+    };
+
     // The Node bridge deliberately keeps the child's stdin pipe open. An EOF
     // means the parent exited or was force-killed before it could call /shutdown.
     let parent_liveness = Arc::clone(&shutdown_requested);
@@ -500,10 +613,12 @@ fn start_http_server() {
     });
 
     eprintln!(
-        "[DailyNoteSearcher] HTTP server listening on http://{} (pid={}, instance={})",
+        "[DailyNoteSearcher] HTTP server listening on http://{} (pid={}, instance={}, gen_usearch_mode={}, fence={:?})",
         address,
         std::process::id(),
-        control.instance_id
+        control.instance_id,
+        control.gen_usearch_mode,
+        control.gen_usearch_runtime_fence
     );
 
     while !shutdown_requested.load(Ordering::SeqCst) {
@@ -523,6 +638,20 @@ fn start_http_server() {
                 eprintln!("[DailyNoteSearcher] HTTP connection error: {}", e);
                 thread::sleep(Duration::from_millis(100));
             }
+        }
+    }
+
+    if let Some(runtime) = gen_usearch_runtime.as_mut() {
+        if let Err(error) = runtime.store.begin_runtime_drain(&runtime.lease) {
+            eprintln!(
+                "[DailyNoteSearcher] Failed to enter Gen-USearch runtime drain: {}",
+                error
+            );
+        } else if let Err(error) = runtime.store.release_runtime(&runtime.lease) {
+            eprintln!(
+                "[DailyNoteSearcher] Failed to release Gen-USearch runtime ownership: {}",
+                error
+            );
         }
     }
 
@@ -583,7 +712,13 @@ fn handle_http_connection(mut stream: TcpStream, control: ServerControl) -> Resu
         let response = json!({
             "status": "success",
             "pid": std::process::id(),
-            "instance_id": control.instance_id
+            "instance_id": control.instance_id,
+            "gen_usearch": {
+                "phase": "G1-A",
+                "mode": control.gen_usearch_mode,
+                "runtime_fence": control.gen_usearch_runtime_fence,
+                "metadata_path": control.gen_usearch_metadata_path
+            }
         });
         write_http_json(&mut stream, 200, &response.to_string())?;
         return Ok(());
@@ -685,7 +820,7 @@ fn write_http_json(stream: &mut TcpStream, status_code: u16, body: &str) -> Resu
         "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         status_code,
         reason,
-        body.as_bytes().len(),
+        body.len(),
         body
     );
     stream
@@ -1023,7 +1158,7 @@ fn parse_blacklist(input: Option<&String>) -> HashSet<String> {
     input
         .map(|value| {
             value
-                .split(|ch| matches!(ch, ',' | '，' | '、' | '|' | '｜' | '\n' | '\r' | '\t'))
+                .split([',', '，', '、', '|', '｜', '\n', '\r', '\t'])
                 .map(|word| word.trim().to_lowercase())
                 .filter(|word| !word.is_empty())
                 .collect()
@@ -1119,7 +1254,7 @@ fn search_bm25(config: &AppConfig, args: &InputArgs) -> Result<Output, io::Error
             let modified = metadata.modified().ok();
             let modified_ms = modified
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|duration| duration.as_millis() as u128)
+                .map(|duration| duration.as_millis())
                 .unwrap_or(0);
             let last_modified = modified
                 .map(|time| {
@@ -1132,7 +1267,7 @@ fn search_bm25(config: &AppConfig, args: &InputArgs) -> Result<Output, io::Error
         }
     }
 
-    file_entries.sort_by(|a, b| b.1.cmp(&a.1));
+    file_entries.sort_by_key(|entry| std::cmp::Reverse(entry.1));
     let limited_entries: Vec<_> = file_entries.into_iter().take(limit).collect();
 
     let mut candidates: Vec<(BM25Note, Vec<String>, u128)> = Vec::new();

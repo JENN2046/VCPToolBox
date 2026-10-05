@@ -1,0 +1,37 @@
+{
+  "contract_version": "1.0.0-g1-a",
+  "stage": "G1-A",
+  "name": "durable_metadata_and_runtime_substrate",
+  "parent_g0_frozen_sha": "4d475a91f416a5951386c3bad8c64879b5a1f107",
+  "status": "IMPLEMENTATION_CANDIDATE",
+  "engine_modes": {
+    "default": "LEGACY",
+    "shadow": "METADATA_SUBSTRATE_ENABLED",
+    "active": "FAIL_CLOSED_UNTIL_G1_B"
+  },
+  "required_capabilities": [
+    "sqlite_wal_full_durability",
+    "durable_monotonic_vector_allocator",
+    "independent_visibility_and_manifest_clocks",
+    "source_observation_reconciliation_atomicity",
+    "mvcc_current_head_cas",
+    "segment_manifest_epoch_cas",
+    "recovery_retention_guard",
+    "exclusive_runtime_ownership_fence",
+    "missing_source_not_delete",
+    "manifest_embedding_fingerprint_coherence",
+    "crashed_runtime_stale_owner_fail_closed",
+    "canonical_source_digest_sha256"
+  ],
+  "required_checks": [
+    "cargo_fmt",
+    "cargo_test",
+    "cargo_clippy_deny_warnings",
+    "service_build",
+    "legacy_health_smoke",
+    "shadow_first_fence",
+    "shadow_exclusive_owner",
+    "shadow_graceful_reacquire",
+    "active_fail_closed"
+  ]
+}
