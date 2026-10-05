@@ -1,0 +1,85 @@
+name: Build Gen-USearch Native Artifacts R3
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64-gnu
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            artifact: vexus-lite.linux-x64-gnu.node
+            musl: false
+          - name: linux-x64-musl
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            artifact: vexus-lite.linux-x64-musl.node
+            musl: true
+          - name: linux-arm64-gnu
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: vexus-lite.linux-arm64-gnu.node
+            musl: false
+          - name: linux-arm64-musl
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            artifact: vexus-lite.linux-arm64-musl.node
+            musl: true
+          - name: darwin-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+            artifact: vexus-lite.darwin-arm64.node
+            musl: false
+          - name: windows-x64-msvc
+            os: windows-2025
+            target: x86_64-pc-windows-msvc
+            artifact: vexus-lite.win32-x64-msvc.node
+            musl: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install musl toolchain
+        if: runner.os == 'Linux' && matrix.musl
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Add Rust target
+        shell: bash
+        run: rustup target add ${{ matrix.target }}
+      - name: Install N-API build CLI
+        shell: bash
+        run: npm install --prefix rust-vexus-lite --ignore-scripts --no-save --package-lock=false --no-audit --no-fund @napi-rs/cli@2.16.0
+      - name: Build native artifact
+        shell: bash
+        run: |
+          cd rust-vexus-lite
+          ./node_modules/.bin/napi build --platform --release --target ${{ matrix.target }}
+          test -f "${{ matrix.artifact }}"
+      - name: Verify key64 ABI on host-native artifacts
+        if: ${{ (runner.os == 'Linux' && !matrix.musl) || runner.os == 'Windows' || runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          cd rust-vexus-lite
+          node - <<'NODE'
+          const m = require('./');
+          const required = ['addKey64','addBatchKey64','containsKey64','removeKey64','searchKey64','applyChunkDeltaKey64'];
+          for (const name of required) {
+            if (typeof m.VexusIndex.prototype[name] !== 'function') throw new Error('missing ABI: ' + name);
+          }
+          NODE
+      - name: Upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-${{ matrix.name }}
+          path: rust-vexus-lite/${{ matrix.artifact }}
+          if-no-files-found: error
