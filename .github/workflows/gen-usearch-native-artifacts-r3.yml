@@ -1,6 +1,9 @@
 name: Build Gen-USearch Native Artifacts R3
 
 on:
+  push:
+    branches:
+      - codex/gen-usearch-native-artifacts-r3
   workflow_dispatch:
 
 permissions:
