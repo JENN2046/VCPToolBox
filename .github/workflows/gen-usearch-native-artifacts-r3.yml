@@ -52,10 +52,15 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
-      - name: Install musl toolchain
+      - name: Install pinned Zig for musl cross-builds
         if: runner.os == 'Linux' && matrix.musl
         shell: bash
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+        run: |
+          python3 -m pip install --user ziglang==0.15.2
+          zig_bin="$(python3 -c 'import shutil; print(shutil.which("python-zig") or "")')"
+          test -n "$zig_bin"
+          sudo ln -sf "$zig_bin" /usr/local/bin/zig
+          zig version
       - name: Add Rust target
         shell: bash
         run: rustup target add ${{ matrix.target }}
