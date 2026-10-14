@@ -4,6 +4,7 @@
 // 这样所有 VCP 能力（插件、RAG、角色分割等）对所有协议客户端透明可用。
 
 const express = require('express');
+const { localMainOrigin } = require('../modules/localListenOptions');
 const crypto = require('crypto');
 const router = express.Router();
 const {
@@ -1149,7 +1150,7 @@ async function forwardToChatCompletions(req, res, {
 }) {
     const port = process.env.PORT || 3000;
     const serverKey = process.env.Key;
-    const localBaseUrl = `http://127.0.0.1:${port}`;
+    const localBaseUrl = localMainOrigin(port, process.env.VCP_LOCAL_LISTEN_HOST);
 
     // 构造标准 chat completions 请求体
     const chatBody = {
