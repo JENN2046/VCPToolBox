@@ -2241,7 +2241,10 @@ class PluginManager extends EventEmitter {
 
         // Force Python stdio encoding to UTF-8
         additionalEnv.PYTHONIOENCODING = 'utf-8';
+        const nativeInvocation = await require('./modules/nativeConversationTransport').createStdioContext(plugin, pluginConfig, executionOptions.nativeConversationContext);
+        if (nativeInvocation) Object.assign(additionalEnv, nativeInvocation.env);
         const finalEnv = this._buildPluginProcessEnv(plugin, pluginConfig, additionalEnv);
+        if (nativeInvocation) delete finalEnv.JSO_LOCAL_AGENT_TOKEN;
 
         if (this.debugMode && plugin.pluginType === 'asynchronous') {
             const scope = this._isExternalPluginManifest(plugin) ? 'External' : 'Core';
@@ -2261,6 +2264,9 @@ class PluginManager extends EventEmitter {
                 detached: process.platform !== 'win32'
             });
 
+
+            pluginProcess.once('close', () => { void nativeInvocation?.close(); });
+            pluginProcess.once('error', () => { void nativeInvocation?.close(); });
 
             let outputBuffer = ''; // Buffer to accumulate data chunks
             let errorOutput = '';

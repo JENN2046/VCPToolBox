@@ -1246,6 +1246,8 @@ const protocolBridge = require('./routes/protocolBridge');
 app.use(protocolBridge);
 
 // 新增：人类直接调用工具的端点
+require('./modules/nativeConversationTransport').registerNativeConversationRoute(app, pluginManager);
+
 app.post('/v1/human/tool', async (req, res) => {
     try {
         const requestBody = req.body;
@@ -1565,7 +1567,8 @@ async function startServer() {
     await import('node-fetch');
     console.log('[Server] node-fetch 模块预热完毕，准备处理请求。');
 
-    server = app.listen(port, () => {
+    const listenArgs = require('./modules/localListenOptions').localListenArguments(port, process.env.VCP_LOCAL_LISTEN_HOST);
+    server = app.listen(...listenArgs, () => {
         console.log(`中间层服务器正在监听端口 ${port}`);
         console.log(`API 服务器地址: ${apiUrl}`);
 
