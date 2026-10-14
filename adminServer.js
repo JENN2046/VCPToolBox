@@ -14,6 +14,7 @@ const cors = require("cors");
 
 const MAIN_PORT = parseInt(process.env.PORT) || 3000;
 const ADMIN_PORT = MAIN_PORT + 1;
+const MAIN_ORIGIN = require('./modules/localListenOptions').localMainOrigin(MAIN_PORT, process.env.VCP_LOCAL_LISTEN_HOST);
 const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
 
 const ADMIN_USERNAME = process.env.AdminUsername;
@@ -403,7 +404,7 @@ app.get("/admin_api/system-monitor/memory/profile", async (req, res) => {
     );
 
   const profileReq = http.request(
-    `http://127.0.0.1:${MAIN_PORT}/admin_api/system-monitor/memory/profile`,
+    `${MAIN_ORIGIN}/admin_api/system-monitor/memory/profile`,
     {
       method: "GET",
       headers: {
@@ -481,7 +482,7 @@ function proxyTagConsistencyRequest(req, res, endpoint, timeoutMs) {
   );
 
   const proxyReq = http.request(
-    `http://127.0.0.1:${MAIN_PORT}${targetPath}`,
+    `${MAIN_ORIGIN}${targetPath}`,
     {
       method: req.method,
       headers: {
@@ -586,7 +587,7 @@ app.post("/admin_api/rag-active-full-training", async (req, res) => {
   );
 
   const trainingReq = http.request(
-    `http://127.0.0.1:${MAIN_PORT}/admin_api/rag-active-full-training`,
+    `${MAIN_ORIGIN}/admin_api/rag-active-full-training`,
     {
       method: "POST",
       headers: {
@@ -667,7 +668,7 @@ app.post("/admin_api/server/restart", async (req, res) => {
   );
 
   const restartReq = http.request(
-    `http://127.0.0.1:${MAIN_PORT}/admin_api/server/restart`,
+    `${MAIN_ORIGIN}/admin_api/server/restart`,
     {
       method: "POST",
       headers: {
@@ -758,7 +759,7 @@ app.use("/admin_api", (req, res, next) => {
   // 构建代理请求
   const fullPath = "/admin_api" + req.path;
   const queryString = require("url").parse(req.url).search || "";
-  const targetUrl = `http://127.0.0.1:${MAIN_PORT}${fullPath}`;
+  const targetUrl = `${MAIN_ORIGIN}${fullPath}`;
   const proxyUrl = targetUrl + queryString;
 
   if (DEBUG_MODE)
@@ -852,7 +853,7 @@ app.post("/admin_api/config/main/reload-notify", async (req, res) => {
   try {
     // 通知主进程重新加载插件（fire-and-forget）
     const notifyReq = http.request(
-      `http://127.0.0.1:${MAIN_PORT}/admin_api/config/main`,
+      `${MAIN_ORIGIN}/admin_api/config/main`,
       {
         method: "POST",
         headers: {

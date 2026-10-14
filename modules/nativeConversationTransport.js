@@ -17,7 +17,13 @@ function registerNativeConversationRoute(app,pluginManager){
   try{
    const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),req.socket.remoteAddress,{nativeConversationContext:context});
    return send(200,result.result??result);
-  }catch{return send(503,{ok:false,code:'NATIVE_RESULT_UNKNOWN'});}
+  }catch(error){
+   const known=['JSO_LOCAL_BINDING_INVALID','JSO_ASSISTANT_BINDING_REQUIRED','NATIVE_CONTEXT_REQUIRED'];
+   const code=known.includes(error?.message)?error.message:'NATIVE_EXECUTION_FAILED';
+   // Never log credentials, request payloads or arbitrary exception text/stack.
+   console.warn('[NativeConversation]',{code,action:body.action});
+   return send(503,{ok:false,code:'NATIVE_RESULT_UNKNOWN'});
+  }
   finally{admitted.delete(context);}
  });
 }
