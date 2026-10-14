@@ -50,7 +50,7 @@ async function createStdioContext(plugin,config,nativeContext){
     route='/api/v2/agent/'+body.kind;authorization=native.credential;payload=body.kind==='owner-delegation'?body.payload:undefined;
     if(payload&&(!resources.includes(payload.command?.resourceId)||payload.assistantSubjectId!==config.JSO_ASSISTANT_SUBJECT_ID))return send(403,{ok:false,code:'FORBIDDEN'});
    }else return send(400,{ok:false,code:'INVALID_INVOCATION_REQUEST'});
-   const result=await fetch(endpoint.origin+route,{method:payload?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(15000),headers:{authorization,'content-type':'application/json'},...(payload?{body:JSON.stringify(payload)}:{})});const value=await result.json();if(value.receipt?.resourceId&&!resources.includes(value.receipt.resourceId))return send(403,{ok:false,code:'FORBIDDEN'});send(200,value);
+   const result=await fetch(endpoint.origin+route,{method:payload?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(15000),headers:{authorization,'content-type':'application/json'},...(payload?{body:JSON.stringify(payload)}:{})});const value=await result.json();if((payload?.command==='read_receipt'&&value.ok===true&&(value.kind!=='reschedule'||!resources.includes(value.receipt?.resourceId)))||(value.receipt?.resourceId&&!resources.includes(value.receipt.resourceId)))return send(403,{ok:false,code:'FORBIDDEN'});send(200,value);
   }catch{send(503,{ok:false,code:'INVOCATION_RESULT_UNKNOWN'});}
  });
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
