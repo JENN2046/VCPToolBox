@@ -120,3 +120,52 @@ test('lifecycle: late old close cleanup cannot delete a new connection reservati
  await handle(c.ws,request(f,'recover'),c.manager);
  assert.equal(c.ws.messages.at(-1).result.ok,true);
 });
+
+function captureWarnings(t){
+ const logs=[],warn=console.warn;
+ console.warn=(...args)=>logs.push(args);
+ t.after(()=>{console.warn=warn;});
+ return logs;
+}
+test('WS diagnostics: transport preflight exception logs only a fixed code',async t=>{
+ const a=reconnectFixture(t),b=reconnectFixture(t),f=frame(),logs=captureWarnings(t);
+ const sensitive='SYNTHETIC_WS_PRIVATE_CREDENTIAL_PAYLOAD_ERROR';
+ f.authorization='Bearer '+sensitive;f.body.payload.private=sensitive;
+ a.manager.plugins.get=()=>{throw new Error(sensitive);}; // Outside the transport's inner catch.
+ await handle(a.ws,f,a.manager);
+ assert.equal(a.calls.length,0);
+ assert.deepEqual(a.ws.messages.at(-1).result,{ok:false,code:'NATIVE_RESULT_UNKNOWN'});
+ disconnect(a.ws);
+ await handle(b.ws,request(f,'recover'),b.manager);
+ assert.equal(b.calls.length,1,'exception must not leave an in-flight reservation');
+ assert.doesNotMatch(JSON.stringify({logs,messages:a.ws.messages}),new RegExp(sensitive));
+ assert.deepEqual(logs,[['[NativeConversation]',{code:'NATIVE_WEBSOCKET_FAILED'}]]);
+});
+
+for(const closed of [false,true])test(`WS diagnostics: sensitive result getter exception (closed=${closed})`,async t=>{
+ const a=fixture(),b=reconnectFixture(t),f=frame(),logs=captureWarnings(t),control=controlledPlugin(t,a);
+ const sensitive='SYNTHETIC_WS_PRIVATE_BUSINESS_RESULT_ERROR';
+ const result={private:sensitive};
+ Object.defineProperty(result,'sourceId',{get(){throw new Error(sensitive);}});
+ const work=control.start(f);
+ if(closed)disconnect(a.ws);
+ control.gates[0].resolve({result});
+ await work;
+ if(closed)assert.deepEqual(a.ws.messages,[]);
+ else assert.deepEqual(a.ws.messages.at(-1).result,{ok:false,code:'NATIVE_RESULT_UNKNOWN'});
+ disconnect(a.ws);
+ await handle(b.ws,request(f,'recover'),b.manager);
+ assert.equal(b.calls.length,1,'result-processing exception must still clean up the session');
+ assert.doesNotMatch(JSON.stringify({logs,messages:a.ws.messages}),new RegExp(sensitive));
+ assert.deepEqual(logs,[['[NativeConversation]',{code:'NATIVE_WEBSOCKET_FAILED'}]]);
+});
+
+test('WS diagnostics: ordinary plugin rejection has one transport warning and no duplicate',async t=>{
+ const a=reconnectFixture(t),f=frame(),logs=captureWarnings(t);
+ const sensitive='SYNTHETIC_WS_PRIVATE_PLUGIN_ERROR';
+ a.manager.executePlugin=async()=>{throw new Error(sensitive);};
+ await handle(a.ws,f,a.manager);
+ assert.deepEqual(a.ws.messages.at(-1).result,{ok:false,code:'NATIVE_RESULT_UNKNOWN'});
+ assert.doesNotMatch(JSON.stringify({logs,messages:a.ws.messages}),new RegExp(sensitive));
+ assert.deepEqual(logs,[['[NativeConversation]',{code:'NATIVE_EXECUTION_FAILED',action:'prepare'}]]);
+});

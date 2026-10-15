@@ -39,7 +39,7 @@ async function handleNativeConversationMessage(ws,message,pluginManager){
   if(result.sourceId)state.sources.add(result.sourceId);
   if(result.plan){state.plans.add(result.plan.id);result.plan={...result.plan,conversationId:original};}
   send(result);
- }catch{send({ok:false,code:'NATIVE_RESULT_UNKNOWN'});}finally{state.inflight.delete(message.requestId);releaseClosedSession(ws,state);}
+ }catch{console.warn('[NativeConversation]',{code:'NATIVE_WEBSOCKET_FAILED'});send({ok:false,code:'NATIVE_RESULT_UNKNOWN'});}finally{state.inflight.delete(message.requestId);releaseClosedSession(ws,state);}
  return true;
 }
 module.exports={handleNativeConversationMessage};
