@@ -396,6 +396,8 @@ function initialize(httpServer, config) {
             
             try {
                 const parsedMessage = JSON.parse(message);
+                // Sensitive native frames never enter generic logging or tool dispatch.
+                if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager)) return;
                 
                 // ChromeObserver 的消息日志降级到 debugMode
                 if (ws.clientType === 'ChromeObserver' && serverConfig.debugMode) {
@@ -532,7 +534,7 @@ function initialize(httpServer, config) {
                     // 未来处理其他客户端类型的消息
                 }
             } catch (e) {
-                console.error(`[WebSocketServer] Failed to parse message from client ${ws.clientId}:`, message.toString(), e);
+                console.error(`[WebSocketServer] Invalid client message (${ws.clientId}).`);
             }
         });
 
