@@ -4,21 +4,25 @@
 const admitted=new WeakMap();
 function loopback(ip){return ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(ip);}
 const actions=new Set(['status','prepare','execute','propose','presented','invalidate','recover']);
-async function executeNativeRequest(pluginManager,toolName,credential,body,namespace){
+async function dispatchNativeRequest(pluginManager,toolName,credential,body,namespace){
  const plugin=pluginManager.plugins.get(toolName);
- if(!plugin||plugin.nativeConversation?.protocol!=='trusted-conversation-v1'||plugin.communication?.protocol!=='stdio')return {ok:false,code:'NATIVE_TOOL_UNAVAILABLE'};
- if(typeof credential!=='string'||!/^Bearer [\x21-\x7e]{32,4096}$/.test(credential))return {ok:false,code:'APPLICATION_SESSION_REQUIRED'};
- if(!body||Object.keys(body).sort().join(',')!=='action,payload'||!actions.has(body.action)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)||Buffer.byteLength(JSON.stringify(body))>32768)return {ok:false,code:'INVALID_NATIVE_REQUEST'};
+ if(!plugin||plugin.nativeConversation?.protocol!=='trusted-conversation-v1'||plugin.communication?.protocol!=='stdio')return {status:404,result:{ok:false,code:'NATIVE_TOOL_UNAVAILABLE'}};
+ if(typeof credential!=='string'||!/^Bearer [\x21-\x7e]{32,4096}$/.test(credential))return {status:403,result:{ok:false,code:'APPLICATION_SESSION_REQUIRED'}};
+ if(!body||Object.keys(body).sort().join(',')!=='action,payload'||!actions.has(body.action)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)||Buffer.byteLength(JSON.stringify(body))>32768)return {status:400,result:{ok:false,code:'INVALID_NATIVE_REQUEST'}};
  const context=Object.freeze({});admitted.set(context,{credential,toolName:plugin.name,namespace});
- try{const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),'127.0.0.1',{nativeConversationContext:context});return result.result??result;}
- catch(error){const known=['JSO_LOCAL_BINDING_INVALID','JSO_ASSISTANT_BINDING_REQUIRED','NATIVE_CONTEXT_REQUIRED'];console.warn('[NativeConversation]',{code:known.includes(error?.message)?error.message:'NATIVE_EXECUTION_FAILED',action:body.action});return {ok:false,code:'NATIVE_RESULT_UNKNOWN'};}
+ // A plugin business result must not be confused with a route or host failure.
+ try{const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),'127.0.0.1',{nativeConversationContext:context});return {status:200,result:result.result??result};}
+ catch(error){const known=['JSO_LOCAL_BINDING_INVALID','JSO_ASSISTANT_BINDING_REQUIRED','NATIVE_CONTEXT_REQUIRED'];console.warn('[NativeConversation]',{code:known.includes(error?.message)?error.message:'NATIVE_EXECUTION_FAILED',action:body.action});return {status:503,result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}};}
  finally{admitted.delete(context);}
+}
+async function executeNativeRequest(pluginManager,toolName,credential,body,namespace){
+ return (await dispatchNativeRequest(pluginManager,toolName,credential,body,namespace)).result;
 }
 function registerNativeConversationRoute(app,pluginManager){
  app.post('/v1/native-conversation/:toolName',async(req,res)=>{
   if(!loopback(req.socket?.remoteAddress))return res.status(403).json({ok:false,code:'LOCAL_NATIVE_CHANNEL_REQUIRED'});
-  const result=await executeNativeRequest(pluginManager,req.params.toolName,req.headers['x-vcp-application-authorization'],req.body);
-  return res.status(result.code==='NATIVE_RESULT_UNKNOWN'?503:result.code==='INVALID_NATIVE_REQUEST'?400:result.code==='APPLICATION_SESSION_REQUIRED'?403:result.code==='NATIVE_TOOL_UNAVAILABLE'?404:200).json(result);
+  const {status,result}=await dispatchNativeRequest(pluginManager,req.params.toolName,req.headers['x-vcp-application-authorization'],req.body);
+  return res.status(status).json(result);
  });
 }
 module.exports={registerNativeConversationRoute,executeNativeRequest};
