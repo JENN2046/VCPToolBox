@@ -7,6 +7,19 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const TRACE_CONTEXT = new AsyncLocalStorage();
 const APPLIED = Symbol.for('vcp.p6.lightmemo.compatibility.v1');
 
+// Existing body-expansion outcomes, not raw filesystem diagnostics.
+const COLD_BODY_REASON_CODES = Object.freeze({
+  '源路径不可用': 'source_unavailable',
+  '源路径超出知识库范围': 'out_of_scope',
+  '源路径与命中知识库不一致': 'library_mismatch',
+  '源路径不是普通文件': 'not_regular_file',
+  '源文件超出单文件或本次剩余读取预算': 'read_limit_exceeded',
+  '本次读取预算已用完': 'budget_exceeded',
+  '源文件在读取期间发生变化': 'source_changed',
+  '命中预览未在源文件中找到，索引可能已过期': 'anchor_missing',
+  '命中预览在源文件中重复，无法唯一定位': 'anchor_ambiguous'
+});
+
 function parseRiverTraceFlag(value) {
   if (value === undefined) return false;
   if (typeof value === 'boolean') return value;
@@ -195,7 +208,7 @@ function formatScoreMetadata(result, vectorType) {
   return { value: scoreValue, display, metadata: display };
 }
 
-function formatColdKnowledgeResults(results, query, libraries, includeBodyStatus) {
+function formatColdKnowledgeResults(results, query, libraries, includeBodyStatus, preserveBodySlice = false) {
   if (!results || results.length === 0) {
     const scope = libraries.length > 0 ? libraries.join(', ') : '全部知识库';
     return `关于"${query}"，在冷知识库（${scope}）中没有找到相关内容。`;
@@ -220,7 +233,9 @@ function formatColdKnowledgeResults(results, query, libraries, includeBodyStatus
         : '';
       content += `    [内容: ${bodyState}${truncation}]\n`;
     }
-    content += `${String(result.text || '').trim()}\n\n`;
+    const body = String(result.text || '');
+    // Structured body-state ranges describe this exact slice, including whitespace.
+    content += `${preserveBodySlice ? body : body.trim()}\n\n`;
   }
   content += `\n[--- 知识库检索结束 ---]\n`;
   return content;
@@ -257,7 +272,7 @@ async function searchColdCompatibility(lightMemo, {
     const aiText = typeof lightMemo._buildAiFriendlyTextResult === 'function'
       ? lightMemo._buildAiFriendlyTextResult(text).result
       : { content: [{ type: 'text', text }] };
-    return {
+    const result = {
       ...aiText,
       cold_result: {
         schema_version: 1,
@@ -281,6 +296,29 @@ async function searchColdCompatibility(lightMemo, {
         }))
       }
     };
+    if (coldTextMode === 'legacy_full_body') {
+      result.cold_body_state = {
+        schema_version: 1,
+        source_schema_version: 1,
+        stage: 'native_body_state',
+        text_mode: 'legacy_full_body',
+        query,
+        requested_libraries: [...libraries],
+        k: normalizedK,
+        documents: docs.map((doc, index) => ({
+          ...result.cold_result.documents[index],
+          body_expanded: doc.bodyExpanded,
+          body_truncated: doc.bodyTruncated,
+          body_reason: doc.bodyExpanded ? null
+            : (Object.hasOwn(COLD_BODY_REASON_CODES, doc.bodyReason)
+              ? COLD_BODY_REASON_CODES[doc.bodyReason] : 'read_failed'),
+          body_range: [...doc.bodyRange],
+          body_length: doc.bodyLength,
+          returned_text_length: doc.text.length
+        }))
+      };
+    }
+    return result;
   };
 
   const fetchK = useRerank ? normalizedK * 3 : normalizedK;
@@ -329,7 +367,10 @@ async function searchColdCompatibility(lightMemo, {
 
   return finish(
     docs,
-    formatColdKnowledgeResults(docs, query, libraries, coldTextMode !== 'preview')
+    formatColdKnowledgeResults(
+      docs, query, libraries, coldTextMode !== 'preview',
+      coldResultMode === 'structured' && coldTextMode === 'legacy_full_body'
+    )
   );
 }
 
