@@ -1,7 +1,10 @@
 const crypto = require('crypto');
+const { isPluginRuntimeEnvKeyDenied } = require('./pluginRuntimeEnvSandbox');
 
 const SUPPORTED_PHASES = new Set(['start', 'success', 'error', 'timeout']);
 const DEFAULT_EVENT_TYPE = 'TOOL_LIFECYCLE';
+// Keep the executable definition outside the template-visible context.
+const externalLifecycleDefinitions = new WeakMap();
 
 function getCaseInsensitiveValue(object, key) {
     if (!object || typeof object !== 'object' || Array.isArray(object)) {
@@ -125,6 +128,22 @@ function isTimeoutError(error) {
         message.includes('timed out or was killed');
 }
 
+// External manifests may interpolate whole objects as well as individual fields.
+// Snapshot both config and manifest so aliases cannot expose host-only config,
+// without mutating the registered object used by the broker/execution path.
+function createExternalLifecycleView(value, seen = new WeakMap()) {
+    if (!value || typeof value !== 'object') return value;
+    if (seen.has(value)) return seen.get(value);
+    const view = Array.isArray(value) ? [] : Object.create(null);
+    seen.set(value, view);
+    for (const [key, item] of Object.entries(value)) {
+        if (!isPluginRuntimeEnvKeyDenied(key)) {
+            view[key] = createExternalLifecycleView(item, seen);
+        }
+    }
+    return view;
+}
+
 class ToolLifecycleVcpInfo {
     constructor(options = {}) {
         this.pushVcpInfo = typeof options.pushVcpInfo === 'function'
@@ -141,16 +160,19 @@ class ToolLifecycleVcpInfo {
 
     createContext(plugin, args = {}, metadata = {}) {
         const now = Date.now();
-        return {
+        const external = plugin?.pluginSource === 'external';
+        const context = {
             invocationId: createInvocationId(plugin?.name),
-            plugin,
-            pluginConfig: metadata.pluginConfig || {},
+            plugin: external ? createExternalLifecycleView(plugin) : plugin,
+            pluginConfig: external ? createExternalLifecycleView(metadata.pluginConfig || {}) : (metadata.pluginConfig || {}),
             args,
             requestIp: metadata.requestIp || null,
             sourceNode: metadata.sourceNode || null,
             startedAtMs: now,
             startedAt: new Date(now).toISOString()
         };
+        if (external) externalLifecycleDefinitions.set(context, plugin.vcpInfoLifecycle);
+        return context;
     }
 
     emit(context, requestedPhase, details = {}) {
@@ -158,7 +180,9 @@ class ToolLifecycleVcpInfo {
             return false;
         }
 
-        const lifecycleConfig = context.plugin.vcpInfoLifecycle;
+        const lifecycleConfig = externalLifecycleDefinitions.has(context)
+            ? externalLifecycleDefinitions.get(context)
+            : context.plugin.vcpInfoLifecycle;
         if (!lifecycleConfig || lifecycleConfig.enabled === false) {
             return false;
         }
