@@ -4,6 +4,7 @@ const EventEmitter = require('events');
 const path = require('path');
 const { spawn } = require('child_process');
 const schedule = require('node-schedule');
+const { readExternalPluginHostConfig } = require('./modules/externalPluginHostConfig');
 const dotenv = require('dotenv'); // Ensures dotenv is available
 const FileFetcherServer = require('./FileFetcherServer.js');
 const express = require('express'); // For plugin API routing
@@ -301,8 +302,15 @@ class PluginManager extends EventEmitter {
     _getPluginConfig(pluginManifest) {
         const config = {};
         const globalEnv = process.env;
-        const pluginSpecificEnv = pluginManifest.pluginSpecificEnvConfig || {};
         const allowGlobalEnvFallback = !this._isExternalPluginManifest(pluginManifest);
+        // External config is host-owned, scoped to an already registered manifest.
+        // Never enable external config.env or global environment fallback.
+        const pluginSpecificEnv = {
+            ...(pluginManifest.pluginSpecificEnvConfig || {}),
+            ...(!allowGlobalEnvFallback && this.plugins.get(pluginManifest.name) === pluginManifest
+                ? readExternalPluginHostConfig(process.env.VCP_EXTERNAL_PLUGIN_CONFIG_FILE, pluginManifest)
+                : {})
+        };
 
         if (pluginManifest.configSchema) {
             for (const key in pluginManifest.configSchema) {
@@ -313,7 +321,7 @@ class PluginManager extends EventEmitter {
                     : schemaEntry;
                 let rawValue;
 
-                if (pluginSpecificEnv.hasOwnProperty(key)) {
+                if (Object.hasOwn(pluginSpecificEnv, key)) {
                     rawValue = pluginSpecificEnv[key];
                 } else if (allowGlobalEnvFallback && globalEnv.hasOwnProperty(key)) {
                     rawValue = globalEnv[key];
@@ -335,7 +343,7 @@ class PluginManager extends EventEmitter {
             }
         }
 
-        if (pluginSpecificEnv.hasOwnProperty('DebugMode')) {
+        if (Object.hasOwn(pluginSpecificEnv, 'DebugMode')) {
             config.DebugMode = String(pluginSpecificEnv.DebugMode).toLowerCase() === 'true';
         } else if (allowGlobalEnvFallback && globalEnv.hasOwnProperty('DebugMode')) {
             config.DebugMode = String(globalEnv.DebugMode).toLowerCase() === 'true';
