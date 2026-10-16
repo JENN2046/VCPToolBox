@@ -3,31 +3,37 @@
 // The plugin independently verifies the existing application credential before action.
 const admitted=new WeakMap();
 function loopback(ip){return ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(ip);}
+const actions=new Set(['status','prepare','execute','propose','presented','invalidate','recover']);
+function validateNativeRequest(pluginManager,toolName,credential,body){
+ const plugin=pluginManager.plugins.get(toolName);
+ if(!plugin||plugin.nativeConversation?.protocol!=='trusted-conversation-v1'||plugin.communication?.protocol!=='stdio')return {status:404,result:{ok:false,code:'NATIVE_TOOL_UNAVAILABLE'}};
+ if(typeof credential!=='string'||!/^Bearer [\x21-\x7e]{32,4096}$/.test(credential))return {status:403,result:{ok:false,code:'APPLICATION_SESSION_REQUIRED'}};
+ if(!body||Object.keys(body).sort().join(',')!=='action,payload'||!actions.has(body.action)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)||JSON.stringify(body).length>32768)return {status:400,result:{ok:false,code:'INVALID_NATIVE_REQUEST'}};
+ return {plugin};
+}
+async function dispatchNativeRequest(pluginManager,toolName,credential,body,namespace){
+ let context;
+ try{
+ const validation=validateNativeRequest(pluginManager,toolName,credential,body);
+ if(validation.result)return validation;
+ const {plugin}=validation;
+ context=Object.freeze({});admitted.set(context,{credential,toolName:plugin.name,namespace});
+ // A plugin business result must not be confused with a route or host failure.
+ const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),'127.0.0.1',{nativeConversationContext:context});return {status:200,result:result.result??result};}
+ catch(error){const known=['JSO_LOCAL_BINDING_INVALID','JSO_ASSISTANT_BINDING_REQUIRED','NATIVE_CONTEXT_REQUIRED'];console.warn('[NativeConversation]',{code:known.includes(error?.message)?error.message:'NATIVE_EXECUTION_FAILED',action:actions.has(body?.action)?body.action:undefined});return {status:503,result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}};}
+ finally{if(context)admitted.delete(context);}
+}
+async function executeNativeRequest(pluginManager,toolName,credential,body,namespace){
+ return (await dispatchNativeRequest(pluginManager,toolName,credential,body,namespace)).result;
+}
 function registerNativeConversationRoute(app,pluginManager){
  app.post('/v1/native-conversation/:toolName',async(req,res)=>{
-  const send=(status,result)=>res.status(status).json(result);
-  if(!loopback(req.socket?.remoteAddress))return send(403,{ok:false,code:'LOCAL_NATIVE_CHANNEL_REQUIRED'});
-  const plugin=pluginManager.plugins.get(req.params.toolName);
-  if(!plugin||plugin.nativeConversation?.protocol!=='trusted-conversation-v1'||plugin.communication?.protocol!=='stdio')return send(404,{ok:false,code:'NATIVE_TOOL_UNAVAILABLE'});
-  const credential=req.headers['x-vcp-application-authorization'];
-  if(typeof credential!=='string'||!/^Bearer [\x21-\x7e]{32,4096}$/.test(credential))return send(403,{ok:false,code:'APPLICATION_SESSION_REQUIRED'});
-  const body=req.body;
-  if(!body||Object.keys(body).sort().join(',')!=='action,payload'||!['status','prepare','execute','propose','presented','invalidate','recover'].includes(body.action)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)||JSON.stringify(body).length>32768)return send(400,{ok:false,code:'INVALID_NATIVE_REQUEST'});
-  const context=Object.freeze({});admitted.set(context,{credential,toolName:plugin.name});
-  try{
-   const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),req.socket.remoteAddress,{nativeConversationContext:context});
-   return send(200,result.result??result);
-  }catch(error){
-   const known=['JSO_LOCAL_BINDING_INVALID','JSO_ASSISTANT_BINDING_REQUIRED','NATIVE_CONTEXT_REQUIRED'];
-   const code=known.includes(error?.message)?error.message:'NATIVE_EXECUTION_FAILED';
-   // Never log credentials, request payloads or arbitrary exception text/stack.
-   console.warn('[NativeConversation]',{code,action:body.action});
-   return send(503,{ok:false,code:'NATIVE_RESULT_UNKNOWN'});
-  }
-  finally{admitted.delete(context);}
+  if(!loopback(req.socket?.remoteAddress))return res.status(403).json({ok:false,code:'LOCAL_NATIVE_CHANNEL_REQUIRED'});
+  const {status,result}=await dispatchNativeRequest(pluginManager,req.params.toolName,req.headers['x-vcp-application-authorization'],req.body);
+  return res.status(status).json(result);
  });
 }
-module.exports={registerNativeConversationRoute};
+module.exports={registerNativeConversationRoute,executeNativeRequest,validateNativeRequest};
 
 // Per-invocation loopback broker: application/assistant credentials stay in the host.
 // VCP_EXECUTION_CONTEXT is the existing allowed stdio context carrier. Its random
@@ -60,6 +66,6 @@ async function createStdioContext(plugin,config,nativeContext){
   }catch{send(503,{ok:false,code:'INVOCATION_RESULT_UNKNOWN'});}
  });
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
- return {env:{VCP_EXECUTION_CONTEXT:JSON.stringify({protocol:'trusted-conversation-v1',endpoint:`http://127.0.0.1:${server.address().port}`,capability,native:!!native})},close:()=>new Promise(resolve=>server.close(resolve))};
+ return {env:{VCP_EXECUTION_CONTEXT:JSON.stringify({protocol:'trusted-conversation-v1',endpoint:`http://127.0.0.1:${server.address().port}`,capability,native:!!native,...(native?.namespace?{namespace:native.namespace}:{})})},close:()=>new Promise(resolve=>server.close(resolve))};
 }
 module.exports.createStdioContext=createStdioContext;
