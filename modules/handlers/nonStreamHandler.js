@@ -64,6 +64,13 @@ function parseNonStreamResponse(rawResponseText) {
   }
 }
 
+function isCompleteNonStreamResponse(readResult) {
+  const { parsedJson, message, choice } = parseNonStreamResponse(readResult.text);
+  return readResult.response.ok && !readResult.semanticRetryExhausted &&
+    !!parsedJson && !parsedJson.error && !!message &&
+    hasVisibleContent(message.content) && choice?.finish_reason === 'stop';
+}
+
 function isReasoningOnlyNonStreamResponse(rawResponseText) {
   const { parsedJson, message, choice } = parseNonStreamResponse(rawResponseText);
   if (!parsedJson || !message || hasToolOrRefusalPayload(message)) return false;
@@ -266,23 +273,8 @@ class NonStreamHandler {
     const aiResponseText = firstReadResult.text;
     let chatLogs = [];
     let oneRingAssistantTurnParts = [];
-
-    const recordOneRingAIResponse = (aiText, phaseLabel) => {
-      const oneRingModule = pluginManager?.messagePreprocessors?.get?.('OneRing');
-      if (!oneRingModule) return;
-
-      const recordPromise = oneRingResponseMeta && typeof oneRingModule.recordAIResponseWithMeta === 'function'
-        ? oneRingModule.recordAIResponseWithMeta(oneRingResponseMeta, aiText)
-        : (typeof oneRingModule.recordAIResponseFromMessages === 'function'
-          ? oneRingModule.recordAIResponseFromMessages(originalBody.messages, aiText)
-          : null);
-
-      if (recordPromise && typeof recordPromise.catch === 'function') {
-        recordPromise.catch(e =>
-          console.error(`[OneRing NonStream] Error recording AI response (${phaseLabel}):`, e),
-        );
-      }
-    };
+    let validUpstreamTurns = isCompleteNonStreamResponse(firstReadResult);
+    let completed = false;
 
     let fullContentFromAI = '';
     let currentAIContentForClient = '';
@@ -421,6 +413,7 @@ class NonStreamHandler {
           const recursionAiResponse = recursionReadResult.response;
 
           if (recursionAiResponse.ok) {
+            validUpstreamTurns = validUpstreamTurns && isCompleteNonStreamResponse(recursionReadResult);
             const recursionText = recursionReadResult.text;
             const recursionParsedResponse = extractedResponse(recursionText);
             const recursionMessage = recursionParsedResponse.message;
@@ -444,9 +437,13 @@ class NonStreamHandler {
             recursionDepth++;
             continue;
           }
+          break; // 后续上游失败，不提交交互时间。
         }
 
-        if (normalCalls.length === 0) break;
+        if (normalCalls.length === 0) {
+          completed = validUpstreamTurns && archeryErrorContents.length === 0;
+          break;
+        }
 
         // 执行普通调用
         let assistantMessages = [{ role: 'assistant', content: currentAIContentForLoop }];
@@ -577,6 +574,7 @@ class NonStreamHandler {
 
         if (!recursionAiResponse.ok) break;
 
+        validUpstreamTurns = validUpstreamTurns && isCompleteNonStreamResponse(recursionReadResult);
         const recursionText = recursionReadResult.text;
         const recursionParsedResponse = extractedResponse(recursionText);
         const recursionMessage = recursionParsedResponse.message;
@@ -600,6 +598,7 @@ class NonStreamHandler {
 
       } else {
         anyToolProcessedInCurrentIteration = false;
+        completed = validUpstreamTurns;
       }
 
       if (!anyToolProcessedInCurrentIteration) break;
@@ -628,10 +627,14 @@ class NonStreamHandler {
 
     attachNonStreamPresentations(finalJsonResponse, residentPresentations);
     if (writeChatLog) writeChatLog(originalBody, chatLogs);
-    recordOneRingAIResponse(oneRingAssistantTurnParts.join('\n'), 'final_turn');
+    // OneRing 由主流程在整轮完成且响应发送完成后提交。
     if (!res.writableEnded && !res.destroyed) {
       res.send(Buffer.from(JSON.stringify(finalJsonResponse)));
     }
+    return {
+      completed: completed && !abortController?.signal.aborted && !res.destroyed,
+      aiText: oneRingAssistantTurnParts.join('\n')
+    };
   }
 }
 

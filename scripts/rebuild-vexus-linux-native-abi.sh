@@ -27,7 +27,9 @@ if [[ ! -x "$CARGO_HOME/bin/rustup" ]]; then
   curl -fL --retry 3 --connect-timeout 15 https://sh.rustup.rs -o /tmp/vcp-rustup-init.sh
   sh /tmp/vcp-rustup-init.sh -y --profile minimal --default-toolchain 1.89.0 --no-modify-path
 fi
-rustup toolchain install 1.89.0 --profile minimal
+if ! rustup run 1.89.0 rustc --version | grep -q '^rustc 1\.89\.0 '; then
+  rustup toolchain install 1.89.0 --profile minimal
+fi
 export RUSTUP_TOOLCHAIN=1.89.0
 export RUSTFLAGS='-C linker=gcc-12'
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc-12
