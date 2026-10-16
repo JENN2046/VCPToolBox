@@ -5,6 +5,25 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const owners = { vexus: 'rust-vexus-lite', codesearcher: 'Plugin/CodeSearcher/src', daily: 'Plugin/DailyNoteSearcher/src' };
+const deliveries = {
+    vexus: {
+        'x86_64-pc-windows-msvc': ['rust-vexus-lite/vexus-lite.win32-x64-msvc.node'],
+        'x86_64-unknown-linux-gnu': ['rust-vexus-lite/vexus-lite.linux-x64-gnu.node'],
+    },
+    codesearcher: Object.fromEntries(['x86_64-pc-windows-msvc', 'x86_64-unknown-linux-gnu',
+        'x86_64-unknown-linux-musl', 'aarch64-unknown-linux-gnu', 'aarch64-unknown-linux-musl'].map(target => {
+        const prefix = 'Plugin/CodeSearcher/CodeSearcher';
+        const aliases = target === 'x86_64-pc-windows-msvc' ? [prefix + '.exe'] :
+            target === 'x86_64-unknown-linux-musl' ? [prefix + '-linux-x64-musl'] :
+            target === 'aarch64-unknown-linux-musl' ? [prefix + '-linux-arm64'] : [];
+        return [target, [prefix + '-' + target + (target.includes('windows') ? '.exe' : ''), ...aliases]];
+    })),
+    daily: Object.fromEntries(['x86_64-pc-windows-msvc', 'x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-musl'].map(target => {
+        const prefix = 'Plugin/DailyNoteSearcher/DailyNoteSearcher';
+        return [target, [prefix + '-' + target + (target.includes('windows') ? '.exe' : ''),
+            ...(target.includes('windows') ? [prefix + '.exe'] : [])]];
+    })),
+};
 const digest = data => crypto.createHash('sha256').update(data).digest('hex');
 
 function checkNativeDelivery(root, target, groups) {
@@ -42,7 +61,10 @@ function checkNativeDelivery(root, target, groups) {
                 'Native source differs from the recorded CI build: ' + input.path);
         }
         const artifacts = receipt.artifacts.filter(item => item.group === group && item.target === target);
-        assert.ok(artifacts.length > 0, 'No verified artifact for ' + group + '/' + target);
+        const expectedArtifacts = deliveries[group][target];
+        assert.ok(expectedArtifacts, 'No verified artifact for ' + group + '/' + target);
+        assert.deepEqual(artifacts.map(item => item.path).sort(), [...expectedArtifacts].sort(),
+            'Incomplete or duplicated shipped-artifact inventory');
         for (const artifact of artifacts) {
             const owner = group === 'vexus' ? prefix + '/' : prefix.slice(0, -3);
             assert.ok(artifact.path.startsWith(owner), 'Artifact owner mismatch');

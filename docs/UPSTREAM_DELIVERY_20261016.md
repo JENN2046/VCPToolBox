@@ -76,6 +76,9 @@ scan/hash the current vectors; production-size performance has not been benchmar
 Initial recovery errors/count mismatches cannot publish a ready baseline. Checkpoint
 timers wait for coordinator idle; publication and eviction are also guarded while
 ingestion, deletion, external mutation, native recovery or a Rust lease is active.
+Confirmed Tag consistency maintenance releases its completed write lease and
+performs the forced checkpoint synchronously in the same JS turn, before queued
+writers resume; below-threshold repairs retain their forced publication semantics.
 
 Registry and persisted admin policy share a bounded exact plugin-name grammar,
 including dots. This does not enable the third-party JEV experiment.
@@ -89,3 +92,5 @@ or proof of cross-machine reproducibility. The earlier independent Linux build i
 The delivered Linux Vexus comes from the hosted pinned-image rebuild instead.
 Unchanged legacy Vexus targets outside Windows x64/Linux x64 GNU were not rebuilt
 in this round and are not claimed verified against the newly accepted Rust source.
+Each verified group/target has an exact mandatory payload inventory, including
+shipped legacy aliases; missing or duplicate receipt entries fail validation.

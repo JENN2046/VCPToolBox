@@ -747,6 +747,10 @@ class TagConsistencyService {
 
             // 用户确认修复是明确的健康维护边界，不受 generational 5% 阈值限制。
             // 发布失败不损坏旧 checkpoint，但本次接口必须明确报告未完成落盘。
+            // All native writes above have settled. Release synchronously and
+            // checkpoint in the same JS turn: queued writers resume only later.
+            lease.release();
+            lease = null;
             const checkpointPublished =
                 this.owner.indexRepository.publishGlobalTagBaseline({
                     force: true
