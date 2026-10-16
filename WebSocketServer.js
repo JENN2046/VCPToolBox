@@ -393,11 +393,14 @@ function initialize(httpServer, config) {
 
         ws.on('message', async (message) => {
             const messageString = message.toString();
+            let failureCode = 'WS_JSON_PARSE_FAILED';
             
             try {
                 const parsedMessage = JSON.parse(message);
+                failureCode = 'WS_NATIVE_HANDLER_FAILED';
                 // Sensitive native frames never enter generic logging or tool dispatch.
                 if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager)) return;
+                failureCode = 'WS_MESSAGE_HANDLER_FAILED';
                 
                 // ChromeObserver 的消息日志降级到 debugMode
                 if (ws.clientType === 'ChromeObserver' && serverConfig.debugMode) {
@@ -534,7 +537,7 @@ function initialize(httpServer, config) {
                     // 未来处理其他客户端类型的消息
                 }
             } catch (e) {
-                console.error(`[WebSocketServer] Invalid client message (${ws.clientId}).`);
+                console.error('[WebSocketServer]', { code: failureCode });
             }
         });
 
