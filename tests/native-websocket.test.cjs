@@ -169,3 +169,106 @@ test('WS diagnostics: ordinary plugin rejection has one transport warning and no
  assert.doesNotMatch(JSON.stringify({logs,messages:a.ws.messages}),new RegExp(sensitive));
  assert.deepEqual(logs,[['[NativeConversation]',{code:'NATIVE_EXECUTION_FAILED',action:'prepare'}]]);
 });
+
+async function capabilityFixture(t,action){
+ const a=reconnectFixture(t),f=frame();
+ await handle(a.ws,f,a.manager);
+ a.calls.length=0;
+ // No new capability is granted by an execution/presentation result in these tests.
+ a.manager.executePlugin=async(_name,args)=>{a.calls.push(JSON.parse(args));return {result:{ok:true}};};
+ const payload={conversationId:'chat',...(action==='execute'?{sourceId:'synthetic-source'}:{planId:'synthetic-plan'})};
+ return {...a,f,payload};
+}
+// The final body has a 64-byte ASCII conversation hash; measure UTF-8, not JS string length.
+function sizedCapabilityBody(action,payload,size){
+ const body={action,payload:{...payload,padding:''}};
+ const final={...body,payload:{...body.payload,conversationId:'h'.repeat(64)}};
+ body.payload.padding='x'.repeat(size-Buffer.byteLength(JSON.stringify(final)));
+ return body;
+}
+const invalidCapabilities=[
+ ['empty conversation',body=>{body.payload.conversationId='';},'CONVERSATION_REQUIRED'],
+ ['numeric conversation',body=>{body.payload.conversationId=7;},'CONVERSATION_REQUIRED'],
+ ['null conversation',body=>{body.payload.conversationId=null;},'CONVERSATION_REQUIRED'],
+ ['long conversation',body=>{body.payload.conversationId='x'.repeat(241);},'CONVERSATION_REQUIRED'],
+ ['extra body key',body=>{body.extra=true;},'INVALID_NATIVE_REQUEST'],
+ ['oversize body',body=>{body.payload.text='x'.repeat(32768);},'INVALID_NATIVE_REQUEST']
+];
+for(const action of ['execute','presented']){
+ for(const [name,mutate,code] of invalidCapabilities)test(`capability preflight: ${action} preserves eligibility after ${name}`,async t=>{
+  const a=await capabilityFixture(t,action),invalid=request(a.f,action,{...a.payload});
+  mutate(invalid.body);
+  await handle(a.ws,invalid,a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,code);
+  assert.equal(a.calls.length,0,'invalid request must not dispatch');
+  await handle(a.ws,request(a.f,action,a.payload),a.manager);
+  assert.equal(a.calls.length,1,'corrected request must retain the original capability');
+  await handle(a.ws,request(a.f,action,a.payload),a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,'NATIVE_CONNECTION_CHANGED');
+  assert.equal(a.calls.length,1,'the capability must still be one-shot');
+ });
+
+ test(`capability preflight: ${action} retains eligibility when hashing grows body past limit`,async t=>{
+  const a=await capabilityFixture(t,action);
+  const body=sizedCapabilityBody(action,{...a.payload,conversationId:'x'},32769);
+  assert.ok(Buffer.byteLength(JSON.stringify(body))<32768);
+  await handle(a.ws,{...a.f,requestId:randomUUID(),body},a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,'INVALID_NATIVE_REQUEST');
+  assert.equal(a.calls.length,0);
+  body.payload.padding=body.payload.padding.slice(1); // Exactly 32768 after hashing.
+  await handle(a.ws,{...a.f,requestId:randomUUID(),body},a.manager);
+  assert.equal(a.calls.length,1,'a corrected final body at the limit must dispatch');
+  assert.equal(Buffer.byteLength(JSON.stringify({action,payload:a.calls[0].payload})),32768);
+ });
+
+ for(const conversation of ['x','界'.repeat(240)])test(`capability preflight: ${action} accepts final-size boundary from ${conversation.length===1?'short':'multibyte long'} conversation`,async t=>{
+  const a=await capabilityFixture(t,action),body=sizedCapabilityBody(action,{...a.payload,conversationId:conversation},32768);
+  const wireSize=Buffer.byteLength(JSON.stringify(body));
+  assert.equal(wireSize>32768,conversation.length>1);
+  await handle(a.ws,{...a.f,requestId:randomUUID(),body},a.manager);
+  assert.equal(a.calls.length,1,'validate the converted body, not the raw body size');
+  assert.equal(Buffer.byteLength(JSON.stringify({action,payload:a.calls[0].payload})),32768);
+  assert.match(a.calls[0].payload.conversationId,/^[a-f0-9]{64}$/);
+ });
+
+ test(`capability preflight: ${action} rejects a second valid request while first dispatch is pending`,async t=>{
+  const a=await capabilityFixture(t,action),control=controlledPlugin(t,a);
+  const first=control.start(request(a.f,action,a.payload));
+  assert.equal(control.gates.length,1);
+  const second=control.start(request(a.f,action,a.payload));
+  assert.equal(a.calls.length,1);
+  await second;
+  assert.equal(a.ws.messages.at(-1).result.code,'NATIVE_CONNECTION_CHANGED');
+  control.gates[0].resolve({result:{ok:true}});
+  await first;
+  const retry=control.start(request(a.f,action,a.payload));
+  assert.equal(a.calls.length,1);
+  await retry;
+ });
+
+ for(const outcome of ['business-rejection','exception','unknown'])test(`capability preflight: ${action} never restores dispatched eligibility after ${outcome}`,async t=>{
+  const a=await capabilityFixture(t,action),control=controlledPlugin(t,a);
+  captureWarnings(t);
+  const first=control.start(request(a.f,action,a.payload));
+  assert.equal(a.calls.length,1);
+  if(outcome==='exception')control.gates[0].reject(new Error('synthetic plugin failure'));
+  else control.gates[0].resolve({result:{ok:false,code:outcome==='unknown'?'NATIVE_RESULT_UNKNOWN':'INVALID_NATIVE_REQUEST'}});
+  await first;
+  assert.equal(a.ws.messages.at(-1).result.code,outcome==='business-rejection'?'INVALID_NATIVE_REQUEST':'NATIVE_RESULT_UNKNOWN');
+  const retry=control.start(request(a.f,action,a.payload));
+  assert.equal(a.calls.length,1,'a plugin business error cannot restore a consumed capability');
+  await retry;
+  assert.equal(a.ws.messages.at(-1).result.code,'NATIVE_CONNECTION_CHANGED');
+ });
+
+ test(`capability preflight: ${action} preserves eligibility when native tool is unavailable`,async t=>{
+  const a=await capabilityFixture(t,action),plugin=a.manager.plugins.get('Example');
+  a.manager.plugins.delete('Example');
+  await handle(a.ws,request(a.f,action,a.payload),a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,'NATIVE_TOOL_UNAVAILABLE');
+  assert.equal(a.calls.length,0);
+  a.manager.plugins.set('Example',plugin);
+  await handle(a.ws,request(a.f,action,a.payload),a.manager);
+  assert.equal(a.calls.length,1);
+ });
+}

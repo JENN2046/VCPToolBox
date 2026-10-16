@@ -4,11 +4,17 @@
 const admitted=new WeakMap();
 function loopback(ip){return ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(ip);}
 const actions=new Set(['status','prepare','execute','propose','presented','invalidate','recover']);
-async function dispatchNativeRequest(pluginManager,toolName,credential,body,namespace){
+function validateNativeRequest(pluginManager,toolName,credential,body){
  const plugin=pluginManager.plugins.get(toolName);
  if(!plugin||plugin.nativeConversation?.protocol!=='trusted-conversation-v1'||plugin.communication?.protocol!=='stdio')return {status:404,result:{ok:false,code:'NATIVE_TOOL_UNAVAILABLE'}};
  if(typeof credential!=='string'||!/^Bearer [\x21-\x7e]{32,4096}$/.test(credential))return {status:403,result:{ok:false,code:'APPLICATION_SESSION_REQUIRED'}};
  if(!body||Object.keys(body).sort().join(',')!=='action,payload'||!actions.has(body.action)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)||Buffer.byteLength(JSON.stringify(body))>32768)return {status:400,result:{ok:false,code:'INVALID_NATIVE_REQUEST'}};
+ return {plugin};
+}
+async function dispatchNativeRequest(pluginManager,toolName,credential,body,namespace){
+ const validation=validateNativeRequest(pluginManager,toolName,credential,body);
+ if(validation.result)return validation;
+ const {plugin}=validation;
  const context=Object.freeze({});admitted.set(context,{credential,toolName:plugin.name,namespace});
  // A plugin business result must not be confused with a route or host failure.
  try{const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),'127.0.0.1',{nativeConversationContext:context});return {status:200,result:result.result??result};}
@@ -25,7 +31,7 @@ function registerNativeConversationRoute(app,pluginManager){
   return res.status(status).json(result);
  });
 }
-module.exports={registerNativeConversationRoute,executeNativeRequest};
+module.exports={registerNativeConversationRoute,executeNativeRequest,validateNativeRequest};
 
 // Per-invocation loopback broker: application/assistant credentials stay in the host.
 // VCP_EXECUTION_CONTEXT is the existing allowed stdio context carrier. Its random

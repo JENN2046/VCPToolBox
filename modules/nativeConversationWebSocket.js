@@ -1,6 +1,6 @@
 'use strict';
 const {createHash}=require('node:crypto');
-const {executeNativeRequest}=require('./nativeConversationTransport');
+const {executeNativeRequest,validateNativeRequest}=require('./nativeConversationTransport');
 const connections=new WeakMap(),activeSessions=new Map();
 function releaseClosedSession(ws,state){
  if(!state.closed||state.inflight.size)return;
@@ -25,17 +25,20 @@ async function handleNativeConversationMessage(ws,message,pluginManager){
  if(state.inflight.has(message.requestId)||state.inflight.size>=16||(['prepare','propose'].includes(message.body?.action)&&(state.sources.size>=4096||state.plans.size>=4096))){send({ok:false,code:'NATIVE_REQUEST_BUSY'});return true;}
  const body=message.body;
  if(!body||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)){send({ok:false,code:'INVALID_NATIVE_REQUEST'});return true;}
- if(body.action==='execute'&&!state.sources.has(body.payload.sourceId)||body.action==='presented'&&!state.plans.has(body.payload.planId)){send({ok:false,code:'NATIVE_CONNECTION_CHANGED'});return true;}
- if(body.action==='execute')state.sources.delete(body.payload.sourceId);
- if(body.action==='presented')state.plans.delete(body.payload.planId);
  const original=body.payload.conversationId;
  const payload={...body.payload};
  if(original!==undefined){if(typeof original!=='string'||!original||original.length>240){send({ok:false,code:'CONVERSATION_REQUIRED'});return true;}
   payload.conversationId=createHash('sha256').update(JSON.stringify([ws.serverId,original])).digest('hex');}
- state.inflight.add(message.requestId);
+ const finalBody={...body,payload};
  try{
+  const validation=validateNativeRequest(pluginManager,message.toolName,message.authorization,finalBody);
+  if(validation.result){send(validation.result);return true;}
+  if(body.action==='execute'&&!state.sources.has(payload.sourceId)||body.action==='presented'&&!state.plans.has(payload.planId)){send({ok:false,code:'NATIVE_CONNECTION_CHANGED'});return true;}
+  if(body.action==='execute')state.sources.delete(payload.sourceId);
+  if(body.action==='presented')state.plans.delete(payload.planId);
+  state.inflight.add(message.requestId);
   const namespace=createHash('sha256').update(message.sessionId).digest('hex');
-  const result=await executeNativeRequest(pluginManager,message.toolName,message.authorization,{...body,payload},namespace);
+  const result=await executeNativeRequest(pluginManager,message.toolName,message.authorization,finalBody,namespace);
   if(result.sourceId)state.sources.add(result.sourceId);
   if(result.plan){state.plans.add(result.plan.id);result.plan={...result.plan,conversationId:original};}
   send(result);
