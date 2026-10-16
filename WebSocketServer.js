@@ -399,7 +399,7 @@ function initialize(httpServer, config) {
                 const parsedMessage = JSON.parse(message);
                 failureCode = 'WS_NATIVE_HANDLER_FAILED';
                 // Sensitive native frames never enter generic logging or tool dispatch.
-                if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager)) return;
+                if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager, Buffer.byteLength(message))) return;
                 failureCode = 'WS_MESSAGE_HANDLER_FAILED';
                 
                 // ChromeObserver 的消息日志降级到 debugMode
@@ -587,30 +587,32 @@ function initialize(httpServer, config) {
         });
     });
 
-    if (serverConfig.heartbeatEnabled) {
-        heartbeatInterval = setInterval(() => {
-            if (!wssInstance || isDraining) return;
+    // Native sessions always use this single timer; ordinary clients retain the opt-in policy.
+    heartbeatInterval = setInterval(() => {
+        if (!wssInstance || isDraining) return;
 
-            let pingedClientCount = 0;
-            wssInstance.clients.forEach(client => {
-                if (client.readyState !== WebSocket.OPEN) return;
+        let pingedClientCount = 0;
+        wssInstance.clients.forEach(client => {
+            if (client.readyState !== WebSocket.OPEN) return;
 
-                try {
-                    client.ping();
-                    pingedClientCount++;
-                } catch (error) {
-                    console.warn(`[WebSocketServer] Heartbeat ping failed for client ${client.clientId || 'unknown'}: ${error.message}`);
-                }
-            });
+            if (require('./modules/nativeConversationWebSocket').heartbeatNativeConversation(client)) return;
+            if (!serverConfig.heartbeatEnabled) return;
 
-            if (serverConfig.debugMode && pingedClientCount > 0) {
-                console.log(`[WebSocketServer] Sent heartbeat ping to ${pingedClientCount} connected client(s).`);
+            try {
+                client.ping();
+                pingedClientCount++;
+            } catch (error) {
+                console.warn(`[WebSocketServer] Heartbeat ping failed for client ${client.clientId || 'unknown'}: ${error.message}`);
             }
-        }, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
-        heartbeatInterval.unref();
+        });
 
-        console.log(`[WebSocketServer] Protocol heartbeat enabled (interval: ${WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s).`);
-    }
+        if (serverConfig.debugMode && pingedClientCount > 0) {
+            console.log(`[WebSocketServer] Sent heartbeat ping to ${pingedClientCount} connected client(s).`);
+        }
+    }, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
+    heartbeatInterval.unref();
+
+    if (serverConfig.heartbeatEnabled) console.log(`[WebSocketServer] Protocol heartbeat enabled (interval: ${WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s).`);
 
     if (serverConfig.debugMode) {
         console.log(`[WebSocketServer] Initialized. Waiting for HTTP server upgrades.`);

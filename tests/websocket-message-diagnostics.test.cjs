@@ -10,7 +10,7 @@ function fixture({nativeFailure=false,approvalFailure=false}={}){
  const start=source.indexOf("        ws.on('message', async (message) => {");
  const end=source.indexOf("        ws.on('close',",start);
  assert.ok(start>=0&&end>start);
- vm.runInNewContext(source.slice(start,end),{ws,pluginManager,serverConfig:{debugMode:false},console:{error:(...args)=>logs.push(args),log:(...args)=>logs.push(args)},require(name){assert.equal(name,'./modules/nativeConversationWebSocket');return native;}});
+ vm.runInNewContext(source.slice(start,end),{ws,pluginManager,Buffer,serverConfig:{debugMode:false},console:{error:(...args)=>logs.push(args),log:(...args)=>logs.push(args)},require(name){assert.equal(name,'./modules/nativeConversationWebSocket');return native;}});
  return {sensitive,logs,sent,calls,receive};
 }
 for(const mode of ['parse','native','ordinary'])test(`outer WS diagnostics: ${mode} failure is classified and scrubbed`,async()=>{
