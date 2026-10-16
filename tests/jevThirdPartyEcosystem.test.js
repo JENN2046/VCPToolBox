@@ -1479,4 +1479,3 @@ test('Wave 8: 离线规划验证 FlashDeepSearch 子Agent深度研究研报主�
     assert.equal(researchCall.args.SearchContent, '探讨人工智能在气候变化建模中的应用及其伦理影响');
     assert.equal(researchCall.args.SearchBroadness, '12');
 });
-

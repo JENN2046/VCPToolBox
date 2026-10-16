@@ -1,0 +1,31 @@
+{
+  "upstream": "30193c89249345479e03be6d4913c35d583df84e",
+  "component": "Vexus Linux x64 GNU",
+  "source_files_sha256": {
+    "Cargo.toml": "d76e087375fd20fd188ecd49d149f2220805f0b25ecb9bfa69b57cfb09566e8b",
+    "Cargo.lock": "cca8c8a77ecec47564f357fe01e4098b7ca445453029a09a61eb3d30530a3554",
+    "build.rs": "aa7d2ac01ee024deb2df8891a498123bb7c15d9303fb767f6085a9aac92f0d4f",
+    "src/knowledge_runtime.rs": "5bd383928083ce6ad6bbefbfb7ade5b18c44d77e70ca7976e6f56dbb224f6fbf",
+    "src/lib.rs": "2fac3ad2c948507c281ca391b382966f35d48211c09ee064e4a838fffb360de2",
+    "src/memo_artifact_builder.rs": "941de0749fd625759e0c6a19d05a3cd36b4dcecaf951ff49f096d9eeb8397b7d",
+    "src/memo_pipeline.rs": "0df8b6876e5077ade3e42424ea4e64ab63009f85d0b64ac213dbd78d5684c43a",
+    "src/memo_sensing.rs": "87fbc456dbe71bfce4f6e4c26cbe1061bdb226ca305b5955addf8fbf96216e2b",
+    "src/memo_thinking.rs": "406042987420b2978c3d4ea0445a3e6a6e602fec31fa3c6abb83bd58b1a8a542",
+    "src/result_deduplicator.rs": "3ac1503defd87e1b2f02ecd705018ac83c38a914be51b93560f575ae0f67a97b",
+    "src/rivermemo_topology_v3.rs": "b3267c82c716d55b2a856427ab45f227e18f01066438f2162206f22aa6fc0181"
+  },
+  "source_inventory_sha256": "d0db6bf12d035765548fcea1810d7cf1e79bdb7c6413112130fa55e00f6fe13c",
+  "artifact_sha256": "006eea2d82b5dc534443e8f766514939d3291be3478abe0e3efc91a3821eb6a1",
+  "builds_matching_reviewed_source": 2,
+  "same_environment_build_hashes_equal": true,
+  "rust": "1.89.0",
+  "gcc": "12.3.0",
+  "glibc": "2.35",
+  "node": "22.23.1",
+  "napi_cli": "2.18.4",
+  "ubuntu_rootfs_image": "sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02",
+  "maximum_required_glibc": "2.35",
+  "functional_acceptance": "PASS: current exports, in-memory vector search/save/load, KnowledgeBaseManager load",
+  "cross_machine_byte_equality_claimed": false,
+  "windows_and_searcher_artifacts": "Pending separate source builds and artifact verification"
+}

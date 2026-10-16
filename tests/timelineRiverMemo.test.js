@@ -49,7 +49,7 @@ test('ContextBridge retrieveDiary uses native RiverMemo with an explicit diary s
             candidateK: 120,
             engine: 'rivermemo',
             fallback: 'knn',
-            
+
         });
 
         assert.equal(bridge.version, '1.3');
@@ -101,7 +101,7 @@ test('ContextBridge retrieveDiary falls back to KNN when RiverMemo and TagMemo a
             k: 5,
             engine: 'rivermemo',
             fallback: 'knn',
-            
+
         });
 
         assert(searchCall, 'KNN fallback must execute after native failure');
