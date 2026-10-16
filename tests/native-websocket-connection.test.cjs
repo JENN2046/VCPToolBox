@@ -6,15 +6,17 @@ const {createRequire}=require('node:module'),{createServer}=require('node:http')
 const sourcePath=path.join(__dirname,'../WebSocketServer.js'),realRequire=createRequire(sourcePath);
 const frame=(sessionId=randomUUID(),action='prepare',payload={conversationId:'chat'})=>({type:'native_conversation_request',requestId:randomUUID(),sessionId,toolName:'Example',authorization:'Bearer '+'synthetic-owner'.padEnd(40,'x'),body:{action,payload}});
 function gate(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
-async function fixture(t,{heartbeatEnabled=false}={}){
- const intervals=new Map(),callbacks=[],calls=[],sockets=[],logs=[],requests=new Map();let approvals=0;
- const manager={plugins:new Map([['Example',{name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'},communication:{protocol:'stdio'}}]]),unregisterAllDistributedTools(){},async handleApprovalResponse(){approvals++;},async executePlugin(_name,args){calls.push(JSON.parse(args));return {result:JSON.parse(args).nativeAction==='prepare'?{ok:true,sourceId:'source',plan:{id:'plan'}}:{ok:true}};}};
+async function fixture(t,{heartbeatEnabled=false,debugMode=false}={}){
+ const intervals=new Map(),callbacks=[],calls=[],sockets=[],logs=[],requests=new Map();let approvals=0;const registrations=[];let distributedCalls=0;
+ const manager={plugins:new Map([['Example',{name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'},communication:{protocol:'stdio'}}]]),unregisterAllDistributedTools(){},registerDistributedTools(...args){registrations.push(args);},async handleApprovalResponse(){approvals++;},async executePlugin(_name,args){calls.push(JSON.parse(args));return {result:JSON.parse(args).nativeAction==='prepare'?{ok:true,sourceId:'source',plan:{id:'plan'}}:{ok:true}};}};
  const module={exports:{}};
- const context={module,exports:module.exports,__dirname:path.dirname(sourcePath),Buffer,URL,console:{log(){},warn:(...a)=>logs.push(a),error:(...a)=>logs.push(a)},process:{env:{}},setTimeout,clearTimeout,
+ const context={module,exports:module.exports,__dirname:path.dirname(sourcePath),Buffer,URL,console:{log:(...a)=>logs.push(a),warn:(...a)=>logs.push(a),error:(...a)=>logs.push(a)},process:{env:{}},setTimeout,clearTimeout,
   setInterval(fn,ms){const timer={unref(){}};intervals.set(timer,{fn,ms});callbacks.push(fn);return timer;},clearInterval(timer){intervals.delete(timer);},
   require(name){if(name==='./modules/distributedMusicDiarySync')return {};if(name==='./modules/vcpLogReplayManager')return {};if(name==='./modules/nativeConversationWebSocket'){const native=realRequire(name);return {...native,handleNativeConversationMessage(...args){const work=native.handleNativeConversationMessage(...args);requests.set(args[1]?.requestId,work);return work;}};}return realRequire(name);}};
  vm.runInNewContext(fs.readFileSync(sourcePath,'utf8')+'\nmodule.exports.fixtureServer=()=>wssInstance;',context,{filename:sourcePath});
- const host=module.exports,http=createServer();host.setPluginManager(manager);host.initialize(http,{vcpKey:'synthetic-test-key',debugMode:false,heartbeatEnabled});
+ const host=module.exports,http=createServer();host.setPluginManager(manager);host.initialize(http,{vcpKey:'synthetic-test-key',debugMode,heartbeatEnabled});
+ const distributed=host.handleDistributedServerMessage;host.handleDistributedServerMessage=(...args)=>{distributedCalls++;return distributed(...args);};
+ if(debugMode){const originals={};for(const level of ['log','warn','error','info','debug']){originals[level]=console[level];console[level]=(...args)=>logs.push(args);}t.after(()=>{Object.assign(console,originals);});}
  await new Promise(resolve=>http.listen(0,'127.0.0.1',resolve));
  t.after(async()=>{for(const {client} of sockets)client.terminate();await host.shutdown();await new Promise(resolve=>http.close(resolve));assert.equal(intervals.size,0,'shutdown clears the shared interval');});
  async function connect({autoPong=true,ordinary=false}={}){
@@ -24,7 +26,7 @@ async function fixture(t,{heartbeatEnabled=false}={}){
  }
  async function send(entry,message){const response=once(entry.client,'message');entry.client.send(typeof message==='string'||Buffer.isBuffer(message)?message:JSON.stringify(message));return JSON.parse((await response)[0].toString()).result;}
  function tick(){assert.equal(intervals.size,1,'one existing host timer must also serve native-only heartbeat');const [{fn,ms}]=intervals.values();assert.equal(ms,60000);fn();}
- return {host,manager,calls,sockets,logs,connect,send,tick,intervals,callbacks,requests,approvals:()=>approvals};
+ return {host,manager,calls,sockets,logs,connect,send,tick,intervals,callbacks,requests,registrations,distributedCalls:()=>distributedCalls,approvals:()=>approvals};
 }
 async function pingCycle(f,entry){const pong=once(entry.ws,'pong');f.tick();await pong;}
 async function staleClose(f,entry){const ping=once(entry.client,'ping');f.tick();await ping;const closed=once(entry.ws,'close');f.tick();await closed;}
@@ -136,4 +138,72 @@ test('connection liveness: native detection also applies with legacy heartbeat e
  const received=once(a.client,'ping');f.tick();await received;assert.equal(pings,1);
  const closed=once(a.ws,'close');f.tick();assert.notEqual(a.ws.readyState,WebSocket.OPEN,'missing pong must terminate, not merely ping again');await closed;
  assert.equal(pings,1,'native connections must not also receive the optional generic ping');
+});
+
+
+const privateToken='SYNTHETIC_UNKNOWN_NATIVE_CREDENTIAL',privatePayload='SYNTHETIC_UNKNOWN_NATIVE_PAYLOAD',privateType='SYNTHETIC_UNKNOWN_NATIVE_TYPE';
+function assertPrivateLogs(f){
+ const output=JSON.stringify(f.logs);
+ for(const value of [privateToken,privatePayload,privateType])assert.ok(!output.includes(value),'complete log output must omit '+value);
+ assert.ok(output.includes('WS_SENSITIVE_MESSAGE'),'fixed sensitivity diagnostic must be present');
+ for(const args of f.logs){
+  if(args.length===2){assert.equal(args[0],'[WebSocketServer]');assert.equal(JSON.stringify(args[1]),JSON.stringify({code:'WS_SENSITIVE_MESSAGE'}));}
+  else{assert.equal(args.length,1);assert.match(args[0],/^\[WebSocketServer\] [0-9T:.Z-]+ - WS_(?:SENSITIVE_MESSAGE|UNKNOWN_MESSAGE_TYPE)$/);}
+ }
+}
+const sensitiveCases=[
+ ['mistyped native',{type:'native_conversation_requset',authorization:'Bearer '+privateToken}],
+ ['future native',{type:'native_conversation_request_v2',authorization:'Bearer '+privateToken}],
+ ['unknown authorization',{type:privateType,authorization:'Bearer '+privateToken}],
+ ['missing type',{authorization:'Bearer '+privateToken}],
+ ['null type',{type:null,authorization:'Bearer '+privateToken}],
+ ['numeric type',{type:17,authorization:'Bearer '+privateToken}],
+ ['object type',{type:{private:privateType},authorization:'Bearer '+privateToken}],
+ ['array type',{type:[privateType],authorization:'Bearer '+privateToken}],
+ ['null authorization',{type:privateType,authorization:null}],
+ ['native-like without authorization',{type:'native_conversaton_request'}],
+ ['upper-case native without authorization',{type:'NATIVE_CONVERSATION_REQUEST'}]
+];
+for(const [label,partial] of sensitiveCases)test('sensitive envelope: '+label+' reaches real distributed handler without raw logging or dispatch',async t=>{
+ const f=await fixture(t,{debugMode:true}),a=await f.connect();f.logs.length=0;
+ const message={...partial,payload:{private:privatePayload},body:{action:'prepare',payload:{text:privatePayload}}};
+ await a.ws.listeners('message')[0](Buffer.from(JSON.stringify(message)));
+ t.diagnostic(JSON.stringify({case:label,downstreamCalls:f.distributedCalls(),pluginDispatches:f.calls.length,logEvents:f.logs.length,sensitiveMarkerPresent:[privateToken,privatePayload,privateType].some(value=>JSON.stringify(f.logs).includes(value))}));
+ assert.equal(f.distributedCalls(),1,'actual downstream handler must run');assert.equal(f.calls.length,0);assertPrivateLogs(f);
+ assert.ok(JSON.stringify(f.logs).includes('WS_UNKNOWN_MESSAGE_TYPE'));
+});
+
+test('sensitive envelope: direct distributed entry independently suppresses preview and dynamic type',async t=>{
+ const f=await fixture(t,{debugMode:true}),a=await f.connect();f.logs.length=0;
+ await f.host.handleDistributedServerMessage(a.ws.serverId,{type:privateType,authorization:'Bearer '+privateToken,payload:privatePayload});
+ assert.equal(f.distributedCalls(),1);assert.equal(f.calls.length,0);assertPrivateLogs(f);
+});
+
+for(const authorization of [false,true])test(`sensitive envelope: ordinary approval and register routing unchanged (authorization=${authorization})`,async t=>{
+ const f=await fixture(t,{debugMode:true}),distributed=await f.connect(),admin=await f.connect({ordinary:true});f.logs.length=0;
+ const auth=authorization?{authorization:'Bearer '+privateToken}:{};
+ await distributed.ws.listeners('message')[0](Buffer.from(JSON.stringify({type:'register_tools',...auth,data:{serverName:privatePayload,tools:[{name:'synthetic-tool'}]}})));
+ await admin.ws.listeners('message')[0](Buffer.from(JSON.stringify({type:'tool_approval_response',...auth,data:{requestId:'synthetic',approved:false,reason:privatePayload}})));
+ assert.equal(f.distributedCalls(),1);assert.equal(f.registrations.length,1);assert.equal(f.registrations[0][0],distributed.ws.serverId);
+ assert.equal(f.registrations[0][1][0].name,'synthetic-tool');assert.equal(f.approvals(),1);assert.equal(f.calls.length,0);
+ if(authorization)assertPrivateLogs(f);else assert.ok(JSON.stringify(f.logs).includes('Received message from'));
+});
+
+test('sensitive envelope: exact native type still uses only native dispatch over real WS',async t=>{
+ const f=await fixture(t,{debugMode:true}),a=await f.connect();f.logs.length=0;
+ const message=frame();message.authorization='Bearer '+privateToken;message.body.payload.text=privatePayload;
+ assert.equal((await f.send(a,message)).ok,true);assert.equal(f.calls.length,1);assert.equal(f.distributedCalls(),0);
+ for(const value of [privateToken,privatePayload])assert.ok(!JSON.stringify(f.logs).includes(value));
+});
+
+for(const mode of ['parse','native','ordinary'])test('sensitive envelope: '+mode+' exception keeps fixed diagnostics under debugMode',async t=>{
+ const f=await fixture(t,{debugMode:true}),a=await f.connect({ordinary:mode==='ordinary'});f.logs.length=0;
+ let raw;
+ if(mode==='parse')raw=Buffer.from('{'+privateToken+privatePayload);
+ else if(mode==='native'){f.manager.plugins.get=()=>{throw Error(privateToken+privatePayload);};const m=frame();m.authorization='Bearer '+privateToken;raw=Buffer.from(JSON.stringify(m));}
+ else{f.manager.handleApprovalResponse=async()=>{throw Error(privateToken+privatePayload);};raw=Buffer.from(JSON.stringify({type:'tool_approval_response',authorization:'Bearer '+privateToken,data:{reason:privatePayload}}));}
+ await a.ws.listeners('message')[0](raw);
+ for(const value of [privateToken,privatePayload])assert.ok(!JSON.stringify(f.logs).includes(value));
+ const code={parse:'WS_JSON_PARSE_FAILED',native:'NATIVE_WEBSOCKET_FAILED',ordinary:'WS_MESSAGE_HANDLER_FAILED'}[mode];assert.ok(JSON.stringify(f.logs).includes(code));
+ assert.equal(f.calls.length,0);
 });

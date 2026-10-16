@@ -109,6 +109,14 @@ function normalizeDeviceName(value) {
     return normalized || null;
 }
 
+// Log sensitivity is broader than the exact native execution type.
+function isSensitiveNativeMessage(message) {
+    return message !== null && typeof message === 'object' && (
+        Object.prototype.hasOwnProperty.call(message, 'authorization') ||
+        (typeof message.type === 'string' && /^native/i.test(message.type))
+    );
+}
+
 async function writeLog(message) {
     // 实际项目中，这里可以对接更完善的日志系统
     // 为了简化，暂时只在 debugMode 开启时打印到控制台
@@ -398,17 +406,19 @@ function initialize(httpServer, config) {
             try {
                 const parsedMessage = JSON.parse(message);
                 failureCode = 'WS_NATIVE_HANDLER_FAILED';
-                // Sensitive native frames never enter generic logging or tool dispatch.
+                // Exact native execution routing is separate from broader log sensitivity.
                 if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager, Buffer.byteLength(message))) return;
                 failureCode = 'WS_MESSAGE_HANDLER_FAILED';
+                const sensitive = isSensitiveNativeMessage(parsedMessage);
                 
                 // ChromeObserver 的消息日志降级到 debugMode
-                if (ws.clientType === 'ChromeObserver' && serverConfig.debugMode) {
+                if (ws.clientType === 'ChromeObserver' && serverConfig.debugMode && !sensitive) {
                     console.log(`[WebSocketServer] 📨 收到 ChromeObserver 消息，类型: ${parsedMessage.type}`);
                 }
                 
                 if (serverConfig.debugMode) {
-                    console.log(`[WebSocketServer] Received message from ${ws.clientId} (${ws.clientType}): ${messageString.substring(0, 300)}...`);
+                    if (sensitive) console.log('[WebSocketServer]', { code: 'WS_SENSITIVE_MESSAGE' });
+                    else console.log(`[WebSocketServer] Received message from ${ws.clientId} (${ws.clientType}): ${messageString.substring(0, 300)}...`);
                 }
                 if (ws.clientType === 'DistributedServer') {
                     module.exports.handleDistributedServerMessage(ws.serverId, parsedMessage);
@@ -524,7 +534,7 @@ function initialize(httpServer, config) {
                     const { requestId, approved, reason } = parsedMessage.data || {};
                     if (pluginManager) {
                         const success = await pluginManager.handleApprovalResponse(requestId, approved, reason);
-                        if (serverConfig.debugMode) {
+                        if (serverConfig.debugMode && !sensitive) {
                             const reasonPreview = typeof reason === 'string' && reason.trim()
                                 ? ` Reason: ${reason.trim().substring(0, 200)}`
                                 : '';
@@ -774,7 +784,8 @@ async function handleDistributedServerMessage(serverId, message) {
         console.error('[WebSocketServer] PluginManager not set, cannot handle distributed server message.');
         return;
     }
-    writeLog(`Received message from Distributed Server ${serverId}: ${JSON.stringify(message).substring(0, 200)}...`);
+    const sensitive = isSensitiveNativeMessage(message);
+    writeLog(sensitive ? 'WS_SENSITIVE_MESSAGE' : `Received message from Distributed Server ${serverId}: ${JSON.stringify(message).substring(0, 200)}...`);
     switch (message.type) {
         case 'register_tools':
             const serverEntry = distributedServers.get(serverId);
@@ -791,7 +802,7 @@ async function handleDistributedServerMessage(serverId, message) {
                     : {};
                 serverEntry.lastSeenAt = formatDateTimeForConfiguredTimezone();
                 distributedServers.set(serverId, serverEntry);
-                writeLog(`Registered ${externalTools.length} external tools from server ${serverId}${serverEntry.serverName ? ` (${serverEntry.serverName})` : ''}.`);
+                if (!sensitive) writeLog(`Registered ${externalTools.length} external tools from server ${serverId}${serverEntry.serverName ? ` (${serverEntry.serverName})` : ''}.`);
             }
             break;
        case 'report_ip':
@@ -920,7 +931,7 @@ async function handleDistributedServerMessage(serverId, message) {
             await handleDistributedPluginCallback(serverId, message);
             break;
         default:
-            writeLog(`Unknown message type '${message.type}' from server ${serverId}.`);
+            writeLog('WS_UNKNOWN_MESSAGE_TYPE');
     }
 }
 
