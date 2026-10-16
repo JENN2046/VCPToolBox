@@ -20,6 +20,10 @@ apt-get install -y --no-install-recommends \
 test "$(gcc-12 -dumpfullversion)" = 12.3.0
 test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.35'
 
+# gcc-12 does not install the unversioned cc driver in the minimal image.
+# Select the pinned compiler for setup/build-script probes as well as napi.
+export CC=gcc-12 CXX=g++-12 HOST_CC=gcc-12 HOST_CXX=g++-12
+
 export CARGO_HOME="$cache_root/cargo"
 export RUSTUP_HOME="$cache_root/rustup"
 export PATH="$CARGO_HOME/bin:$PATH"

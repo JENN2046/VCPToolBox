@@ -7,6 +7,7 @@ on:
       - 'modules/toolApprovalManager.js'
       - 'tests/toolApprovalPathSafety.test.cjs'
       - 'scripts/verify-code-searcher-native.cjs'
+      - '.github/scripts/verify-windows-pe.cjs'
       - '.github/workflows/codesearcher-windows.yml'
 
 permissions:
@@ -57,7 +58,7 @@ jobs:
           if (-not $ok.result.content[0].text.Contains('fn main')) {
             throw 'CodeSearcher positive smoke failed.'
           }
-          $blocked = '{"query":"fn main","search_path":"../"}' | & $rebuilt | ConvertFrom-Json
+          $blocked = '{"query":"fn main","search_path":"__missing_native_ci_fixture__/"}' | & $rebuilt | ConvertFrom-Json
           if ($blocked.status -ne 'error' -or -not $blocked.error.Contains('search_path')) {
-            throw 'CodeSearcher path traversal rejection smoke failed.'
+            throw 'CodeSearcher nonexistent path rejection smoke failed.'
           }

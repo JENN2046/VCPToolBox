@@ -9,7 +9,11 @@ const { spawnSync } = require('node:child_process');
 assert.ok(process.argv[2], 'Pass the rebuilt CodeSearcher executable explicitly');
 const binary = path.resolve(process.argv[2]);
 assert.ok(fs.statSync(binary).isFile());
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codesearcher-regression-'));
+const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'codesearcher-regression-'));
+const root = path.join(sandbox, 'project');
+const external = path.join(sandbox, 'external');
+fs.mkdirSync(root);
+fs.mkdirSync(external);
 const marker = 'synthetic_fixture_marker';
 let checks = 0;
 function invoke(searchPath, extra = {}) {
@@ -71,8 +75,15 @@ try {
     assert.ok(!mixed.includes('a.js'));
     const emptyFilter = listedFiles(invoke('filters', { include: ' , ' }));
     assert.ok(!emptyFilter.includes('a.rs'));
-    assert.equal(invoke('../').status, 'error');
+    // Upstream external search was explicitly accepted. Keep both scopes synthetic.
+    fs.writeFileSync(path.join(external, 'outside.js'), marker + '\n');
+    fs.writeFileSync(path.join(external, 'config.env'), marker + '\n');
+    assert.ok(listedFiles(invoke('../external')).includes('outside.js'));
+    assert.ok(listedFiles(invoke(external)).includes('outside.js'));
+    assert.ok(!listedFiles(invoke(external)).includes('config.env'));
+    assert.equal(invoke(path.join(external, 'config.env')).status, 'error');
+    assert.equal(invoke('../missing-synthetic').status, 'error');
     console.log(`CodeSearcher native regression: ${checks} isolated checks passed.`);
 } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(sandbox, { recursive: true, force: true });
 }

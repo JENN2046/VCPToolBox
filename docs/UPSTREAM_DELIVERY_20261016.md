@@ -13,6 +13,12 @@ The comparison contains 54 author commits; this is not a claim that fork history
 - Keep the author `allowChainedCommandWhitelist` feature. It defaults to false;
   explicit true permits a matching command prefix to exempt the complete shell chain.
   This behavior was explicitly accepted for this source update. No runtime configuration is changed.
+- Keep upstream CodeSearcher external-directory search, including absolute paths and
+  relative parent traversal. Jenn explicitly accepted this changed boundary after the
+  old confinement regression failed. This is not project-root confinement: it can read
+  external files under the process account's permissions, with the retained sensitive
+  configuration filter and approval policy. Native tests use only synthetic sibling
+  directories to verify the new behavior and sensitive-file rejection.
 - Preserve downstream Human authorization, Resident presentation, external-plugin admission,
   native broker transport, path-whitelist coverage, structural argument trimming,
   Jev proxy isolation, call-envelope limits and fail-closed registry rebuilding.
@@ -56,3 +62,6 @@ admin tests pass. Admin typecheck and production build are independently require
 
 Native verification and hosted CI results are recorded in the PR as they complete.
 Until all required native artifacts are rebuilt and checked, the PR remains draft.
+DailyNoteSearcher Windows x64 and Linux x64 GNU/arm64 musl builds also run CLI and
+loopback-only HTTP search, invalid-folder, instance-bound shutdown and graceful-exit
+checks against temporary synthetic data, not real diaries or active services.

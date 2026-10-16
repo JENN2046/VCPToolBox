@@ -4,9 +4,11 @@ on:
   pull_request:
     paths:
       - 'Plugin/CodeSearcher/**'
+      - 'Plugin/DailyNoteSearcher/**'
       - 'modules/toolApprovalManager.js'
       - 'tests/toolApprovalPathSafety.test.cjs'
       - 'scripts/verify-code-searcher-native.cjs'
+      - 'scripts/verify-daily-note-searcher-native.cjs'
       - 'tests/codeSearcherBridge.test.js'
       - '.github/workflows/codesearcher-linux-arm64.yml'
 
@@ -69,6 +71,30 @@ jobs:
           retention-days: 1
       - name: Verify Linux bridge selection
         run: node --test tests/codeSearcherBridge.test.js
+      - name: Build and verify locked DailyNoteSearcher source
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-musl'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ '${{ matrix.libc }}' = musl ]; then
+            host="$(rustc -vV | sed -n 's/^host: //p')"
+            export RUSTFLAGS="-C linker=$(rustc --print sysroot)/lib/rustlib/$host/bin/rust-lld"
+          fi
+          cargo test --locked --manifest-path Plugin/DailyNoteSearcher/src/Cargo.toml
+          CARGO_TARGET_DIR="$RUNNER_TEMP/daily-searcher" cargo build --locked --release --target '${{ matrix.target }}' --manifest-path Plugin/DailyNoteSearcher/src/Cargo.toml
+          binary="$RUNNER_TEMP/daily-searcher/${{ matrix.target }}/release/DailyNoteSearcher"
+          node scripts/verify-daily-note-searcher-native.cjs "$binary"
+          if [ '${{ matrix.libc }}' = musl ]; then
+            docker run --rm --network none --read-only --tmpfs /tmp -v "$PWD:/src:ro" -v "$RUNNER_TEMP/daily-searcher:/built:ro" -w /src node:20-alpine node scripts/verify-daily-note-searcher-native.cjs "/built/${{ matrix.target }}/release/DailyNoteSearcher"
+          fi
+      - name: Preserve rebuilt DailyNoteSearcher artifact
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-musl'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-searcher-${{ matrix.target }}-rebuilt
+          path: ${{ runner.temp }}/daily-searcher/${{ matrix.target }}/release/DailyNoteSearcher
+          if-no-files-found: error
+          retention-days: 1
       - name: Compare bundled executable with locked-source rebuild
         run: |
           cmp 'Plugin/CodeSearcher/CodeSearcher-${{ matrix.target }}' "$RUNNER_TEMP/codesearcher-first/${{ matrix.target }}/release/CodeSearcher"
