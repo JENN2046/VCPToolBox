@@ -63,6 +63,26 @@ test('preview and text modes retain their previous response shapes', () => fixtu
   assert.match(text, /prefix synthetic anchor suffix/);
 }));
 
+test('structured body ranges match emitted whitespace while text and preview retain trimming', () => fixture(async fx => {
+  for (const body of ['  synthetic anchor  \n', '\n\tsynthetic anchor\r\n', '\uFEFFsynthetic anchor\u00a0']) {
+    fs.writeFileSync(fx.source, body);
+    const result = await fx.search();
+    const doc = result.cold_body_state.documents[0];
+    assert.equal(doc.body_expanded, true);
+    assert.equal(doc.returned_text_length, body.length);
+    assert.equal(doc.body_length, body.length);
+    assert.deepEqual(doc.body_range, [0, body.length]);
+    assert.ok(result.content[0].text.includes(`\n${body}\n\n`), 'body metadata must describe the exact emitted slice');
+    const text = await fx.search({ coldResultMode: 'text' });
+    assert.ok(text.includes(`\n${body.trim()}\n\n`));
+    assert.equal(text.includes(`\n${body}\n\n`), false, 'plain text contract must retain trimming');
+  }
+  fx.hits[0].text = '  synthetic preview  \n';
+  const preview = await fx.search({ coldTextMode: 'preview' });
+  assert.equal(Object.hasOwn(preview, 'cold_body_state'), false);
+  assert.ok(preview.content[0].text.includes('\nsynthetic preview\n\n'));
+}));
+
 test('empty and deduplicated results keep body-state rows aligned with selected preview rows', () => fixture(async fx => {
   fx.hits.push({ ...fx.hits[0], id: 'duplicate' });
   const dedup = await fx.search({ k: 1 });

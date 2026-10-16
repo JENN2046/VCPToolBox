@@ -208,7 +208,7 @@ function formatScoreMetadata(result, vectorType) {
   return { value: scoreValue, display, metadata: display };
 }
 
-function formatColdKnowledgeResults(results, query, libraries, includeBodyStatus) {
+function formatColdKnowledgeResults(results, query, libraries, includeBodyStatus, preserveBodySlice = false) {
   if (!results || results.length === 0) {
     const scope = libraries.length > 0 ? libraries.join(', ') : '全部知识库';
     return `关于"${query}"，在冷知识库（${scope}）中没有找到相关内容。`;
@@ -233,7 +233,9 @@ function formatColdKnowledgeResults(results, query, libraries, includeBodyStatus
         : '';
       content += `    [内容: ${bodyState}${truncation}]\n`;
     }
-    content += `${String(result.text || '').trim()}\n\n`;
+    const body = String(result.text || '');
+    // Structured body-state ranges describe this exact slice, including whitespace.
+    content += `${preserveBodySlice ? body : body.trim()}\n\n`;
   }
   content += `\n[--- 知识库检索结束 ---]\n`;
   return content;
@@ -365,7 +367,10 @@ async function searchColdCompatibility(lightMemo, {
 
   return finish(
     docs,
-    formatColdKnowledgeResults(docs, query, libraries, coldTextMode !== 'preview')
+    formatColdKnowledgeResults(
+      docs, query, libraries, coldTextMode !== 'preview',
+      coldResultMode === 'structured' && coldTextMode === 'legacy_full_body'
+    )
   );
 }
 
