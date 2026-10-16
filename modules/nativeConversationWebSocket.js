@@ -2,6 +2,15 @@
 const {createHash}=require('node:crypto');
 const {executeNativeRequest,validateNativeRequest}=require('./nativeConversationTransport');
 const connections=new WeakMap(),activeSessions=new Map();
+const {isIP,BlockList}=require('node:net');
+const transports=new WeakMap(),loopbacks=new BlockList();
+loopbacks.addSubnet('127.0.0.0',8,'ipv4');loopbacks.addAddress('::1','ipv6');
+// Capture once from the upgrade socket, never from headers or message fields.
+function recordNativeTransport(ws,socket){
+ if(transports.has(ws))return;
+ const address=socket?.remoteAddress,family=typeof address==='string'?isIP(address):0;
+ transports.set(ws,Object.freeze({known:family!==0,tls:socket?.encrypted===true,loopback:family!==0&&loopbacks.check(address,family===6?'ipv6':'ipv4')}));
+}
 function releaseClosedSession(ws,state){
  if(!state.closed||state.inflight.size)return;
  if(activeSessions.get(state.key)===ws)activeSessions.delete(state.key);
@@ -24,6 +33,8 @@ async function handleNativeConversationMessage(ws,message,pluginManager,rawMessa
  const send=result=>{if(ws.readyState===1)ws.send(JSON.stringify({type:'native_conversation_response',requestId:message.requestId,result}));};
  if(ws.clientType!=='DistributedServer'||!ws.serverId||ws.readyState!==1)return true;
  if(typeof message.requestId!=='string'||!/^[a-f0-9-]{36}$/.test(message.requestId)||typeof message.sessionId!=='string'||!/^[a-f0-9-]{36}$/.test(message.sessionId)||typeof message.toolName!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(message.toolName)||!Number.isSafeInteger(rawMessageBytes)||rawMessageBytes<0||rawMessageBytes>40000){send({ok:false,code:'INVALID_NATIVE_REQUEST'});return true;}
+ const transport=transports.get(ws);
+ if(!transport?.known||!(transport.tls||transport.loopback)){console.warn('[NativeConversation]',{code:'NATIVE_SECURE_TRANSPORT_REQUIRED'});send({ok:false,code:'NATIVE_SECURE_TRANSPORT_REQUIRED'});return true;}
  let state=connections.get(ws),registered=false;
  try{
   const body=message.body;
@@ -59,4 +70,4 @@ async function handleNativeConversationMessage(ws,message,pluginManager,rawMessa
  }catch{console.warn('[NativeConversation]',{code:'NATIVE_WEBSOCKET_FAILED'});send({ok:false,code:'NATIVE_RESULT_UNKNOWN'});}finally{if(registered){state.inflight.delete(message.requestId);releaseClosedSession(ws,state);}}
  return true;
 }
-module.exports={handleNativeConversationMessage,heartbeatNativeConversation};
+module.exports={handleNativeConversationMessage,heartbeatNativeConversation,recordNativeTransport};

@@ -6,7 +6,7 @@ const {createRequire}=require('node:module'),{createServer}=require('node:http')
 const sourcePath=path.join(__dirname,'../WebSocketServer.js'),realRequire=createRequire(sourcePath);
 const frame=(sessionId=randomUUID(),action='prepare',payload={conversationId:'chat'})=>({type:'native_conversation_request',requestId:randomUUID(),sessionId,toolName:'Example',authorization:'Bearer '+'synthetic-owner'.padEnd(40,'x'),body:{action,payload}});
 function gate(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
-async function fixture(t,{heartbeatEnabled=false,debugMode=false,callbackIO=false,musicEnabled=false}={}){
+async function fixture(t,{heartbeatEnabled=false,debugMode=false,callbackIO=false,musicEnabled=false,listenHost='127.0.0.1',socketFacts}={}){
  const intervals=new Map(),callbacks=[],calls=[],sockets=[],logs=[],requests=new Map();let approvals=0;const registrations=[];let distributedCalls=0;const callbackWrites=[];
  const manager={plugins:new Map([['Example',{name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'},communication:{protocol:'stdio'}}]]),unregisterAllDistributedTools(){},registerDistributedTools(...args){registrations.push(args);},async handleApprovalResponse(){approvals++;},async executePlugin(_name,args){calls.push(JSON.parse(args));return {result:JSON.parse(args).nativeAction==='prepare'?{ok:true,sourceId:'source',plan:{id:'plan'}}:{ok:true}};}};
  const module={exports:{}};
@@ -17,10 +17,11 @@ async function fixture(t,{heartbeatEnabled=false,debugMode=false,callbackIO=fals
  const host=module.exports,http=createServer();host.setPluginManager(manager);host.initialize(http,{vcpKey:'synthetic-test-key',debugMode,heartbeatEnabled,distributedMusicPlaylistSyncEnabled:musicEnabled});
  const distributed=host.handleDistributedServerMessage;host.handleDistributedServerMessage=(...args)=>{distributedCalls++;return distributed(...args);};
  if(debugMode){const originals={};for(const level of ['log','warn','error','info','debug']){originals[level]=console[level];console[level]=(...args)=>logs.push(args);}t.after(()=>{Object.assign(console,originals);});}
- await new Promise(resolve=>http.listen(0,'127.0.0.1',resolve));
+ if(socketFacts)http.prependListener('upgrade',(_req,socket)=>{for(const [key,value] of Object.entries(socketFacts))Object.defineProperty(socket,key,{value});}); // Simulated transport facts, never a real TLS handshake.
+ await new Promise((resolve,reject)=>{http.once('error',reject);http.listen(0,listenHost,resolve);});
  t.after(async()=>{for(const {client} of sockets)client.terminate();await host.shutdown();await new Promise(resolve=>http.close(resolve));assert.equal(intervals.size,0,'shutdown clears the shared interval');});
- async function connect({autoPong=true,ordinary=false}={}){
-  const client=new WebSocket(`ws://127.0.0.1:${http.address().port}/${ordinary?'vcp-admin-panel':'vcp-distributed-server'}/VCP_Key=synthetic-test-key`,{autoPong});client.on('error',()=>{});
+ async function connect({autoPong=true,ordinary=false,headers}={}){
+  const client=new WebSocket(`ws://${listenHost.includes(':')?'['+listenHost+']':listenHost}:${http.address().port}/${ordinary?'vcp-admin-panel':'vcp-distributed-server'}/VCP_Key=synthetic-test-key`,{autoPong,headers});client.on('error',()=>{});
   const connected=once(host.fixtureServer(),'connection');await once(client,'open');const [ws]=await connected;
   const entry={client,ws};sockets.push(entry);return entry;
  }
@@ -338,4 +339,32 @@ test('consolidation: complete synthetic normal routing and fresh reconnect use a
  assert.equal((await f.send(b,frame(m.sessionId,'execute',{sourceId:cancel.sourceId}))).code,'NATIVE_CONNECTION_CHANGED');
  assert.deepEqual(f.calls.map(c=>c.nativeAction),['status','prepare','execute','propose','presented','invalidate','prepare','execute','recover','recover']);
  t.diagnostic(JSON.stringify({realWebSocket:true,pluginSubstitute:true,realJso:false,humanConfirmation:false,httpFallback:false,pluginDispatches:f.calls.length}));
+});
+
+
+const nonLoopbackAddress=Object.values(require('node:os').networkInterfaces()).flat().find(n=>n.family==='IPv4'&&!n.internal)?.address;
+test('transport admission: actual non-loopback plaintext upgrade refuses native despite forwarded headers',{skip:!nonLoopbackAddress},async t=>{
+ const f=await fixture(t,{listenHost:nonLoopbackAddress,debugMode:true}),a=await f.connect({headers:{'X-Forwarded-For':'127.0.0.1','X-Forwarded-Proto':'https',Host:'localhost'}}),m=frame();f.logs.length=0;
+ assert.notEqual(a.ws._socket.remoteAddress,'127.0.0.1');assert.notEqual(a.ws._socket.encrypted,true);assert.equal(a.ws.clientIp,'127.0.0.1','legacy display IP may be forwarded but is not security evidence');
+ const listeners=a.ws.listenerCount('close');Object.assign(m,{encrypted:true,remoteAddress:'127.0.0.1',transportFacts:{encrypted:true,loopback:true}});
+ const result=await f.send(a,m);t.diagnostic(JSON.stringify({actualNonLoopback:true,tls:false,resultCode:result.code||'OK',pluginDispatches:f.calls.length,pongListeners:a.ws.listenerCount('pong'),extraCloseListeners:a.ws.listenerCount('close')-listeners}));
+ assert.equal(result.code,'NATIVE_SECURE_TRANSPORT_REQUIRED');assert.equal(f.calls.length,0);assert.equal(a.ws.listenerCount('pong'),0);assert.equal(a.ws.listenerCount('close'),listeners);
+ await a.ws.listeners('message')[0](Buffer.from(JSON.stringify({type:'register_tools',data:{tools:[{name:'synthetic'}]}})));assert.equal(f.registrations.length,1,'ordinary remote Distributed WS remains usable');
+ for(const value of [m.authorization,JSON.stringify(m)])assert.ok(!require('node:util').inspect(f.logs,{depth:null}).includes(value));
+ t.diagnostic(JSON.stringify({realNonLoopbackTcp:true,realUpgrade:true,tls:false,nativeDispatches:f.calls.length,ordinaryRegistrations:f.registrations.length}));
+});
+for(const [label,socketFacts,allowed] of [
+ ['actual loopback',undefined,true],
+ ['simulated TLS remote',{remoteAddress:'192.0.2.10',encrypted:true},true],
+ ['simulated missing peer',{remoteAddress:undefined},false]
+])test('transport admission: upgrade wiring '+label,async t=>{
+ const f=await fixture(t,{socketFacts,debugMode:true}),a=await f.connect(),m=frame();f.logs.length=0;
+ const result=await f.send(a,m);assert.equal(f.calls.length,allowed?1:0);
+ if(allowed)assert.equal(result.ok,true);else assert.equal(result.code,'NATIVE_SECURE_TRANSPORT_REQUIRED');
+ t.diagnostic(JSON.stringify({actualUpgrade:true,actualLoopback:label==='actual loopback',simulatedTls:label==='simulated TLS remote',realTls:false,pluginSubstitute:true}));
+});
+
+test('transport admission: actual IPv6 loopback upgrade allows native',async t=>{
+ const f=await fixture(t,{listenHost:'::1'}),a=await f.connect();assert.equal(a.ws._socket.remoteAddress,'::1');
+ assert.equal((await f.send(a,frame())).ok,true);assert.equal(f.calls.length,1);
 });

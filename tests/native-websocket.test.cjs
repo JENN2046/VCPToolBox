@@ -1,10 +1,10 @@
 'use strict';
 // Synthetic input only; this is not a human confirmation acceptance.
 const test=require('node:test'),assert=require('node:assert/strict'),{EventEmitter}=require('node:events'),{randomUUID}=require('node:crypto');
-const {handleNativeConversationMessage}=require('../modules/nativeConversationWebSocket');
+const {handleNativeConversationMessage,recordNativeTransport}=require('../modules/nativeConversationWebSocket');
 // Direct object fixtures explicitly supply the serialized input length; production uses received bytes.
 const handle=(ws,message,manager)=>handleNativeConversationMessage(ws,message,manager,Buffer.byteLength(JSON.stringify(message)));
-function fixture(){const ws=new EventEmitter();Object.assign(ws,{clientType:'DistributedServer',serverId:randomUUID(),readyState:1,send:text=>ws.messages.push(JSON.parse(text)),messages:[]});const calls=[];const plugin={name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'},communication:{protocol:'stdio'}};return {ws,calls,manager:{plugins:new Map([['Example',plugin]]),executePlugin:async(_name,args)=>{calls.push(JSON.parse(args));return {result:{ok:true,sourceId:'synthetic-source',plan:{id:'synthetic-plan',conversationId:'internal'}}};}}};}
+function fixture(transport={remoteAddress:'127.0.0.1'}){const ws=new EventEmitter();Object.assign(ws,{clientType:'DistributedServer',serverId:randomUUID(),readyState:1,send:text=>ws.messages.push(JSON.parse(text)),messages:[]});if(transport!==null)recordNativeTransport?.(ws,transport);const calls=[];const plugin={name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'},communication:{protocol:'stdio'}};return {ws,calls,manager:{plugins:new Map([['Example',plugin]]),executePlugin:async(_name,args)=>{calls.push(JSON.parse(args));return {result:{ok:true,sourceId:'synthetic-source',plan:{id:'synthetic-plan',conversationId:'internal'}}};}}};}
 const frame=(more={})=>({type:'native_conversation_request',requestId:randomUUID(),sessionId:randomUUID(),toolName:'Example',authorization:'Bearer '+'x'.repeat(40),body:{action:'prepare',payload:{conversationId:'chat'}},...more});
 test('only special frames dispatch; source and plan are connection bound',async()=>{const {ws,calls,manager}=fixture();assert.equal(await handle(ws,{type:'execute_tool'},manager),false);await handle(ws,frame({body:{action:'execute',payload:{sourceId:'forged',conversationId:'chat'}}}),manager);assert.equal(calls.length,0);const f=frame();ws.emit('close');const next=fixture();await handle(next.ws,f,next.manager);assert.notEqual(next.calls[0].payload.conversationId,'chat');assert.equal(next.ws.messages[0].result.plan.conversationId,'chat');await handle(next.ws,{...f,requestId:randomUUID(),body:{action:'execute',payload:{sourceId:'synthetic-source',conversationId:'chat'}}},next.manager);assert.equal(next.calls.length,2);next.ws.emit('close');});
 test('missing owner credential cannot dispatch, changed session and foreign node refused',async()=>{const {ws,calls,manager}=fixture(),f=frame({authorization:''});await handle(ws,f,manager);assert.equal(calls.length,0);assert.equal(ws.messages[0].result.code,'APPLICATION_SESSION_REQUIRED');await handle(ws,frame(),manager);assert.equal(ws.messages[1].result.ok,true);assert.equal(calls.length,1);await handle(ws,frame(),manager);assert.equal(ws.messages[2].result.code,'NATIVE_SESSION_CHANGED');ws.emit('close');const other=fixture();other.ws.clientType='VCPLog';await handle(other.ws,frame(),other.manager);assert.equal(other.calls.length,0);});
@@ -308,3 +308,46 @@ for(const action of ['execute','presented']){
   assert.equal(a.ws.messages.at(-1).result.code,'NATIVE_CONNECTION_CHANGED');assert.equal(a.calls.length,1);
  });
 }
+
+
+const transportCases=[
+ ['IPv4 loopback',{remoteAddress:'127.0.0.1'},true],
+ ['IPv4 loopback subnet',{remoteAddress:'127.255.2.3'},true],
+ ['IPv6 loopback',{remoteAddress:'::1'},true],
+ ['expanded IPv6 loopback',{remoteAddress:'0:0:0:0:0:0:0:1'},true],
+ ['mapped IPv4 loopback',{remoteAddress:'::ffff:127.0.0.1'},true],
+ ['hex mapped IPv4 loopback',{remoteAddress:'::ffff:7f00:1'},true],
+ ['IPv4 remote',{remoteAddress:'192.0.2.10'},false],
+ ['IPv6 remote',{remoteAddress:'2001:db8::1'},false],
+ ['mapped IPv4 remote',{remoteAddress:'::ffff:192.0.2.10'},false],
+ ['nonmapped IPv4 compatible',{remoteAddress:'::7f00:1'},false],
+ ['hostname suffix',{remoteAddress:'127.0.0.1.evil'},false],
+ ['short IPv4',{remoteAddress:'127.1'},false],
+ ['invalid IPv4 prefix',{remoteAddress:'127.0.0.999'},false],
+ ['invalid IPv6 prefix',{remoteAddress:'::1evil'},false],
+ ['empty address',{remoteAddress:''},false],
+ ['missing address',{},false],
+ ['missing facts',null,false],
+ ['simulated TLS remote',{remoteAddress:'192.0.2.10',encrypted:true},true],
+ ['truthy nonboolean TLS',{remoteAddress:'192.0.2.10',encrypted:'true'},false],
+ ['TLS but unrecognized peer',{remoteAddress:'not-an-ip',encrypted:true},false]
+];
+for(const [label,socket,allowed] of transportCases)test('transport admission: '+label,async t=>{
+ const a=fixture(socket),f=frame();t.after(()=>disconnect(a.ws));captureWarnings(t);
+ await handle(a.ws,f,a.manager);
+ if(allowed){assert.equal(a.calls.length,1);assert.equal(a.ws.messages.at(-1).result.ok,true);}
+ else{assert.equal(a.calls.length,0);assert.deepEqual(a.ws.messages.at(-1).result,{ok:false,code:'NATIVE_SECURE_TRANSPORT_REQUIRED'});assert.equal(a.ws.listenerCount('pong'),0);assert.equal(a.ws.listenerCount('close'),0);}
+});
+
+test('transport admission: message/socket lookalikes cannot override recorded remote facts',async t=>{
+ const a=fixture({remoteAddress:'192.0.2.10'}),f=frame(),logs=captureWarnings(t);t.after(()=>disconnect(a.ws));
+ a.ws.clientIp='127.0.0.1';a.ws._socket={remoteAddress:'127.0.0.1',encrypted:true};a.ws.transportFacts={encrypted:true,loopback:true};
+ recordNativeTransport?.(a.ws,{remoteAddress:'127.0.0.1',encrypted:true}); // Registration is immutable for a socket.
+ for(const action of ['prepare','execute','presented'])await handle(a.ws,{...f,requestId:randomUUID(),encrypted:true,remoteAddress:'127.0.0.1',transport:{encrypted:true,loopback:true},body:{action,payload:{sourceId:'synthetic-source',planId:'synthetic-plan'}}},a.manager);
+ assert.equal(a.calls.length,0);assert.equal(a.ws.listenerCount('pong'),0);assert.equal(a.ws.listenerCount('close'),0);
+ for(const message of a.ws.messages)assert.equal(message.result.code,'NATIVE_SECURE_TRANSPORT_REQUIRED');
+ assert.deepEqual(logs,Array.from({length:3},()=>['[NativeConversation]',{code:'NATIVE_SECURE_TRANSPORT_REQUIRED'}]));
+ assert.doesNotMatch(JSON.stringify({logs,messages:a.ws.messages}),new RegExp(f.authorization));
+ // A subsequent legitimately admitted socket using the same session remains unoccupied.
+ const b=fixture();t.after(()=>disconnect(b.ws));await handle(b.ws,{...f,requestId:randomUUID()},b.manager);assert.equal(b.calls.length,1);
+});

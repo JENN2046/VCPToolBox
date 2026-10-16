@@ -299,6 +299,7 @@ function initialize(httpServer, config) {
 
         if (isAuthenticated) {
             wssInstance.handleUpgrade(request, socket, head, (ws) => {
+                require('./modules/nativeConversationWebSocket').recordNativeTransport(ws, socket);
                 const clientId = generateClientId();
                 ws.clientId = clientId;
                 ws.clientType = clientType;
