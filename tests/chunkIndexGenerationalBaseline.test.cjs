@@ -9,7 +9,7 @@ const { VexusIndex } = require('../rust-vexus-lite');
 const IndexRepository = require('../modules/knowledgeBase/indexRepository');
 const { initializeKnowledgeBaseSchema } = require('../modules/knowledgeBase/schemaManager');
 
-function fixture(t) {
+function fixture(t, overrides = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'chunk-baseline-synthetic-'));
   const db = new Database(path.join(directory, 'synthetic.sqlite'));
   db.pragma('foreign_keys = ON');
@@ -19,12 +19,13 @@ function fixture(t) {
   const repository = new IndexRepository({
     config: { storePath: directory, dimension: 4, modelSig: 'synthetic-model', persistDefault: true,
       persistFolders: new Set(), chunkIndexPersistenceMode: 'generational', chunkIndexBaselineDeltaRatio: 0.05 },
-    VexusIndex, getDb: () => db, getDbPath: () => db.name, waitForCoordinatorIdle: async () => {}
+    VexusIndex, getDb: () => db, getDbPath: () => db.name, waitForCoordinatorIdle: async () => {}, ...overrides
   });
   const vector = id => new Float32Array(id === 1 ? [1, 0, 0, 0] : id === 2 ? [0, 1, 0, 0] : [0, 0, 1, 0]);
   const insert = id => db.prepare('INSERT INTO chunks (id,file_id,chunk_index,content,vector) VALUES (?,1,?,?,?)')
     .run(id, id, 'synthetic-' + id, Buffer.from(vector(id).buffer));
-  t.after(() => { db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  t.after(() => { for (const timer of repository.saveTimers.values()) clearTimeout(timer);
+    db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   return { db, repository, insert, vector };
 }
 
@@ -139,4 +140,42 @@ test('a failed recovery with no chunks also fails closed instead of publishing z
   repository.VexusIndex = VexusIndex;
   await repository.getOrLoad('SyntheticDiary');
   assert.equal(repository._readActiveDiaryBaseline('SyntheticDiary').chunkCount, 0);
+});
+
+test('scheduled and forced checkpoints cannot publish between SQLite commit and native delta', async t => {
+  let busy = false;
+  let release;
+  let entered;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const idle = new Promise(resolve => { release = resolve; });
+  const { db, repository, insert, vector } = fixture(t, {
+    isMutationActive: () => busy,
+    waitForCoordinatorIdle: async () => { entered(); if (busy) await idle; }
+  });
+  insert(1);
+  const index = new VexusIndex(4, 16);
+  index.add(1, vector(1));
+  repository.diaryIndices.set('SyntheticDiary', index);
+  repository.publishDiaryBaseline('SyntheticDiary', { force: true });
+  const before = repository._readActiveDiaryBaseline('SyntheticDiary');
+  repository.config.indexSaveDelay = 1;
+  repository.scheduleSave('SyntheticDiary');
+  repository.saveTimers.get('SyntheticDiary').ref();
+  busy = true;
+  db.prepare('UPDATE chunks SET vector=? WHERE id=1').run(Buffer.from(vector(3).buffer));
+  await waiting;
+  assert.deepEqual(repository._readActiveDiaryBaseline('SyntheticDiary'), before);
+  assert.equal(repository.publishDiaryBaseline('SyntheticDiary', { force: true }), false);
+  repository.config.indexIdleTTL = 0;
+  repository.lastUsed.set('SyntheticDiary', 0);
+  repository.evictIdle();
+  assert.equal(repository.diaryIndices.get('SyntheticDiary'), index);
+  await index.applyChunkDelta([1], [1], vector(3));
+  busy = false;
+  release();
+  await repository.flushAndStop();
+  assert.equal(repository._readActiveDiaryBaseline('SyntheticDiary').generation, before.generation + 1);
+  const restored = await repository.loadDiaryBaseline('SyntheticDiary');
+  assert.equal(restored.delta.delta, 0);
+  assert.ok(restored.index.search(vector(3), 1)[0].score > 0.99);
 });

@@ -17,6 +17,8 @@ on:
       - scripts/run-vexus-linux-native-abi-container.sh
   pull_request:
     paths:
+      - docs/native-delivery-30193c89.json
+      - scripts/check-native-delivery.cjs
       - .github/workflows/vexus-linux-native-abi.yml
       - docs/VEXUS_NATIVE_ABI_BUILD.md
       - KnowledgeBaseManager.js
@@ -70,4 +72,6 @@ jobs:
       - name: Enforce GLIBC ceiling and current runtime contract
         env:
           MAX_ALLOWED_GLIBC: '2.35'
-        run: node scripts/check-vexus-linux-native-abi.js
+        run: |
+          node scripts/check-native-delivery.cjs x86_64-unknown-linux-gnu vexus
+          node scripts/check-vexus-linux-native-abi.js

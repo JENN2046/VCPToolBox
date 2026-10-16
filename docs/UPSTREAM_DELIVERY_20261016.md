@@ -65,3 +65,27 @@ Until all required native artifacts are rebuilt and checked, the PR remains draf
 DailyNoteSearcher Windows x64 and Linux x64 GNU/arm64 musl builds also run CLI and
 loopback-only HTTP search, invalid-folder, instance-bound shutdown and graceful-exit
 checks against temporary synthetic data, not real diaries or active services.
+
+## Review repairs and native delivery identity
+
+Chunk baselines record SHA-256 vector revisions, including same-ID replacements.
+The new nullable `chunk_index_baseline_entries.vector_revision` column is an
+idempotent additive cache-schema migration: unknown legacy revisions force replay;
+authoritative chunks are not rewritten. Startup/checkpoint revision comparisons
+scan/hash the current vectors; production-size performance has not been benchmarked.
+Initial recovery errors/count mismatches cannot publish a ready baseline. Checkpoint
+timers wait for coordinator idle; publication and eviction are also guarded while
+ingestion, deletion, external mutation, native recovery or a Rust lease is active.
+
+Registry and persisted admin policy share a bounded exact plugin-name grammar,
+including dots. This does not enable the third-party JEV experiment.
+
+`native-delivery-30193c89.json` records the delivered CI artifact/run identifiers,
+archive and payload hashes, and exact Rust/Cargo build inputs. The delivery checker
+verifies input inventory and content plus shipped payload hashes; only source CRLF
+differences are normalized. This is a reviewable provenance receipt, not a signature
+or proof of cross-machine reproducibility. The earlier independent Linux build in
+`native-build-30193c89.json` is supporting evidence, not the currently shipped hash.
+The delivered Linux Vexus comes from the hosted pinned-image rebuild instead.
+Unchanged legacy Vexus targets outside Windows x64/Linux x64 GNU were not rebuilt
+in this round and are not claimed verified against the newly accepted Rust source.

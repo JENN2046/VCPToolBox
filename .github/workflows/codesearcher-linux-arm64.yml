@@ -9,6 +9,8 @@ on:
       - 'tests/toolApprovalPathSafety.test.cjs'
       - 'scripts/verify-code-searcher-native.cjs'
       - 'scripts/verify-daily-note-searcher-native.cjs'
+      - 'scripts/check-native-delivery.cjs'
+      - 'docs/native-delivery-30193c89.json'
       - 'tests/codeSearcherBridge.test.js'
       - '.github/workflows/codesearcher-linux-arm64.yml'
 
@@ -84,6 +86,7 @@ jobs:
           CARGO_TARGET_DIR="$RUNNER_TEMP/daily-searcher" cargo build --locked --release --target '${{ matrix.target }}' --manifest-path Plugin/DailyNoteSearcher/src/Cargo.toml
           binary="$RUNNER_TEMP/daily-searcher/${{ matrix.target }}/release/DailyNoteSearcher"
           node scripts/verify-daily-note-searcher-native.cjs "$binary"
+          node scripts/check-native-delivery.cjs '${{ matrix.target }}' daily
           if [ '${{ matrix.libc }}' = musl ]; then
             docker run --rm --network none --read-only --tmpfs /tmp -v "$PWD:/src:ro" -v "$RUNNER_TEMP/daily-searcher:/built:ro" -w /src node:20-alpine node scripts/verify-daily-note-searcher-native.cjs "/built/${{ matrix.target }}/release/DailyNoteSearcher"
           fi
@@ -99,3 +102,4 @@ jobs:
         run: |
           cmp 'Plugin/CodeSearcher/CodeSearcher-${{ matrix.target }}' "$RUNNER_TEMP/codesearcher-first/${{ matrix.target }}/release/CodeSearcher"
           sha256sum 'Plugin/CodeSearcher/CodeSearcher-${{ matrix.target }}'
+          node scripts/check-native-delivery.cjs '${{ matrix.target }}' codesearcher

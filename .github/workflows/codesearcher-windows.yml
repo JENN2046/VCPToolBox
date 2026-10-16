@@ -8,6 +8,8 @@ on:
       - 'tests/toolApprovalPathSafety.test.cjs'
       - 'scripts/verify-code-searcher-native.cjs'
       - '.github/scripts/verify-windows-pe.cjs'
+      - 'scripts/check-native-delivery.cjs'
+      - 'docs/native-delivery-30193c89.json'
       - '.github/workflows/codesearcher-windows.yml'
 
 permissions:
@@ -54,6 +56,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'Bundled CodeSearcher code differs from the locked-source Windows rebuild.'
           }
+          node scripts/check-native-delivery.cjs x86_64-pc-windows-msvc codesearcher
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled CodeSearcher provenance check failed' }
           $ok = '{"query":"fn main","search_path":"Plugin/CodeSearcher/src/src/main.rs","max_results":1}' | & $rebuilt | ConvertFrom-Json
           if (-not $ok.result.content[0].text.Contains('fn main')) {
             throw 'CodeSearcher positive smoke failed.'

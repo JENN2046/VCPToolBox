@@ -21,6 +21,7 @@ class IndexRepository {
         this.getDbPath = options.getDbPath;
         this.getDb = options.getDb;
         this.waitForCoordinatorIdle = options.waitForCoordinatorIdle;
+        this.isMutationActive = options.isMutationActive || (() => false);
         this.ensureDiaryDateIndex = options.ensureDiaryDateIndex || (() => {});
         this.invalidateDiaryDateIndex = options.invalidateDiaryDateIndex || (() => {});
         this.onDiaryIndexPublished = options.onDiaryIndexPublished || (() => null);
@@ -301,6 +302,10 @@ class IndexRepository {
     publishDiaryBaseline(diaryName, options = {}) {
         const normalized = String(diaryName || '').trim();
         if (!normalized) return false;
+        if (this.isMutationActive()) {
+            this.scheduleSave(normalized);
+            return false;
+        }
         const index = this.diaryIndices.get(normalized);
         if (!index?.save) return false;
         const db = withChunkRevision(this.getDb?.());
@@ -517,6 +522,10 @@ class IndexRepository {
      * 先写非活动 usearch 槽，文件发布成功后才在单个 SQLite 事务中切换成员页。
      */
     publishGlobalTagBaseline(options = {}) {
+        if (this.isMutationActive()) {
+            this.scheduleSave('global_tags');
+            return false;
+        }
         if (!this.tagIndex?.save) return false;
         const db = this.getDb?.();
         if (!db) return false;
@@ -635,7 +644,9 @@ class IndexRepository {
                     }
                     this.diaryIndices.set(diaryName, index);
                     try {
-                        if (!this.publishDiaryBaseline(diaryName, { force: true })) {
+                        if (this.isMutationActive()) {
+                            this.scheduleSave(diaryName);
+                        } else if (!this.publishDiaryBaseline(diaryName, { force: true })) {
                             throw new Error('Initial chunk baseline publication failed');
                         }
                     } catch (error) {
@@ -1017,10 +1028,18 @@ class IndexRepository {
         const delay = name === 'global_tags'
             ? this.config.tagIndexSaveDelay
             : this.config.indexSaveDelay;
-        const timer = setTimeout(() => {
-            this.saveTimers.delete(name);
-            console.log(`[${this.logPrefix}] 💾 Save timer fired: ${name}`);
-            this.saveToDisk(name);
+        const timer = setTimeout(async () => {
+            try {
+                await this.waitForCoordinatorIdle?.();
+                // A reset, eviction or shutdown may have superseded this timer.
+                if (this.saveTimers.get(name) !== timer) return;
+                this.saveTimers.delete(name);
+                console.log(`[${this.logPrefix}] 💾 Save timer fired: ${name}`);
+                this.saveToDisk(name);
+            } catch (error) {
+                if (this.saveTimers.get(name) === timer) this.saveTimers.delete(name);
+                console.error(`[${this.logPrefix}] Save deferred by coordinator failure: ${name}`, error.message);
+            }
         }, delay);
         timer.unref?.();
         this.saveTimers.set(name, timer);
@@ -1089,6 +1108,7 @@ class IndexRepository {
     }
 
     evictIdle() {
+        if (this.isMutationActive()) return;
         const startedAt = Date.now();
         const now = Date.now();
         let evicted = 0;
@@ -1137,6 +1157,7 @@ class IndexRepository {
     async flushAndStop() {
         this.stopIdleSweep();
         await this.recoveryTail;
+        await this.waitForCoordinatorIdle?.();
         for (const [name, timer] of this.saveTimers) {
             clearTimeout(timer);
             this.saveToDisk(name);

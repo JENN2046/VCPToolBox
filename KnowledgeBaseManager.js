@@ -298,6 +298,8 @@ class KnowledgeBaseManager {
             getDbPath: () => this.dbPath,
             getDb: () => this.db,
             waitForCoordinatorIdle: options => this._waitForDatabaseCoordinatorIdle(options),
+            isMutationActive: () => Boolean(this.isProcessing || this.isProcessingDeletes
+                || this.externalMutationActive || this.rustWriteLease || this.indexRecoveryActive),
             ensureDiaryDateIndex: diaryName => this._ensureDiaryDateIndexCached(diaryName),
             invalidateDiaryDateIndex: diaryName => this.invalidateDiaryDateIndex(diaryName),
             onDiaryIndexPublished: (diaryName, index) =>

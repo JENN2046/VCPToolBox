@@ -7,6 +7,8 @@ on:
       - 'rust-vexus-lite/**'
       - 'Plugin/DailyNoteSearcher/**'
       - 'scripts/verify-daily-note-searcher-native.cjs'
+      - 'scripts/check-native-delivery.cjs'
+      - 'docs/native-delivery-30193c89.json'
       - '.github/workflows/upstream-windows-native.yml'
 
 permissions:
@@ -25,7 +27,11 @@ jobs:
           sparse-checkout: |
             /rust-vexus-lite/
             /Plugin/DailyNoteSearcher/src/
+            /Plugin/DailyNoteSearcher/DailyNoteSearcher.exe
+            /Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-pc-windows-msvc.exe
             /scripts/verify-daily-note-searcher-native.cjs
+            /scripts/check-native-delivery.cjs
+            /docs/native-delivery-30193c89.json
             !**/config.env
             !**/.env
             !**/.env.*
@@ -76,3 +82,12 @@ jobs:
           path: native-output/*
           if-no-files-found: error
           retention-days: 1
+      - name: Verify bundled artifacts and recorded source provenance
+        shell: pwsh
+        run: |
+          node scripts/check-native-delivery.cjs x86_64-pc-windows-msvc vexus daily
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled native provenance check failed' }
+          node scripts/verify-daily-note-searcher-native.cjs Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-pc-windows-msvc.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled DailyNoteSearcher regression failed' }
+          node -e "const a=require('./rust-vexus-lite/vexus-lite.win32-x64-msvc.node'); const x=new a.VexusIndex(4,16); x.add(1,new Float32Array([1,0,0,0])); if(x.search(new Float32Array([1,0,0,0]),1)[0]?.id!==1) throw Error('Bundled Vexus smoke failed');"
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Vexus smoke failed' }
