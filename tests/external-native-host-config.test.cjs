@@ -2,11 +2,12 @@
 const { test } = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
 const { pathToFileURL } = require('node:url');
-const manager = require('../Plugin');
 const { executeNativeRequest } = require('../modules/nativeConversationTransport');
 const jso = process.env.JSO_SOURCE, ext = process.env.JSO_EXTENSIONS_ROOT;
 test('registered external JSO: real PluginManager, native broker, stdio and SQLite owner session',
     { skip: !jso || !ext, timeout: 30000 }, async t => {
+    const manager = require('../Plugin');
+    t.after(() => manager.toolApprovalManager.shutdown());
     const importJso = p => import(pathToFileURL(path.join(jso, p)));
     const { maintenanceFixture } = await importJso('tests/support/empty-db-maintenance-fixture.mjs');
     const { createOperationsServer } = await importJso('src/server.mjs');
@@ -36,7 +37,6 @@ test('registered external JSO: real PluginManager, native broker, stdio and SQLi
         for (const key of ['PATH', 'VCP_EXTERNAL_PLUGIN_ALLOWLIST', 'VCP_EXTERNAL_PLUGIN_CONFIG_FILE']) {
             if (previous.env[key] === undefined) delete process.env[key]; else process.env[key] = previous.env[key];
         }
-        manager.toolApprovalManager.shutdown();
     });
     manager.plugins = new Map(); manager.setProjectBasePath(path.resolve(__dirname, '..'));
     process.env.PATH = path.dirname(process.execPath)+path.delimiter+process.env.PATH;
