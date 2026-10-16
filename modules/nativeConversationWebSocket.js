@@ -33,6 +33,7 @@ async function handleNativeConversationMessage(ws,message,pluginManager){
  try{
   const validation=validateNativeRequest(pluginManager,message.toolName,message.authorization,finalBody);
   if(validation.result){send(validation.result);return true;}
+  if(Buffer.byteLength(JSON.stringify(finalBody))>32768){send({ok:false,code:'INVALID_NATIVE_REQUEST'});return true;}
   if(body.action==='execute'&&!state.sources.has(payload.sourceId)||body.action==='presented'&&!state.plans.has(payload.planId)){send({ok:false,code:'NATIVE_CONNECTION_CHANGED'});return true;}
   if(body.action==='execute')state.sources.delete(payload.sourceId);
   if(body.action==='presented')state.plans.delete(payload.planId);

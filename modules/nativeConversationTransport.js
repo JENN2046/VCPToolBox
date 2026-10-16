@@ -8,7 +8,7 @@ function validateNativeRequest(pluginManager,toolName,credential,body){
  const plugin=pluginManager.plugins.get(toolName);
  if(!plugin||plugin.nativeConversation?.protocol!=='trusted-conversation-v1'||plugin.communication?.protocol!=='stdio')return {status:404,result:{ok:false,code:'NATIVE_TOOL_UNAVAILABLE'}};
  if(typeof credential!=='string'||!/^Bearer [\x21-\x7e]{32,4096}$/.test(credential))return {status:403,result:{ok:false,code:'APPLICATION_SESSION_REQUIRED'}};
- if(!body||Object.keys(body).sort().join(',')!=='action,payload'||!actions.has(body.action)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)||Buffer.byteLength(JSON.stringify(body))>32768)return {status:400,result:{ok:false,code:'INVALID_NATIVE_REQUEST'}};
+ if(!body||Object.keys(body).sort().join(',')!=='action,payload'||!actions.has(body.action)||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload)||JSON.stringify(body).length>32768)return {status:400,result:{ok:false,code:'INVALID_NATIVE_REQUEST'}};
  return {plugin};
 }
 async function dispatchNativeRequest(pluginManager,toolName,credential,body,namespace){

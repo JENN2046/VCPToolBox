@@ -272,3 +272,37 @@ for(const action of ['execute','presented']){
   assert.equal(a.calls.length,1);
  });
 }
+
+for(const action of ['execute','presented']){
+ for(const [label,unit] of [['Chinese','中'],['emoji','😀']])test(`length compatibility: WS ${action} final ${label} bytes and retained eligibility`,async t=>{
+  const a=await capabilityFixture(t,action),text=unit.repeat(1024);
+  const body=sizedCapabilityBody(action,{...a.payload,text},32769);
+  const final=()=>({...body,payload:{...body.payload,conversationId:'h'.repeat(64)}});
+  assert.equal(Buffer.byteLength(JSON.stringify(final())),32769);
+  assert.ok(JSON.stringify(final()).length<32768,'shared UTF-16 validation alone would accept this body');
+  const invalid={...a.f,requestId:randomUUID(),body};assert.ok(Buffer.byteLength(JSON.stringify(invalid))<40000);
+  await handle(a.ws,invalid,a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,'INVALID_NATIVE_REQUEST');assert.equal(a.calls.length,0);
+  body.payload.padding=body.payload.padding.slice(1);
+  assert.equal(Buffer.byteLength(JSON.stringify(final())),32768);
+  await handle(a.ws,{...a.f,requestId:randomUUID(),body},a.manager);
+  assert.equal(a.calls.length,1,'corrected byte length must retain the same capability');
+  assert.equal(a.calls[0].payload.text,text,'multibyte text survives conversion');
+  assert.match(a.calls[0].payload.conversationId,/^[a-f0-9]{64}$/);
+  assert.equal(Buffer.byteLength(JSON.stringify({action,payload:a.calls[0].payload})),32768);
+  await handle(a.ws,request(a.f,action,a.payload),a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,'NATIVE_CONNECTION_CHANGED');assert.equal(a.calls.length,1);
+ });
+ test(`length compatibility: WS ${action} keeps the outer 40000-byte frame limit`,async t=>{
+  const a=await capabilityFixture(t,action),message=request(a.f,action,a.payload);
+  message.framePadding='';message.framePadding='x'.repeat(40001-Buffer.byteLength(JSON.stringify(message)));
+  assert.equal(Buffer.byteLength(JSON.stringify(message)),40001);
+  await handle(a.ws,message,a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,'INVALID_NATIVE_REQUEST');assert.equal(a.calls.length,0);
+  message.framePadding=message.framePadding.slice(1);message.requestId=randomUUID();
+  assert.equal(Buffer.byteLength(JSON.stringify(message)),40000);
+  await handle(a.ws,message,a.manager);assert.equal(a.calls.length,1);
+  await handle(a.ws,request(a.f,action,a.payload),a.manager);
+  assert.equal(a.ws.messages.at(-1).result.code,'NATIVE_CONNECTION_CHANGED');assert.equal(a.calls.length,1);
+ });
+}

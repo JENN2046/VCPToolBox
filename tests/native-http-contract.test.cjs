@@ -39,3 +39,21 @@ for(const code of codes)test('actual Chat #59 HTTP transport receives original p
  const transport=createNativeTransport({binding:{toolboxUrl:f.url,toolName:'Example',transportTokenEnv:'TRANSPORT',applicationAuthorizationEnv:'OWNER'},env:{TRANSPORT:'synthetic-transport',OWNER:credential}});
  assert.deepEqual(await transport.request('prepare'),value);assert.equal(f.calls(),1);
 });
+
+test('length compatibility: HTTP accepts 12000 Chinese characters and preserves plugin JSON',async t=>{
+ const body={action:'prepare',payload:{text:'中'.repeat(12000)}},value={ok:false,code:'SYNTHETIC_BUSINESS_RESULT',detail:{synthetic:true}};
+ assert.ok(JSON.stringify(body).length<32768);assert.ok(Buffer.byteLength(JSON.stringify(body))>32768);
+ const f=await fixture(t,{value}),response=await f.post(body);
+ t.diagnostic(JSON.stringify({utf16Length:JSON.stringify(body).length,utf8Bytes:Buffer.byteLength(JSON.stringify(body)),status:response.status,pluginDispatches:f.calls()}));
+ assert.equal(response.status,200);assert.deepEqual(await response.json(),value);assert.equal(f.calls(),1);
+});
+for(const [label,unit] of [['ASCII','x'],['Chinese','中'],['emoji','😀']])for(const length of [32768,32769])test(`length compatibility: HTTP ${label} serialized UTF-16 length ${length}`,async t=>{
+ const body={action:'prepare',payload:{text:''}},room=length-JSON.stringify(body).length;
+ body.payload.text=unit.repeat(Math.floor(room/unit.length))+'x'.repeat(room%unit.length);
+ const serialized=JSON.stringify(body);assert.equal(serialized.length,length);
+ if(label==='emoji')assert.ok(Array.from(serialized).length<length,'UTF-16 code units differ from code points');
+ const value={ok:true,handled:false,synthetic:true},f=await fixture(t,{value}),response=await f.post(body);
+ t.diagnostic(JSON.stringify({label,utf16Length:serialized.length,utf8Bytes:Buffer.byteLength(serialized),status:response.status,pluginDispatches:f.calls()}));
+ if(length===32768){assert.equal(response.status,200);assert.deepEqual(await response.json(),value);assert.equal(f.calls(),1);}
+ else{assert.equal(response.status,400);assert.deepEqual(await response.json(),{ok:false,code:'INVALID_NATIVE_REQUEST'});assert.equal(f.calls(),0);}
+});
