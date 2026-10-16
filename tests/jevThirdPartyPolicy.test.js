@@ -18,6 +18,8 @@ test('管理策略：旧环境回退、空名单、精确名单、不限和损�
         assert.deepEqual(registry.getAllowlist(env), []);
         fs.writeFileSync(registry.policyPath, JSON.stringify({ mode: 'selected', allowlist: ['AgentMessage', 'AgentMessage'] }));
         assert.deepEqual(registry.getAllowlist(env), ['AgentMessage']);
+        fs.writeFileSync(registry.policyPath, JSON.stringify({ mode: 'selected', allowlist: ['Wan2.1VideoGen'] }));
+        assert.deepEqual(registry.getAllowlist(env), ['Wan2.1VideoGen']);
         fs.writeFileSync(registry.policyPath, JSON.stringify({ mode: 'unrestricted', allowlist: [] }));
         assert.equal(registry.getAllowlist(env), null);
         fs.writeFileSync(registry.policyPath, '{broken');
@@ -25,6 +27,39 @@ test('管理策略：旧环境回退、空名单、精确名单、不限和损�
         fs.writeFileSync(registry.policyPath, JSON.stringify({ mode: 'selected', allowlist: ['../bad'] }));
         assert.deepEqual(registry.getAllowlist(env), []);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('策略读写与注册表共用精确工具名语法，点号不改变实验总开关', async () => {
+    const registry = require('../modules/jevThirdPartyRegistry');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jev-dotted-policy-'));
+    const name = 'Wan2.1VideoGen';
+    const oldPath = registry.policyPath;
+    const previous = registry.entries.get(name);
+    registry.policyPath = path.join(dir, 'policy.json');
+    registry.entries.set(name, { toolName: name, validation: { status: 'valid' } });
+    const app = express();
+    app.use(express.json());
+    app.use(require('../routes/admin/jevRegistry')({ pluginManager: {}, jevPolicyPath: registry.policyPath }));
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.once('listening', resolve));
+    try {
+        const post = value => fetch(`http://127.0.0.1:${server.address().port}/jev/registry/policy`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'selected', allowlist: [value] })
+        });
+        assert.equal((await post(name)).status, 200);
+        assert.deepEqual(registry.getAllowlist({}), [name]);
+        assert.equal(registry.isExperimentEnabled({}), false);
+        for (const bad of ['../bad', '1bad', '', 'A'.repeat(129), 'wan2.1videogen']) {
+            assert.equal((await post(bad)).status, 400);
+            assert.deepEqual(registry.getAllowlist({}), [name]);
+        }
+    } finally {
+        registry.policyPath = oldPath;
+        if (previous) registry.entries.set(name, previous); else registry.entries.delete(name);
+        await new Promise(resolve => server.close(resolve));
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 });
 
 test('管理路由拒绝非法策略与未注册插件，不落盘', async () => {

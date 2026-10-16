@@ -15,8 +15,7 @@ module.exports = function (options) {
     router.post('/jev/registry/policy', async (req, res) => {
         const { mode, allowlist } = req.body || {};
         if (!['selected', 'unrestricted'].includes(mode) || !Array.isArray(allowlist) ||
-            allowlist.length > 1000 || !allowlist.every(name =>
-                typeof name === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(name))) {
+            allowlist.length > 1000 || !allowlist.every(jevThirdPartyRegistry.isValidToolName)) {
             return res.status(400).json({ status: 'error', error: 'Invalid policy.' });
         }
         if (savingPolicy) return res.status(409).json({ status: 'error', error: 'Policy save in progress.' });

@@ -27,7 +27,8 @@ const SUPPORTED_SCHEMA_VERSION = 1;
 const CALLABLE_PLUGIN_TYPES = new Set(['synchronous', 'asynchronous', 'hybridservice']);
 const PARAM_TYPES = new Set(['enum', 'boolean', 'text']);
 const TEXT_SOURCES = new Set(['primary', 'constraints', 'url']);
-const TOOL_NAME_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+const TOOL_NAME_RE = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
+const isValidToolName = name => typeof name === 'string' && TOOL_NAME_RE.test(name);
 const PARAM_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MAX_PARAM_NAME_LENGTH = 64;
 const ENUM_KEY_RE = /^[A-Za-z0-9\u4e00-\u9fa5_.:-]{1,64}$/;
@@ -194,7 +195,7 @@ class JevThirdPartyRegistry {
         try {
             const policy = JSON.parse(require('fs').readFileSync(policyPath, 'utf8'));
             if (policy.mode === 'selected' && Array.isArray(policy.allowlist) &&
-                policy.allowlist.every(name => typeof name === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(name))) {
+                policy.allowlist.every(isValidToolName)) {
                 return [...new Set(policy.allowlist)];
             }
             if (policy.mode === 'unrestricted') return null;
@@ -562,7 +563,7 @@ class JevThirdPartyRegistry {
         const jev = manifest?.jev;
         const name = manifest?.name;
 
-        if (typeof name !== 'string' || !TOOL_NAME_RE.test(name)) {
+        if (!isValidToolName(name)) {
             errors.push(`manifest.name "${name}" 不是合法的精确工具名（字母开头，仅含字母、数字、下划线、连字符）。`);
         }
         const virtualToolName = this.getOfficialConfig().virtualToolName || 'JEV';
@@ -816,3 +817,4 @@ const jevThirdPartyRegistry = new JevThirdPartyRegistry();
 module.exports = jevThirdPartyRegistry;
 module.exports.JevThirdPartyRegistry = JevThirdPartyRegistry;
 module.exports.normalizeAlias = normalizeAlias;
+module.exports.isValidToolName = isValidToolName;

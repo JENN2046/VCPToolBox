@@ -3,6 +3,16 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const revisionDatabases = new WeakSet();
+
+function withChunkRevision(db) {
+    if (db && !revisionDatabases.has(db)) {
+        db.function('vcp_chunk_vector_revision', { deterministic: true }, vector =>
+            vector == null ? null : crypto.createHash('sha256').update(vector).digest('hex'));
+        revisionDatabases.add(db);
+    }
+    return db;
+}
 
 class IndexRepository {
     constructor(options = {}) {
@@ -105,14 +115,14 @@ class IndexRepository {
     }
 
     _countDiaryBaselineDelta(diaryName, generation) {
-        const db = this.getDb?.();
+        const db = withChunkRevision(this.getDb?.());
         if (!db || !Number.isInteger(Number(generation))) return null;
         const normalized = String(diaryName || '').trim();
         if (!normalized) return null;
 
-        // 集合对称差分统计：
+        // ID 集合与向量修订差分；不能假设旧数据库或显式替换不会复用 ID。
         // 1. deletes：基线已记录但权威库里已被删除（或移到其他日记本）的 chunk_id 数量
-        // 2. upserts：权威库里有效存在但基线未记录的新 chunk_id 数量
+        // 2. upserts：新 ID、未知旧修订或向量已改变的 chunk_id 数量
         const row = db.prepare(`
             SELECT
                 (
@@ -129,7 +139,9 @@ class IndexRepository {
                     JOIN files f ON f.id = c.file_id
                     LEFT JOIN chunk_index_baseline_entries e
                       ON e.diary_name = f.diary_name AND e.generation = ? AND e.chunk_id = c.id
-                    WHERE f.diary_name = ? AND c.vector IS NOT NULL AND e.chunk_id IS NULL
+                    WHERE f.diary_name = ? AND c.vector IS NOT NULL
+                      AND (e.chunk_id IS NULL OR e.vector_revision IS NULL
+                        OR e.vector_revision != vcp_chunk_vector_revision(c.vector))
                 ) AS upserts,
                 (
                     SELECT COUNT(*)
@@ -163,7 +175,7 @@ class IndexRepository {
      */
     async loadDiaryBaseline(diaryName, capacity = 50000) {
         const startedAt = Date.now();
-        const db = this.getDb?.();
+        const db = withChunkRevision(this.getDb?.());
         const normalized = String(diaryName || '').trim();
         const active = this._readActiveDiaryBaseline(normalized);
         if (!db || !active) return null;
@@ -212,14 +224,16 @@ class IndexRepository {
             `).all(normalized, normalized, active.generation);
             const removeIds = deletedRows.map(r => Number(r.chunk_id)).filter(Number.isSafeInteger);
 
-            // 2. 查找需增量灌入的新 chunk_id 与向量
+            // 2. 新 ID 与同 ID 的更新向量均需回放；旧修订缺失也强制回放。
             const addedRows = db.prepare(`
                 SELECT c.id, c.vector
                 FROM chunks c
                 JOIN files f ON f.id = c.file_id
                 LEFT JOIN chunk_index_baseline_entries e
                   ON e.diary_name = f.diary_name AND e.generation = ? AND e.chunk_id = c.id
-                WHERE f.diary_name = ? AND c.vector IS NOT NULL AND e.chunk_id IS NULL
+                WHERE f.diary_name = ? AND c.vector IS NOT NULL
+                  AND (e.chunk_id IS NULL OR e.vector_revision IS NULL
+                    OR e.vector_revision != vcp_chunk_vector_revision(c.vector))
                 ORDER BY c.id
             `).all(active.generation, normalized);
 
@@ -289,7 +303,7 @@ class IndexRepository {
         if (!normalized) return false;
         const index = this.diaryIndices.get(normalized);
         if (!index?.save) return false;
-        const db = this.getDb?.();
+        const db = withChunkRevision(this.getDb?.());
         if (!db) return false;
 
         const active = this._readActiveDiaryBaseline(normalized);
@@ -341,8 +355,8 @@ class IndexRepository {
 
             db.prepare(`
                 INSERT INTO chunk_index_baseline_entries
-                    (diary_name, generation, chunk_id)
-                SELECT ?, ?, c.id
+                    (diary_name, generation, chunk_id, vector_revision)
+                SELECT ?, ?, c.id, vcp_chunk_vector_revision(c.vector)
                 FROM chunks c
                 JOIN files f ON f.id = c.file_id
                 WHERE f.diary_name = ? AND c.vector IS NOT NULL
@@ -610,9 +624,24 @@ class IndexRepository {
                         'rebuilding from SQLite and publishing initial baseline...'
                     );
                     index = new this.VexusIndex(this.config.dimension, capacity);
-                    await this.recoverFromDb(index, 'chunks', diaryName);
+                    const recovered = await this.recoverFromDb(index, 'chunks', diaryName, { throwOnFailure: true });
+                    const expected = Number(this.getDb().prepare(`
+                        SELECT COUNT(*) AS count FROM chunks c
+                        JOIN files f ON f.id = c.file_id
+                        WHERE f.diary_name = ? AND c.vector IS NOT NULL
+                    `).get(diaryName).count);
+                    if (recovered !== expected) {
+                        throw new Error(`Chunk index recovery count mismatch for "${diaryName}": expected ${expected}, recovered ${recovered}`);
+                    }
                     this.diaryIndices.set(diaryName, index);
-                    this.publishDiaryBaseline(diaryName, { force: true });
+                    try {
+                        if (!this.publishDiaryBaseline(diaryName, { force: true })) {
+                            throw new Error('Initial chunk baseline publication failed');
+                        }
+                    } catch (error) {
+                        if (this.diaryIndices.get(diaryName) === index) this.diaryIndices.delete(diaryName);
+                        throw error;
+                    }
                 }
             } else {
                 index = await this.loadOrBuild(
@@ -741,7 +770,7 @@ class IndexRepository {
         return index;
     }
 
-    async recoverFromDb(index, table, diaryName) {
+    async recoverFromDb(index, table, diaryName, options = {}) {
         console.log(
             `[${this.logPrefix}] 🔄 Recovering ${table} ` +
             `(Filter: ${diaryName || 'None'}) via Rust...`
@@ -757,6 +786,7 @@ class IndexRepository {
             );
             return count;
         } catch (error) {
+            if (options.throwOnFailure === true) throw error;
             console.error(
                 `[${this.logPrefix}] ❌ Rust recovery failed for ${table}:`,
                 error

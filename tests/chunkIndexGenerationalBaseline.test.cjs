@@ -75,3 +75,68 @@ test('adding chunk baseline tables is idempotent and preserves existing chunk co
   assert.deepEqual(db.prepare('SELECT * FROM chunks').all(), before);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chunk_index_baselines').get().n, 0);
 });
+
+test('same-ID vector replacements are replayed and trigger a checkpoint', async t => {
+  const { db, repository, insert, vector } = fixture(t);
+  insert(1); insert(2);
+  const index = new VexusIndex(4, 16);
+  index.add(1, vector(1)); index.add(2, vector(2));
+  repository.diaryIndices.set('SyntheticDiary', index);
+  repository.publishDiaryBaseline('SyntheticDiary', { force: true });
+  const replacement = vector(3);
+  db.prepare('DELETE FROM chunks WHERE id=2').run();
+  db.prepare('INSERT INTO chunks (id,file_id,chunk_index,content,vector) VALUES (2,1,2,?,?)')
+    .run('synthetic-replacement', Buffer.from(replacement.buffer));
+  const restored = await repository.loadDiaryBaseline('SyntheticDiary');
+  assert.equal(restored.delta.upserts, 1);
+  const nearest = restored.index.search(replacement, 1)[0];
+  assert.equal(nearest.id, 2);
+  assert.ok(nearest.score > 0.99);
+  repository.diaryIndices.set('SyntheticDiary', restored.index);
+  assert.equal(repository.publishDiaryBaseline('SyntheticDiary'), true);
+  assert.equal(repository._countDiaryBaselineDelta('SyntheticDiary', 2).delta, 0);
+  assert.ok((await repository.loadDiaryBaseline('SyntheticDiary')).index.search(replacement, 1)[0].score > 0.99);
+});
+
+test('legacy baseline entries migrate additively and unknown revisions force replay', async t => {
+  const { db, repository, insert, vector } = fixture(t);
+  insert(1);
+  const index = new VexusIndex(4, 16);
+  index.add(1, vector(1));
+  repository.diaryIndices.set('SyntheticDiary', index);
+  repository.publishDiaryBaseline('SyntheticDiary', { force: true });
+  db.exec('ALTER TABLE chunk_index_baseline_entries DROP COLUMN vector_revision');
+  const chunks = db.prepare('SELECT * FROM chunks').all();
+  initializeKnowledgeBaseSchema(db);
+  initializeKnowledgeBaseSchema(db);
+  assert.deepEqual(db.prepare('SELECT * FROM chunks').all(), chunks);
+  assert.equal((await repository.loadDiaryBaseline('SyntheticDiary')).delta.upserts, 1);
+});
+
+test('failed and partial initial recoveries cannot publish or cache an empty baseline', async t => {
+  const { db, repository, insert } = fixture(t);
+  insert(1); insert(2);
+  for (const fail of [async () => { throw Error('synthetic recovery failure'); }, async () => 1]) {
+    repository.VexusIndex = class { async recoverFromSqlite() { return fail(); } };
+    await assert.rejects(repository.getOrLoad('SyntheticDiary'), /synthetic recovery failure|recovery count mismatch/);
+    assert.equal(repository.diaryIndices.has('SyntheticDiary'), false);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chunk_index_baselines').get().n, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chunk_index_baseline_entries').get().n, 0);
+    assert.equal(repository.loadPromises.size, 0);
+  }
+  repository.VexusIndex = VexusIndex;
+  const recovered = await repository.getOrLoad('SyntheticDiary');
+  assert.equal(recovered.search(new Float32Array([1, 0, 0, 0]), 10).length, 2);
+  assert.equal(repository._readActiveDiaryBaseline('SyntheticDiary').chunkCount, 2);
+});
+
+test('a failed recovery with no chunks also fails closed instead of publishing zero', async t => {
+  const { db, repository } = fixture(t);
+  repository.VexusIndex = class { async recoverFromSqlite() { throw Error('synthetic empty-db failure'); } };
+  await assert.rejects(repository.getOrLoad('SyntheticDiary'), /synthetic empty-db failure/);
+  assert.equal(repository.diaryIndices.size, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chunk_index_baselines').get().n, 0);
+  repository.VexusIndex = VexusIndex;
+  await repository.getOrLoad('SyntheticDiary');
+  assert.equal(repository._readActiveDiaryBaseline('SyntheticDiary').chunkCount, 0);
+});

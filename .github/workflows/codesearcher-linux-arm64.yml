@@ -76,11 +76,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cargo test --locked --manifest-path Plugin/DailyNoteSearcher/src/Cargo.toml
           if [ '${{ matrix.libc }}' = musl ]; then
             host="$(rustc -vV | sed -n 's/^host: //p')"
             export RUSTFLAGS="-C linker=$(rustc --print sysroot)/lib/rustlib/$host/bin/rust-lld"
           fi
-          cargo test --locked --manifest-path Plugin/DailyNoteSearcher/src/Cargo.toml
           CARGO_TARGET_DIR="$RUNNER_TEMP/daily-searcher" cargo build --locked --release --target '${{ matrix.target }}' --manifest-path Plugin/DailyNoteSearcher/src/Cargo.toml
           binary="$RUNNER_TEMP/daily-searcher/${{ matrix.target }}/release/DailyNoteSearcher"
           node scripts/verify-daily-note-searcher-native.cjs "$binary"
