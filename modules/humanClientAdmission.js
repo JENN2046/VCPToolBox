@@ -94,7 +94,7 @@ class HumanClientAdmission {
     return proof;
   }
 
-  #consume(purpose, sessionId, proof, leaseCheck) {
+  #consume(purpose, sessionId, proof, leaseCheck, targetCheck) {
     this.sweep();
     if (!exactKeys(proof, ['nonceId', 'signature'])) C.fail('PROOF_INVALID');
     const record = this.#nonces.get(proof.nonceId);
@@ -102,6 +102,7 @@ class HumanClientAdmission {
     if (record.proof.expiresAt <= this.now()) C.fail('PROOF_EXPIRED');
     if (record.fields.purpose !== purpose || (sessionId && record.fields.sessionId !== sessionId)) C.fail('PROOF_INVALID');
     leaseCheck?.();
+    if (targetCheck && targetCheck(record) !== true) C.fail('PROOF_INVALID');
     const transcript = C.transcript(record.fields);
     if (transcript.boundFieldDigest !== record.proof.boundFieldDigest) C.fail('PROOF_INVALID');
     if (!C.verifyHumanClientProof({
@@ -185,7 +186,22 @@ class HumanClientAdmission {
     const record = this.#enrollments.get(enrollmentId);
     if (!record || record.state !== 'APPROVED_WAITING_PROOF' || record.expiresAt <= this.now()) C.fail('PROOF_INVALID');
     if (this.#sessions.size >= LIMITS.sessions) C.fail('CAPACITY_REACHED');
-    this.#consume('enrollment-claim', null, proof);
+    // Validate the exact target before consuming the nonce or changing durable identity.
+    this.#consume('enrollment-claim', null, proof, null, candidate => {
+      const fields = candidate.fields;
+      return candidate.proof.nonceId === record.proof.nonceId
+        && fields.clientEnrollmentId === enrollmentId
+        && fields.publicKeyFingerprint === record.publicKeyFingerprint
+        && candidate.algorithm === record.publicKeyAlgorithm
+        && candidate.key.export({ format: 'der', type: 'spki' }).equals(
+          record.key.export({ format: 'der', type: 'spki' }))
+        && fields.protocolVersion === 1
+        && fields.hostBootId === this.hostOrigin
+        && fields.trustedHostOrigin === this.hostOrigin
+        && fields.method === 'POST'
+        && fields.path === `${ROOT}/enrollments/${enrollmentId}/claim`
+        && fields.bodyDigest === digest({ clientEnrollmentId: enrollmentId });
+    });
     const clientEnrollmentId = enrollmentId;
     const implementationProfileId = this.implementationProfile.id;
     this.store.add({
@@ -354,10 +370,22 @@ class HumanClientAdmission {
     return !!client && client.enrollmentState === 'ENROLLED';
   }
 
+  leaseIdentity(lease) {
+    if (!this.validLease(lease)) return null;
+    const client = this.store.get(lease.clientEnrollmentId);
+    return Object.freeze({
+      clientEnrollmentId: client.clientEnrollmentId,
+      humanSessionId: lease.sessionId,
+      implementationProfileId: client.implementationProfileId,
+      publicKeyFingerprint: client.publicKeyFingerprint,
+      keyVersion: client.keyVersion
+    });
+  }
+
   productionHuman(lease) {
     if (!this.validLease(lease)) return false;
     const client = this.store.get(lease.clientEnrollmentId);
-    return productionAdmitted(client);
+    return client.admissionState === 'ADMITTED' && productionAdmitted(client);
   }
 
   #retire(session, state) {
@@ -371,6 +399,14 @@ class HumanClientAdmission {
         try { ws.close(1008, 'Human session unavailable'); } catch (_) {}
       }
     }
+  }
+
+  // Trusted Host lifecycle hook; not a caller-authenticated route.
+  revokeSession(sessionId) {
+    const session = this.#sessions.get(sessionId);
+    if (!session) C.fail('SESSION_UNKNOWN');
+    this.#retire(session, 'REVOKED');
+    this.#sessions.delete(sessionId);
   }
 
   revoke(identity) {
@@ -414,6 +450,7 @@ class HumanClientAdmission {
         this.#sessions.delete(sessionId);
       }
     }
+    this.authority.reconcileHumanReceipts();
   }
 
   counts() {
