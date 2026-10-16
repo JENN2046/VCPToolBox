@@ -1055,6 +1055,11 @@ class PluginManager extends EventEmitter {
 
     _getStaticPluginSignature(plugin) {
         return JSON.stringify({
+            pluginSource: plugin.pluginSource,
+            pluginRoot: plugin.pluginRoot,
+            pluginRootId: plugin.pluginRootId,
+            basePath: plugin.basePath,
+            isDistributed: Boolean(plugin.isDistributed),
             entryPoint: plugin.entryPoint,
             communication: plugin.communication,
             refreshIntervalCron: plugin.refreshIntervalCron || null,
@@ -1113,8 +1118,14 @@ class PluginManager extends EventEmitter {
                 if (existingJob) existingJob.cancel();
                 try {
                     const job = schedule.scheduleJob(plugin.refreshIntervalCron, () => {
+                        // Metadata refresh and reload replace manifest objects while retaining
+                        // unchanged jobs. Resolve current authority without crossing sources.
+                        const currentPlugin = this.plugins.get(plugin.name);
+                        if (this.scheduledJobs.get(plugin.name) !== job ||
+                            currentPlugin?.pluginType !== 'static' ||
+                            this._getStaticPluginSignature(currentPlugin) !== signature) return;
                         if (this.debugMode) console.log(`[PluginManager] Scheduled update for static plugin: ${plugin.name}`);
-                        this._updateStaticPluginValue(plugin).catch(err => {
+                        this._updateStaticPluginValue(currentPlugin).catch(err => {
                             console.error(`[PluginManager] Scheduled background update for ${plugin.name} failed: ${err.message}`);
                         });
                     });
