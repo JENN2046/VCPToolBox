@@ -12,14 +12,16 @@ function validateNativeRequest(pluginManager,toolName,credential,body){
  return {plugin};
 }
 async function dispatchNativeRequest(pluginManager,toolName,credential,body,namespace){
+ let context;
+ try{
  const validation=validateNativeRequest(pluginManager,toolName,credential,body);
  if(validation.result)return validation;
  const {plugin}=validation;
- const context=Object.freeze({});admitted.set(context,{credential,toolName:plugin.name,namespace});
+ context=Object.freeze({});admitted.set(context,{credential,toolName:plugin.name,namespace});
  // A plugin business result must not be confused with a route or host failure.
- try{const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),'127.0.0.1',{nativeConversationContext:context});return {status:200,result:result.result??result};}
- catch(error){const known=['JSO_LOCAL_BINDING_INVALID','JSO_ASSISTANT_BINDING_REQUIRED','NATIVE_CONTEXT_REQUIRED'];console.warn('[NativeConversation]',{code:known.includes(error?.message)?error.message:'NATIVE_EXECUTION_FAILED',action:body.action});return {status:503,result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}};}
- finally{admitted.delete(context);}
+ const result=await pluginManager.executePlugin(plugin.name,JSON.stringify({nativeAction:body.action,payload:body.payload}),'127.0.0.1',{nativeConversationContext:context});return {status:200,result:result.result??result};}
+ catch(error){const known=['JSO_LOCAL_BINDING_INVALID','JSO_ASSISTANT_BINDING_REQUIRED','NATIVE_CONTEXT_REQUIRED'];console.warn('[NativeConversation]',{code:known.includes(error?.message)?error.message:'NATIVE_EXECUTION_FAILED',action:actions.has(body?.action)?body.action:undefined});return {status:503,result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}};}
+ finally{if(context)admitted.delete(context);}
 }
 async function executeNativeRequest(pluginManager,toolName,credential,body,namespace){
  return (await dispatchNativeRequest(pluginManager,toolName,credential,body,namespace)).result;

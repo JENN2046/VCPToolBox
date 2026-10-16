@@ -57,3 +57,10 @@ for(const [label,unit] of [['ASCII','x'],['Chinese','中'],['emoji','😀']])for
  if(length===32768){assert.equal(response.status,200);assert.deepEqual(await response.json(),value);assert.equal(f.calls(),1);}
  else{assert.equal(response.status,400);assert.deepEqual(await response.json(),{ok:false,code:'INVALID_NATIVE_REQUEST'});assert.equal(f.calls(),0);}
 });
+
+test('consolidation: HTTP preflight host failure returns scrubbed 503, not a rejected route promise',async t=>{
+ let route,status,value,calls=0;const logs=[],warn=console.warn;console.warn=(...args)=>logs.push(args);t.after(()=>console.warn=warn);
+ registerNativeConversationRoute({post:(_p,h)=>route=h},{plugins:{get(){throw Error('SYNTHETIC_PRIVATE_PREFLIGHT');}},executePlugin(){calls++;}});
+ await route({socket:{remoteAddress:'127.0.0.1'},params:{toolName:'Example'},headers:{'x-vcp-application-authorization':credential},body:request},{status(n){status=n;return this;},json(v){value=v;}});
+ assert.equal(status,503);assert.deepEqual(value,{ok:false,code:'NATIVE_RESULT_UNKNOWN'});assert.equal(calls,0);assert.ok(logs.length>0);assert.doesNotMatch(JSON.stringify({logs,value}),/SYNTHETIC_PRIVATE_PREFLIGHT/);
+});
