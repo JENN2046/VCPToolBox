@@ -86,7 +86,8 @@ async function run() {
             persistFolders: new Set(),
             persistDefault: false,
             tagIndexPersistenceMode: 'generational',
-            tagIndexBaselineDeltaRatio: 0.05,
+            // Both repairs are below this threshold and must keep force=true.
+            tagIndexBaselineDeltaRatio: 1,
             indexSaveDelay: 100,
             tagIndexSaveDelay: 100,
             indexIdleSweepInterval: 60000,
@@ -102,6 +103,7 @@ async function run() {
             ])
         );
 
+        let releasedLeases = 0;
         const owner = {
             initialized: true,
             config,
@@ -111,16 +113,19 @@ async function run() {
             tagMemoEngine: null,
             lastJsWriteFinishedAt: 0,
             _extractTags: () => ['keep'],
-            requestRustWriteLease: async () => ({
-                release() {}
-            })
+            rustWriteLease: null,
+            requestRustWriteLease: async () => {
+                owner.rustWriteLease = { owner: 'tag-consistency-reconcile' };
+                return { release() { owner.rustWriteLease = null; releasedLeases++; } };
+            }
         };
         owner.indexRepository = new IndexRepository({
             config,
             VexusIndex,
             getDbPath: () => dbPath,
             getDb: () => db,
-            waitForCoordinatorIdle: async () => {}
+            waitForCoordinatorIdle: async () => {},
+            isMutationActive: () => Boolean(owner.rustWriteLease)
         });
         owner.indexRepository.tagIndex = activeIndex;
 
@@ -153,6 +158,8 @@ async function run() {
         assert.strictEqual(result.indexUpdate.requestedUpserts, 0);
         assert.strictEqual(result.indexUpdate.totalVectors, 1);
         assert.strictEqual(result.checkpointPublished, true);
+        assert.strictEqual(releasedLeases, 1);
+        assert.strictEqual(owner.rustWriteLease, null);
 
         assert.deepStrictEqual(
             db.prepare('SELECT id, name FROM tags ORDER BY id').all(),
@@ -214,6 +221,7 @@ async function run() {
             recoveryPreview.token
         );
         assert.strictEqual(recoveredResult.applied, true);
+        assert.strictEqual(releasedLeases, 2);
         assert.strictEqual(
             recoveredResult.indexUpdate.mode,
             'baseline-plus-sqlite-delta'

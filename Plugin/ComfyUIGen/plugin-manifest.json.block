@@ -35,7 +35,7 @@
     "invocationCommands": [
       {
         "commandIdentifier": "ComfyUIGenerateImage",
-        "description": "调用此工具通过 ComfyUI 生成图像，支持配置默认值及单次调用参数覆盖。\n\n📋 **调用格式**:\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Agent的署名「末」,\ntool_name:「始」ComfyUIGen「末」,\nprompt:「始」(必需) 正面提示词「末」,\nnegative_prompt:「始」(可选) 追加负面提示词「末」,\nworkflow:「始」(可选) 工作流名称，例如 AnimaEZGen 或 text2img_basic「末」,\nwidth:「始」(可选) 宽度「末」,\nheight:「始」(可选) 高度「末」,\nsteps:「始」(可选) 采样步数「末」,\ncfg:「始」(可选) CFG 强度「末」,\nsampler:「始」(可选) 采样器，例如 euler_ancestral「末」,\nscheduler:「始」(可选) 调度器，例如 simple「末」,\nseed:「始」(可选) 种子，-1 表示随机「末」,\ndenoise:「始」(可选) 去噪强度，通常为 0 到 1「末」,\nbatch_size:「始」(可选) 批量大小「末」,\nlora_name:「始」(可选) 节点式 LoRA 文件名；显式留空表示绕过 LoRA；不传表示保持工作流默认 LoRA「末」,\nlora_strength:「始」(可选) LoRA 模型权重「末」,\nlora_clip_strength:「始」(可选) LoRA CLIP 权重「末」,\nshowbase64:「始」(可选) 是否返回 base64，默认 false「末」\n<<<[END_TOOL_REQUEST]>>>\n\n⚠️ **覆盖规则**:\n- 单次调用参数优先于 comfyui-settings.json 默认值。\n- `lora_name` 不传：保留工作流内置的 LoraLoader 设置。\n- `lora_name` 传实际文件名：替换节点式 LoRA，并可用权重参数控制。\n- `lora_name` 显式传空字符串：自动绕过并移除工作流中的 LoraLoader。\n- 用户配置中的 loras 数组仍会作为提示词 token 拼接；它与节点式 LoraLoader 是两套机制。",
+        "description": "调用此工具通过 ComfyUI 生成图像，支持配置默认值及单次调用参数覆盖。\n\n📋 **调用格式**:\n\n\n⚠️ **覆盖规则**:\n- 单次调用参数优先于 comfyui-settings.json 默认值。\n- `lora_name` 不传：保留工作流内置的 LoraLoader 设置。\n- `lora_name` 传实际文件名：替换节点式 LoRA，并可用权重参数控制。\n- `lora_name` 显式传空字符串：自动绕过并移除工作流中的 LoraLoader。\n- 用户配置中的 loras 数组仍会作为提示词 token 拼接；它与节点式 LoraLoader 是两套机制。",
         "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」CreativeAssistant「末」,\ntool_name:「始」ComfyUIGen「末」,\nworkflow:「始」AnimaEZGen「末」,\nprompt:「始」1girl, silver hair, blue eyes, cinematic anime illustration「末」,\nnegative_prompt:「始」bad hands, blurry「末」,\nwidth:「始」1024「末」,\nheight:「始」1024「末」,\nsteps:「始」24「末」,\ncfg:「始」4「末」,\nsampler:「始」euler_ancestral「末」,\nscheduler:「始」simple「末」,\nseed:「始」-1「末」,\nlora_name:「始」anima_rendering_detailer_base10.safetensors「末」,\nlora_strength:「始」0.4「末」,\nlora_clip_strength:「始」1.0「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
@@ -129,5 +129,49 @@
     "vcpVersion": ">=1.0.0",
     "nodeVersion": ">=14.0.0",
     "comfyuiVersion": ">=0.3.0"
+  },
+  "jev": {
+    "schemaVersion": 1,
+    "enabled": true,
+    "category": "媒体娱乐",
+    "jevDescPrompt": "通过本地或远程 ComfyUI 运行自定义节点工作流，生成高质量二次元与写实插画。",
+    "jevPrompt": "用户要求使用 ComfyUI 生图时选择 ComfyUIGenerateImage。支持在 [] 中指定工作流模板名（如 [工作流:AnimaEZGen]）或 LoRA 权重；未指明工作流时沿用默认配置。",
+    "agentPrompt": "当需要调用 ComfyUI 运行高级生图工作流时，使用 {媒体娱乐} 中的 `ComfyUIGen`，提示词放入【主要内容】，工作流或负面词放入 []（如 [工作流:AnimaEZGen]、[负面:blurry]）：\nJEV:「始」请使用 {媒体娱乐} 中的 `ComfyUIGen`，生成插画【1girl, silver hair, blue eyes, cinematic anime】[工作流:AnimaEZGen]。「末」",
+    "defaultCommand": "ComfyUIGenerateImage",
+    "commands": [
+      {
+        "commandIdentifier": "ComfyUIGenerateImage",
+        "description": "调用 ComfyUI 工作流生成高质量图像",
+        "aliases": ["ComfyUI生图", "运行工作流", "工作流生图", "Comfy生图"],
+        "injectCommand": false,
+        "parameters": {
+          "prompt": {
+            "type": "text",
+            "required": true,
+            "source": "primary",
+            "maxLength": 1500,
+            "description": "详细正面提示词或英文标签"
+          },
+          "workflow": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["工作流", "模板", "workflow"],
+            "maxLength": 60
+          },
+          "negative_prompt": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["负面", "排除"],
+            "maxLength": 500
+          },
+          "lora_name": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["lora", "LoRA", "模型"],
+            "maxLength": 100
+          }
+        }
+      }
+    ]
   }
 }

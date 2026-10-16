@@ -20,6 +20,10 @@ apt-get install -y --no-install-recommends \
 test "$(gcc-12 -dumpfullversion)" = 12.3.0
 test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.35'
 
+# gcc-12 does not install the unversioned cc driver in the minimal image.
+# Select the pinned compiler for setup/build-script probes as well as napi.
+export CC=gcc-12 CXX=g++-12 HOST_CC=gcc-12 HOST_CXX=g++-12
+
 export CARGO_HOME="$cache_root/cargo"
 export RUSTUP_HOME="$cache_root/rustup"
 export PATH="$CARGO_HOME/bin:$PATH"
@@ -27,7 +31,9 @@ if [[ ! -x "$CARGO_HOME/bin/rustup" ]]; then
   curl -fL --retry 3 --connect-timeout 15 https://sh.rustup.rs -o /tmp/vcp-rustup-init.sh
   sh /tmp/vcp-rustup-init.sh -y --profile minimal --default-toolchain 1.89.0 --no-modify-path
 fi
-rustup toolchain install 1.89.0 --profile minimal
+if ! rustup run 1.89.0 rustc --version | grep -q '^rustc 1\.89\.0 '; then
+  rustup toolchain install 1.89.0 --profile minimal
+fi
 export RUSTUP_TOOLCHAIN=1.89.0
 export RUSTFLAGS='-C linker=gcc-12'
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc-12

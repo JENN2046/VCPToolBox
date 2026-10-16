@@ -17,6 +17,8 @@ on:
       - scripts/run-vexus-linux-native-abi-container.sh
   pull_request:
     paths:
+      - docs/native-delivery-30193c89.json
+      - scripts/check-native-delivery.cjs
       - .github/workflows/vexus-linux-native-abi.yml
       - docs/VEXUS_NATIVE_ABI_BUILD.md
       - KnowledgeBaseManager.js
@@ -43,8 +45,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/vexus-cache" "$RUNNER_TEMP/vexus-output"
-          bash scripts/run-vexus-linux-native-abi-container.sh \
+          VEXUS_COMPARE_TRACKED=0 bash scripts/run-vexus-linux-native-abi-container.sh \
             "$GITHUB_WORKSPACE" "$RUNNER_TEMP/vexus-output" "$RUNNER_TEMP/vexus-cache"
+
+      - name: Preserve rebuilt Vexus artifact for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: vexus-linux-x64-gnu-rebuilt
+          path: ${{ runner.temp }}/vexus-output/vexus-lite.linux-x64-gnu.node
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compare bundled Vexus with the source rebuild
+        shell: bash
+        run: |
+          cmp rust-vexus-lite/vexus-lite.linux-x64-gnu.node "$RUNNER_TEMP/vexus-output/vexus-lite.linux-x64-gnu.node"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -57,4 +72,6 @@ jobs:
       - name: Enforce GLIBC ceiling and current runtime contract
         env:
           MAX_ALLOWED_GLIBC: '2.35'
-        run: node scripts/check-vexus-linux-native-abi.js
+        run: |
+          node scripts/check-native-delivery.cjs x86_64-unknown-linux-gnu vexus
+          node scripts/check-vexus-linux-native-abi.js

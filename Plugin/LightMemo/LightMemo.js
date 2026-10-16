@@ -77,6 +77,7 @@ class LightMemoPlugin {
         this.vectorDBManager = null;
         this.tdbKnowledgeManager = null; // 冷知识库（TriviumDB）检索管理器
         this.aiMemoBridge = null; // RAGDiaryPlugin 共享的 AI 记忆总结桥
+        this.jevClient = null; // VCP 根配置共享的 Jev 结构化决策客户端
         this.getSingleEmbedding = null;
         this.projectBasePath = '';
         this.dailyNoteRootPath = '';
@@ -115,6 +116,10 @@ class LightMemoPlugin {
             this.aiMemoBridge = dependencies.aiMemoBridge;
             console.log('[LightMemo] AIMemoBridge injected. Optional AI memory summarization enabled.');
         }
+        if (dependencies.jevClient) {
+            this.jevClient = dependencies.jevClient;
+            console.log('[LightMemo] JevClient injected. Optional Jev decision rerank enabled.');
+        }
         if (dependencies.getSingleEmbedding) {
             this.getSingleEmbedding = dependencies.getSingleEmbedding;
         }
@@ -131,6 +136,8 @@ class LightMemoPlugin {
 
         const configuredMaxDocuments = parseInt(process.env.RerankMaxDocumentsPerRequest, 10);
         const configuredConcurrency = parseInt(process.env.RerankMaxConcurrentRequests, 10);
+        const configuredJevMaxChoices = parseInt(process.env.JevRerankMaxChoices, 10);
+        const configuredJevMaxDocumentChars = parseInt(process.env.JevRerankMaxDocumentChars, 10);
         this.rerankConfig = {
             url: process.env.RerankUrl || '',
             apiKey: process.env.RerankApi || '',
@@ -143,14 +150,25 @@ class LightMemoPlugin {
             // 小批量请求采用有界并发，避免无上限并发压垮服务商。
             maxConcurrentRequests: Number.isFinite(configuredConcurrency)
                 ? Math.max(1, Math.min(10, configuredConcurrency))
-                : 3
+                : 3,
+            jevPrompt: process.env.JevRerankPrompt
+                || '请选择最值得用于回答当前查询的记忆。请综合考虑逻辑关联、记忆叙事连续性与信息解释力；优先选择能直接回答问题、补足关键背景或维持事件连续性的内容，压低表面词汇重合、重复、跑题或缺乏上下文价值的内容。',
+            jevMaxChoices: Number.isFinite(configuredJevMaxChoices)
+                ? Math.max(2, Math.min(255, configuredJevMaxChoices))
+                : 255,
+            jevMaxDocumentChars: Number.isFinite(configuredJevMaxDocumentChars)
+                ? Math.max(200, Math.min(50000, configuredJevMaxDocumentChars))
+                : 6000
         };
     }
 
     async processToolCall(args) {
         try {
-            const result = this._isTagMemoABRequest(args)
-                ? await this.handleTagMemoAB(args)
+            if (/^(tagmemo[-_](ab|compare)|v91_compare)$/i.test(String(args.command || args.action || ''))) {
+                throw new RangeError('TagMemo A/B 已退休，请使用 memory_ab');
+            }
+            const result = this._isMemoryABRequest(args)
+                ? await this.handleMemoryAB(args)
                 : await this.handleSearch(args);
 
             return this._normalizeToolResult(result);
@@ -199,26 +217,19 @@ class LightMemoPlugin {
         return result;
     }
 
-    _isTagMemoABRequest(args = {}) {
+    _isMemoryABRequest(args = {}) {
         const command = String(args.command || args.action || '')
             .trim()
             .toLowerCase();
         return [
-            'tagmemo_ab',
-            'tagmemo-ab',
-            'tagmemo_compare',
-            'tagmemo-compare',
-            'memory_address_ab',
-            'memory-address-ab',
-            'v91_compare',
-            '寻址对照'
+            'memory_ab', 'memory-ab', 'memory_compare', 'memory_address_ab', 'memory-address-ab'
         ].includes(command);
     }
 
     async handleSearch(args) {
         // 兼容性处理：解构时提供默认值，确保 core_tags 缺失时不会报错
         const {
-            query, maid, folder, k = 5, rerank = false,
+            query, maid, folder, k = 5, rerank = false, jev = false,
             search_all_knowledge_bases = false,
             tag_boost: rawTagBoost = 0.5,
             core_tags = [],
@@ -238,7 +249,7 @@ class LightMemoPlugin {
 
         const aiMemoOptions = this._parseAIMemoOptions(rawAIMemo, rawAIMemoPreset);
 
-        const useBM25 = this._parseBooleanAlias(
+        let useBM25 = this._parseBooleanAlias(
             [
                 ['BM25', rawBM25Upper],
                 ['bm25', rawBM25Lower],
@@ -258,41 +269,20 @@ class LightMemoPlugin {
                 query: coldRoute.query,
                 libraries: coldRoute.libraries,
                 k,
-                rerank
+                rerank,
+                jev
             });
         }
 
-        // 🌟 V9.1: 解析 tag_boost 的 "+" 后缀
-        // tag_boost:「始」0.6「末」  → V9.1 向量增强
-        // tag_boost:「始」0.6+「末」 → V9.1 向量增强 + 势能场重排
-        let useGeodesicRerank = false;
-        let tag_boost = rawTagBoost;
-        if (typeof rawTagBoost === 'string') {
-            const trimmedTagBoost = rawTagBoost.trim();
-            if (trimmedTagBoost.endsWith('+')) {
-                useGeodesicRerank = true;
-                tag_boost = this._parseNumber(trimmedTagBoost.slice(0, -1), 0);
-            } else {
-                tag_boost = this._parseNumber(trimmedTagBoost, 0);
-            }
-        } else {
-            tag_boost = this._parseNumber(rawTagBoost, 0);
+        // 共享 RiverMemo 感应只接受数值；旧势场后缀必须明确拒绝。
+        if (typeof rawTagBoost === 'string' && rawTagBoost.trim().endsWith('+')) {
+            throw new RangeError('tag_boost 的 + 势场后缀已退休，请提供数值');
         }
-
+        const tag_boost = this._parseNumber(rawTagBoost, 0.5);
         const normalizedK = Math.max(1, Math.floor(this._parseNumber(k, 5)));
-        const engineMode = this._parseEngineMode(
-            rawEngineModeAlias
-            ?? rawEngineMode
-            ?? legacyMemoryEngineAlias
-            ?? legacyMemoryEngine
-        );
-        // “+”只属于 TagMemo V9 势能场语法；KNN 与 RiverMemo 均不读取它。
-        useGeodesicRerank = engineMode === 'tagmemo' && useGeodesicRerank;
-        const potentialFieldConfig = this.vectorDBManager?.ragParams?.KnowledgeBaseManager?.geodesicRerank || {};
-        const geoCandidateMultiplier = useGeodesicRerank
-            ? Math.max(1, Math.min(10, Number(potentialFieldConfig.candidateKMultiplier) || 2))
-            : 1;
-        const geoCandidateK = Math.max(normalizedK, Math.ceil(normalizedK * geoCandidateMultiplier));
+        const engineMode = this._parseEngineMode(rawEngineModeAlias ?? rawEngineMode ?? legacyMemoryEngineAlias ?? legacyMemoryEngine);
+        if (engineMode === 'knn') useBM25 = false;
+        const candidatePoolK = normalizedK;
         const normalizedCoreTags = this._parseStringArray(core_tags);
         const normalizedCoreBoostFactor = this._parseNumber(core_boost_factor, 1.33);
 
@@ -343,11 +333,10 @@ class LightMemoPlugin {
             actualQuery = scopedMaid || combinedFolder || "记录"; // 如果只有时间约束，给予默认查询词避免向量化报错
         }
 
-        if (!isMusicSearch && (!query || (!scopedMaid && !combinedFolder))) {
-            throw new Error("参数 'query' 是必需的，且必须提供 'maid' 或 'folder'。");
-        }
-
         const normalizedSearchAll = this._parseBoolean(search_all_knowledge_bases, false);
+        if (!isMusicSearch && (!query || (!scopedMaid && !combinedFolder && !normalizedSearchAll))) {
+            throw new Error("参数 'query' 是必需的，且必须提供 'maid' / 'folder' 或显式开启全库搜索。");
+        }
 
         const effectiveFolder = isMusicSearch ? 'MusicDiary' : combinedFolder;
         const effectiveMaid = isMusicSearch ? null : scopedMaid;
@@ -404,22 +393,22 @@ class LightMemoPlugin {
             });
 
             // 🚀 优化：放宽 BM25 限制。如果 BM25 没搜到，可能是分词太碎或太死板，此时允许向量检索兜底。
-            const bm25PoolK = Math.max(normalizedK * 5, geoCandidateK);
+            const bm25PoolK = Math.max(normalizedK * 5, candidatePoolK);
             topByKeyword = scoredCandidates
                 .filter(c => c.bm25Score > 0)
                 .sort((a, b) => b.bm25Score - a.bm25Score)
                 .slice(0, bm25PoolK);
 
-            // 测地线需要独立候选预算；BM25 命中不足时补齐到专属候选 K。
-            if (topByKeyword.length < geoCandidateK) {
+            // BM25 命中不足时补齐候选窗口。
+            if (topByKeyword.length < candidatePoolK) {
                 console.log(
                     `[LightMemo] BM25 results insufficient for candidate pool ` +
-                    `(${topByKeyword.length}/${geoCandidateK}), adding fallback candidates.`
+                    `(${topByKeyword.length}/${candidatePoolK}), adding fallback candidates.`
                 );
                 const existingIds = new Set(topByKeyword.map(c => c.label));
                 const fallbacks = scoredCandidates
                     .filter(c => !existingIds.has(c.label))
-                    .slice(0, geoCandidateK - topByKeyword.length);
+                    .slice(0, candidatePoolK - topByKeyword.length);
                 topByKeyword = [...topByKeyword, ...fallbacks];
             }
         }
@@ -431,7 +420,7 @@ class LightMemoPlugin {
         if (!queryVector) {
             throw new Error("查询内容向量化失败。");
         }
-        // 保留原始查询坐标；TagMemo 增强后 queryVector 会被替换，四层影子读出需要同时观察 q 与 q'。
+        // 保留原始查询坐标，由统一 RiverMemo 管线准备共享观测。
         const originalQueryVector = queryVector instanceof Float32Array
             ? new Float32Array(queryVector)
             : new Float32Array(queryVector);
@@ -447,6 +436,7 @@ class LightMemoPlugin {
                 searchAll: effectiveSearchAll,
                 k: normalizedK,
                 rerank,
+                jev,
                 useBM25,
                 tagBoost: tag_boost,
                 coreTags: normalizedCoreTags,
@@ -455,53 +445,6 @@ class LightMemoPlugin {
             });
         }
 
-        let tagBoostInfo = null;
-        let tagBoostEnergyField = null;
-        let tagBoostEnergyFieldProvenance = null;
-        let tagBoostArtifactBundle = null;
-        let preparedMemoObservation = null;
-        // 🚀【新步骤】如果启用了 TagMemo，则调用 KBM 的 Rust 统一管线增强向量
-        if (
-            engineMode === 'tagmemo'
-            && tag_boost > 0
-            && this.vectorDBManager
-            && typeof this.vectorDBManager.applyTagBoostAsync === 'function'
-        ) {
-            const hasCore = normalizedCoreTags.length > 0;
-            const waveLabel = useGeodesicRerank ? 'TagMemo V9.1 + Potential Field' : 'TagMemo V9.1';
-            console.log(`[LightMemo] Applying ${waveLabel} boost (Factor: ${tag_boost}${hasCore ? `, CoreTags: ${core_tags.length}` : ''})`);
-
-            // 即使 core_tags 为空，KBM 内部也会处理好默认逻辑
-            const boostResult = await this.vectorDBManager.applyTagBoostAsync(
-                new Float32Array(queryVector),
-                tag_boost,
-                normalizedCoreTags,
-                normalizedCoreBoostFactor,
-                { queryText: actualQuery }
-            );
-
-            if (boostResult && boostResult.vector) {
-                queryVector = boostResult.vector;
-                tagBoostInfo = boostResult.info;
-                tagBoostEnergyField = boostResult.energyField || null;
-                tagBoostEnergyFieldProvenance = boostResult.energyFieldProvenance || null;
-                tagBoostArtifactBundle = boostResult.artifactBundle || null;
-                preparedMemoObservation = boostResult.preparedMemoObservation || null;
-
-                if (tagBoostInfo) {
-                    const matched = tagBoostInfo.matchedTags || [];
-                    const coreMatched = tagBoostInfo.coreTagsMatched || [];
-                    if (coreMatched.length > 0) {
-                        console.log(`[LightMemo] TagMemo V9.1 Spotlight: [${coreMatched.join(', ')}]`);
-                    }
-                    if (matched.length > 0) {
-                        console.log(`[LightMemo] TagMemo V9.1 Matched: [${matched.slice(0, 5).join(', ')}]`);
-                    }
-                }
-            }
-        }
-
-        // 为每个候选chunk计算向量相似度
         const vectorScoredCandidates = await this._scoreByVectorSimilarity(
             topByKeyword,
             queryVector
@@ -514,7 +457,7 @@ class LightMemoPlugin {
                 return {
                     ...c,
                     hybridScore: c.vectorScore, // 完全依赖向量分数
-                    tagBoostInfo: tagBoostInfo
+                    retrievalEngine: 'knn'
                 };
             }
 
@@ -528,100 +471,43 @@ class LightMemoPlugin {
             return {
                 ...c,
                 hybridScore: normalizedBM25 * bmWeight + c.vectorScore * vecWeight,
-                tagBoostInfo: tagBoostInfo
+                retrievalEngine: 'knn'
             };
         }).sort((a, b) => b.hybridScore - a.hybridScore);
 
-        // 🌟 V9.1: 查询级势能场重排
-        let rankedCandidates = hybridScored;
-        if (useGeodesicRerank && tag_boost > 0 && tagBoostInfo && this.vectorDBManager && this.vectorDBManager.rerankWithTagMemoAsync) {
-            console.log(`[LightMemo] 🌟 V9.1: Applying potential-field rerank to ${hybridScored.length} candidates...`);
+        // 显式 KNN 不执行共享感应或 Memo 读出。
+        const rankedCandidates = hybridScored;
 
-            // geodesicRerank expects candidates with `id` (chunk ID) and `score` fields
-            const geoInput = hybridScored.map(c => ({
-                ...c,
-                id: c.label,  // label is chunk.id from SQLite
-                score: c.hybridScore || c.vectorScore || 0
-            }));
-
-            const rerankResult = await this.vectorDBManager.rerankWithTagMemoAsync(
-                { text: actualQuery, vector: originalQueryVector },
-                geoInput,
-                {},
-                {
-                    alpha: potentialFieldConfig.alpha,
-                    minGeoSamples: potentialFieldConfig.minGeoSamples,
-                    topK: geoInput.length,
-                    preparedMemoObservation
-                }
-            );
-            const reranked = Array.isArray(rerankResult?.results)
-                ? rerankResult.results
-                : geoInput;
-
-            // Map results back with geodesic metadata
-            rankedCandidates = reranked.map(r => ({
-                ...r,
-                hybridScore: r.score,
-                tagBoostInfo: tagBoostInfo,
-                potentialFieldV91: r.geo_score > 0
-            }));
-
-            const geoCount = rankedCandidates.filter(r => r.potentialFieldV91).length;
-            console.log(
-                `[LightMemo] 🌟 V9.1: Potential-field rerank complete. ` +
-                `${geoCount}/${rankedCandidates.length} candidates with field contribution ` +
-                `(requestedK=${normalizedK}, candidateK=${geoCandidateK}, multiplier=${geoCandidateMultiplier}).`
-            );
+        const rerankOptions = this._parseRerankOptions(rerank);
+        const jevOptions = this._parseRerankOptions(jev);
+        if (rerankOptions.enabled && jevOptions.enabled) {
+            console.warn('[LightMemo] rerank 与 jev 同时启用；为避免双重费用，本次仅执行 Jev。');
         }
+        const refinementEnabled = rerankOptions.enabled || jevOptions.enabled;
+        const refinementK = Math.min(
+            rankedCandidates.length,
+            Math.max(normalizedK, normalizedK * 2)
+        );
+        let finalResults = rankedCandidates.slice(
+            0,
+            refinementEnabled ? refinementK : normalizedK
+        );
 
-        // 取top K
-        let finalResults = rankedCandidates.slice(0, normalizedK);
-
-        // --- 第三阶段：Rerank（可选） ---
-        // 🌟 Rerank+ (RRF): rerank 参数支持多种形式
-        //   false          → 不使用 Rerank
-        //   true           → 标准 Rerank（纯精排，无融合）
-        //   "rrf"          → RRF 融合 (α=0.5)
-        //   "rrf0.7"       → RRF 融合 (α=0.7, Reranker 占 70% 权重)
-        //   0.7 (数字)     → RRF 融合 (α=0.7)，等价于 "rrf0.7"
-        //   "0.7" (字符串) → RRF 融合 (α=0.7)，等价于 "rrf0.7"
-        let useRerank = false;
-        let rrfOptions = null;
-
-        if (rerank === true) {
-            useRerank = true;
-        } else if (typeof rerank === 'number' && rerank > 0 && rerank <= 1.0) {
-            // 直接传数字 → RRF 融合
-            useRerank = true;
-            rrfOptions = { alpha: rerank };
-            console.log(`[LightMemo] 🌟 Rerank+ (RRF) 数字模式启用: α=${rerank}`);
-        } else if (typeof rerank === 'string') {
-            const lowerRerank = rerank.toLowerCase().trim();
-            if (lowerRerank.startsWith('rrf')) {
-                // "rrf" / "rrf0.7" 形式
-                useRerank = true;
-                const alphaMatch = lowerRerank.match(/rrf(\d+\.?\d*)/);
-                const alpha = alphaMatch ? Math.min(1.0, Math.max(0.0, parseFloat(alphaMatch[1]))) : 0.5;
-                rrfOptions = { alpha };
-                console.log(`[LightMemo] 🌟 Rerank+ (RRF) 模式启用: α=${alpha}`);
-            } else {
-                // 尝试解析为数字字符串 "0.7"
-                const numericAlpha = parseFloat(lowerRerank);
-                if (!isNaN(numericAlpha) && numericAlpha > 0 && numericAlpha <= 1.0) {
-                    useRerank = true;
-                    rrfOptions = { alpha: numericAlpha };
-                    console.log(`[LightMemo] 🌟 Rerank+ (RRF) 数字字符串模式启用: α=${numericAlpha}`);
-                } else if (lowerRerank === 'true') {
-                    useRerank = true;
-                }
-            }
-        }
-
-        if (useRerank && finalResults.length > 0) {
-            // 🌟 Rerank+: 注入检索排位 (retrieval_rank) 用于 RRF 融合
+        if (refinementEnabled && finalResults.length > 0) {
             finalResults.forEach((doc, idx) => { doc.retrieval_rank = idx + 1; });
-            finalResults = await this._rerankDocuments(actualQuery, finalResults, normalizedK, rrfOptions);
+            finalResults = jevOptions.enabled
+                ? await this._jevRerankDocuments(
+                    actualQuery,
+                    finalResults,
+                    normalizedK,
+                    jevOptions.rrfOptions
+                )
+                : await this._rerankDocuments(
+                    actualQuery,
+                    finalResults,
+                    normalizedK,
+                    rerankOptions.rrfOptions
+                );
         }
 
         if (aiMemoOptions.enabled && finalResults.length > 0) {
@@ -637,7 +523,6 @@ class LightMemoPlugin {
                     rerank,
                     useBM25,
                     tagBoost: tag_boost,
-                    geodesic: useGeodesicRerank,
                     coreTags: normalizedCoreTags
                 })
             });
@@ -667,7 +552,7 @@ class LightMemoPlugin {
             'tagmemo-v9',
             'v9'
         ].includes(normalized)) {
-            return 'tagmemo';
+            throw new RangeError('TagMemo V9 retrieval retired; select rivermemo or knn');
         }
         if ([
             'knn',
@@ -679,7 +564,7 @@ class LightMemoPlugin {
             return 'knn';
         }
         throw new RangeError(
-            `enginemode 仅支持 rivermemo、tagmemo 或 knn，收到 "${value}"`
+            `enginemode 仅支持 rivermemo 或 knn，收到 "${value}"`
         );
     }
 
@@ -731,6 +616,7 @@ class LightMemoPlugin {
         searchAll,
         k,
         rerank,
+        jev = false,
         useBM25,
         tagBoost,
         coreTags,
@@ -743,81 +629,74 @@ class LightMemoPlugin {
             || typeof this.vectorDBManager.rerankWithRiverMemoAsync !== 'function'
         ) {
             const error = new Error(
-                'RiverMemo 异步生产接口不可用；请求未回退到其他记忆引擎'
+                'RiverMemo 原生联合查询接口不可用；请求未回退到其他记忆引擎'
             );
-            error.code = 'RIVERMEMO_ASYNC_INTERFACE_UNAVAILABLE';
+            error.code = 'RIVERMEMO_NATIVE_QUERY_UNAVAILABLE';
             throw error;
         }
 
         const riverConfig =
             this.vectorDBManager.ragParams?.KnowledgeBaseManager?.riverMemo || {};
         const candidateConfig = riverConfig.candidateSuperset || {};
-        const bm25Limit = Math.max(
-            k,
-            Math.floor(Number(candidateConfig.bm25K) || 50)
-        );
-        const bm25Scores = new Map(
-            useBM25
-                ? this._buildBm25TopIds(
-                    actualQuery,
-                    candidates,
-                    bm25Limit
-                ).map(item => [Number(item.id), Number(item.score) || 0])
-                : []
-        );
-        const offeredCandidates = candidates.map(candidate => ({
-            ...candidate,
-            id: Number(candidate.label),
-            chunkId: Number(candidate.label),
-            bm25Score: bm25Scores.get(Number(candidate.label)) || 0
-        }));
-        const allowedFileIds = [...new Set(
-            candidates
-                .map(candidate => Number(candidate.fileId))
-                .filter(Number.isFinite)
-        )];
+        const rerankOptions = this._parseRerankOptions(rerank);
+        const jevOptions = this._parseRerankOptions(jev);
+        if (rerankOptions.enabled && jevOptions.enabled) {
+            console.warn('[LightMemo] rerank 与 jev 同时启用；为避免双重费用，本次 RiverMemo 仅执行 Jev。');
+        }
+        const refinementEnabled = rerankOptions.enabled || jevOptions.enabled;
+        const refinementK = refinementEnabled ? Math.max(k, k * 2) : k;
         const diaryNames = [...new Set(
             candidates
                 .map(candidate => String(candidate.dbName || '').trim())
                 .filter(Boolean)
         )];
-        const agentContext = {
-            agentId: maid || null,
-            diaryNames,
-            allowedFileIds,
-            deniedFileIds: [],
-            visibilityMode: 'explicit_sql_scope',
-            permissions: {
-                allowPublic: false,
-                allowOwn: true,
-                allowAuthorized: true,
-                allowOtherAgentPublic: false,
-                allowUnknownProvenance: false
-            }
-        };
-        const rerankOptions = this._parseRerankOptions(rerank);
-        // 与既有 LightMemo 行为一致：外部 Rerank 只消费最终检索窗口。
-        // RiverMemo 自身先在完整 SQL 授权候选域上建立六路候选超集。
+        if (diaryNames.length === 0) {
+            throw new Error('RiverMemo 无法建立显式日记本作用域。');
+        }
+
+        const allowedCandidateIds = new Set(
+            candidates
+                .map(candidate => Number(candidate.label))
+                .filter(Number.isSafeInteger)
+        );
+        const bm25Limit = Math.max(
+            refinementK,
+            Math.floor(Number(candidateConfig.bm25K) || 50)
+        );
+        const bm25Top = useBM25
+            ? this._buildBm25TopIds(actualQuery, candidates, bm25Limit)
+            : [];
+        // 已完成时间/署名过滤的候选是硬边界，禁止重搜整个日记本。
+        const bm25ById = new Map(bm25Top.map(item => [Number(item.id), Number(item.score) || 0]));
+        const scoredCandidates = await this._scoreByVectorSimilarity(candidates, queryVector);
+        const riverInput = scoredCandidates.map(item => ({
+            ...item,
+            id: Number(item.label),
+            chunkId: Number(item.label),
+            fullPath: item.sourceFile,
+            score: Number(item.vectorScore) || 0,
+            bm25Score: bm25ById.get(Number(item.label)) || 0
+        }));
         const riverResult = await this.vectorDBManager.rerankWithRiverMemoAsync(
+            { text: actualQuery, vector: queryVector },
+            riverInput,
             {
-                text: actualQuery,
-                vector: queryVector
+                agentId: maid || null,
+                diaryNames,
+                allowedFileIds: [...new Set(candidates.map(item => Number(item.fileId))
+                    .filter(Number.isSafeInteger))],
+                deniedFileIds: [],
+                visibilityMode: 'explicit_sql_scope',
+                permissions: { allowAuthorized: true, allowUnknownProvenance: false }
             },
-            offeredCandidates,
-            agentContext,
             {
-                topK: k,
+                topK: refinementK,
                 coreTags,
+                nativeJointQuery: false,
                 sourceObservationConfig: {
                     baseTagBoost: Math.max(0, Number(tagBoost) || 0),
-                    coreBoostFactor: Math.max(
-                        0,
-                        Number(coreBoostFactor) || 1.33
-                    )
-                },
-                // Rust 内核以 allowedFileIds 执行可见性门控；不再创建 Node Worker。
-                identityDiaryName: maid || null,
-                includeTrace: false
+                    coreBoostFactor: Math.max(0, Number(coreBoostFactor) || 1.33)
+                }
             }
         );
         if (!riverResult || !Array.isArray(riverResult.results)) {
@@ -826,9 +705,15 @@ class LightMemoPlugin {
             throw error;
         }
 
-        let finalResults = riverResult.results.map(item => ({
+        let finalResults = riverResult.results
+            .filter(item => allowedCandidateIds.has(
+                Number(item.label ?? item.id ?? item.chunkId)
+            ))
+            .slice(0, refinementK)
+            .map(item => ({
             ...item,
             label: Number(item.label ?? item.id ?? item.chunkId),
+            dbName: item.diaryName || item.dbName,
             hybridScore: Number(item.score) || 0,
             riverMemo: {
                 artifactSig: riverResult.artifactSig,
@@ -885,16 +770,25 @@ class LightMemoPlugin {
             `${(Number(operatorCache.estimatedBytes || 0) / 1048576).toFixed(1)}MiB).`
         );
 
-        if (rerankOptions.enabled && finalResults.length > 0) {
+        if (refinementEnabled && finalResults.length > 0) {
             finalResults.forEach((document, index) => {
                 document.retrieval_rank = index + 1;
             });
-            finalResults = await this._rerankDocuments(
-                actualQuery,
-                finalResults,
-                k,
-                rerankOptions.rrfOptions
-            );
+            finalResults = jevOptions.enabled
+                ? await this._jevRerankDocuments(
+                    actualQuery,
+                    finalResults,
+                    k,
+                    jevOptions.rrfOptions
+                )
+                : await this._rerankDocuments(
+                    actualQuery,
+                    finalResults,
+                    k,
+                    rerankOptions.rrfOptions
+                );
+        } else {
+            finalResults = finalResults.slice(0, k);
         }
 
         if (aiMemoOptions.enabled && finalResults.length > 0) {
@@ -910,6 +804,7 @@ class LightMemoPlugin {
                     searchAll,
                     k,
                     rerank,
+                    jev,
                     useBM25,
                     tagBoost,
                     coreTags
@@ -922,12 +817,12 @@ class LightMemoPlugin {
     }
 
     /**
-     * 生产构型 A/B：同一作用域内比较 KNN、TagMemo V9、Rust Topology V3
+     * 生产构型 A/B：同一作用域内比较 KNN、RiverMemo Rust Topology V3
      * 与可选外部 Rerank。这里不再承载任何 V10 实验臂。
      */
-    async handleTagMemoAB(args = {}) {
+    async handleMemoryAB(args = {}) {
         const query = String(args.query || '').trim();
-        if (!query) throw new Error('TagMemo A/B 需要 query 参数。');
+        if (!query) throw new Error('Memory A/B 需要 query 参数。');
 
         const parsedMaidScope = this._parseMaidScopedFolder(args.maid);
         const maid = parsedMaidScope.maid;
@@ -941,7 +836,7 @@ class LightMemoPlugin {
         );
         if (!searchAll && !maid && !folder) {
             throw new Error(
-                'TagMemo A/B 必须提供 maid/folder，或开启 search_all_knowledge_bases。'
+                'Memory A/B 必须提供 maid/folder，或开启 search_all_knowledge_bases。'
             );
         }
 
@@ -953,12 +848,10 @@ class LightMemoPlugin {
                 Math.max(30, k * 5)
             ))
         );
-        const tagBoost = Math.max(0, Math.min(1, this._parseNumber(
-            typeof args.tag_boost === 'string'
-                ? args.tag_boost.replace(/\+$/, '')
-                : args.tag_boost,
-            0.6
-        )));
+        if (typeof args.tag_boost === 'string' && args.tag_boost.trim().endsWith('+')) {
+            throw new RangeError('tag_boost 的 + 势场后缀已退休，请提供数值');
+        }
+        const tagBoost = Math.max(0, Math.min(1, this._parseNumber(args.tag_boost, 0.6)));
         const coreTags = this._parseStringArray(
             args.core_tags || args.coreTags
         );
@@ -973,7 +866,7 @@ class LightMemoPlugin {
                 ['use_bm25', args.use_bm25]
             ],
             true,
-            'TagMemo A/B BM25'
+            'Memory A/B BM25'
         );
         const compareRerank = this._parseBooleanAlias(
             [
@@ -982,7 +875,16 @@ class LightMemoPlugin {
                 ['rerank_compare', args.rerank_compare]
             ],
             true,
-            'TagMemo A/B Rerank'
+            'Memory A/B Rerank'
+        );
+        const compareJev = this._parseBooleanAlias(
+            [
+                ['compare_jev', args.compare_jev],
+                ['compareJev', args.compareJev],
+                ['jev_compare', args.jev_compare]
+            ],
+            false,
+            'Memory A/B Jev'
         );
 
         const candidates = await this._gatherCandidateChunks({
@@ -993,11 +895,11 @@ class LightMemoPlugin {
             timeRange: null
         });
         if (candidates.length === 0) {
-            return 'TagMemo A/B：指定作用域内没有可用记忆。';
+            return 'Memory A/B：指定作用域内没有可用记忆。';
         }
 
         const queryVectorRaw = await this.getSingleEmbedding(query);
-        if (!queryVectorRaw) throw new Error('TagMemo A/B 查询向量化失败。');
+        if (!queryVectorRaw) throw new Error('Memory A/B 查询向量化失败。');
         const queryVector = queryVectorRaw instanceof Float32Array
             ? queryVectorRaw
             : new Float32Array(queryVectorRaw);
@@ -1021,57 +923,6 @@ class LightMemoPlugin {
             await this._scoreByVectorSimilarity(candidates, queryVector)
         );
 
-        if (
-            !this.vectorDBManager
-            || typeof this.vectorDBManager.applyTagBoostAsync !== 'function'
-            || typeof this.vectorDBManager.rerankWithTagMemoAsync !== 'function'
-        ) {
-            throw new Error('TagMemo V9 生产接口不可用。');
-        }
-        const v9Snapshot = this.vectorDBManager.getTagMemoArtifactSnapshot(
-            'v9',
-            { strictVersion: true }
-        );
-        if (!v9Snapshot?.bundle) {
-            throw new Error('TagMemo V9 ArtifactBundle 不可用。');
-        }
-        const v9Boost = await this.vectorDBManager.applyTagBoostAsync(
-            new Float32Array(queryVector),
-            tagBoost,
-            coreTags,
-            coreBoostFactor,
-            {
-                queryText: query,
-                tagMemoVersion: 'v9',
-                strictVersion: true
-            }
-        );
-        if (!v9Boost?.vector) {
-            throw new Error('TagMemo V9 查询增强失败。');
-        }
-
-        const v9VectorRanked = normalizeRanked(
-            await this._scoreByVectorSimilarity(candidates, v9Boost.vector)
-        );
-        const v9Input = v9VectorRanked.slice(0, candidateK);
-        const v9RerankResult = v9Boost.preparedMemoObservation
-            ? await this.vectorDBManager.rerankWithTagMemoAsync(
-                { text: query, vector: queryVector },
-                v9Input,
-                {},
-                {
-                    topK: candidateK,
-                    preparedMemoObservation: v9Boost.preparedMemoObservation
-                }
-            )
-            : null;
-        const v9Ranked = normalizeRanked(
-            Array.isArray(v9RerankResult?.results)
-                ? v9RerankResult.results
-                : v9Input,
-            'score'
-        );
-
         const rustV3Ranked = await this._handleRiverMemoSearch({
             query,
             actualQuery: query,
@@ -1090,8 +941,19 @@ class LightMemoPlugin {
             returnResults: true
         });
 
+        const abRefinementWindow = Math.max(k, k * 2);
+        const refinementPool = this._buildConsensusCandidatePool(
+            [knnRanked, rustV3Ranked],
+            candidates,
+            abRefinementWindow
+        );
         let rerankTrack = {
             requested: compareRerank,
+            available: false,
+            results: []
+        };
+        let jevTrack = {
+            requested: compareJev,
             available: false,
             results: []
         };
@@ -1100,36 +962,44 @@ class LightMemoPlugin {
             && this.rerankConfig.apiKey
             && this.rerankConfig.model
         );
-        if (compareRerank && rerankConfigured) {
-            const candidateById = new Map(
-                candidates.map(item => [Number(item.label), item])
-            );
-            const poolById = new Map();
-            for (const track of [knnRanked, v9Ranked, rustV3Ranked]) {
-                for (const item of track.slice(0, candidateK)) {
-                    const id = Number(item.id ?? item.label ?? item.chunkId);
-                    if (!Number.isFinite(id) || poolById.has(id)) continue;
-                    const canonical = candidateById.get(id) || item;
-                    poolById.set(id, {
-                        ...canonical,
-                        ...item,
-                        id,
-                        label: item.label ?? canonical.label ?? id,
-                        text: String(item.text ?? canonical.text ?? '').trim(),
-                        retrieval_rank: poolById.size + 1
-                    });
-                }
-            }
-            const pool = [...poolById.values()].filter(item => item.text);
+        if (compareRerank && rerankConfigured && refinementPool.length > 0) {
             const reranked = await this._rerankDocuments(
                 query,
-                pool,
-                Math.min(k, pool.length)
+                refinementPool.map(item => ({ ...item })),
+                Math.min(k, refinementPool.length)
+            );
+            // 普通检索允许失败回退，但评测轨不能把回退检索分冒充外部模型评分。
+            const scored = reranked.filter(item =>
+                item.rerank_failed !== true
+                && typeof item.rerank_score === 'number'
+                && Number.isFinite(item.rerank_score)
             );
             rerankTrack = {
                 requested: true,
-                available: reranked.some(item => !item.rerank_failed),
-                results: normalizeRanked(reranked, 'rerank_score')
+                available: scored.length > 0,
+                results: normalizeRanked(scored, 'rerank_score')
+            };
+        }
+        const jevConfigured = Boolean(
+            this.jevClient
+            && typeof this.jevClient.decide === 'function'
+            && this.jevClient.isConfigured?.() === true
+        );
+        if (compareJev && jevConfigured && refinementPool.length > 0) {
+            const jevRanked = await this._jevRerankDocuments(
+                query,
+                refinementPool.map(item => ({ ...item })),
+                Math.min(k, refinementPool.length)
+            );
+            const scored = jevRanked.filter(item =>
+                item.rerank_failed !== true
+                && typeof item.jev_score === 'number'
+                && Number.isFinite(item.jev_score)
+            );
+            jevTrack = {
+                requested: true,
+                available: scored.length > 0,
+                results: normalizeRanked(scored, 'jev_score')
             };
         }
 
@@ -1137,14 +1007,15 @@ class LightMemoPlugin {
             query,
             k,
             candidateK,
-            artifactVersion: v9Snapshot.bundle.algorithmVersion || 'v9',
+            refinementWindow: abRefinementWindow,
             tracks: {
                 knn: knnRanked,
-                v9: v9Ranked,
                 rustV3: rustV3Ranked,
-                rerank: rerankTrack.results
+                rerank: rerankTrack.results,
+                jev: jevTrack.results
             },
-            rerankTrack
+            rerankTrack,
+            jevTrack
         });
     }
 
@@ -1152,16 +1023,17 @@ class LightMemoPlugin {
         query,
         k,
         candidateK,
-        artifactVersion,
+        refinementWindow,
         tracks,
-        rerankTrack
+        rerankTrack,
+        jevTrack
     }) {
         const definitions = [
             ['knn', 'KNN'],
-            ['v9', `TagMemo ${artifactVersion}`],
             ['rustV3', 'Rust Topology V3']
         ];
         if (rerankTrack.requested) definitions.push(['rerank', 'Rerank']);
+        if (jevTrack.requested) definitions.push(['jev', 'Jev']);
 
         const topTracks = Object.fromEntries(definitions.map(([name]) => [
             name,
@@ -1173,12 +1045,10 @@ class LightMemoPlugin {
                 Number(item.id ?? item.label ?? item.chunkId),
                 {
                     rank: index + 1,
-                    score: Number(
-                        item.score
-                        ?? item.rerank_score
-                        ?? item.hybridScore
-                        ?? item.vectorScore
-                    ) || 0
+                    score: name === 'rerank' ? item.rerank_score
+                        : name === 'jev' ? item.jev_score
+                        : name === 'knn' ? item.vectorScore ?? item.score
+                        : item.score ?? item.hybridScore
                 }
             ]))
         ]));
@@ -1213,14 +1083,17 @@ class LightMemoPlugin {
 
         let output = '# LightMemo 生产构型 A/B\n\n';
         output += `- 查询：${this._escapeMarkdownCell(query)}\n`;
-        output += `- Top-K：${k}；候选窗口：${candidateK}\n`;
-        output += `- KNN ↔ TagMemo V9 重合：${overlap('knn', 'v9')}/${k}\n`;
+        output += `- Top-K：${k}；基础候选窗口：${candidateK}；外部精排窗口：${refinementWindow}（2×K）\n`;
         output += `- KNN ↔ Rust V3 重合：${overlap('knn', 'rustV3')}/${k}\n`;
-        output += `- TagMemo V9 ↔ Rust V3 重合：${overlap('v9', 'rustV3')}/${k}\n`;
         if (rerankTrack.requested) {
             output += `- Rerank：${rerankTrack.available
                 ? '可用'
-                : '已请求，但未配置或调用失败'}\n`;
+                : '未获得有效外部评分（未配置、跳过或调用失败）；不展示回退检索分'}\n`;
+        }
+        if (jevTrack.requested) {
+            output += `- Jev：${jevTrack.available
+                ? '可用'
+                : '未获得有效外部评分（未配置、跳过或调用失败）；不展示回退检索分'}\n`;
         }
         output += '\n';
         output += `| Chunk | 记忆摘要 | ${definitions.map(([, label]) => label).join(' | ')} |\n`;
@@ -1235,6 +1108,57 @@ class LightMemoPlugin {
             output += `| ${id} | ${this._escapeMarkdownCell(shortText(item.text))} | ${cells.join(' | ')} |\n`;
         }
         return output;
+    }
+
+    _buildConsensusCandidatePool(tracks, canonicalCandidates, limit) {
+        const safeTracks = (Array.isArray(tracks) ? tracks : [])
+            .filter(Array.isArray);
+        const canonicalById = new Map(
+            (canonicalCandidates || []).map(item => [
+                Number(item.id ?? item.label ?? item.chunkId),
+                item
+            ])
+        );
+        const consensusById = new Map();
+        const RRF_K = 60;
+
+        safeTracks.forEach(track => {
+            track.forEach((item, index) => {
+                const id = Number(item.id ?? item.label ?? item.chunkId);
+                if (!Number.isFinite(id)) return;
+                const current = consensusById.get(id) || {
+                    id,
+                    score: 0,
+                    bestRank: Number.MAX_SAFE_INTEGER,
+                    item
+                };
+                current.score += 1 / (RRF_K + index + 1);
+                current.bestRank = Math.min(current.bestRank, index + 1);
+                if (index + 1 === current.bestRank) current.item = item;
+                consensusById.set(id, current);
+            });
+        });
+
+        return [...consensusById.values()]
+            .sort((left, right) =>
+                right.score - left.score
+                || left.bestRank - right.bestRank
+                || left.id - right.id
+            )
+            .slice(0, Math.max(1, Number(limit) || 1))
+            .map((entry, index) => {
+                const canonical = canonicalById.get(entry.id) || {};
+                return {
+                    ...canonical,
+                    ...entry.item,
+                    id: entry.id,
+                    label: entry.item.label ?? canonical.label ?? entry.id,
+                    text: String(entry.item.text ?? canonical.text ?? '').trim(),
+                    retrieval_rank: index + 1,
+                    consensus_score: entry.score
+                };
+            })
+            .filter(item => item.text);
     }
 
     _buildBm25TopIds(query, candidates, limit) {
@@ -1321,7 +1245,7 @@ class LightMemoPlugin {
      * 走 TDBKnowledge 的 search_hybrid（BM25 稀疏 + 向量稠密 + 图扩散），
      * 可选叠加 LightMemo 自带的 Rerank 精排。
      */
-    async _handleColdKnowledgeSearch({ query, libraries, k, rerank }) {
+    async _handleColdKnowledgeSearch({ query, libraries, k, rerank, jev = false }) {
         if (!this.tdbKnowledgeManager) {
             return '冷知识库（TDBKnowledge）未启用或未注入，无法检索。';
         }
@@ -1330,8 +1254,13 @@ class LightMemoPlugin {
         }
 
         const normalizedK = Math.max(1, Math.floor(this._parseNumber(k, 5)));
-        // Rerank 阶段会重排，因此初筛多取一些候选
-        const fetchK = rerank ? normalizedK * 3 : normalizedK;
+        const rerankOptions = this._parseRerankOptions(rerank);
+        const jevOptions = this._parseRerankOptions(jev);
+        if (rerankOptions.enabled && jevOptions.enabled) {
+            console.warn('[LightMemo] 冷知识检索同时启用 rerank 与 jev；为避免双重费用，本次仅执行 Jev。');
+        }
+        const refinementEnabled = rerankOptions.enabled || jevOptions.enabled;
+        const fetchK = refinementEnabled ? normalizedK * 2 : normalizedK;
 
         console.log(`[LightMemo] 🧊 Cold knowledge search: query="${query}", libraries=[${libraries.join(', ') || 'ALL'}], k=${normalizedK}`);
 
@@ -1364,34 +1293,22 @@ class LightMemoPlugin {
             hybridScore: typeof h.score === 'number' ? h.score : 0
         })).filter(d => d.text);
 
-        // 可选 Rerank 精排（复用现有 rerank 解析与执行逻辑）
-        let useRerank = false;
-        let rrfOptions = null;
-        if (rerank === true) {
-            useRerank = true;
-        } else if (typeof rerank === 'number' && rerank > 0 && rerank <= 1.0) {
-            useRerank = true;
-            rrfOptions = { alpha: rerank };
-        } else if (typeof rerank === 'string') {
-            const lower = rerank.toLowerCase().trim();
-            if (lower.startsWith('rrf')) {
-                useRerank = true;
-                const m = lower.match(/rrf(\d+\.?\d*)/);
-                rrfOptions = { alpha: m ? Math.min(1.0, Math.max(0.0, parseFloat(m[1]))) : 0.5 };
-            } else {
-                const numericAlpha = parseFloat(lower);
-                if (!isNaN(numericAlpha) && numericAlpha > 0 && numericAlpha <= 1.0) {
-                    useRerank = true;
-                    rrfOptions = { alpha: numericAlpha };
-                } else if (lower === 'true') {
-                    useRerank = true;
-                }
-            }
-        }
-
-        if (useRerank && docs.length > 0) {
+        if (refinementEnabled && docs.length > 0) {
+            docs = docs.slice(0, fetchK);
             docs.forEach((doc, idx) => { doc.retrieval_rank = idx + 1; });
-            docs = await this._rerankDocuments(query, docs, normalizedK, rrfOptions);
+            docs = jevOptions.enabled
+                ? await this._jevRerankDocuments(
+                    query,
+                    docs,
+                    normalizedK,
+                    jevOptions.rrfOptions
+                )
+                : await this._rerankDocuments(
+                    query,
+                    docs,
+                    normalizedK,
+                    rerankOptions.rrfOptions
+                );
         } else {
             docs = docs.slice(0, normalizedK);
         }
@@ -1414,7 +1331,10 @@ class LightMemoPlugin {
         results.forEach((r) => {
             let scoreValue = 0;
             let scoreType = '';
-            if (typeof r.rerank_score === 'number' && !isNaN(r.rerank_score)) {
+            if (typeof r.jev_score === 'number' && !isNaN(r.jev_score)) {
+                scoreValue = r.jev_score;
+                scoreType = 'Jev';
+            } else if (typeof r.rerank_score === 'number' && !isNaN(r.rerank_score)) {
                 scoreValue = r.rerank_score;
                 scoreType = r.rerank_failed ? '混合' : 'Rerank';
             } else if (typeof r.hybridScore === 'number' && !isNaN(r.hybridScore)) {
@@ -1454,7 +1374,10 @@ class LightMemoPlugin {
             let scoreValue = 0;
             let scoreType = '';
 
-            if (typeof r.rerank_score === 'number' && !isNaN(r.rerank_score)) {
+            if (typeof r.jev_score === 'number' && !isNaN(r.jev_score)) {
+                scoreValue = r.jev_score;
+                scoreType = 'Jev';
+            } else if (typeof r.rerank_score === 'number' && !isNaN(r.rerank_score)) {
                 scoreValue = r.rerank_score;
                 scoreType = r.rerank_failed ? '混合' : 'Rerank';
             } else if (typeof r.hybridScore === 'number' && !isNaN(r.hybridScore)) {
@@ -1486,23 +1409,6 @@ class LightMemoPlugin {
                     `拓扑+${Number(river.topologyBonus || 0).toFixed(4)}, ` +
                     `直锚+${Number(river.anchorBonus || 0).toFixed(4)}]\n`;
             }
-            if (r.tagBoostInfo) {
-                // 使用解构默认值，确保即使 tagBoostInfo 结构不完整也能安全运行
-                const { matchedTags = [], coreTagsMatched = [] } = r.tagBoostInfo;
-                if (matchedTags.length > 0 || coreTagsMatched.length > 0) {
-                    const memoLabel = r.potentialFieldV91 ? 'TagMemo V9.1 + 势能场' : 'TagMemo V9.1';
-                    let boostLine = `    [${memoLabel} 增强: `;
-                    // 只有当确实命中了核心标签时，才显示 🌟 标志
-                    if (coreTagsMatched.length > 0) {
-                        boostLine += `🌟${coreTagsMatched.join(', ')} `;
-                        if (matchedTags.length > 0) boostLine += `| `;
-                    }
-                    if (matchedTags.length > 0) {
-                        boostLine += `${matchedTags.slice(0, 5).join(', ')}`;
-                    }
-                    content += boostLine + `]\n`;
-                }
-            }
             // 每条召回内容后保留一个空行，避免多个记忆片段视觉上粘连。
             content += `${r.text.trim()}\n\n`;
         });
@@ -1518,6 +1424,131 @@ class LightMemoPlugin {
         return Math.ceil(chineseChars * 1.5 + otherChars * 0.25);
     }
 
+    _applyRrfFusion(documents, originalK, rrfOptions = null, label = 'Rerank') {
+        if (!rrfOptions) {
+            return documents.slice(0, originalK);
+        }
+
+        const RRF_K = 60;
+        const alpha = rrfOptions.alpha ?? 0.5;
+        documents.forEach((doc, index) => {
+            doc.rerank_rank = index + 1;
+            const retrievalRank = doc.retrieval_rank || documents.length;
+            doc.rrf_score = alpha * (1 / (RRF_K + doc.rerank_rank))
+                + (1 - alpha) * (1 / (RRF_K + retrievalRank));
+        });
+        documents.sort((left, right) => right.rrf_score - left.rrf_score);
+        const finalDocuments = documents.slice(0, originalK);
+        console.log(
+            `[LightMemo] ${label}+(RRF) completed: ` +
+            `${documents.length} -> ${finalDocuments.length} (α=${alpha}).`
+        );
+        return finalDocuments;
+    }
+
+    async _jevRerankDocuments(query, documents, originalK, rrfOptions = null) {
+        if (
+            !this.jevClient
+            || typeof this.jevClient.decide !== 'function'
+            || this.jevClient.isConfigured?.() !== true
+        ) {
+            console.warn('[LightMemo] Jev requested but shared JevClient is not configured. Keeping retrieval order.');
+            return documents.slice(0, originalK);
+        }
+        if (!Array.isArray(documents) || documents.length <= 1) {
+            return (documents || []).slice(0, originalK);
+        }
+
+        const maxChoices = Math.max(
+            2,
+            Math.min(255, Number(this.rerankConfig.jevMaxChoices) || 255)
+        );
+        const maxDocumentChars = Math.max(
+            200,
+            Number(this.rerankConfig.jevMaxDocumentChars) || 6000
+        );
+        const refinementWindow = Math.max(1, Math.floor(Number(originalK) || 1) * 2);
+        const eligibleDocuments = documents.slice(
+            0,
+            Math.min(maxChoices, refinementWindow)
+        );
+        const criteria = {};
+        const documentByChoice = new Map();
+
+        eligibleDocuments.forEach((document, index) => {
+            const choiceId = `doc_${String(index).padStart(3, '0')}`;
+            const text = String(document?.text || '').trim();
+            const boundedText = text.length > maxDocumentChars
+                ? `${text.substring(0, maxDocumentChars)}…`
+                : text;
+            criteria[choiceId] = [
+                `候选记忆 ${index + 1}`,
+                document?.dbName ? `日记本: ${document.dbName}` : null,
+                document?.sourceFile ? `路径: ${document.sourceFile}` : null,
+                `内容:\n${boundedText}`
+            ].filter(Boolean).join('\n');
+            documentByChoice.set(choiceId, document);
+        });
+
+        try {
+            const response = await this.jevClient.decide(
+                {
+                    task: 'lightmemo_memory_rerank',
+                    query: String(query || ''),
+                    candidate_count: eligibleDocuments.length
+                },
+                {
+                    best_memory: {
+                        type: 'choice',
+                        instructions: this.rerankConfig.jevPrompt,
+                        criteria
+                    }
+                }
+            );
+            const answer = response?.answers?.best_memory;
+            const probabilities = answer?.probabilities;
+            if (!probabilities || typeof probabilities !== 'object') {
+                throw new Error('Jev choice response is missing probabilities.');
+            }
+
+            const reranked = Array.from(documentByChoice.entries())
+                .map(([choiceId, document], index) => ({
+                    ...document,
+                    rerank_score: Number(probabilities[choiceId]) || 0,
+                    jev_score: Number(probabilities[choiceId]) || 0,
+                    jev_choice: choiceId,
+                    jev_selected: answer.choice === choiceId,
+                    jev_confidence: Number(answer.confidence) || 0,
+                    rerank_failed: false,
+                    _jevStableIndex: index
+                }))
+                .sort((left, right) =>
+                    (right.jev_score - left.jev_score)
+                    || (Number(right.jev_selected) - Number(left.jev_selected))
+                    || (left._jevStableIndex - right._jevStableIndex)
+                );
+            reranked.forEach(document => {
+                delete document._jevStableIndex;
+            });
+
+            const finalDocuments = this._applyRrfFusion(
+                reranked,
+                originalK,
+                rrfOptions,
+                'Jev'
+            ).concat(documents.slice(eligibleDocuments.length)).slice(0, originalK);
+            console.log(
+                `[LightMemo] Jev rerank completed: ${eligibleDocuments.length} -> ` +
+                `${finalDocuments.length}, selected=${answer.choice || 'unknown'}, ` +
+                `confidence=${Number(answer.confidence || 0).toFixed(4)}.`
+            );
+            return finalDocuments;
+        } catch (error) {
+            console.error('[LightMemo] Jev rerank failed; keeping retrieval order:', error.message);
+            return documents.slice(0, originalK);
+        }
+    }
+
     async _rerankDocuments(query, documents, originalK, rrfOptions = null) {
         if (!this.rerankConfig.url || !this.rerankConfig.apiKey || !this.rerankConfig.model) {
             console.warn('[LightMemo] Rerank not configured. Skipping.');
@@ -1531,7 +1562,9 @@ class LightMemoPlugin {
             console.warn('[LightMemo] Rerank skipped because query is empty.');
             return documents.slice(0, originalK);
         }
+        const refinementWindow = Math.max(1, Math.floor(Number(originalK) || 1) * 2);
         const validDocuments = documents
+            .slice(0, refinementWindow)
             .map(doc => ({
                 ...doc,
                 text: String(doc?.text ?? '').trim()

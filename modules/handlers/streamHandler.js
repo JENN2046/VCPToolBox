@@ -109,6 +109,8 @@ class StreamHandler {
     let currentAIContentForLoop = '';
     let chatLogs = [];
     let oneRingAssistantTurnParts = [];
+    let validUpstreamTurns = true;
+    let completed = false;
 
     const containsImageUrlPart = (content) => Array.isArray(content) &&
       content.some(part => part?.type === 'image_url' && part.image_url && typeof part.image_url.url === 'string');
@@ -160,23 +162,6 @@ class StreamHandler {
       return translatedContent;
     };
 
-    const recordOneRingAIResponse = (aiText, phaseLabel) => {
-      const oneRingModule = pluginManager?.messagePreprocessors?.get?.('OneRing');
-      if (!oneRingModule) return;
-
-      const recordPromise = oneRingResponseMeta && typeof oneRingModule.recordAIResponseWithMeta === 'function'
-        ? oneRingModule.recordAIResponseWithMeta(oneRingResponseMeta, aiText)
-        : (typeof oneRingModule.recordAIResponseFromMessages === 'function'
-          ? oneRingModule.recordAIResponseFromMessages(originalBody.messages, aiText)
-          : null);
-
-      if (recordPromise && typeof recordPromise.catch === 'function') {
-        recordPromise.catch(e =>
-          console.error(`[OneRing Stream] Error recording AI response (${phaseLabel}):`, e),
-        );
-      }
-    };
-
     // 辅助函数：处理 AI 响应流 (优化版：直通转发 + 后台解析 + chunk 空闲超时保护)
     const processAIResponseStreamHelper = async (aiResponse, isInitialCall) => {
       return new Promise((resolve, reject) => {
@@ -221,9 +206,9 @@ class StreamHandler {
           if (residentProposalFramingActive) {
             res.__vcpDisableReplayCache?.();
             discardDeferredClientWrites();
-            return { content: '', message, residentFrame: invalidResidentFrame };
+            return { content: '', message, residentFrame: invalidResidentFrame, completed: false };
           }
-          return { content: collectedContentThisTurn, message };
+          return { ...result(), completed: false };
         };
         const writeResidentClientPrefix = (content) => {
           if (!content || res.writableEnded || res.destroyed) return;
@@ -237,6 +222,23 @@ class StreamHandler {
           res.write(`data: ${JSON.stringify(payload)}
 
 `);
+        };
+
+        let finishReason = null;
+        let sawDone = false;
+        let invalidPayload = false;
+        let upstreamEnded = false;
+        const result = () => ({
+          content: collectedContentThisTurn,
+          message,
+          completed: !streamAborted && !invalidPayload && aiResponse.ok &&
+            collectedContentThisTurn.trim().length > 0 &&
+            (finishReason === 'stop' || (!finishReason && sawDone))
+        });
+        const observePayload = (parsedData) => {
+          if (parsedData?.error) invalidPayload = true;
+          const reason = parsedData?.choices?.[0]?.finish_reason;
+          if (reason) finishReason = reason;
         };
 
         const appendDelta = (delta) => {
@@ -368,6 +370,8 @@ class StreamHandler {
 
         const abortHandler = () => {
           streamAborted = true;
+          if (keepAliveTimer) clearInterval(keepAliveTimer);
+          if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           if (DEBUG_MODE) console.log('[Stream Abort] Abort signal received, stopping stream processing.');
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (aiResponse.body && !aiResponse.body.destroyed) aiResponse.body.destroy();
@@ -376,7 +380,17 @@ class StreamHandler {
 
         if (abortController?.signal) {
           abortController.signal.addEventListener('abort', abortHandler);
+          if (abortController.signal.aborted) abortHandler();
         }
+
+        aiResponse.body.on('close', () => {
+          if (upstreamEnded) return;
+          streamAborted = true;
+          if (keepAliveTimer) clearInterval(keepAliveTimer);
+          if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
+          if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
+          resolve(result());
+        });
 
         aiResponse.body.on('data', chunk => {
           if (streamAborted) return;
@@ -393,6 +407,7 @@ class StreamHandler {
           for (const line of lines) {
             const trimmedLine = line.trim();
             const isDoneLine = trimmedLine === 'data: [DONE]' || trimmedLine === 'data:[DONE]';
+            if (isDoneLine) sawDone = true;
             let parsedData = null;
 
             if (trimmedLine.startsWith('data:')) {
@@ -400,9 +415,10 @@ class StreamHandler {
               if (jsonData && jsonData !== '[DONE]') {
                 try {
                   parsedData = JSON.parse(jsonData);
+                  observePayload(parsedData);
                   // 后台始终收集未经展示转换的原始 delta。
                   appendDelta(parsedData.choices?.[0]?.delta);
-                } catch (e) { }
+                } catch (e) { invalidPayload = true; }
               }
             }
 
@@ -426,6 +442,7 @@ class StreamHandler {
         });
 
         aiResponse.body.on('end', () => {
+          upstreamEnded = true;
           if (keepAliveTimer) clearInterval(keepAliveTimer);
           if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           const remainingString = decoder.end();
@@ -437,6 +454,7 @@ class StreamHandler {
           if (sseLineBuffer.length > 0) {
             const trimmedLine = sseLineBuffer.trim();
             const isDoneLine = trimmedLine === 'data: [DONE]' || trimmedLine === 'data:[DONE]';
+            if (isDoneLine) sawDone = true;
             let parsedData = null;
 
             if (trimmedLine.startsWith('data:')) {
@@ -444,8 +462,9 @@ class StreamHandler {
               if (jsonData && jsonData !== '[DONE]') {
                 try {
                   parsedData = JSON.parse(jsonData);
+                  observePayload(parsedData);
                   appendDelta(parsedData.choices?.[0]?.delta);
-                } catch (e) { }
+                } catch (e) { invalidPayload = true; }
               }
             }
 
@@ -480,7 +499,7 @@ class StreamHandler {
               finalLoopContent = '';
             }
           }
-          resolve({ content: finalLoopContent, message: message, residentFrame });
+          resolve({ ...result(), content: finalLoopContent, residentFrame });
         });
 
         aiResponse.body.on('error', streamError => {
@@ -488,11 +507,8 @@ class StreamHandler {
           if (chunkIdleTimer) clearTimeout(chunkIdleTimer);
           if (abortController?.signal) abortController.signal.removeEventListener('abort', abortHandler);
           if (streamAborted || streamError.name === 'AbortError' || streamError.type === 'aborted') {
-            if (residentProposalFramingActive) {
-              resolve(incompleteStreamResult());
-            } else {
-              resolve({ content: collectedContentThisTurn, raw: rawResponseDataThisTurn, message: message });
-            }
+            streamAborted = true;
+            resolve(incompleteStreamResult());
             return;
           }
           console.error('Error reading AI response stream:', streamError);
@@ -515,6 +531,7 @@ class StreamHandler {
       failResidentProposalStream('PROPOSAL_SEQUENCE_REJECTED');
       return;
     }
+    validUpstreamTurns = initialAIResponseData.completed;
     currentAIContentForLoop = initialAIResponseData.content;
     if (writeChatLog) chatLogs.push({ request: originalBody, response: initialAIResponseData.message });
     if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
@@ -568,6 +585,7 @@ class StreamHandler {
             if (!res.writableEnded && !res.destroyed) try { res.end(); } catch (e) { }
           }
         }
+        completed = validUpstreamTurns;
         break;
       }
 
@@ -660,6 +678,7 @@ class StreamHandler {
             failResidentProposalStream('PROPOSAL_SEQUENCE_REJECTED');
             return;
           }
+          validUpstreamTurns = validUpstreamTurns && nextAIResponseData.completed;
           currentAIContentForLoop = nextAIResponseData.content;
           if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
             oneRingAssistantTurnParts.push(currentAIContentForLoop);
@@ -674,6 +693,7 @@ class StreamHandler {
           recursionDepth++;
           continue;
         }
+        break; // 异步工具错误后的上游失败，不得当作正常工具终结轮。
       }
 
       if (normalCalls.length === 0) {
@@ -689,6 +709,7 @@ class StreamHandler {
             });
           } catch (e) { }
         }
+        completed = validUpstreamTurns && archeryErrorContents.length === 0;
         break;
       }
 
@@ -847,6 +868,7 @@ class StreamHandler {
       if (!nextAiAPIResponse.ok) break;
 
       let nextAIResponseData = await processAIResponseStreamHelper(nextAiAPIResponse, false);
+      validUpstreamTurns = validUpstreamTurns && nextAIResponseData.completed;
       currentAIContentForLoop = nextAIResponseData.content;
       if (currentAIContentForLoop && currentAIContentForLoop.trim()) {
         oneRingAssistantTurnParts.push(currentAIContentForLoop);
@@ -863,7 +885,7 @@ class StreamHandler {
     } // toolcall loop end
 
     if (writeChatLog) writeChatLog(originalBody, chatLogs);
-    recordOneRingAIResponse(oneRingAssistantTurnParts.join('\n'), 'final_turn');
+    // OneRing 由主流程在整轮完成且响应发送完成后提交。
 
     if (recursionDepth >= maxRecursion && !res.writableEnded && !res.destroyed) {
       try {
@@ -877,6 +899,10 @@ class StreamHandler {
         });
       } catch (e) { }
     }
+    return {
+      completed: completed && !abortController?.signal.aborted && !res.destroyed,
+      aiText: oneRingAssistantTurnParts.join('\n')
+    };
   }
 }
 

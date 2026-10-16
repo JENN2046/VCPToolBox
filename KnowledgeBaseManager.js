@@ -172,6 +172,35 @@ class KnowledgeBaseManager {
                     : 0.05;
             })(),
             // 兼容仍读取该字段的旧代码；两种枚举模式都表示启用 Tag 索引落地。
+            // 单 Agent 日记 Chunk 索引落地模式（单一枚举配置）：
+            // - always：传统模式，每次防抖窗口结束均重写完整 usearch。
+            // - generational：推荐模式，加载双槽基线并仅由 SQLite 回放 Chunk 差分，
+            //   仅当累计实际差异达到阈值时发布新一代 usearch。
+            // - none：完全禁止落盘（纯内存重建）。
+            chunkIndexPersistenceMode: (() => {
+                const raw = String(
+                    process.env.KNOWLEDGEBASE_PERSIST_CHUNK_INDEX
+                    || 'generational'
+                ).trim().toLowerCase();
+                if (raw === 'always' || raw === 'true') return 'always';
+                if (raw === 'none' || raw === 'off') return 'none';
+                if (raw === 'generational' || raw === 'false' || !raw) {
+                    return 'generational';
+                }
+                console.warn(
+                    `[KnowledgeBase] Invalid KNOWLEDGEBASE_PERSIST_CHUNK_INDEX="${raw}"; ` +
+                    'falling back to recommended mode "generational".'
+                );
+                return 'generational';
+            })(),
+            chunkIndexBaselineDeltaRatio: (() => {
+                const value = Number(
+                    process.env.KNOWLEDGEBASE_CHUNK_INDEX_BASELINE_DELTA_RATIO
+                );
+                return Number.isFinite(value) && value > 0 && value <= 1
+                    ? value
+                    : 0.05;
+            })(),
             persistTagIndex: true,
             // 🌟 是否默认持久化索引（建议 false，仅在内存重建以保证原子性）
             persistDefault: (process.env.KNOWLEDGEBASE_PERSIST_DEFAULT || 'false').toLowerCase() === 'true',
@@ -223,6 +252,7 @@ class KnowledgeBaseManager {
         this.lastJsWriteFinishedAt = 0;
         this.lastRustWriteFinishedAt = 0;
         this._rustLeaseWaitLogAt = 0;
+        this.lastActivityAt = Date.now();
 
         // 🧭 外部文件写入协调器（DailyNote 等常驻服务使用）
         // 文件变更本身不直接写 SQLite，但必须与 watcher 批处理、Rust SQLite 恢复形成单一时序。
@@ -268,6 +298,8 @@ class KnowledgeBaseManager {
             getDbPath: () => this.dbPath,
             getDb: () => this.db,
             waitForCoordinatorIdle: options => this._waitForDatabaseCoordinatorIdle(options),
+            isMutationActive: () => Boolean(this.isProcessing || this.isProcessingDeletes
+                || this.externalMutationActive || this.rustWriteLease || this.indexRecoveryActive),
             ensureDiaryDateIndex: diaryName => this._ensureDiaryDateIndexCached(diaryName),
             invalidateDiaryDateIndex: diaryName => this.invalidateDiaryDateIndex(diaryName),
             onDiaryIndexPublished: (diaryName, index) =>
@@ -276,6 +308,9 @@ class KnowledgeBaseManager {
                 this._unregisterNativeDiaryIndex(diaryName),
             onRecoveryStateChange: active => {
                 this.indexRecoveryActive = active;
+                if (active) {
+                    this.touchActivity();
+                }
             },
             onRecoveryTailChange: tail => {
                 this._indexRecoveryTail = tail;
@@ -308,10 +343,18 @@ class KnowledgeBaseManager {
 
         const dbPath = path.join(this.config.storePath, 'knowledge_base.sqlite');
         this.dbPath = dbPath;
+        const tDb0 = Date.now();
         this.db = this._openDatabaseWithRecovery(dbPath); // 同步连接
+        const tDb = Date.now() - tDb0;
 
+        const tSchema0 = Date.now();
         this._initSchema();
+        const tSchema = Date.now() - tSchema0;
+
+        console.log(`[KnowledgeBaseProbe] ⏱️ DB open: ${tDb}ms, Schema init: ${tSchema}ms. Entering _cleanupDatabaseOrphans...`);
+        const tOrphan0 = Date.now();
         this._cleanupDatabaseOrphans();
+        console.log(`[KnowledgeBaseProbe] ⏱️ _cleanupDatabaseOrphans complete in ${Date.now() - tOrphan0}ms. Ready to restore Global Tag baseline.`);
 
         // 1. 初始化全局 Tag 索引。
         // tags 是唯一权威真相；磁盘 usearch 只是允许落后的双槽基线。
@@ -804,6 +847,9 @@ class KnowledgeBaseManager {
     _delay(ms) {
         return this.databaseCoordinator.delay(ms);
     }
+    touchActivity() {
+        this.lastActivityAt = Date.now();
+    }
 
     async _waitForDatabaseCoordinatorIdle(options = {}) {
         return this.databaseCoordinator.waitForIdle(options);
@@ -937,17 +983,26 @@ class KnowledgeBaseManager {
         try {
             const affectedDiaries = new Set();
 
-            const missingFiles = this.db.prepare('SELECT id, path, diary_name FROM files').all()
-                .filter(row => !fsSync.existsSync(path.join(this.config.rootPath, row.path)));
+            const tQueryFiles0 = Date.now();
+            const allFiles = this.db.prepare('SELECT id, path, diary_name FROM files').all();
+            const tQueryFiles = Date.now() - tQueryFiles0;
+
+            const tExists0 = Date.now();
+            const missingFiles = allFiles.filter(row => !fsSync.existsSync(path.join(this.config.rootPath, row.path)));
+            const tExists = Date.now() - tExists0;
 
             missingFiles.forEach(row => affectedDiaries.add(row.diary_name));
 
+            const tOrphanChunk0 = Date.now();
             const orphanChunkCount = this.db.prepare(`
                 SELECT COUNT(*) as count
                 FROM chunks c
                 LEFT JOIN files f ON c.file_id = f.id
                 WHERE f.id IS NULL
             `).get().count || 0;
+            const tOrphanChunk = Date.now() - tOrphanChunk0;
+
+            console.log(`[KnowledgeBaseProbe] 🔍 Orphan detail: ${allFiles.length} files queried (${tQueryFiles}ms), ${allFiles.length} existsSync checks (${tExists}ms), orphan chunk count query (${tOrphanChunk}ms). Missing files: ${missingFiles.length}`);
 
             const cleanupTransaction = this.db.transaction(() => {
                 for (const row of missingFiles) {
@@ -1052,29 +1107,16 @@ class KnowledgeBaseManager {
         return await this.searchService.search(...args);
     }
 
-    _resolveTagMemoRequest(...args) {
-        return this.searchService._resolveTagMemoRequest(...args);
+    async searchMany(...args) {
+        return this.searchService.searchMany(...args);
     }
 
-    _resolveGeodesicCandidateK(...args) {
-        return this.searchService._resolveGeodesicCandidateK(...args);
+    async searchKnn(...args) {
+        return this.searchService.searchKnn(...args);
     }
 
-    async _searchSpecificIndex(...args) {
-        return await this.searchService._searchSpecificIndex(...args);
-    }
-
-    async _searchAllIndices(...args) {
-        return await this.searchService._searchAllIndices(...args);
-    }
-
-    /**
-     * 在指定日记本集合上执行一次逻辑联合搜索。
-     * 各物理 Vexus 索引只负责返回候选；TagMemo 增强、测地线重排、全局 Top-K 与 SQLite hydrate
-     * 均在联合层只执行一次，使该集合在调用方看来等价于一个请求级虚拟索引。
-     */
-    async _searchSelectedIndices(...args) {
-        return await this.searchService._searchSelectedIndices(...args);
+    async searchKnnMany(...args) {
+        return this.searchService.searchKnnMany(...args);
     }
 
     /**
@@ -1085,7 +1127,7 @@ class KnowledgeBaseManager {
      * TagMemo 原生异步增强兼容门面。
      *
      * 返回旧 applyTagBoost 的主要字段形状，同时附带 preparedMemoObservation，
-     * 供后续 DTSC/Topology 读出复用同一次 Rust 感应，禁止重复构造河网。
+     * 供后续 RiverMemo Topology 读出复用同一次 Rust 感应，禁止重复构造河网。
      */
     async applyTagBoostAsync(
         vector,
@@ -1323,7 +1365,6 @@ class KnowledgeBaseManager {
         }
         if (
             typeof this.tagIndex.runMemoPipeline !== 'function'
-            || typeof this.tagIndex.rerankMemoDtsc !== 'function'
             || typeof this.tagIndex.rerankRivermemoTopologyV3 !== 'function'
         ) {
             const error = new Error(
@@ -1710,8 +1751,8 @@ class KnowledgeBaseManager {
     }
 
     /**
-     * 统一 Memo 双读出门面。readoutMode 只允许 dtsc / topology_v3；
-     * 二者共享同一次原生 QueryObservation 和同一个活动图代际。
+     * 统一 Memo 单轨读出门面。readoutMode 只允许 topology_v3；
+     * RiverMemo 复用原生 QueryObservation 和统一活动图代际。
      */
     async rerankWithMemo(
         readoutMode,
@@ -1721,7 +1762,7 @@ class KnowledgeBaseManager {
         options = {}
     ) {
         const mode = String(readoutMode || '').trim().toLowerCase();
-        if (mode !== 'dtsc' && mode !== 'topology_v3') {
+        if (mode !== 'topology_v3') {
             const error = new Error(
                 `Unsupported Memo readout mode: ${readoutMode}`
             );
@@ -1730,7 +1771,7 @@ class KnowledgeBaseManager {
         }
         const prepared = options.preparedMemoObservation
             || await this.prepareUnifiedMemoObservation(query, options);
-        const { artifact, observation, sourceObservationResult } = prepared;
+        const { artifact, sourceObservationResult } = prepared;
 
         if (mode === 'topology_v3') {
             if (!this.riverMemoEngine) {
@@ -1781,222 +1822,6 @@ class KnowledgeBaseManager {
             );
         }
 
-        const geoConfig = {
-            ...(artifact.effectiveConfig
-                ?.potentialFieldRerank || {}),
-            ...(artifact.effectiveConfig
-                ?.geodesicRerank || {}),
-            ...(this.ragParams?.KnowledgeBaseManager
-                ?.potentialFieldRerank || {}),
-            ...(this.ragParams?.KnowledgeBaseManager
-                ?.geodesicRerank || {}),
-            ...(options.config || {})
-        };
-        const resolvedMinGeoSamples = Math.max(
-            1,
-            Math.floor(Number(
-                options.minGeoSamples
-                ?? geoConfig.minGeoSamples
-                ?? 3
-            ))
-        );
-        const nativePayload = await this.tagIndex.rerankMemoDtsc(
-            this.dbPath,
-            artifact.artifactSig,
-            JSON.stringify({
-                dimension: this.config.dimension,
-                observationHandle: prepared.observationHandle,
-                queryGeometryState: {
-                    epa: sourceObservationResult.epa || {},
-                    pyramid: sourceObservationResult.pyramid || {}
-                },
-                topK: Math.max(
-                    1,
-                    Math.floor(
-                        Number(options.topK)
-                        || (Array.isArray(candidates)
-                            ? candidates.length
-                            : 1)
-                    )
-                ),
-                candidates: (Array.isArray(candidates)
-                    ? candidates
-                    : []
-                ).map(candidate => ({
-                    id: Number(
-                        candidate?.id
-                        ?? candidate?.chunkId
-                        ?? candidate?.label
-                    ),
-                    score: Number(candidate?.score) || 0
-                })).filter(candidate =>
-                    Number.isFinite(candidate.id)
-                    && candidate.id > 0
-                ),
-                ...(prepared.observationHandle
-                    ? {}
-                    : {
-                        observation,
-                        originalQueryVector:
-                            Array.from(prepared.queryVector),
-                        enhancedQueryVector:
-                            Array.from(prepared.enhancedVector)
-                    }),
-                config: {
-                    ...geoConfig,
-                    alpha:
-                        options.alpha
-                        ?? options.geoAlpha
-                        ?? geoConfig.alpha,
-                    minGeoSamples: resolvedMinGeoSamples,
-                    // JS SOTA 默认 minFieldTags 跟随 minGeoSamples，而不是固定常量。
-                    minFieldTags:
-                        geoConfig.minFieldTags
-                        ?? resolvedMinGeoSamples,
-                    fallbackToKnnOnLowTrust:
-                        geoConfig.fallbackToKnnOnLowTrust !== false
-                        && geoConfig.fallbackToKnnOnLowTrust !== 0,
-                    sparseAssociationEnabled:
-                        geoConfig.sparseAssociationEnabled !== false
-                        && geoConfig.sparseAssociationEnabled !== 0,
-                    geometryAuxiliary: {
-                        ...(geoConfig.geometryAuxiliary || {}),
-                        enabled:
-                            geoConfig.geometryAuxiliary?.enabled === true
-                            || geoConfig.geometryAuxiliary?.enabled === 1,
-                        identityAnchor: {
-                            ...(geoConfig.geometryAuxiliary
-                                ?.identityAnchor || {}),
-                            enabled:
-                                geoConfig.geometryAuxiliary
-                                    ?.identityAnchor?.enabled === true
-                                || geoConfig.geometryAuxiliary
-                                    ?.identityAnchor?.enabled === 1
-                        }
-                    }
-                }
-            })
-        );
-        const nativeResult = JSON.parse(nativePayload);
-        const originalById = new Map(
-            (Array.isArray(candidates) ? candidates : [])
-                .map(candidate => [
-                    Number(
-                        candidate?.id
-                        ?? candidate?.chunkId
-                        ?? candidate?.label
-                    ),
-                    candidate
-                ])
-                .filter(([id]) => Number.isFinite(id) && id > 0)
-        );
-        const results = (Array.isArray(nativeResult.results)
-            ? nativeResult.results
-            : []
-        ).map(item => Object.freeze({
-            ...(originalById.get(Number(item.id)) || {}),
-            ...item,
-            id: Number(item.id),
-            // 保持旧 TagMemo geodesicRerank 公共字段契约；Rust JSON 使用
-            // camelCase，兼容调用方仍读取历史 snake_case 字段。
-            original_knn_score:
-                Number(item.originalKnnScore) || 0,
-            geo_score:
-                Number(item.geoScore) || 0,
-            normalized_geo:
-                Number(item.normalizedGeo) || 0,
-            geo_bonus:
-                Number(item.geoBonus) || 0,
-            geo_base_bonus:
-                Number(item.geoBaseBonus) || 0,
-            geo_aux_bonus:
-                Number(item.geoAuxBonus) || 0,
-            geo_effect:
-                item.geoEffect || 'neutral',
-            geo_evidence_class:
-                item.geoEvidenceClass || 'neutral',
-            geo_reward_eligible:
-                item.geoRewardEligible === true,
-            geo_confidence:
-                Number(item.geoConfidence) || 0,
-            geo_exact_hits:
-                Number(item.geoExactHits) || 0,
-            geo_direct_exact_hits:
-                Number(item.geoDirectExactHits) || 0,
-            geo_emergent_exact_hits:
-                Number(item.geoEmergentExactHits) || 0,
-            geo_direct_semantic_hits:
-                Number(item.geoDirectSemanticHits) || 0,
-            geo_direct_semantic_strength:
-                Number(item.geoDirectSemanticStrength) || 0,
-            geo_strong_hits:
-                Number(item.geoStrongHits) || 0,
-            geo_hit_count:
-                Number(item.geoHitCount) || 0,
-            geo_weighted_coverage:
-                Number(item.geoWeightedCoverage) || 0,
-            geo_mean_potential:
-                Number(item.geoMeanPotential) || 0,
-            geo_max_potential:
-                Number(item.geoMaxPotential) || 0,
-            geo_continuity:
-                Number(item.geoContinuity) || 0,
-            geo_isolated_ratio:
-                Number(item.geoIsolatedRatio) || 0,
-            geo_raw_isolated_ratio:
-                Number(item.geoRawIsolatedRatio) || 0,
-            geo_sparse_association_confidence:
-                Number(item.geoSparseAssociationConfidence) || 0,
-            geo_sparse_association_pairs:
-                Number(item.geoSparseAssociationPairs) || 0,
-            geo_action_quality:
-                Number(item.geoActionQuality) || 0,
-            geo_closure_quality:
-                Number(item.geoClosureQuality) || 0,
-            geo_direction_consistency:
-                Number(item.geoDirectionConsistency) || 0,
-            geo_vector_lift:
-                Number(item.geoVectorLift) || 0,
-            geo_direct_score:
-                Number(item.geoDirectScore) || 0,
-            geo_structural_score:
-                Number(item.geoStructuralScore) || 0,
-            geo_thematic_score:
-                Number(item.geoThematicScore) || 0,
-            geo_closure_score:
-                Number(item.geoClosureScore) || 0,
-            geo_fused_shadow_score:
-                Number(item.geoFusedShadowScore) || 0
-        }));
-
-        return Object.freeze({
-            schema: nativeResult.schema,
-            version: 'tagmemo_v9_dtsc_native',
-            algorithmVersion: nativeResult.algorithmVersion,
-            artifactSig: artifact.artifactSig,
-            artifactGeneration: artifact.generation,
-            readoutMode: 'dtsc',
-            queryTags: Object.freeze({
-                matchedTags:
-                    sourceObservationResult.matchedTags,
-                coreTagsMatched:
-                    sourceObservationResult.coreTagsMatched,
-                sourceMode:
-                    sourceObservationResult.sourceMode
-            }),
-            results: Object.freeze(results),
-            diagnostics: Object.freeze({
-                ...(nativeResult.diagnostics || {}),
-                sensing:
-                    sourceObservationResult.diagnostics
-                        ?.nativeSensing || null,
-                runtimeOwnership: 'vexus-index-instance',
-                memoRuntime:
-                    typeof this.tagIndex.memoRuntimeStats === 'function'
-                        ? this.tagIndex.memoRuntimeStats()
-                        : null
-            })
-        });
     }
 
     /**
@@ -2079,11 +1904,10 @@ class KnowledgeBaseManager {
             allowedFileIds = allowedFileIds.filter(id => requestedIds.has(id));
         }
         if (allowedFileIds.length === 0) {
-            const error = new Error(
-                'Native River query resolved an empty file permission scope'
-            );
-            error.code = 'NATIVE_RIVER_QUERY_EMPTY_PERMISSION_SCOPE';
-            throw error;
+            return {
+                results: [],
+                diagnostics: { reason: 'empty-permission-scope' }
+            };
         }
 
         const finalK = Math.max(
@@ -2278,7 +2102,7 @@ class KnowledgeBaseManager {
 // 此路径只在联合 ABI 不可用/失败时执行，保留正确性优先于性能。
 const perIndexK = options.perIndexK
     ?? this.config.nativeRiverQueryPerIndexK;
-const currentSearchPromise = this.search(
+const currentSearchPromise = this.searchKnn(
     diaryNames,
     queryVector,
     candidateK,
@@ -2292,7 +2116,7 @@ const currentSearchPromise = this.search(
 );
 const supplementalSearchPromises = supplementalQueryVectors.map(
     async entry => {
-        const results = await this.search(
+        const results = await this.searchKnn(
             diaryNames,
             entry.vector,
             Math.max(2, Math.round(candidateK / 2)),
@@ -2644,20 +2468,6 @@ candidates = await this.deduplicateResults(
     }
 
     /**
-     * TagMemo DTSC 原生异步兼容入口。旧同步 geodesicRerank 保留给尚未
-     * 异步化的插件；新调用应使用本接口以共享原生感应和 MemoRuntime。
-     */
-    async rerankWithTagMemoAsync(query, candidates, agentContext = {}, options = {}) {
-        return await this.rerankWithMemo(
-            'dtsc',
-            query,
-            candidates,
-            agentContext,
-            options
-        );
-    }
-
-    /**
      * 对已求解的 RiverMemo/V10 Query State 计算只读 Ω 观测。
      */
     measureRiverMemoOmega(queryState, options = {}) {
@@ -2713,8 +2523,8 @@ candidates = await this.deduplicateResults(
     }
 
     /**
-     * 主动触发 TagMemo V9.1 全量自学习训练。
-     * 该入口会清空 1% 阈值累计计数、重建 V9.1 派生资产，并清理退休的 V8.3 预计算。
+     * 主动触发共享 Memo 底座全量自学习训练。
+     * 重建 RiverMemo 依赖的派生资产并保留原有发布、调度及退休状态清理机制。
      */
     requestActiveFullTraining(options = {}) {
         if (!this.tagMemoEngine || typeof this.tagMemoEngine.requestActiveFullTraining !== 'function') {
@@ -2726,41 +2536,6 @@ candidates = await this.deduplicateResults(
         }
 
         return this.tagMemoEngine.requestActiveFullTraining(options);
-    }
-
-    /**
-     * V9.1 公共接口 — 势能场重排
-     * 代理到 TagMemoEngine.geodesicRerank()，供外部直接调用或测试
-     * @param {Array} candidates - 候选结果
-     * @param {object} options - { alpha, minGeoSamples }
-     * @returns {Array} 重排后的结果
-     */
-    geodesicRerank(candidates, options = {}) {
-        if (!this.tagMemoEngine) return candidates;
-        const bundle = options.artifactBundle
-            || this.tagMemoEngine.resolveArtifactBundle({
-                version: options.tagMemoVersion || options.version || null,
-                strictVersion: true
-            }).bundle;
-        // 显式请求配置最高；实时热参数覆盖 Bundle 创建时固化的旧值。
-        // Bundle 配置仅提供热参数文件尚未声明的新字段默认值。
-        const geoConfig = {
-            ...(bundle?.potentialFieldConfig || {}),
-            ...(this.ragParams?.KnowledgeBaseManager?.geodesicRerank || {}),
-            ...(options.config || {})
-        };
-        return this.tagMemoEngine.geodesicRerank(candidates, {
-            alpha: options.alpha ?? options.geoAlpha ?? geoConfig.alpha,
-            minGeoSamples: options.minGeoSamples ?? geoConfig.minGeoSamples,
-            energyField: options.energyField,
-            energyFieldProvenance: options.energyFieldProvenance,
-            originalQueryVector: options.originalQueryVector,
-            enhancedQueryVector: options.enhancedQueryVector,
-            queryGeometryState: options.queryGeometryState || options.queryState,
-            config: geoConfig,
-            version: bundle?.version,
-            artifactBundle: bundle
-        });
     }
 
     /**

@@ -46,6 +46,33 @@ const CORE_SCHEMA_SQL = `
     );
     CREATE INDEX IF NOT EXISTS idx_tag_index_baseline_entries_generation
         ON tag_index_baseline_entries(generation);
+    -- 单 Agent / 日记本 Chunk usearch 双槽基线。
+    -- chunks 表是唯一权威真相；本页记录槽内 Chunk ID 与向量修订快照。
+    -- 启动或搜索懒加载时据此做集合对称差分回放，避免全量重建。
+    CREATE TABLE IF NOT EXISTS chunk_index_baselines (
+        diary_name TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        slot TEXT NOT NULL CHECK(slot IN ('a', 'b')),
+        dimension INTEGER NOT NULL,
+        model_sig TEXT NOT NULL,
+        chunk_count INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('building', 'ready')),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (diary_name, generation)
+    );
+    CREATE TABLE IF NOT EXISTS chunk_index_baseline_entries (
+        diary_name TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        chunk_id INTEGER NOT NULL,
+        vector_revision TEXT,
+        PRIMARY KEY (diary_name, generation, chunk_id),
+        FOREIGN KEY(diary_name, generation)
+            REFERENCES chunk_index_baselines(diary_name, generation) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_chunk_index_baseline_entries_lookup
+        ON chunk_index_baseline_entries(diary_name, generation);
+    CREATE INDEX IF NOT EXISTS idx_chunk_index_baselines_diary
+        ON chunk_index_baselines(diary_name, status);
 
     CREATE TABLE IF NOT EXISTS file_tags (
         file_id INTEGER NOT NULL,
@@ -368,6 +395,7 @@ const POST_MIGRATION_INDEX_SQL = `
 `;
 
 const ADDITIVE_MIGRATIONS = Object.freeze([
+    ['chunk_index_baseline_entries', 'vector_revision', 'TEXT'],
     ['tags', 'vector_version', 'INTEGER NOT NULL DEFAULT 1'],
     ['file_tags', 'position', 'INTEGER NOT NULL DEFAULT 0'],
     ['tag_intrinsic_residuals', 'raw_residual_ratio', 'REAL'],

@@ -418,8 +418,10 @@ function applyLightMemoCompatibility(lightMemo) {
   lightMemo.processToolCall = async function p6ProcessToolCall(args = {}) {
     try {
       const includeTrace = parseRiverTraceFlag(args.include_river_trace);
-      const isTagMemoAB = typeof lightMemo._isTagMemoABRequest === 'function'
-        && lightMemo._isTagMemoABRequest(args);
+      const isTagMemoAB = (typeof lightMemo._isTagMemoABRequest === 'function'
+        && lightMemo._isTagMemoABRequest(args))
+        || (typeof lightMemo._isMemoryABRequest === 'function'
+          && lightMemo._isMemoryABRequest(args));
       if (includeTrace && isTagMemoAB) throw new Error('RIVER_TRACE_REQUIRES_SEARCH_RIVER_PROFILE');
 
       if (Object.hasOwn(args, 'cold_text_mode')
@@ -470,10 +472,11 @@ function applyLightMemoCompatibility(lightMemo) {
           )
           : String(args.engineMode ?? args.enginemode ?? 'rivermemo').toLowerCase();
         const rerankOptions = parseColdRerank(lightMemo, args.rerank ?? false);
+        const jevOptions = parseColdRerank(lightMemo, args.jev ?? false);
         const aiMemoOptions = typeof lightMemo._parseAIMemoOptions === 'function'
           ? lightMemo._parseAIMemoOptions(args.aimemo ?? false, args.aimemo_preset ?? null)
           : { enabled: false };
-        if (engineMode !== 'rivermemo' || rerankOptions.enabled || aiMemoOptions.enabled) {
+        if (engineMode !== 'rivermemo' || rerankOptions.enabled || jevOptions.enabled || aiMemoOptions.enabled) {
           throw new Error('RIVER_TRACE_REQUIRES_SEARCH_RIVER_PROFILE');
         }
         const result = await TRACE_CONTEXT.run(
