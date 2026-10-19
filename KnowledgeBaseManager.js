@@ -1757,6 +1757,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
         if (options.engineMode === 'rivermemo' || options.abMode === true) {
             prepared = await this.prepareUnifiedMemoObservation(query, options);
         }
+        try {
         const raw = await runtime.executeLightMemoQuery(JSON.stringify({
             ...options,
             modelSig: this.config.modelSig,
@@ -1783,6 +1784,9 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
         result.comparisonPool = (result.comparisonPool || []).map(normalize);
         if (Array.isArray(result.river?.results)) result.river.results = result.river.results.map(normalize);
         return result;
+        } finally {
+            if (prepared) this.releaseMemoObservation(prepared);
+        }
     }
 
     async search(...args) {
@@ -2433,6 +2437,17 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
         });
     }
 
+    releaseMemoObservation(prepared) {
+        const handle = prepared?.observationHandle;
+        if (!handle || typeof this.tagIndex?.releaseMemoObservation !== 'function') return false;
+        try {
+            return this.tagIndex.releaseMemoObservation(handle);
+        } catch (error) {
+            console.warn(`[KnowledgeBase] Memo observation release failed: ${error.message}`);
+            return false;
+        }
+    }
+
     /**
      * 统一 Memo 单轨读出门面。readoutMode 只允许 topology_v3；
      * RiverMemo 复用原生 QueryObservation 和统一活动图代际。
@@ -2456,6 +2471,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             || await this.prepareUnifiedMemoObservation(query, options);
         const { artifact, sourceObservationResult } = prepared;
 
+        try {
         if (mode === 'topology_v3') {
             if (!this.riverMemoEngine) {
                 const error = new Error('RiverMemo engine is unavailable');
@@ -2505,7 +2521,9 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
                 }
             );
         }
-
+        } finally {
+            if (!options.preparedMemoObservation) this.releaseMemoObservation(prepared);
+        }
     }
 
     /**
@@ -2727,6 +2745,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             if (!isStaleMemo(error)) throw error;
             return degradedKnn();
         }
+        try {
         const agentContext = {
             agentId: options.agentId || null,
             diaryNames,
@@ -2814,6 +2833,9 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
                 nativeJointQuery: false
             }
         );
+        } finally {
+            if (!options.preparedMemoObservation) this.releaseMemoObservation(prepared);
+        }
 
         async function collectCandidates() {
             const searchOptions = {
