@@ -11,9 +11,11 @@ compare_tracked="${VEXUS_COMPARE_TRACKED:-1}"
 test -f "$source_root/rust-vexus-lite/Cargo.lock"
 test -f "$source_root/rust-vexus-lite/vexus-lite.linux-x64-gnu.node"
 mkdir -p "$cache_root/cargo" "$cache_root/rustup" "$cache_root/npm" "$output_root" /opt/vcp-node
+mkdir -p "$cache_root/apt/lists/partial" "$cache_root/apt/archives/partial"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y --no-install-recommends \
+apt_cache_options=(-o "Dir::State::Lists=$cache_root/apt/lists" -o "Dir::Cache::Archives=$cache_root/apt/archives")
+apt-get "${apt_cache_options[@]}" update
+apt-get "${apt_cache_options[@]}" install -y --no-install-recommends \
   ca-certificates curl xz-utils make pkg-config \
   gcc-12=12.3.0-1ubuntu1~22.04.3 g++-12=12.3.0-1ubuntu1~22.04.3 \
   binutils=2.38-4ubuntu2.12
@@ -70,6 +72,9 @@ build_once() {
   fi
   (
     cd "$build_root/rust-vexus-lite"
+    # Cargo passes absolute source paths for local dependency crates. Keep
+    # panic locations identical across the two independent temporary roots.
+    export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$build_root=/vcp-native-build"
     CC=gcc-12 CXX=g++-12 /tmp/vcp-napi-cli/node_modules/.bin/napi build \
       --platform --release --cargo-flags="--locked"
   )

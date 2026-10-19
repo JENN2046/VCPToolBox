@@ -24,6 +24,12 @@ The source mount is read-only. During initial artifact regeneration only,
 both independent builds and the GLIBC gate; copy the resulting binary into a
 reviewed candidate, then rerun without that override.
 
+Each independent build remaps its temporary root to `/vcp-native-build` so
+local Rust dependency panic locations do not embed different build paths.
+APT downloads use the task cache alongside Cargo, Rustup and npm; package
+verification and pinned compiler checks still run, and build targets remain
+independent.
+
 The `Vexus Linux Native ABI` workflow runs the same wrapper on every relevant
 pull request and additionally checks the Node/runtime contract. It does not
 publish an image, deploy a service, or access production configuration or data.

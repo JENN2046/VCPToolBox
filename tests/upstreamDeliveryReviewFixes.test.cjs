@@ -294,7 +294,36 @@ test('Doubao model cache rejects entries from another endpoint or legacy cache',
   assert.equal(loadModelCache()[0].id, 'current');
 });
 
-test('DreamWave narrows public diary files before native TopK', async () => {
+test('native file metadata scope refuses legacy ID-only responses', async () => {
+  const kb = require('../KnowledgeBaseManager');
+  const getScope = Object.getPrototypeOf(kb)._getFileScopeByDiaries;
+  const calls = [];
+  const owner = { dbPath: 'synthetic.sqlite', nativeKnowledgeRuntime: {
+    async getFileIdsByDiaries(...args) { calls.push(args); return '[1,2]'; }
+  } };
+  assert.deepEqual(await getScope.call(owner, ['Nova', 'Nova'], false), [1, 2]);
+  assert.deepEqual(calls[0], ['synthetic.sqlite', ['Nova'], false]);
+  await assert.rejects(getScope.call(owner, ['Nova'], true), { code: 'NATIVE_STORAGE_ABI_UNAVAILABLE' });
+  owner.nativeKnowledgeRuntime.getFileIdsByDiaries = async () => '[{"id":1,"path":"Nova/own.md"}]';
+  assert.deepEqual(await getScope.call(owner, ['Nova'], true), [{ id: 1, path: 'Nova/own.md' }]);
+});
+
+test('native River requester file IDs cannot widen the diary scope', async () => {
+  const kb = require('../KnowledgeBaseManager');
+  const execute = Object.getPrototypeOf(kb).executeNativeRiverQuery;
+  const owner = {
+    config: { dimension: 2 },
+    async _getOrLoadDiaryIndex() {},
+    async getFileIdsByDiaries() { return [1, 2]; }
+  };
+  for (const fileIdFilter of [[], [999], [NaN, '1']]) {
+    const result = await execute.call(owner, { vector: [1, 0] }, { diaryNames: ['Nova'], fileIdFilter });
+    assert.deepEqual(result, { results: [], diagnostics: { reason: 'empty-permission-scope' } });
+  }
+});
+
+for (const storage of ['legacy', 'native']) {
+test(`DreamWave narrows public diary files before native TopK (${storage})`, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-dream-scope-'));
   const previousRoot = process.env.KNOWLEDGEBASE_ROOT_PATH;
   const modulePath = require.resolve('../Plugin/AgentDream/DreamWaveEngine');
@@ -319,6 +348,17 @@ test('DreamWave narrows public diary files before native TopK', async () => {
         return { results: [] };
       }
     };
+    if (storage === 'native') {
+      delete kb.db;
+      kb.getFilesByDiaries = async names => {
+        assert.deepEqual(names, ['Nova', '公共共享']);
+        return [
+          { id: 1, path: 'Nova/own.md' },
+          { id: 2, path: '公共共享/other.md' },
+          { id: 3, path: '公共共享/shared.md' }
+        ];
+      };
+    }
     const dream = new DreamWaveEngine(kb);
     dream._getSearchableIndexNames = () => ['Nova', '公共共享'];
     await dream._recallForVector('Nova', new Float32Array([1]), 2);
@@ -329,4 +369,14 @@ test('DreamWave narrows public diary files before native TopK', async () => {
     delete require.cache[modulePath];
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+}
+
+test('DreamWave refuses retrieval when no file permission scope is available', async () => {
+  const DreamWaveEngine = require('../Plugin/AgentDream/DreamWaveEngine');
+  let queries = 0;
+  const dream = new DreamWaveEngine({ async executeNativeRiverQuery() { queries++; return { results: [] }; } });
+  dream._getSearchableIndexNames = () => ['Nova', '公共共享'];
+  await assert.rejects(dream._recallForVector('Nova', new Float32Array([1]), 2), /permission scope is unavailable/);
+  assert.equal(queries, 0);
 });

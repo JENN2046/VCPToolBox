@@ -47,6 +47,37 @@ test('modified bundled payload fails its CI artifact hash', t => {
     fs.appendFileSync(path.join(root, 'rust-vexus-lite/vexus-lite.linux-x64-gnu.node'), 'tamper');
     assert.throws(() => checkNativeDelivery(root, TARGET, ['vexus']), /artifact differs/);
 });
+
+test('new deliveries use an explicit receipt without replacing historical evidence', t => {
+    const { root, receipt } = fixture(t);
+    const current = 'docs/native-delivery-synthetic-current.json';
+    const original = fs.readFileSync(path.join(root, 'docs/native-delivery-30193c89.json'));
+    fs.writeFileSync(path.join(root, current), JSON.stringify(receipt));
+    assert.equal(checkNativeDelivery(root, TARGET, ['vexus'], current), 1);
+    assert.deepEqual(fs.readFileSync(path.join(root, 'docs/native-delivery-30193c89.json')), original);
+    for (const unsafe of ['../receipt.json', 'docs/../receipt.json', '/tmp/receipt.json', 'config.env']) {
+        assert.throws(() => checkNativeDelivery(root, TARGET, ['vexus'], unsafe), /Unsafe native delivery receipt path/);
+    }
+});
+
+test('nested Rust crate source and manifests are part of the verified input inventory', t => {
+    const { root, receipt, save } = fixture(t);
+    const files = {
+        'rust-vexus-lite/crates/index/Cargo.toml': '[package]\nname="synthetic"\n',
+        'rust-vexus-lite/crates/index/src/lib.rs': 'pub fn synthetic() {}\n',
+        'rust-vexus-lite/rust-toolchain.toml': '[toolchain]\nchannel="synthetic"\n'
+    };
+    for (const [file, text] of Object.entries(files)) {
+        fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+        fs.writeFileSync(path.join(root, file), text);
+    }
+    assert.throws(() => checkNativeDelivery(root, TARGET, ['vexus']), /inventory changed/);
+    receipt.source_inputs.vexus.push(...Object.entries(files).map(([file, text]) => ({ path: file, sha256_lf: hash(text) })));
+    save();
+    assert.equal(checkNativeDelivery(root, TARGET, ['vexus']), 1);
+    fs.appendFileSync(path.join(root, 'rust-vexus-lite/crates/index/src/lib.rs'), 'pub fn changed() {}');
+    assert.throws(() => checkNativeDelivery(root, TARGET, ['vexus']), /source differs/);
+});
 test('unknown groups, unverified targets and unsafe receipt paths fail closed', t => {
     const { root, receipt, save } = fixture(t);
     assert.throws(() => checkNativeDelivery(root, TARGET, ['unknown']), /Unknown/);
