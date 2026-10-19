@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const { JevThirdPartyRegistry } = require('../modules/jevThirdPartyRegistry');
 const { JevToolCallExp } = require('../modules/jevToolCallExp');
@@ -9,6 +10,31 @@ const { JevToolCallExp } = require('../modules/jevToolCallExp');
 const CONFIG_PATH = path.join(__dirname, '..', 'ToolConfigs', 'jev_tool_call_exp.json');
 const PROMPT_PATH = path.join(__dirname, '..', 'TVStxt', 'JevToolCallDecision.txt');
 const EXP_ON = Object.freeze({ JEV_THIRD_PARTY_EXP: 'true' });
+
+test('every present plugin JEV declaration validates independently of optional peers', async (t) => {
+    const root = path.join(__dirname, '..', 'Plugin');
+    const registry = new JevThirdPartyRegistry();
+    let declarations = 0;
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        for (const file of ['plugin-manifest.json', 'plugin-manifest.json.block']) {
+            const manifestFile = path.join(root, entry.name, file);
+            if (!fs.existsSync(manifestFile)) continue;
+            const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+            if (manifest.jev?.enabled !== true) continue;
+            declarations++;
+            await t.test(`${entry.name}/${file}`, () => {
+                const result = registry.validateDeclaration(manifest, {
+                    enabled: file === 'plugin-manifest.json',
+                    origin: 'local',
+                    manifestFile
+                });
+                assert.equal(result.validation.status, 'valid', result.validation.errors.join('\n'));
+            });
+        }
+    }
+    assert.ok(declarations > 0, 'Expected source JEV declarations to be checked');
+});
 
 function makeAcManifest(overrides = {}) {
     const base = {

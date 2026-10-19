@@ -985,13 +985,24 @@ test('Wave 4: 全部 14 个第三方视觉创作、视频与音乐生成插件�
 });
 
 test('Wave 4: 离线规划验证 FluxGen 画幅枚举裁决', async (t) => {
-    const __env = makeEcosystemPlanner(t, ["FluxGen","NovelAIGen","ComfyUIGen","ComfyCloudGen","WebUIGen","DMXDoubaoGen","GeminiImageGen","QwenImageGen","SenseGen","AgnesGen","AgnesVideoGen","GrokVideo","VideoGenerator","SunoMusicGen"]);
+    const __env = makeEcosystemPlanner(t, ['FluxGen']);
     if (!__env) return;
     const { planner } = __env;
     const [call] = await planner.plan('请使用 {媒体娱乐} 中的 `FluxGen`，生成图片【赛博朋克雨夜中的橙发少女，霓虹光影】[壁纸]。');
     assert.equal(call.name, 'FluxGen');
     assert.equal(call.args.prompt, '赛博朋克雨夜中的橙发少女，霓虹光影');
     assert.equal(call.args.resolution, '1024x576');
+    assert.equal(call.args.command, undefined, 'Flux receives its original prompt/resolution arguments');
+    for (const [tag, resolution] of [
+        ['正方形', '1024x1024'], ['横屏', '1024x768'], ['竖屏', '768x1024'],
+        ['宽屏', '1024x576'], ['手机全屏', '576x1024'], ['9:16', '576x1024']
+    ]) {
+        const [sized] = await planner.plan(`{媒体娱乐} \`FluxGen\` 生成图片【测试画面】[${tag}]`);
+        assert.equal(sized.args.resolution, resolution, tag);
+    }
+    await assert.rejects(
+        planner.plan('{媒体娱乐} `FluxGen` 生成图片【测试画面】[壁纸][手机全屏]'), /冲突/
+    );
 });
 
 test('Wave 4: 离线规划验证 NovelAIGen 多命令路由（文生图、放大、标签建议、订阅查询）', async (t) => {
