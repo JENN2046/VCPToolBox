@@ -75,7 +75,7 @@
     "category": "信息获取",
     "jevDescPrompt": "通过托管浏览器执行免 API 的真实搜索引擎检索，模拟人类访问 Google、百度或 Bing 获取结果。",
     "jevPrompt": "根据用户偏好的搜索引擎裁决 engine 枚举：要求谷歌选 google；要求百度选 baidu；要求必应国内版选 bing_cn；要求必应国际版选 bing_global；未特别指定引擎时统一选择 auto 智能路由。",
-    "agentPrompt": "当 API 搜索引擎受限或需要真实浏览器环境探查网页搜索结果时，使用 {信息获取} 中的 `BrowserSearch`，关键词放入【主要内容】，引擎放入 []（如 [谷歌]、[百度]、[必应]）：\nJEV:「始」请使用 {信息获取} 中的 `BrowserSearch`，在[必应]上检索【Rust MoonAST 符号引擎】。「末」",
+    "agentPrompt": "当 API 搜索引擎受限或需要真实浏览器环境探查网页搜索结果时，使用 {信息获取} 中的 `BrowserSearch`，关键词放入【主要内容】，引擎放入 []（如 [谷歌]、[百度]、[必应]，国际版使用 [国际版] 或 [bing_global]）：\nJEV:「始」请使用 {信息获取} 中的 `BrowserSearch`，在[必应]上检索【Rust MoonAST 符号引擎】。「末」",
     "defaultCommand": "search",
     "commands": [
       {
@@ -105,8 +105,8 @@
               "auto": ["自动", "默认"],
               "google": ["谷歌", "Google", "谷歌搜索"],
               "baidu": ["百度", "Baidu", "百度搜索"],
-              "bing_cn": ["必应", "Bing", "必应国内", "国内必应"],
-              "bing_global": ["必应国际", "Bing国际", "国际必应"]
+              "bing_cn": ["必应", "必应国内", "国内必应"],
+              "bing_global": ["国际版", "海外版", "Bing Global"]
             },
             "default": "auto"
           },

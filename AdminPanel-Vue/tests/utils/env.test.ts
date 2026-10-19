@@ -30,12 +30,13 @@ describe('env utilities', () => {
     })
   })
 
-  it('serializes values with quotes, hashes and newlines safely', () => {
+  it('round-trips values with quotes, hashes, backslashes and newlines', () => {
     expect(serializeEnvValue('plain-value')).toBe('plain-value')
-    expect(serializeEnvAssignment('TITLE', 'value #1')).toBe('TITLE="value #1"')
-    expect(serializeEnvAssignment('SECRET', 'line "one"\nline two')).toBe(
-      'SECRET="line \\"one\\"\\nline two"'
-    )
+    for (const value of ['value #1', 'line "one"\nline two', "it's quoted", 'C:\\notes\\next', 'both \" and \' quotes', ' leading ', '']) {
+      const entries = parseEnvToList(serializeEnvAssignment('TITLE', value))
+      expect(entries).toHaveLength(1)
+      expect(entries[0]?.value).toBe(value)
+    }
   })
 
   it('keeps token-like keys as string and only detects pure integers', () => {

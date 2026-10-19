@@ -190,7 +190,7 @@
       {
         "commandIdentifier": "list_recent",
         "description": "列出 ClawEmail 最近邮件摘要",
-        "aliases": ["最近邮件", "查看邮件", "邮件列表", "收件箱", "读邮件列表"],
+        "aliases": ["最近邮件", "邮件列表", "收件箱", "读邮件列表"],
         "parameters": {
           "mailbox": {
             "type": "enum",
@@ -214,7 +214,7 @@
             "required": false,
             "description": "是否仅展示未读邮件",
             "trueAliases": ["未读", "仅未读", "未读邮件"],
-            "falseAliases": ["全部", "所有", "已读和未读"],
+            "falseAliases": ["全部", "所有", "不限状态"],
             "default": false
           }
         }
@@ -235,8 +235,8 @@
             "type": "boolean",
             "required": false,
             "description": "是否标记为已读",
-            "trueAliases": ["标记已读", "标为已读", "已读"],
-            "falseAliases": ["保持未读", "不标已读"],
+            "trueAliases": ["标记已读", "标为已读"],
+            "falseAliases": ["保持未读", "保留状态"],
             "default": false
           }
         }

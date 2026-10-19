@@ -634,23 +634,34 @@ class RAGDiaryPlugin {
         const ghostTags = [];
         if (!tags || tags.length === 0) return ghostTags;
 
-        const db = this.vectorDBManager?.db;
-        const checkStmt = db ? db.prepare('SELECT vector FROM tags WHERE name = ?') : null;
-        const dim = this.vectorDBManager?.config?.dimension || 3072;
+        const getTagVector = typeof this.vectorDBManager?.getTagVectorByName === 'function'
+            ? this.vectorDBManager.getTagVectorByName.bind(this.vectorDBManager)
+            : null;
 
         const tagsToEmbed = [];
         const tagResults = new Array(tags.length).fill(null);
 
-        // 1. 先查数据库（看是否是已有正规军）
-        tags.forEach((tagName, index) => {
-            if (checkStmt) {
-                try {
-                    const row = checkStmt.get(tagName);
-                    if (row && row.vector) {
-                        tagResults[index] = new Float32Array(row.vector.buffer, row.vector.byteOffset, dim);
+        // 1. 通过 Rust 高层接口读取已有 Tag 向量。
+        if (getTagVector) {
+            const nativeVectors = await Promise.all(
+                tags.map(async (tagName) => {
+                    try {
+                        return await getTagVector(tagName);
+                    } catch (_) {
+                        return null;
                     }
-                } catch (e) { /* ignore */ }
-            }
+                })
+            );
+            nativeVectors.forEach((vector, index) => {
+                if (vector) {
+                    tagResults[index] = vector instanceof Float32Array
+                        ? vector
+                        : new Float32Array(vector);
+                }
+            });
+        }
+
+        tags.forEach((tagName, index) => {
             if (!tagResults[index]) {
                 tagsToEmbed.push({ name: tagName, index });
             }
@@ -1369,6 +1380,8 @@ class RAGDiaryPlugin {
 
     // processMessages 是 messagePreprocessor 的标准接口
     async processMessages(messages, pluginConfig) {
+        const ownedMemoObservations = new Set();
+        let systemMessageTasks = [];
         try {
             // 📝 纯文本快速路径：
             // 当虚拟 system 消息仅包含 {{xx日记本}} / {{xx日记本::LastN}} / {{xx日记本::BM25}} 直接引入占位符时，
@@ -1614,6 +1627,7 @@ class RAGDiaryPlugin {
             );
             const globalProcessedDiaries = new Set(); // 在最外层维护一个 Set
             const requestCache = this._createRequestCache(); // 🌟 单轮请求级缓存：chunks/time/fullDoc/diaryScore/tagBoost
+            requestCache.ownedMemoObservations = ownedMemoObservations;
             if (this.riverThinkingConfig?.enabled && targetSystemMessageIndices.some(index =>
                 /\[\[VCP元思考[^\]]*\]\]/.test(this._extractTextFromContent(messages[index].content))
             )) {
@@ -1624,7 +1638,7 @@ class RAGDiaryPlugin {
                 };
             }
             // 🌟 优化：并发处理所有目标 system 消息，显著提升多日记本场景下的 Rerank 速度
-            await Promise.all(targetSystemMessageIndices.map(async (index) => {
+            systemMessageTasks = targetSystemMessageIndices.map(async (index) => {
                 console.log(`[RAGDiaryPlugin] Processing system message at index: ${index}`);
                 const systemMessage = newMessages[index];
 
@@ -1655,17 +1669,18 @@ class RAGDiaryPlugin {
                     systemMessage.content,
                     () => processedContent
                 );
-            }));
+            });
+            await Promise.all(systemMessageTasks);
 
             // 所有日记门控和检索结束后再执行元思考，不等待自身造成死锁。
             // 观测只保留在本请求；禁止单例 lastObservation 串会话。
             if (requestCache.riverThinking) {
-                const deferredResults = await Promise.all(
-                    requestCache.riverThinking.deferred.map(async task => ({
-                        token: task.token,
-                        result: await task.run()
-                    }))
-                );
+                const deferredTasks = requestCache.riverThinking.deferred.map(async task => ({
+                    token: task.token,
+                    result: await task.run()
+                }));
+                systemMessageTasks.push(...deferredTasks);
+                const deferredResults = await Promise.all(deferredTasks);
                 for (const { token, result } of deferredResults) {
                     for (const index of targetSystemMessageIndices) {
                         newMessages[index].content = this._replaceTextInContent(
@@ -1762,6 +1777,11 @@ class RAGDiaryPlugin {
                 }
             });
             return safeMessages;
+        } finally {
+            await Promise.allSettled(systemMessageTasks);
+            for (const prepared of ownedMemoObservations) {
+                this.vectorDBManager?.releaseMemoObservation?.(prepared);
+            }
         }
     }
 
@@ -2898,8 +2918,9 @@ class RAGDiaryPlugin {
         });
 
         // 2️⃣ 尝试从缓存获取
-        // River 元思考需要本轮原生观测，不能把历史正文缓存当作有效 Sense。
-        const cachedResult = requestCache?.riverThinking && /::RiverMemo(?=$|::|:\d+(?:\.\d+)?$)/i.test(modifiers)
+        // 正文缓存不能替代原始候选，也不能替代本轮 River 元思考观测。
+        // RiverMemo 也是默认路径，无须显式后缀才保留请求级观测所有权。
+        const cachedResult = (returnRawResults || requestCache?.riverThinking)
             ? null : this._getCachedResult(cacheKey);
         if (cachedResult) {
             // 缓存命中时，仍需广播VCP Info（可选）
@@ -3181,6 +3202,7 @@ class RAGDiaryPlugin {
                             maxTransitionRecords: requestCache.riverThinking.config.maxTransitionRecords
                         }
                     );
+                    requestCache.ownedMemoObservations?.add(thinkingObservation);
                 } catch (error) {
                     console.warn('[RAGDiaryPlugin] River thinking observation unavailable:', error.message);
                 }
@@ -3744,18 +3766,10 @@ class RAGDiaryPlugin {
                 .map(name => String(name || '').trim())
                 .filter(Boolean)
         )];
-        const allowedFileIds = [];
-        const db = this.vectorDBManager.db;
-        if (db?.prepare && normalizedDiaryNames.length > 0) {
-            const placeholders = normalizedDiaryNames.map(() => '?').join(',');
-            const rows = db.prepare(
-                `SELECT id FROM files WHERE diary_name IN (${placeholders})`
-            ).all(...normalizedDiaryNames);
-            rows.forEach(row => {
-                const id = Number(row.id);
-                if (Number.isFinite(id)) allowedFileIds.push(id);
-            });
-        }
+        const allowedFileIds = normalizedDiaryNames.length > 0
+            && typeof this.vectorDBManager.getFileIdsByDiaries === 'function'
+            ? await this.vectorDBManager.getFileIdsByDiaries(normalizedDiaryNames)
+            : [];
         if (allowedFileIds.length === 0) {
             const error = new Error('RiverMemo 无法建立显式日记本文件权限作用域');
             error.code = 'RIVERMEMO_EMPTY_PERMISSION_SCOPE';
@@ -4284,7 +4298,9 @@ class RAGDiaryPlugin {
             .sort((a, b) => new Date(b.date) - new Date(a.date));
 
         if (typeof this.vectorDBManager?.getDiaryDateIndex === 'function') {
-            const indexedMetas = normalizeMetas(this.vectorDBManager.getDiaryDateIndex(dbName));
+            const indexedMetas = normalizeMetas(
+                await this.vectorDBManager.getDiaryDateIndex(dbName)
+            );
             requestCache?.diaryDateIndex?.set(dbName, indexedMetas);
             return indexedMetas;
         }
@@ -5736,12 +5752,15 @@ class RAGDiaryPlugin {
                             { diaryNames: names, topK: safeK, candidateK, coreTags, enabled: true, fallbackToLegacy: true }
                         );
                         if (!Array.isArray(result?.results)) throw new Error('Invalid RiverMemo result');
+                        const degradedKnn = result.diagnostics?.degraded === true
+                            || result.diagnostics?.retrievalEngine === 'knn';
                         return { results: result.results, meta: {
-                            engine: 'rivermemo', riverMemoUsed: true,
-                            nativeJointQueryUsed: result.diagnostics?.nativeTopologyV3?.jointUsed === true,
+                            engine: degradedKnn ? 'knn' : 'rivermemo', riverMemoUsed: !degradedKnn,
+                            nativeJointQueryUsed: !degradedKnn && result.diagnostics?.nativeTopologyV3?.jointUsed === true,
                             artifactSig: result.artifactSig || null, queryId: result.queryId || null,
                             omega: Number(result.omega?.omega) || 0, regime: result.omega?.regime || null,
-                            matchedTags: result.queryTags?.matchedTags || [], fallbackReason: null
+                            matchedTags: result.queryTags?.matchedTags || [],
+                            fallbackReason: degradedKnn ? (result.diagnostics?.reason || 'memo-artifact-unavailable') : null
                         } };
                     } catch (error) {
                         if (fallback !== 'knn') throw error;

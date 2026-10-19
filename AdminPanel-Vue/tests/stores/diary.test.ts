@@ -73,17 +73,22 @@ describe("diary store", () => {
     expect(store.ragTagsConfig.threshold).toBe(0.8);
   });
 
-  it("filters notes by query", async () => {
+  it("searches through the backend and retains content-only matches", async () => {
     const store = useDiaryStore();
-
+    store.selectedFolder = "knowledge";
     store.notes = [
-      { file: "alpha.md", title: "Alpha", modified: "" },
-      { file: "beta.md", title: "Beta", modified: "" },
+      { file: "stale.md", title: "Stale", modified: "" },
     ];
-
-    store.setSearchQuery("alp");
-
+    mockGetDiaryList.mockResolvedValueOnce({
+      notes: [{ file: "beta.md", title: "Beta", modified: "", preview: "alpha in body" }],
+      total: 1, page: 1, pageSize: 1,
+    });
+    store.setSearchQuery(" alpha ");
+    await store.filterNotes();
+    expect(mockGetDiaryList).toHaveBeenCalledWith({
+      folder: "knowledge", search: "alpha", basePath: "/admin_api/dailynotes",
+    });
     expect(store.filteredNotes).toHaveLength(1);
-    expect(store.filteredNotes[0]?.file).toBe("alpha.md");
+    expect(store.filteredNotes[0]?.file).toBe("beta.md");
   });
 });

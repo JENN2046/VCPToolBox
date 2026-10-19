@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ref, type Ref } from "vue";
+import { createPinia, setActivePinia } from "pinia";
+import { useAuthStore } from "@/stores/auth";
 
 const {
   mockGetPosts,
@@ -45,6 +47,7 @@ vi.mock("@/utils/logger", () => ({
 vi.mock("marked", () => ({
   marked: {
     parse: vi.fn((content: string) => `<p>${content}</p>`),
+    use: vi.fn(),
   },
 }));
 
@@ -78,6 +81,7 @@ import {
 
 describe("useVcpForum", () => {
   beforeEach(() => {
+    setActivePinia(createPinia());
     mockGetPosts.mockReset();
     mockGetPostContent.mockReset();
     mockSubmitReply.mockReset();
@@ -219,6 +223,7 @@ describe("useVcpForum", () => {
       repliesList: [],
     };
 
+    useAuthStore().user = { username: "test-admin", role: "admin" };
     await state.deletePost();
 
     expect(mockDeletePost).toHaveBeenCalledWith(
@@ -240,6 +245,14 @@ describe("useVcpForum", () => {
     expect(Object.keys(state).sort()).toEqual(
       [
         "backToList",
+        "canDelete",
+        "deletingReplyFloor",
+        "isDeletingPost",
+        "isLoadingDetail",
+        "isLoadingPosts",
+        "isSubmitting",
+        "replyAuthor",
+        "scrollToReplyFloor",
         "boards",
         "currentPage",
         "deletePost",

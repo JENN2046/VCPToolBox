@@ -71,13 +71,13 @@ describe("usePreprocessorOrderManager", () => {
 
     await state.loadPreprocessors();
     expect(state.preprocessors.value).toEqual([
-      { name: "a", displayName: "A", description: undefined },
-      { name: "b", displayName: "b", description: undefined },
+      { name: "a", displayName: "A", description: undefined, kind: "preprocessor" },
+      { name: "b", displayName: "b", description: undefined, kind: "preprocessor" },
     ]);
 
     await state.loadPreprocessors();
     expect(state.preprocessors.value).toEqual([
-      { name: "c", displayName: "C", description: undefined },
+      { name: "c", displayName: "C", description: undefined, kind: "preprocessor" },
     ]);
   });
 
@@ -169,6 +169,10 @@ describe("usePreprocessorOrderManager", () => {
 
     expect(Object.keys(state).sort()).toEqual(
       [
+        "changedItemCount",
+        "hasChanges",
+        "isSaving",
+        "resetOrder",
         "dragGhost",
         "dragGhostElement",
         "dragOverPluginName",

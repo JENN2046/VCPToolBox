@@ -45,7 +45,7 @@ const mockAppStore = {
     { target: "dashboard", label: "Dashboard" },
     { pluginName: "demo", label: "Demo Plugin" },
   ],
-  plugins: [],
+  plugins: [] as Array<{ manifest: { name: string; displayName?: string } }>,
   pinnedPluginNames: [],
   loadPlugins: vi.fn(),
   markPluginsLoaded: vi.fn(),
@@ -117,15 +117,16 @@ describe("useMainLayoutState", () => {
     expect(state.isCommandPaletteOpen.value).toBe(false);
   });
 
-  it("resolves plugin title when route name is PluginConfig", () => {
+  it("resolves the plugin config title from plugin metadata", () => {
     mockRoute.path = "/plugin/demo/config";
     mockRoute.fullPath = "/plugin/demo/config";
     mockRoute.name = "PluginConfig";
     mockRoute.params = { pluginName: "demo" };
 
+    mockAppStore.plugins = [{ manifest: { name: "demo", displayName: "Demo Plugin" } }];
     const state = useMainLayoutState();
 
-    expect(state.currentPageTitle.value).toBe("Demo Plugin");
+    expect(state.currentPageTitle.value).toBe("插件配置 · Demo Plugin");
 
     state.navigateTo("ignored", "demo");
     expect(mockPush).toHaveBeenCalledWith({
