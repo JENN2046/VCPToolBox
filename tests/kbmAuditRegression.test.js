@@ -210,7 +210,14 @@ test('Memo unavailability degrades to scoped KNN but unrelated errors remain vis
     const kb = require('../KnowledgeBaseManager');
     const execute = Object.getPrototypeOf(kb).executeNativeRiverQuery;
     for (const stage of ['prepare', 'joint']) {
+        let releases = 0;
         const owner = {
+            releaseMemoObservation: kb.releaseMemoObservation,
+            tagIndex: { releaseMemoObservation(handle) {
+                assert.equal(handle, 'audit-owned');
+                releases++;
+                return true;
+            } },
             config: { dimension: 2, nativeRiverQueryEnabled: true },
             async _getOrLoadDiaryIndex() {},
             async getFileIdsByDiaries() { return [1, 2]; },
@@ -218,7 +225,7 @@ test('Memo unavailability degrades to scoped KNN but unrelated errors remain vis
                 if (stage === 'prepare') {
                     throw Object.assign(new Error('stale'), { code: 'MEMO_ARTIFACT_UNAVAILABLE' });
                 }
-                return { artifact: { artifactSig: 'old' } };
+                return { artifact: { artifactSig: 'old' }, observationHandle: 'audit-owned' };
             },
             riverMemoEngine: { async rerank() {
                 throw new Error('KNOWLEDGE_STORE_DERIVED_DEPENDENCY_CONFLICT');
@@ -236,10 +243,12 @@ test('Memo unavailability degrades to scoped KNN but unrelated errors remain vis
         });
         assert.equal(result.diagnostics.degraded, true);
         assert.equal(result.results[0].retrievalEngine, 'knn');
+        assert.equal(releases, stage === 'joint' ? 1 : 0, 'only an acquired owned observation is released');
         owner.prepareUnifiedMemoObservation = async () => { throw new Error('database corrupt'); };
         await assert.rejects(execute.call(owner, { vector: [1, 0] }, {
             diaryNames: ['test']
         }), /database corrupt/);
+        assert.equal(releases, stage === 'joint' ? 1 : 0, 'failed preparation has no observation to release');
     }
 });
 

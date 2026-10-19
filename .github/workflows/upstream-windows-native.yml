@@ -65,7 +65,7 @@ jobs:
           Set-Location (Join-Path $buildRoot 'rust-vexus-lite')
           npm exec --yes --package=@napi-rs/cli@2.18.4 -- napi build --platform --release --cargo-flags="--locked"
           if ($LASTEXITCODE -ne 0) { throw 'Vexus build failed' }
-          node -e "const a=require('./vexus-lite.win32-x64-msvc.node'); const x=new a.VexusIndex(4,16); x.add(1,new Float32Array([1,0,0,0])); if(x.search(new Float32Array([1,0,0,0]),1)[0]?.id!==1) throw Error('Vexus smoke failed');"
+          node -e "const a=require('./vexus-lite.win32-x64-msvc.node'); const x=new a.VexusIndex(4,16); x.add(1,new Float32Array([1,0,0,0])); if(x.search(new Float32Array([1,0,0,0]),1)[0]?.id!==1) throw Error('Vexus smoke failed'); const m=JSON.parse(x.memoObservationMemoryStats()); if(m.entries!==0 || x.releaseMemoObservation('synthetic-missing')!==false) throw Error('Memo lifetime ABI failed');"
           if ($LASTEXITCODE -ne 0) { throw 'Vexus smoke failed' }
       - name: Record build identity
         shell: pwsh
@@ -91,5 +91,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bundled native provenance check failed' }
           node scripts/verify-daily-note-searcher-native.cjs Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-pc-windows-msvc.exe
           if ($LASTEXITCODE -ne 0) { throw 'Bundled DailyNoteSearcher regression failed' }
-          node -e "const a=require('./rust-vexus-lite/vexus-lite.win32-x64-msvc.node'); const x=new a.VexusIndex(4,16); x.add(1,new Float32Array([1,0,0,0])); if(x.search(new Float32Array([1,0,0,0]),1)[0]?.id!==1) throw Error('Bundled Vexus smoke failed');"
+          node -e "const a=require('./rust-vexus-lite/vexus-lite.win32-x64-msvc.node'); const x=new a.VexusIndex(4,16); x.add(1,new Float32Array([1,0,0,0])); if(x.search(new Float32Array([1,0,0,0]),1)[0]?.id!==1) throw Error('Bundled Vexus smoke failed'); const m=JSON.parse(x.memoObservationMemoryStats()); if(m.entries!==0 || x.releaseMemoObservation('synthetic-missing')!==false) throw Error('Bundled Memo lifetime ABI failed');"
           if ($LASTEXITCODE -ne 0) { throw 'Bundled Vexus smoke failed' }

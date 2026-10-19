@@ -2918,8 +2918,9 @@ class RAGDiaryPlugin {
         });
 
         // 2️⃣ 尝试从缓存获取
-        // River 元思考需要本轮原生观测，不能把历史正文缓存当作有效 Sense。
-        const cachedResult = requestCache?.riverThinking && /::RiverMemo(?=$|::|:\d+(?:\.\d+)?$)/i.test(modifiers)
+        // 正文缓存不能替代原始候选，也不能替代本轮 River 元思考观测。
+        // RiverMemo 也是默认路径，无须显式后缀才保留请求级观测所有权。
+        const cachedResult = (returnRawResults || requestCache?.riverThinking)
             ? null : this._getCachedResult(cacheKey);
         if (cachedResult) {
             // 缓存命中时，仍需广播VCP Info（可选）
@@ -5751,12 +5752,15 @@ class RAGDiaryPlugin {
                             { diaryNames: names, topK: safeK, candidateK, coreTags, enabled: true, fallbackToLegacy: true }
                         );
                         if (!Array.isArray(result?.results)) throw new Error('Invalid RiverMemo result');
+                        const degradedKnn = result.diagnostics?.degraded === true
+                            || result.diagnostics?.retrievalEngine === 'knn';
                         return { results: result.results, meta: {
-                            engine: 'rivermemo', riverMemoUsed: true,
-                            nativeJointQueryUsed: result.diagnostics?.nativeTopologyV3?.jointUsed === true,
+                            engine: degradedKnn ? 'knn' : 'rivermemo', riverMemoUsed: !degradedKnn,
+                            nativeJointQueryUsed: !degradedKnn && result.diagnostics?.nativeTopologyV3?.jointUsed === true,
                             artifactSig: result.artifactSig || null, queryId: result.queryId || null,
                             omega: Number(result.omega?.omega) || 0, regime: result.omega?.regime || null,
-                            matchedTags: result.queryTags?.matchedTags || [], fallbackReason: null
+                            matchedTags: result.queryTags?.matchedTags || [],
+                            fallbackReason: degradedKnn ? (result.diagnostics?.reason || 'memo-artifact-unavailable') : null
                         } };
                     } catch (error) {
                         if (fallback !== 'knn') throw error;

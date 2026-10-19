@@ -3,7 +3,7 @@
   "upstream": "ea68ab3c9877e6e8aec93121f79c461b994b2293",
   "fork_base": "8f489ff09808e26b8469d97b893e1cec6226845c",
   "historical_receipt": "docs/native-delivery-30193c89.json",
-  "scope": "Bootstrap: new Rust source inputs recorded; exact-source Linux/Windows CI rebuilds pending. Existing Vexus payloads are not accepted for this source. Unchanged non-Vexus artifacts retain historical provenance; no production acceptance.",
+  "scope": "Vexus Linux GNU: two independent pinned exact-source CI builds with matching bytes and GLIBC ceiling verification. Vexus Windows x64: exact-source CI build and in-memory smoke, verified archive/source identity/payload hashes. Other groups retain unchanged historical provenance. Remaining Vexus platforms and production are not accepted.",
   "source_fingerprint_sha256": "a3367617c70ebe1a906d1e3bb3fae9247650b59e5e610b27196fcee1b37d6268",
   "build_environment": {
     "image": "docker.io/library/ubuntu@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02",
@@ -374,6 +374,54 @@
       "run_id": 38877992760,
       "artifact_id": 12036735454,
       "archive_sha256": "e31062a86144eba2ecf13c0dacb0f19b7e552247a19b7a20c5209157e8d55851"
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-x64-gnu.node",
+      "group": "vexus",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "72e80597822ad8afc6ac0164dcafdcadf78c43dcdbb23401647297487706c496",
+      "size": 9803528,
+      "source_commit": "bd5eaf42215f1b25a504ab870877fee7e554e6e5",
+      "source_fingerprint_sha256": "a3367617c70ebe1a906d1e3bb3fae9247650b59e5e610b27196fcee1b37d6268",
+      "run_id": 39303642313,
+      "run_url": "https://github.com/JENN2046/VCPToolBox/actions/runs/39303642313",
+      "artifact_id": 12213780075,
+      "archive_sha256": "1494cae3af06f8b7d4a0e230a830253e35a52020bb4c694e8f4c8e81e03fb33e",
+      "build_origin": "github_actions_two_independent_pinned_builds",
+      "verification_note": "Source build and artifact identity verified; bootstrap gate failed against the previous bundled payload before this artifact was installed. Final revision must pass the unchanged bundled comparison/provenance gate."
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.node",
+      "group": "vexus",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "1137ac3e79f1edc276c16c7c4ea2466193ef40c79f5f28fa0e8de4b0b74663eb",
+      "size": 10497536,
+      "source_commit": "bd5eaf42215f1b25a504ab870877fee7e554e6e5",
+      "source_fingerprint_sha256": "a3367617c70ebe1a906d1e3bb3fae9247650b59e5e610b27196fcee1b37d6268",
+      "run_id": 39303642381,
+      "run_url": "https://github.com/JENN2046/VCPToolBox/actions/runs/39303642381",
+      "artifact_id": 12213405602,
+      "archive_sha256": "b453e2fc5ad74c68be4bd23000e41c342de953e400a5612b15ec663bcc495a8b",
+      "build_origin": "github_actions_exact_source_build_and_smoke",
+      "verification_note": "Source build and artifact identity verified; bootstrap gate failed against the previous bundled payload before this artifact was installed. Final revision must pass the unchanged bundled comparison/provenance gate.",
+      "build_environment": {
+        "rust": "1.89.0",
+        "runner_image": "win22",
+        "files": [
+          {
+            "sha256": "373668b31beafe08d42022e13f423e729c4ee3357df52fbaa6e97a7580f0bd76",
+            "name": "DailyNoteSearcher.exe"
+          },
+          {
+            "sha256": "1137ac3e79f1edc276c16c7c4ea2466193ef40c79f5f28fa0e8de4b0b74663eb",
+            "name": "vexus-lite.win32-x64-msvc.node"
+          }
+        ],
+        "napi": "2.18.4",
+        "node": "22.23.1",
+        "runner_image_version": "20261012.333.1",
+        "source": "bd5eaf42215f1b25a504ab870877fee7e554e6e5"
+      }
     }
   ],
   "unverified_vexus_artifacts": [
@@ -393,11 +441,6 @@
       "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
     },
     {
-      "path": "rust-vexus-lite/vexus-lite.linux-x64-gnu.node",
-      "sha256": "4e30293e7d4a1c858e5e7d588f538d50317464fac425e191f8e98671bc9b0550",
-      "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
-    },
-    {
       "path": "rust-vexus-lite/vexus-lite.linux-x64-musl.node",
       "sha256": "4633bcfc73cb46e2b8909c86a1492d2c482c2453ee316702a5683c2543d402ae",
       "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
@@ -406,13 +449,17 @@
       "path": "rust-vexus-lite/vexus-lite.node",
       "sha256": "b56b9173e5adcd19d08ae2cb7f8bb0fa44e0ea5cb8d23af596b4e77576f37b82",
       "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
-    },
-    {
-      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.node",
-      "sha256": "fa2ac0ca61f1163f2598e072fe3dc08fa5174571e043066e4d7d87cf965dd317",
-      "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
     }
   ],
   "previous_current_source_receipt": "docs/native-delivery-252c6321.json",
-  "source_fingerprint_method": "SHA256 of canonical JSON source_inputs.vexus (sorted object keys, compact separators, LF-normalized input hashes)"
+  "source_fingerprint_method": "SHA256 of canonical JSON source_inputs.vexus (sorted object keys, compact separators, LF-normalized input hashes)",
+  "verification": {
+    "build_1_sha256": "72e80597822ad8afc6ac0164dcafdcadf78c43dcdbb23401647297487706c496",
+    "build_2_sha256": "72e80597822ad8afc6ac0164dcafdcadf78c43dcdbb23401647297487706c496",
+    "reproducible": true,
+    "max_required_glibc": "GLIBC_2.34",
+    "glibc_ceiling": "GLIBC_2.35",
+    "pinned_toolchain_line_verified": true,
+    "installed_payload_matches_archive": true
+  }
 }

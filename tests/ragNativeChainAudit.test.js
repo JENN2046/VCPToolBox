@@ -97,7 +97,10 @@ test('audit real Rust store through KBM and RAG message injection', async () => 
             { role: 'system', content: '[[A|B日记本::RiverMemo]]\n[[VCP元思考]]' },
             { role: 'user', content: 'alpha migration' }
         ];
+        const retainedBefore = JSON.parse(kb.tagIndex.memoObservationMemoryStats()).entries;
         const processed = await rag.processMessages(messages, {});
+        assert.equal(JSON.parse(kb.tagIndex.memoObservationMemoryStats()).entries, retainedBefore,
+            "RAG processing releases all request-owned observations");
         assert.doesNotMatch(processed[0].content, /处理失败|TOOL_REQUEST|__VCP_META_PENDING_|\[\[A\|B日记本/);
         assert.match(processed[0].content, /alpha memory|beta memory/);
         const detail = broadcasts.find(item => item.type === 'RAG_RETRIEVAL_DETAILS');
@@ -125,7 +128,7 @@ test('audit real Rust store through KBM and RAG message injection', async () => 
         assert.match(timeText, /memory/);
         console.log('[CHAIN AUDIT] plugin Time/Associate suffix pipeline passed');
 
-        // Reproduce cache mode collision without changing production behavior.
+        // Warm the ordinary text cache, then require raw candidates and fresh request Sense.
         rag.queryCacheEnabled = true;
         rag.cacheManager.createCache('query');
         const options = {
@@ -135,8 +138,9 @@ test('audit real Rust store through KBM and RAG message injection', async () => 
         };
         await rag._processRAGPlaceholder(options);
         const raw = await rag._processRAGPlaceholder({ ...options, returnRawResults: true });
-        assert.equal(typeof raw, 'string', 'audit reproduction: raw request receives cached formatted text');
-        console.log('[CHAIN AUDIT] CONFIRMED raw-result cache type collision');
+        assert(Array.isArray(raw), 'raw requests never receive cached formatted text');
+        assert(raw.length > 0);
+        console.log('[CHAIN AUDIT] raw candidates remain distinct from cached formatted text');
 
         const defaultOptions = { ...options, modifiers: '', userContent: 'default sense cache' };
         const firstRequest = rag._createRequestCache();
@@ -146,10 +150,11 @@ test('audit real Rust store through KBM and RAG message injection', async () => 
         const nextRequest = rag._createRequestCache();
         nextRequest.riverThinking = { config: rag.riverThinkingConfig, observations: [], deferred: [] };
         await rag._processRAGPlaceholder({ ...defaultOptions, requestCache: nextRequest });
-        assert.equal(nextRequest.riverThinking.observations.length, 0);
-        console.log('[CHAIN AUDIT] CONFIRMED default River cache skips request Sense');
+        assert.equal(nextRequest.riverThinking.observations.length, 1,
+            "default RiverMemo obtains fresh Sense even when ordinary text is cached");
+        console.log('[CHAIN AUDIT] default River cache preserves request Sense');
 
-        // Reproduce silent engine misreport after actual native artifact invalidation.
+        // Report the actual native KNN degradation without rerunning or relabeling it.
         kb.tagMemoV10Engine.invalidateArtifact('audit-degradation');
         const degraded = await kb.executeNativeRiverQuery(
             { text: 'degraded', vector: query }, { diaryNames: ['A'], topK: 1 }
@@ -159,8 +164,11 @@ test('audit real Rust store through KBM and RAG message injection', async () => 
             diaryNames: ['A'], queryVector: query, fallback: 'none'
         });
         assert.equal(bridge.results[0].retrievalEngine, 'knn');
-        assert.equal(bridge.meta.riverMemoUsed, true);
-        console.log('[CHAIN AUDIT] CONFIRMED bridge reports RiverMemo for degraded KNN');
+        assert.equal(bridge.meta.riverMemoUsed, false);
+        assert.equal(bridge.meta.engine, 'knn');
+        assert.equal(bridge.meta.nativeJointQueryUsed, false);
+        assert.equal(bridge.meta.fallbackReason, 'memo-artifact-unavailable');
+        console.log('[CHAIN AUDIT] bridge reports actual KNN degradation');
     } finally {
         rag.shutdown();
         await kb.shutdown();
