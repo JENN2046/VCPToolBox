@@ -464,6 +464,15 @@ test('Wave 1: 离线规划验证 BrowserSearch 真实浏览器搜索与引擎路
     assert.equal(call.args.command, 'search');
     assert.equal(call.args.query, 'Rust MoonAST 符号引擎');
     assert.equal(call.args.engine, 'bing_cn');
+
+    for (const tag of ['国际版', 'bing_global']) {
+        const [international] = await planner.plan(`{信息获取} \`BrowserSearch\` 检索【Rust】[${tag}]`);
+        assert.equal(international.args.engine, 'bing_global', tag);
+    }
+    await assert.rejects(
+        planner.plan('{信息获取} `BrowserSearch` 检索【Rust】[必应][国际版]'),
+        /冲突/
+    );
 });
 
 test('Wave 1: 离线规划验证 DeepWikiVCP 开源架构问答与目录结构', async (t) => {
@@ -1242,6 +1251,11 @@ test('Wave 6: 离线规划验证 VCPForumOnline 共频论坛浏览、读帖、�
     assert.equal(listCall.args.board, 'tech');
     assert.equal(listCall.args.sort, 'hot');
 
+    for (const [tag, expected] of [['最新发布', 'latest'], ['最近回复', 'reply']]) {
+        const [sorted] = await planner.plan(`{便利操作} \`VCPForumOnline\` 浏览论坛[技术分享][${tag}]`);
+        assert.equal(sorted.args.sort, expected);
+    }
+
     const [searchCall] = await planner.plan('请使用 {便利操作} 中的 `VCPForumOnline`，搜索帖子【RiverMemo 拓扑引擎】。');
     assert.equal(searchCall.name, 'VCPForumOnline');
     assert.equal(searchCall.args.command, 'SearchPosts');
@@ -1300,6 +1314,15 @@ test('Wave 7: 离线规划验证 VCPClawMail 最近邮件、子邮箱槽位与�
     assert.equal(readCall.args.command, 'read_mail');
     assert.equal(readCall.args.mailId, 'msg_987654321');
     assert.equal(readCall.args.markRead, 'true');
+
+    const [allMail] = await planner.plan('{便利操作} `VCPClawMail` 查看收件箱最近邮件[全部][mail1]');
+    assert.equal(allMail.args.unreadOnly, 'false');
+    const [unchangedMail] = await planner.plan('{便利操作} `VCPClawMail` 读取邮件【msg_987654321】[保持未读]');
+    assert.equal(unchangedMail.args.markRead, 'false');
+    await assert.rejects(
+        planner.plan('{便利操作} `VCPClawMail` 读取邮件【msg_987654321】[标记已读][保持未读]'),
+        /冲突/
+    );
 
     // 3. 邮箱文件夹列表
     const [folderCall] = await planner.plan('请使用 {便利操作} 中的 `VCPClawMail`，查看邮箱文件夹列表。');

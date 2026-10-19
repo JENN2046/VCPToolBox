@@ -1,0 +1,41 @@
+name: Admin and JEV regressions
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'AdminPanel-Vue/**'
+      - 'modules/jev*.js'
+      - 'tests/jev*.test.js'
+      - 'Plugin/*/plugin-manifest.json*'
+      - 'Plugin/VCPSleep/sleepDuration.js'
+      - 'ToolConfigs/jev*.json'
+      - 'TVStxt/JevToolCallDecision.txt'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/admin-jev-regressions.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  admin-and-jev:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+          npm --prefix AdminPanel-Vue ci --ignore-scripts --no-audit --no-fund
+      - name: Verify JEV declarations, planning and rejection contracts
+        run: node --test tests/jevThirdPartyRegistry.test.js tests/jevThirdPartyEcosystem.test.js tests/jevToolCallExp.test.js tests/jevThirdPartyPolicy.test.js
+      - name: Run the complete Admin unit suite
+        run: npm --prefix AdminPanel-Vue test
+      - name: Check Admin types and build
+        run: npm --prefix AdminPanel-Vue run build

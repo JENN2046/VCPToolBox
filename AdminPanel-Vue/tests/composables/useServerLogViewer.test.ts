@@ -15,6 +15,7 @@ const {
   mockGetServerLog,
   mockGetIncrementalServerLog,
   mockShowMessage,
+  mockCopyToClipboard,
   mockSetScrollTop,
   mockLoggerWarn,
   mockUseVirtualScroll,
@@ -22,6 +23,7 @@ const {
   mockGetServerLog: vi.fn(async () => ({})),
   mockGetIncrementalServerLog: vi.fn(async () => ({})),
   mockShowMessage: vi.fn(),
+  mockCopyToClipboard: vi.fn(async () => true),
   mockSetScrollTop: vi.fn(),
   mockLoggerWarn: vi.fn(),
   mockUseVirtualScroll: vi.fn(),
@@ -37,6 +39,7 @@ vi.mock("@/api", () => ({
 
 vi.mock("@/utils", () => ({
   showMessage: (...args: unknown[]) => mockShowMessage(...args),
+  copyToClipboard: (...args: unknown[]) => mockCopyToClipboard(...args),
 }));
 
 vi.mock("@/utils/logger", () => ({
@@ -128,10 +131,11 @@ describe("useServerLogViewer", () => {
     state.toggleAutoScroll();
     expect(state.autoScroll.value).toBe(false);
 
-    state.copyLog();
+    await state.copyLog();
+    expect(mockCopyToClipboard).toHaveBeenCalledWith("[ERROR] failed");
     expect(mockShowMessage).toHaveBeenCalled();
 
-    state.clearLog();
+    await state.clearLog();
     expect(state.totalLines.value).toBe(0);
   });
 

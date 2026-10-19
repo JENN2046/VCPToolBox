@@ -6,6 +6,7 @@ vi.mock("vue", async () => {
   return {
     ...actual,
     onMounted: () => {},
+    onUnmounted: () => {},
   };
 });
 
@@ -92,6 +93,10 @@ describe("useAgentAssistantConfig", () => {
       maxHistory: 9,
       contextTtl: 48,
       globalSystemPrompt: "global-prompt",
+      delegationMaxRounds: 15,
+      delegationTimeout: 300000,
+      delegationSystemPrompt: "",
+      delegationHeartbeatPrompt: "",
     });
 
     expect(state.agents.value).toHaveLength(2);
@@ -113,7 +118,7 @@ describe("useAgentAssistantConfig", () => {
     expect(state.availableAgents.value).toEqual(["Nova", "Atlas"]);
   });
 
-  it("supports creating/removing assistants from existing agent and custom template", () => {
+  it("supports creating/removing assistants from existing agent and custom template", async () => {
     const state = useAgentAssistantConfig();
 
     state.selectedExistingAgent.value = "Nova";
@@ -135,7 +140,11 @@ describe("useAgentAssistantConfig", () => {
       temperature: 0.7,
     });
 
-    state.removeAgent(1);
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    await state.removeAgent(1);
+    expect(state.agents.value).toHaveLength(2);
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    await state.removeAgent(1);
     expect(state.agents.value).toHaveLength(1);
   });
 
@@ -194,6 +203,10 @@ describe("useAgentAssistantConfig", () => {
         maxHistoryRounds: 10,
         contextTtlHours: 72,
         globalSystemPrompt: "缁熶竴琛ュ厖",
+        delegationMaxRounds: 15,
+        delegationTimeout: 300000,
+        delegationSystemPrompt: "",
+        delegationHeartbeatPrompt: "",
         agents: [
           {
             baseName: "Nova",
@@ -220,6 +233,12 @@ describe("useAgentAssistantConfig", () => {
 
     expect(Object.keys(state).sort()).toEqual(
       [
+        "activeDelegations",
+        "recentDelegations",
+        "delegationStatusMessage",
+        "delegationLoading",
+        "loadDelegations",
+        "cancelDelegation",
         "addCustomAgent",
         "addFromExisting",
         "agents",

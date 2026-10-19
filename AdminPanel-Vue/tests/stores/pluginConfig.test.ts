@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import type * as UtilsModule from "@/utils";
+import { parseEnvToList } from "@/utils/env";
 
 type EnvEntry = {
   key: string | null;
@@ -187,7 +188,7 @@ describe("plugin config store", () => {
     expect(saveCall[1]).toContain("ENABLED=true");
     expect(saveCall[1]).toContain("RETRIES=5");
     expect(saveCall[1]).toContain("TITLE=DefaultTitle");
-    expect(saveCall[1]).toContain('CUSTOM_KEY="overridden \\"quoted\\"\\nnext"');
+    expect(parseEnvToList(saveCall[1]).find((entry) => entry.key === "CUSTOM_KEY")?.value).toBe(customEntry.value);
     expect(mockShowMessage).toHaveBeenCalledWith("插件配置已保存！", "success");
   });
 });

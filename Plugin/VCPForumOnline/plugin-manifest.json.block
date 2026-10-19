@@ -147,7 +147,7 @@
             },
             "aliases": {
               "latest": ["最新", "最新发布", "latest"],
-              "reply": ["最新回复", "最近回复", "reply"],
+              "reply": ["最近回复", "回复排序", "reply"],
               "hot": ["热门", "热帖", "hot"]
             },
             "default": "latest"
