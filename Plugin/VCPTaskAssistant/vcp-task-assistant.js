@@ -7,7 +7,22 @@ const schedule = require('node-schedule');
 const ForumEngine = require('./lib/forum-engine');
 const agentAssistant = require('../AgentAssistant/AgentAssistant.js');
 
-const DATA_FILE = path.join(__dirname, 'task-center-data.json');
+function resolveStateFile(localPath) {
+    try {
+        return fs.realpathSync(localPath);
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        // A declared state alias can exist before its target is first created.
+        try {
+            return path.resolve(path.dirname(localPath), fs.readlinkSync(localPath));
+        } catch (linkError) {
+            if (!['ENOENT', 'EINVAL'].includes(linkError.code)) throw linkError;
+            return localPath;
+        }
+    }
+}
+
+const DATA_FILE = resolveStateFile(path.join(__dirname, 'task-center-data.json'));
 const MIN_INTERVAL_MINUTES = 10;
 const MAX_HISTORY = 200;
 const DEFAULT_FORUM_PROMPT = `[论坛小助手:]现在是论坛时间~ 你可以选择分享一个感兴趣的话题/趣味性话题/亦或者分享一些互联网新鲜事/或者发起一个最近几天想要讨论的话题作为新帖子；或者单纯只是先阅读一些别人的你感兴趣帖子，然后做出你的回复(先读帖再回复是好习惯)~
@@ -174,8 +189,9 @@ function getTaskById(taskId) {
     return taskCenterData.tasks.find(task => task.id === taskId) || null;
 }
 
-const BAK_FILE = path.join(__dirname, 'task-center-data.json.bak');
+const BAK_FILE = resolveStateFile(path.join(__dirname, 'task-center-data.json.bak'));
 let saveDisabled = false; // 熔断安全锁：一旦处于损坏或怀疑状态，禁止写盘抹杀
+let recoveringFromBackup = false;
 let saveQueue = Promise.resolve(); // FIFO 互斥串行队列，彻底消除并发写入撕裂
 
 async function loadData() {
@@ -196,10 +212,15 @@ async function loadData() {
         let loaded = null;
         try {
             loaded = await tryParse(DATA_FILE);
+            if (!loaded) {
+                loaded = await tryParse(BAK_FILE);
+                recoveringFromBackup = Boolean(loaded);
+            }
         } catch (err) {
             console.error(`[TaskAssistant] ⚠️ 主文件 ${DATA_FILE} 读取损坏:`, err.message);
             console.warn(`[TaskAssistant] 🛡️ 尝试从镜像备份恢复: ${BAK_FILE}`);
             loaded = await tryParse(BAK_FILE);
+            recoveringFromBackup = Boolean(loaded);
         }
 
         if (!loaded) {
@@ -244,7 +265,7 @@ async function saveData() {
     return new Promise((resolve) => {
         saveQueue = saveQueue.then(async () => {
             const randTag = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            const tmpFile = path.join(__dirname, `task-center-data.json.${randTag}.tmp`);
+            const tmpFile = path.join(path.dirname(DATA_FILE), `task-center-data.json.${randTag}.tmp`);
 
             try {
                 taskCenterData.history = (taskCenterData.history || []).slice(-(taskCenterData.settings?.maxHistory || MAX_HISTORY));
@@ -261,7 +282,8 @@ async function saveData() {
                             return;
                         }
                         // 每次安全落盘前，轮转镜像一份 .bak
-                        await fsPromises.copyFile(DATA_FILE, BAK_FILE);
+                        // Keep the known-good backup while repairing a bad primary.
+                        if (!recoveringFromBackup) await fsPromises.copyFile(DATA_FILE, BAK_FILE);
                     } catch (statErr) {
                         logDebug(`copyFile .bak warning: ${statErr.message}`);
                     }
@@ -272,6 +294,7 @@ async function saveData() {
 
                 // 🛡️ 2. 操作系统级原子重命名替换（零重尾残渣，瞬间指针替换）
                 await fsPromises.rename(tmpFile, DATA_FILE);
+                recoveringFromBackup = false;
                 resolve(true);
             } catch (e) {
                 console.error('[TaskAssistant] 保存 task-center-data.json 失败:', e.message);
