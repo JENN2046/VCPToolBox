@@ -1,3 +1,5 @@
+调用前以当前工具目录确认精确名称、可用状态和执行机器；本手册不是在线清单。离线、未登记或说明缺失时，不猜参数、不自动换到另一台机器。以下为原生 VCP 参数片段，MCP 请使用结构化业务参数。
+
 # VCP 多媒体工具箱能力收纳
 这里收纳了各种强大的多媒体生成与控制工具。
 
@@ -13,8 +15,9 @@
 - GPTImageGen：OpenAI超大参数图片编辑模型，适合通用生成与编辑，但昂贵而缓慢。
 
 ### 统一调用格式
-tool_name:「始」ZImageTurboGen 或 DoubaoGen 或 NanoBananaGen2 或 GPTImageGen「末」,
-command:「始」generate / edit / compose「末」,
+每次只选一个当前可用的工具名和一个命令；不能把“或”列表、斜杠分隔的选项原样作为参数。
+tool_name:「始」GPTImageGen「末」, // 单一工具示例；按当前目录选一个精确名称
+command:「始」generate「末」, // 编辑或合成时按所选插件契约改为 edit 或 compose
 prompt:「始」(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。「末」,
 size:「始」(可选) 统一尺寸字段，也兼容resolution和image_size。可写1024x1024、1536x1024、2K、4K、adaptive等，具体可用值取决于所选模型。「末」,
 image:「始」(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。「末」,
@@ -32,6 +35,7 @@ showbase64:「始」(可选) 是否在返回结果中附带 base64 图片数据�
 - GPTImageGen：支持具体宽高如1024x1024、1536x1024；4K属于实验性/不稳定能力，失败时降低尺寸重试。
 
 ## 2. VCP点歌台 (MusicController)
+条件工具：仅在当前目录明确登记且在线、目标机器正确时调用；否则报告不可用。
 用于控制服务器音乐播放。
 tool_name:「始」MusicController「末」,
 command:「始」playSong「末」,
@@ -40,6 +44,7 @@ songname:「始」星の余韻「末」 // 注意观察当前服务器音乐列�
 [===vcp_fold:0.6::desc:音频视频生成工具===]
 
 ## 3. Suno 音乐生成 (SunoGen)
+条件工具：仅在当前目录明确登记且在线、目标机器正确时调用；否则报告不可用。
 著名的 Suno 音乐生成器。
 tool_name:「始」SunoGen「末」,
 command:「始」generate_song「末」,
@@ -49,6 +54,7 @@ title:「始」Sunny Days「末」,
 gpt_description_prompt:「始」纯音乐描述「末」
 
 ## 4. Grok 视频生成 (GrokVideoGen)
+条件工具：仅在当前目录明确登记且在线、目标机器正确时调用；否则报告不可用。
 马斯克出品，极速生成 6 秒视频，包含高质量配音，支持 NSFW。
 tool_name:「始」GrokVideoGen「末」,
 image_url:「始」(必需) 底图链接「末」,
