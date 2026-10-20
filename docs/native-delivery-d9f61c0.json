@@ -4,7 +4,7 @@
   "fork_base": "b10d31fb0ac790dbae10bf9842d56903e3114673",
   "historical_receipt": "docs/native-delivery-30193c89.json",
   "previous_current_source_receipt": "docs/native-delivery-ea68ab3c.json",
-  "scope": "Current-source Linux Vexus verified; Windows pending; unchanged searchers retain historical provenance",
+  "scope": "Current-source Linux and Windows Vexus verified; unchanged searchers retain historical provenance",
   "source_fingerprint_sha256": "c657b1fa74d439c440fcd29cf65ea669195c9bad43a18464547f4c828f76c0d0",
   "source_fingerprint_method": "SHA256 of UTF-8 json.dumps(source_inputs,sort_keys=True,separators=(comma,colon)); each source digest normalizes CRLF to LF",
   "build_environment": {
@@ -20,7 +20,22 @@
       "reproducible": true
     },
     "windows": {
-      "status": "PENDING_EXACT_SOURCE_CI"
+      "runner_image": "win22",
+      "node": "22.23.1",
+      "source": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+      "napi": "2.18.4",
+      "files": [
+        {
+          "name": "DailyNoteSearcher.exe",
+          "sha256": "b0ae46eac57249dc7768f40eeaf645a99f2dbf814bf3bde7ba2417bd68a425d2"
+        },
+        {
+          "name": "vexus-lite.win32-x64-msvc.node",
+          "sha256": "d75d7815cad1845a38094a2916318f7877f6d4865672b5c6cd4862d4a9f9ba95"
+        }
+      ],
+      "runner_image_version": "20261012.333.1",
+      "rust": "1.89.0"
     }
   },
   "source_inputs": {
@@ -395,7 +410,47 @@
       "source_commit": "6edf19743d087a6cffef07f2c8e2eb91b2ee857d",
       "source_fingerprint_sha256": "c657b1fa74d439c440fcd29cf65ea669195c9bad43a18464547f4c828f76c0d0",
       "build_origin": "local_two_independent_digest_pinned_builds",
-      "verification_note": "Both independent builds are byte-identical and require at most GLIBC 2.34. CI and Node24 regression results remain separate evidence."
+      "verification_note": "Both independent builds are byte-identical and require at most GLIBC 2.34. CI and Node24 regression results remain separate evidence.",
+      "additional_ci_verification": {
+        "source_head": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+        "run_id": 39373108578,
+        "run_url": "https://github.com/JENN2046/VCPToolBox/actions/runs/39373108578",
+        "two_independent_builds_match_bundled_payload": true,
+        "glibc_and_runtime_contract": "PASS"
+      }
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.node",
+      "group": "vexus",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "d75d7815cad1845a38094a2916318f7877f6d4865672b5c6cd4862d4a9f9ba95",
+      "size": 10631168,
+      "source_commit": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+      "source_fingerprint_sha256": "c657b1fa74d439c440fcd29cf65ea669195c9bad43a18464547f4c828f76c0d0",
+      "run_id": 39373108595,
+      "run_url": "https://github.com/JENN2046/VCPToolBox/actions/runs/39373108595",
+      "artifact_id": 12241869709,
+      "archive_sha256": "83015814ec80a5c20c15ca7d4a076e450f0d464c159e935ff434d94195faa719",
+      "build_origin": "github_actions_exact_source_build_and_smoke",
+      "build_environment": {
+        "runner_image": "win22",
+        "node": "22.23.1",
+        "source": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+        "napi": "2.18.4",
+        "files": [
+          {
+            "name": "DailyNoteSearcher.exe",
+            "sha256": "b0ae46eac57249dc7768f40eeaf645a99f2dbf814bf3bde7ba2417bd68a425d2"
+          },
+          {
+            "name": "vexus-lite.win32-x64-msvc.node",
+            "sha256": "d75d7815cad1845a38094a2916318f7877f6d4865672b5c6cd4862d4a9f9ba95"
+          }
+        ],
+        "runner_image_version": "20261012.333.1",
+        "rust": "1.89.0"
+      },
+      "verification_note": "Source build/smoke, build identity, archive and payload digests verified. Bootstrap bundled gate failed as expected against the unverified incoming artifact; final head must pass unchanged gates."
     }
   ],
   "unverified_vexus_artifacts": [
@@ -423,17 +478,13 @@
       "path": "rust-vexus-lite/vexus-lite.node",
       "sha256": "b56b9173e5adcd19d08ae2cb7f8bb0fa44e0ea5cb8d23af596b4e77576f37b82",
       "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
-    },
-    {
-      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.node",
-      "target": "x86_64-pc-windows-msvc",
-      "sha256": "fa8f89310d75d07683f2bba2f81cffd33786be615fa661a1c72b1d9e2774bae5",
-      "reason": "Incoming author payload; exact-source Windows build verification pending. Not a verified artifact claim."
     }
   ],
   "verification": {
     "linux_duplicate_builds": "PASS",
-    "windows": "UNVERIFIED_PENDING_EXACT_SOURCE_BUILD",
-    "other_platforms": "UNVERIFIED"
+    "windows": "EXACT_SOURCE_BUILD_AND_SMOKE_PASS",
+    "other_platforms": "UNVERIFIED",
+    "linux_github_actions": "PINNED_SOURCE_REBUILD_MATCH_AND_ABI_PASS",
+    "final_head_acceptance": "All applicable CI must pass on the final PR head; observed final results are external deployment evidence, not a self-referential build claim."
   }
 }
