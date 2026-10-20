@@ -26,7 +26,7 @@ async function fixture(t,{heartbeatEnabled=false,debugMode=false,callbackIO=fals
   const entry={client,ws};sockets.push(entry);return entry;
  }
  async function send(entry,message){const response=once(entry.client,'message');entry.client.send(typeof message==='string'||Buffer.isBuffer(message)?message:JSON.stringify(message));return JSON.parse((await response)[0].toString()).result;}
- function tick(){assert.equal(intervals.size,1,'one existing host timer must also serve native-only heartbeat');const [{fn,ms}]=intervals.values();assert.equal(ms,60000);fn();}
+ function tick(ms=60000){const timers=Array.from(intervals.values()).filter(timer=>timer.ms===ms);assert.equal(timers.length,1,'one timer per heartbeat cadence');timers[0].fn();}
  return {host,http,manager,callbackWrites,calls,sockets,logs,connect,send,tick,intervals,callbacks,requests,registrations,distributedCalls:()=>distributedCalls,approvals:()=>approvals};
 }
 async function pingCycle(f,entry){const pong=once(entry.ws,'pong');f.tick();await pong;}
@@ -122,10 +122,10 @@ test('connection liveness: terminated transport retains all inflight work until 
  assert.equal((await f.send(b,frame(m.sessionId,'recover',{}))).ok,true);assert.equal(f.calls.length,4);
 });
 
-test('connection liveness: opt-in ordinary heartbeat keeps its old ping-only behavior',async t=>{
+test('connection liveness: opt-in ordinary heartbeat runs at 20s and stays ping-only',async t=>{
  const f=await fixture(t,{heartbeatEnabled:true}),ordinary=await f.connect({ordinary:true,autoPong:false}),unclaimed=await f.connect({autoPong:false});
  let pings=0;ordinary.ws.ping=()=>pings++;unclaimed.ws.ping=()=>pings++;
- for(let i=0;i<4;i++)f.tick();assert.equal(pings,8);assert.equal(ordinary.ws.readyState,WebSocket.OPEN);assert.equal(unclaimed.ws.readyState,WebSocket.OPEN);
+ assert.equal(f.intervals.size,2);for(let i=0;i<4;i++)f.tick(20000);assert.equal(pings,8);assert.equal(ordinary.ws.readyState,WebSocket.OPEN);assert.equal(unclaimed.ws.readyState,WebSocket.OPEN);
 });
 
 test('connection liveness: draining cancels timer and late queued tick cannot terminate a live socket',async t=>{
@@ -367,4 +367,24 @@ for(const [label,socketFacts,allowed] of [
 test('transport admission: actual IPv6 loopback upgrade allows native',async t=>{
  const f=await fixture(t,{listenHost:'::1'}),a=await f.connect();assert.equal(a.ws._socket.remoteAddress,'::1');
  assert.equal((await f.send(a,frame())).ok,true);assert.equal(f.calls.length,1);
+});
+
+
+test('connection liveness: ordinary 20s ticks never ping or terminate admitted native sessions',async t=>{
+ const f=await fixture(t,{heartbeatEnabled:true}),ordinary=await f.connect({ordinary:true,autoPong:false}),native=await f.connect({autoPong:false});
+ await f.send(native,frame());
+ let ordinaryPings=0,nativePings=0;ordinary.ws.ping=()=>ordinaryPings++;
+ const ping=native.ws.ping.bind(native.ws);native.ws.ping=()=>{nativePings++;ping();};
+ f.tick(20000);f.tick(20000);
+ assert.equal(ordinaryPings,2);assert.equal(nativePings,0);
+ const received=once(native.client,'ping');f.tick(60000);await received;
+ f.tick(20000);assert.equal(ordinaryPings,3);assert.equal(nativePings,1);
+ assert.equal(native.ws.readyState,WebSocket.OPEN,'ordinary ticks must not enforce the native pong deadline');
+});
+
+test('connection liveness: drain cancels both cadences and queued ordinary ticks stay inert',async t=>{
+ const f=await fixture(t,{heartbeatEnabled:true}),ordinary=await f.connect({ordinary:true});let pings=0;ordinary.ws.ping=()=>pings++;
+ assert.equal(f.intervals.size,2);const late=[...f.callbacks];
+ await f.host.beginDrain();assert.equal(f.intervals.size,0);
+ for(const tick of late)tick();assert.equal(pings,0);assert.equal(ordinary.ws.readyState,WebSocket.OPEN);
 });

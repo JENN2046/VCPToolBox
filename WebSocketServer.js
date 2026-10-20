@@ -11,10 +11,12 @@ let pluginManager = null; // 为 PluginManager 实例占位
 let attachedHttpServer = null;
 let upgradeHandler = null;
 let heartbeatInterval = null;
+let ordinaryHeartbeatInterval = null;
 let isDraining = false;
 let shutdownPromise = null;
 
-const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 20 * 1000;
+const NATIVE_WEBSOCKET_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 
 let serverConfig = {
     debugMode: false,
@@ -197,6 +199,10 @@ function initialize(httpServer, config) {
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
+    }
+    if (ordinaryHeartbeatInterval) {
+        clearInterval(ordinaryHeartbeatInterval);
+        ordinaryHeartbeatInterval = null;
     }
 
     serverConfig = { ...serverConfig, ...config };
@@ -601,32 +607,39 @@ function initialize(httpServer, config) {
         });
     });
 
-    // Native sessions always use this single timer; ordinary clients retain the opt-in policy.
+    // Native session liveness retains its existing single 60s timer.
     heartbeatInterval = setInterval(() => {
         if (!wssInstance || isDraining) return;
-
-        let pingedClientCount = 0;
         wssInstance.clients.forEach(client => {
             if (client.readyState !== WebSocket.OPEN) return;
-
-            if (require('./modules/nativeConversationWebSocket').heartbeatNativeConversation(client)) return;
-            if (!serverConfig.heartbeatEnabled) return;
-
-            try {
-                client.ping();
-                pingedClientCount++;
-            } catch (error) {
-                console.warn(`[WebSocketServer] Heartbeat ping failed for client ${client.clientId || 'unknown'}: ${error.message}`);
-            }
+            require('./modules/nativeConversationWebSocket').heartbeatNativeConversation(client);
         });
-
-        if (serverConfig.debugMode && pingedClientCount > 0) {
-            console.log(`[WebSocketServer] Sent heartbeat ping to ${pingedClientCount} connected client(s).`);
-        }
-    }, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
+    }, NATIVE_WEBSOCKET_HEARTBEAT_INTERVAL_MS);
     heartbeatInterval.unref();
 
-    if (serverConfig.heartbeatEnabled) console.log(`[WebSocketServer] Protocol heartbeat enabled (interval: ${WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s).`);
+    // Ordinary clients need traffic comfortably before a possible 60s idle limit.
+    // Never ping an admitted native session here: its pong deadline belongs above.
+    if (serverConfig.heartbeatEnabled) {
+        ordinaryHeartbeatInterval = setInterval(() => {
+            if (!wssInstance || isDraining) return;
+            let pingedClientCount = 0;
+            wssInstance.clients.forEach(client => {
+                if (client.readyState !== WebSocket.OPEN) return;
+                if (require('./modules/nativeConversationWebSocket').isNativeConversationConnection(client)) return;
+                try {
+                    client.ping();
+                    pingedClientCount++;
+                } catch (error) {
+                    console.warn(`[WebSocketServer] Heartbeat ping failed for client ${client.clientId || 'unknown'}: ${error.message}`);
+                }
+            });
+            if (serverConfig.debugMode && pingedClientCount > 0) {
+                console.log(`[WebSocketServer] Sent heartbeat ping to ${pingedClientCount} ordinary client(s).`);
+            }
+        }, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
+        ordinaryHeartbeatInterval.unref();
+        console.log(`[WebSocketServer] Protocol heartbeat enabled (ordinary: ${WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s; native: ${NATIVE_WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s).`);
+    }
 
     if (serverConfig.debugMode) {
         console.log(`[WebSocketServer] Initialized. Waiting for HTTP server upgrades.`);
@@ -727,6 +740,10 @@ async function beginDrain() {
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
+    }
+    if (ordinaryHeartbeatInterval) {
+        clearInterval(ordinaryHeartbeatInterval);
+        ordinaryHeartbeatInterval = null;
     }
 
     writeLog('WebSocketServer entered draining mode.');
