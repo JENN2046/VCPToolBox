@@ -1541,7 +1541,6 @@ class SandboxManager {
             '--ro-bind', '/usr', '/usr',
             '--ro-bind', '/bin', '/bin',
             '--ro-bind', '/lib', '/lib',
-            '--symlink', 'usr/lib', '/lib',
             '--proc', '/proc',
             '--dev', '/dev',
             '--tmpfs', '/tmp',

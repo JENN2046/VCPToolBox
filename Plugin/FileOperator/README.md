@@ -33,6 +33,39 @@ FileOperator（内部名称ServerFileOperator）是 VCP 的核心文件系统插
 | `MAX_SEARCH_RESULTS` | SearchFiles 返回的最大结果数 | 100 |
 | `DEBUG_MODE` | 是否启用调试日志 | false |
 
+### 目录策略与配置加载合同（r2）
+
+配置加载和目录校验分开：`configurationLoader.js` 调用已有 `dotenv.config({ path, processEnv })`；`directoryPolicy.js` 只接收成功加载后选定的 `ALLOWED_DIRECTORIES` 字段，不读取配置、不识别密钥、不实现解密。
+
+保留原加载器合同：无键时读取明文；有效继承密钥和 vault 由已有 dotenv 解密；继承非空键但没有 vault 时仍走原明文回退。密钥格式、轮换、AES-GCM 与解密错误处理由原加载器负责。非空 `DOTENV_KEY` 不再直接导致拒绝。
+
+继承环境字段保持 dotenv 默认的“不覆盖”优先级；父进程原有的插件字段合并方式不变。文件成功加载、字段确实缺省时仍使用空默认值。字段是逗号分隔字符串，空白及空逗号项按既有合同处理；非法字段类型、NUL 或字段中的换行不会成为无限制默认值。
+
+有效空列表仅表示**不应用目录允许列表**。`ListAllowedDirectories` 返回成功，`directoryPolicy=unrestricted`，消息为“允许目录为空，当前不限制目录范围”，不自动枚举服务器。操作系统权限、外部审批、敏感数据和其他既有门禁仍适用。
+
+保留原解析器的容错，不为检查一个目录字段拒绝无关合法特殊键名或无关被忽略的行。返回的 `configurationParsing` 明确区分 `legacy_tolerant` 与 `legacy_tolerant_with_ignored_syntax`，两者都不表示严格语法校验成功。本补丁不引入全配置严格语法策略。
+
+实际加载返回错误、解密失败、解析抛错或非法解析结果会明确失败；错误只包含固定代码，不回显配置、URI 或密钥。若疑似目录字段声明被旧解析器丢弃，且最终没有明确字段（包括有效继承字段），返回 `AMBIGUOUS_DIRECTORY_FIELD`，不能冒充正常字段缺省后全放行。无关容错行仍保留旧合同；明确继承的字段不因被忽略的本地声明而失去优先级。
+
+为识别这种字段歧义，加载器同步调用期间仅观察原 `parse` 的结果和被忽略的声明；返回值仍由原解析器决定，并在成功／失败时都恢复原函数。不另造解析或解密加载路径，不导出完整配置对象。
+
+非空列表使用完整路径层级和真实路径校验：根必须存在且可核验；拒绝兄弟前缀、`..` 越界、链接逃逸、悬空链接、链接循环及核验失败。Linux 区分大小写，Windows 使用本平台路径语义。目录内尚未创建的目标通过现有祖先核验。
+
+所有本地读写、复制／移动两端、目录枚举、搜索、下载缓存和 Canvas 使用同一目录策略。兼容变化仍明确保留：非空列表下取消 ReadFile/FileInfo 原有任意绝对路径例外；空列表范围不收紧。防重名、RenameFile 防覆盖和删除转入回收站的权限不扩大。
+
+真实路径检查不是原子的目录句柄隔离，仍有并发替换路径组件的 TOCTOU 风险。Windows 用例仅模拟，不代表 Windows 实机验收。
+
+测试使用 Node.js 自带框架、自建临时文件和内存中的合成 AES-GCM/vault，不加载活动配置、密钥、服务、业务文件或网络。密钥不写入断言值、失败输出或工件。
+
+```bash
+node --check Plugin/FileOperator/configurationLoader.js
+node --check Plugin/FileOperator/directoryPolicy.js
+node --check Plugin/FileOperator/FileOperator.js
+node --test tests/fileOperatorDirectoryPolicy.test.cjs tests/fileOperatorConfigCompatibility.test.cjs
+```
+
+独立工作树可通过 `VCP_TEST_DEPENDENCY_ROOT` 指定已有依赖代码根。测试读取 dotenv 模块源码，在合成环境和内存文件系统中执行，不读取该根的配置。
+
 ## 命令一览
 
 ### 文件读取

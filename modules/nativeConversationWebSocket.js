@@ -16,6 +16,7 @@ function releaseClosedSession(ws,state){
  if(activeSessions.get(state.key)===ws)activeSessions.delete(state.key);
  if(connections.get(ws)===state)connections.delete(ws);
 }
+function isNativeConversationConnection(ws){return connections.has(ws);}
 // Called by the host's single 60s heartbeat: one further tick without pong ends
 // the transport, not the request. Only close + settled inflight releases a session.
 function heartbeatNativeConversation(ws){
@@ -70,4 +71,4 @@ async function handleNativeConversationMessage(ws,message,pluginManager,rawMessa
  }catch{console.warn('[NativeConversation]',{code:'NATIVE_WEBSOCKET_FAILED'});send({ok:false,code:'NATIVE_RESULT_UNKNOWN'});}finally{if(registered){state.inflight.delete(message.requestId);releaseClosedSession(ws,state);}}
  return true;
 }
-module.exports={handleNativeConversationMessage,heartbeatNativeConversation,recordNativeTransport};
+module.exports={handleNativeConversationMessage,heartbeatNativeConversation,isNativeConversationConnection,recordNativeTransport};
