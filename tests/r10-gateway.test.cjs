@@ -17,7 +17,7 @@ test('old-topic execution waits for the selected original history, and tombstone
 
 test('R10 refuses legacy HTTP profiles and missing TLS before it can listen',()=>{
  const {tlsOptions,ORIGIN}=require('../Plugin/NativeSync/mobile/httpsListener');
- assert.throws(()=>tlsOptions({port:8888,publicHttpOrigin:'http://wp10.unicorn.org.cn:13848'}),/R10_HTTPS_ONLY_PROFILE_REQUIRED/);
+ assert.throws(()=>tlsOptions({port:8888,publicHttpOrigin:'http://dnvcp.skmt617.top:13848'}),/R10_HTTPS_ONLY_PROFILE_REQUIRED/);
  assert.throws(()=>tlsOptions({port:8888,httpsOrigin:ORIGIN}),/R10_TLS_CERTIFICATE_REQUIRED/);
 });
 
@@ -27,8 +27,8 @@ test('TLS listener verifies domain, chain and key, serves HTTPS and rejects clea
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'r10-tls-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const file=n=>path.join(dir,n),openssl=args=>execFileSync('openssl',args,{cwd:dir,stdio:'ignore'});
  openssl(['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=R10 synthetic test CA','-addext','basicConstraints=critical,CA:TRUE','-keyout','ca.key','-out','ca.crt']);
- openssl(['req','-new','-newkey','rsa:2048','-nodes','-subj','/CN=wp10.unicorn.org.cn','-keyout','leaf.key','-out','leaf.csr']);fs.chmodSync(file('leaf.key'),0o600);
- fs.writeFileSync(file('leaf.ext'),'subjectAltName=DNS:wp10.unicorn.org.cn\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n');
+ openssl(['req','-new','-newkey','rsa:2048','-nodes','-subj','/CN=dnvcp.skmt617.top','-keyout','leaf.key','-out','leaf.csr']);fs.chmodSync(file('leaf.key'),0o600);
+ fs.writeFileSync(file('leaf.ext'),'subjectAltName=DNS:dnvcp.skmt617.top\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n');
  openssl(['x509','-req','-in','leaf.csr','-CA','ca.crt','-CAkey','ca.key','-CAcreateserial','-days','1','-extfile','leaf.ext','-out','leaf.crt']);
  const config={port:8888,httpsOrigin:ORIGIN,tls:{certFile:file('leaf.crt'),keyFile:file('leaf.key')}};
  const old=process.env.SSL_CERT_FILE,oldDir=process.env.SSL_CERT_DIR;t.after(()=>{if(old===undefined)delete process.env.SSL_CERT_FILE;else process.env.SSL_CERT_FILE=old;if(oldDir===undefined)delete process.env.SSL_CERT_DIR;else process.env.SSL_CERT_DIR=oldDir;});
@@ -36,7 +36,7 @@ test('TLS listener verifies domain, chain and key, serves HTTPS and rejects clea
  process.env.SSL_CERT_FILE=file('ca.crt');
  const options=tlsOptions(config),server=createListener(options,(_q,r)=>r.end('protected-r10'));options.key.fill(0);
  const port=await listen(server);t.after(()=>new Promise(r=>server.close(r)));
- const result=await new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port,servername:'wp10.unicorn.org.cn',ca:fs.readFileSync(file('ca.crt'))},r=>{let body='';r.on('data',b=>body+=b);r.on('end',()=>resolve({status:r.statusCode,body}));}).on('error',reject);});assert.deepEqual(result,{status:200,body:'protected-r10'});
- const plaintext=await new Promise((resolve,reject)=>{let data='';const s=net.connect(port,'127.0.0.1',()=>s.write('GET / HTTP/1.1\r\nHost: wp10.unicorn.org.cn\r\n\r\n'));s.setTimeout(3000,()=>{s.destroy();reject(Error('cleartext did not close'));});s.on('data',b=>data+=b);s.on('error',()=>{});s.on('close',()=>resolve(data));});assert.equal(plaintext,'');
+ const result=await new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port,servername:'dnvcp.skmt617.top',ca:fs.readFileSync(file('ca.crt'))},r=>{let body='';r.on('data',b=>body+=b);r.on('end',()=>resolve({status:r.statusCode,body}));}).on('error',reject);});assert.deepEqual(result,{status:200,body:'protected-r10'});
+ const plaintext=await new Promise((resolve,reject)=>{let data='';const s=net.connect(port,'127.0.0.1',()=>s.write('GET / HTTP/1.1\r\nHost: dnvcp.skmt617.top\r\n\r\n'));s.setTimeout(3000,()=>{s.destroy();reject(Error('cleartext did not close'));});s.on('data',b=>data+=b);s.on('error',()=>{});s.on('close',()=>resolve(data));});assert.equal(plaintext,'');
  const wrong={...config,tls:{certFile:file('leaf.crt'),keyFile:file('ca.key')}};assert.throws(()=>tlsOptions(wrong),/R10_TLS_IDENTITY_INVALID/);
 });

@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),https=require('node:https');
 const {execFileSync}=require('node:child_process');
-const ORIGIN='https://wp10.unicorn.org.cn:13848';
+const ORIGIN='https://dnvcp.skmt617.top:13848';
 function tlsOptions(config){
  if(config.port!==8888||config.httpsOrigin!==ORIGIN||'publicHttpOrigin' in config)throw Error('R10_HTTPS_ONLY_PROFILE_REQUIRED');
  const certFile=config.tls?.certFile,keyFile=config.tls?.keyFile;
@@ -14,11 +14,11 @@ function tlsOptions(config){
  }catch{throw Error('R10_TLS_FILES_UNAVAILABLE');}
  try{
   const leaf=new crypto.X509Certificate(cert),now=Date.now();
-  if(!leaf.checkHost('wp10.unicorn.org.cn',{subject:'never'})||leaf.ca||Date.parse(leaf.validFrom)>now||Date.parse(leaf.validTo)<=now)throw Error();
+  if(!leaf.checkHost('dnvcp.skmt617.top',{subject:'never'})||leaf.ca||Date.parse(leaf.validFrom)>now||Date.parse(leaf.validTo)<=now)throw Error();
   const actual=crypto.createPublicKey(crypto.createPrivateKey(key)).export({type:'spki',format:'der'});
   if(!actual.equals(leaf.publicKey.export({type:'spki',format:'der'})))throw Error();
  }catch{key.fill(0);throw Error('R10_TLS_IDENTITY_INVALID');}
- try{execFileSync('openssl',['verify','-purpose','sslserver','-verify_hostname','wp10.unicorn.org.cn','-untrusted',certFile,certFile],{stdio:'ignore',timeout:10000});}
+ try{execFileSync('openssl',['verify','-purpose','sslserver','-verify_hostname','dnvcp.skmt617.top','-untrusted',certFile,certFile],{stdio:'ignore',timeout:10000});}
  catch{key.fill(0);throw Error('R10_TLS_CHAIN_UNTRUSTED');}
  return {key,cert,minVersion:'TLSv1.2'};
 }
