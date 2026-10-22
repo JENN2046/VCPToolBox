@@ -1,0 +1,7 @@
+{
+  "name": "vcp-deepwiki-plugin",
+  "version": "2.0.0",
+  "description": "VCP plugin for DeepWiki - GitHub repo documentation via official MCP API",
+  "main": "DeepWikiVCP.js",
+  "dependencies": {}
+}

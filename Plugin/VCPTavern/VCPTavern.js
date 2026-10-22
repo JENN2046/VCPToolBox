@@ -1,0 +1,745 @@
+// VCPTavern.js
+const fs = require('fs').promises;
+const path = require('path');
+const express = require('express');
+
+const PRESETS_DIR = path.join(__dirname, 'presets');
+const ACCESS_LOG_FILE = path.join(__dirname, 'access_logs.json');
+const REPORT_TIMEZONE = process.env.REPORT_TIMEZONE || 'Asia/Shanghai';
+
+class VCPTavern {
+    constructor() {
+        this.presets = new Map();
+        this.accessLogs = new Map(); // 存储预设的最后访问时间
+        this.debugMode = false;
+        this.pluginManager = null;
+        this.accessLogSaveQueue = Promise.resolve();
+    }
+
+    async _loadAccessLogs() {
+        try {
+            const data = await fs.readFile(ACCESS_LOG_FILE, 'utf-8');
+            const logs = JSON.parse(data);
+            this.accessLogs = new Map(Object.entries(logs));
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                console.error('[VCPTavern] 加载访问日志失败:', error);
+            }
+        }
+    }
+
+    _saveAccessLogs() {
+        this.accessLogSaveQueue = this.accessLogSaveQueue.then(async () => {
+            const logs = Object.fromEntries(this.accessLogs);
+            await fs.writeFile(ACCESS_LOG_FILE, JSON.stringify(logs, null, 2));
+        }).catch(error => {
+            console.error('[VCPTavern] 保存访问日志失败:', error);
+        });
+        return this.accessLogSaveQueue;
+    }
+
+    // 计算字符串哈希
+    _computeHash(str) {
+        let hash = 0;
+        if (str.length === 0) return hash.toString(16);
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash.toString(16);
+    }
+
+    // 辅助方法：从消息内容中提取纯文本（兼容多模态数组）
+    _getTextFromContent(content) {
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return content
+                .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+                .map(part => part.text)
+                .join('\n');
+        }
+        return '';
+    }
+
+    // 辅助方法：更新消息内容中的文本（兼容多模态数组）
+    _updateTextInContent(content, updateFn) {
+        if (typeof content === 'string') {
+            return updateFn(content);
+        }
+        if (Array.isArray(content)) {
+            // 尝试找到第一个文本部分进行修改
+            const textPart = content.find(part => part && part.type === 'text' && typeof part.text === 'string');
+            if (textPart) {
+                textPart.text = updateFn(textPart.text);
+            } else {
+                // 如果没有文本部分，则在末尾添加一个
+                content.push({ type: 'text', text: updateFn('') });
+            }
+            return content;
+        }
+        return content;
+    }
+
+    // 获取会话唯一标识 (Session Key) - 双锚点机制
+    _getSessionKey(messages, explicitId) {
+        // 1. 显式 ID (最高优先级)
+        if (explicitId) return explicitId;
+
+        // --- 锚点 1: 角色身份 (CharID) ---
+        let charId = 'UnknownChar';
+
+        // A. 尝试从 name 字段获取
+        const assistantMsg = messages.find(m => m.role === 'assistant' && m.name);
+        if (assistantMsg && assistantMsg.name) {
+            charId = assistantMsg.name;
+        } else {
+            // B. 尝试从 System Prompt 正则提取 Name/Char
+            const systemMsg = messages.find(m => m.role === 'system');
+            if (systemMsg && systemMsg.content) {
+                const contentStr = this._getTextFromContent(systemMsg.content);
+                // 匹配 Name: xxx, Char: xxx, 角色: xxx 等常见格式
+                // 忽略大小写，取第一行非空内容
+                const nameMatch = contentStr.match(/(?:Name|Char|Character|姓名|角色)\s*[:：]\s*([^\n\r]+)/i) || contentStr.match(/\{\{agent:(\w+)\}\}/i);
+                if (nameMatch && nameMatch[1]) {
+                    charId = nameMatch[1].trim();
+                } else {
+                    // C. 实在找不到名字，计算 System Prompt 的哈希 (作为最后的兜底)
+                    // 为了抵抗 RAG 变动，我们取 System Prompt 的 *后半部分* (假设破限词在最后且相对固定)
+                    // 或者取整个内容的哈希，虽然不稳定，但总比没有好
+                    charId = 'SysHash_' + this._computeHash(contentStr.slice(-500)); // 取后500字符
+                }
+            }
+        }
+
+        // --- 锚点 2: 话题标识 (TopicID) ---
+        // 使用第一条 User 消息的哈希作为话题指纹
+        // 同一个话题内，第一条用户消息通常是不变的
+        let topicId = 'DefaultTopic';
+        const firstUserMsg = messages.find(m => m.role === 'user');
+        if (firstUserMsg && firstUserMsg.content) {
+            // 如果内容是数组(多模态)，转字符串处理
+            const contentStr = typeof firstUserMsg.content === 'string'
+                ? firstUserMsg.content
+                : JSON.stringify(firstUserMsg.content);
+            topicId = this._computeHash(contentStr);
+        }
+
+        // 组合最终 Key: 角色_话题
+        // 例如: "Keqing_a1b2c3d4"
+        return `${charId}_${topicId}`;
+    }
+
+    _formatDuration(ms) {
+        if (ms < 1000) return '刚刚';
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return `${days}天${hours % 24}小时`;
+        if (hours > 0) return `${hours}小时${minutes % 60}分钟`;
+        if (minutes > 0) return `${minutes}分钟`;
+        return `${seconds}秒`;
+    }
+
+    // 即时解析时间占位符，将当前时间"烤死"进内容中
+    _resolveTimeVariables(text) {
+        if (!text || typeof text !== 'string') return text;
+
+        const now = new Date();
+        const date = now.toLocaleDateString('zh-CN', { timeZone: REPORT_TIMEZONE });
+        const time = now.toLocaleTimeString('zh-CN', { timeZone: REPORT_TIMEZONE });
+        const today = now.toLocaleDateString('zh-CN', { weekday: 'long', timeZone: REPORT_TIMEZONE });
+
+        return text
+            .replace(/\{\{Date\}\}/g, date)
+            .replace(/\{\{Time\}\}/g, time)
+            .replace(/\{\{Today\}\}/g, today);
+    }
+
+    _normalizePlaceholderKey(value) {
+        return String(value || '')
+            .trim()
+            .replace(/^\{\{|\}\}$/g, '');
+    }
+
+    _getPresetPlaceholderAllowlist(preset) {
+        const configured = Array.isArray(preset?.placeholderAllowlist)
+            ? preset.placeholderAllowlist
+            : [];
+
+        return new Set(
+            configured
+                .map(value => this._normalizePlaceholderKey(value))
+                .filter(Boolean)
+        );
+    }
+
+    _isPseudoSystemMessage(text) {
+        const normalizedText = String(text || '').trimStart();
+        if (!normalizedText) return false;
+
+        const systemPrefixMatch = normalizedText.match(/^\[系统[^\]]*\]/);
+        if (!systemPrefixMatch) return false;
+
+        const marker = systemPrefixMatch[0].replace(/[:：]\]$/, ']');
+        const isSystemNotification = marker === '[系统通知]';
+        if (!isSystemNotification) {
+            return true;
+        }
+
+        return /\[系统通知结束\]/.test(normalizedText);
+    }
+
+    _resolveAllowedPlaceholders(text, allowlist) {
+        if (!text || typeof text !== 'string' || !allowlist || allowlist.size === 0) {
+            return text;
+        }
+
+        if (!this._isPseudoSystemMessage(text)) {
+            return text;
+        }
+
+        const getAllPlaceholderValues = this.pluginManager?.getAllPlaceholderValues;
+        if (typeof getAllPlaceholderValues !== 'function') {
+            if (this.debugMode) {
+                console.warn('[VCPTavern] 未注入 pluginManager，无法解析预设白名单占位符。');
+            }
+            return text;
+        }
+
+        const values = getAllPlaceholderValues.call(this.pluginManager);
+        if (!(values instanceof Map)) {
+            if (this.debugMode) {
+                console.warn('[VCPTavern] pluginManager.getAllPlaceholderValues() 未返回 Map。');
+            }
+            return text;
+        }
+
+        const placeholderRegex = /\{\{([a-zA-Z0-9_:@#%&^+\-\u2e80-\u2fff\u3040-\u9fff]+)\}\}/g;
+        return text.replace(placeholderRegex, (fullPlaceholder, rawKey) => {
+            const key = this._normalizePlaceholderKey(rawKey);
+            if (!allowlist.has(key) || !values.has(key)) {
+                return fullPlaceholder;
+            }
+
+            const value = values.get(key);
+            if (value === null || value === undefined) {
+                return fullPlaceholder;
+            }
+
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                return String(value);
+            }
+
+            if (this.debugMode) {
+                console.warn(`[VCPTavern] 占位符 ${fullPlaceholder} 的值不是文本，保留原占位符。`);
+            }
+            return fullPlaceholder;
+        });
+    }
+
+    // 深度解析消息对象中的时间变量
+    _resolveMessageTimeVariables(messageObj) {
+        if (!messageObj) return messageObj;
+
+        const resolved = JSON.parse(JSON.stringify(messageObj));
+
+        if (typeof resolved.content === 'string') {
+            resolved.content = this._resolveTimeVariables(resolved.content);
+        } else if (Array.isArray(resolved.content)) {
+            resolved.content = resolved.content.map(part => {
+                if (part.type === 'text' && typeof part.text === 'string') {
+                    return { ...part, text: this._resolveTimeVariables(part.text) };
+                }
+                return part;
+            });
+        }
+
+        return resolved;
+    }
+
+  // 检测预设是否需要时间追踪（是否使用了 {{LastChatTime}} 或 {{TimeSinceLastChat}}）
+  _presetNeedsTimeTracking(preset) {
+    if (!preset || !Array.isArray(preset.rules)) return false;
+
+    const timeVarRegex = /\{\{(LastChatTime|TimeSinceLastChat)\}\}/;
+
+    for (const rule of preset.rules) {
+      if (!rule.enabled) continue;
+
+      // 提取规则内容的文本（兼容字符串和对象两种格式）
+      let textContent = "";
+      if (typeof rule.content === "string") {
+        textContent = rule.content;
+      } else if (rule.content && typeof rule.content.content === "string") {
+        textContent = rule.content.content;
+      } else if (rule.content && typeof rule.content === "object") {
+        // 兜底：序列化搜索
+        textContent = JSON.stringify(rule.content);
+      }
+
+      if (timeVarRegex.test(textContent)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+    async initialize(config, dependencies = {}) {
+        this.debugMode = config.DebugMode || false;
+        this.pluginManager = dependencies.pluginManager || null;
+        await this._loadPresets();
+        await this._loadAccessLogs();
+        console.log('[VCPTavern] 插件已初始化。');
+    }
+
+    async _loadPresets() {
+        try {
+            await fs.mkdir(PRESETS_DIR, { recursive: true });
+            const presetFiles = await fs.readdir(PRESETS_DIR);
+            this.presets.clear();
+            for (const file of presetFiles) {
+                if (file.endsWith('.json')) {
+                    const presetName = path.basename(file, '.json');
+                    try {
+                        const content = await fs.readFile(path.join(PRESETS_DIR, file), 'utf-8');
+                        this.presets.set(presetName, JSON.parse(content));
+                        if (this.debugMode) console.log(`[VCPTavern] 已加载预设: ${presetName}`);
+                    } catch (e) {
+                        console.error(`[VCPTavern] 加载预设文件失败 ${file}:`, e);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[VCPTavern] 加载预设目录失败:', error);
+        }
+    }
+
+    // 作为 messagePreprocessor 的核心方法
+    async processMessages(messages, config) {
+        if (!messages || messages.length === 0) return messages;
+
+        const systemMessage = messages.find(m => m.role === 'system');
+        if (!systemMessage || !systemMessage.content) {
+            return messages;
+        }
+
+        const systemContentStr = this._getTextFromContent(systemMessage.content);
+        const triggerRegex = /\{\{VCPTavern::(.+?)\}\}/;
+        const match = systemContentStr.match(triggerRegex);
+
+        if (!match) {
+            return messages;
+        }
+
+        // 支持解析 {{VCPTavern::PresetName::SessionID}} 格式
+        // 以及 {{VCPTavern::PresetName::blacklist:规则名}} 格式
+        const triggerContent = match[1];
+        const parts = triggerContent.split('::');
+        const presetName = parts[0];
+        let explicitSessionId;
+        let blacklistRules = [];
+
+        for (let i = 1; i < parts.length; i++) {
+            const part = parts[i];
+            if (part.startsWith('blacklist:')) {
+                const listStr = part.slice('blacklist:'.length);
+                blacklistRules = listStr
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(s => s.length > 0);
+            } else {
+                explicitSessionId = part;
+            }
+        }
+
+        const preset = this.presets.get(presetName);
+        if (!preset || !Array.isArray(preset.rules)) {
+            console.warn(`[VCPTavern] 预设 "${presetName}" 未找到或其 'rules' 格式无效。`);
+            return messages;
+        }
+
+        // 根据黑名单过滤规则（静默跳过指定规则）
+        const skipRuleByName = (rule) => {
+            return blacklistRules.length > 0 && blacklistRules.includes(rule.name);
+        };
+
+        const activeRules = preset.rules.filter(r => !skipRuleByName(r));
+        const skippedRules = preset.rules.filter(r => r.enabled && skipRuleByName(r));
+
+        if (this.debugMode && skippedRules.length > 0) {
+            console.log(`[VCPTavern] 黑名单已静默规则: ${skippedRules.map(r => `"${r.name}"`).join(', ')}`);
+        }
+
+        // 构建全局正则，清除所有同名占位符（含可选 SessionID 部分）
+        const escapedPreset = presetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const globalCleanupRegex = new RegExp(`\\{\\{VCPTavern::${escapedPreset}(?:::[^}]*)?\\}\\}`, 'g');
+
+        // 从 system message 中移除所有重复的同名占位符
+        systemMessage.content = this._updateTextInContent(systemMessage.content, (text) => text.replace(globalCleanupRegex, '').trim());
+
+        // 扫描所有其他消息，清除残留的同名占位符
+        for (const msg of messages) {
+            if (msg === systemMessage) continue;
+            const originalContent = msg.content;
+            msg.content = this._updateTextInContent(msg.content, (text) => {
+                const cleaned = text.replace(globalCleanupRegex, '');
+                return cleaned.trim();
+            });
+            
+            if (this.debugMode && JSON.stringify(originalContent) !== JSON.stringify(msg.content)) {
+                console.log(`[VCPTavern] 已清除 ${msg.role} 消息中的重复占位符 {{VCPTavern::${presetName}}}`);
+            }
+        }
+
+        if (this.debugMode) console.log(`[VCPTavern] 检测到触发器，使用预设: ${presetName}`);
+
+    // 检测预设是否需要时间追踪（是否使用了 {{LastChatTime}} 或 {{TimeSinceLastChat}}）
+    const needsTimeTracking = this._presetNeedsTimeTracking({ ...preset, rules: activeRules });
+    const placeholderAllowlist = this._getPresetPlaceholderAllowlist(preset);
+
+    // --- 计算时间间隔逻辑 (仅当预设使用时间变量时) ---
+    let resolveExtendedVariables;
+
+    if (needsTimeTracking) {
+        const now = Date.now();
+        let lastChatTimeStr = '';
+        let timeSinceLastChatStr = '';
+
+        // 获取会话唯一标识
+        const sessionKey = this._getSessionKey(messages, explicitSessionId);
+        // 组合 Log Key: 预设名 + 会话标识 (例如 "dailychat:Keqing")
+        const logKey = `${presetName}:${sessionKey}`;
+
+        if (this.accessLogs.has(logKey)) {
+            const lastTime = this.accessLogs.get(logKey);
+            const diff = now - lastTime;
+
+            // 格式化上次时间
+            const lastDate = new Date(lastTime);
+            lastChatTimeStr = `上次对话时间：${lastDate.toLocaleString('zh-CN', { timeZone: REPORT_TIMEZONE })}`;
+
+            // 格式化时间间隔
+            timeSinceLastChatStr = `距离上次对话已过去 ${this._formatDuration(diff)}`;
+
+            if (this.debugMode) {
+                console.log(`[VCPTavern] 预设 ${presetName} (ID:${sessionKey}) 上次访问: ${lastChatTimeStr}, 间隔: ${timeSinceLastChatStr}`);
+            }
+        }
+
+        // 仅冻结记录键；请求级对象由主处理器创建，不写入消息或上游 body。
+        // 没有完成回调的独立预处理调用只读历史时间，绝不提前刷新。
+        if (config?.tavernInteraction) {
+            let committed = false;
+            config.tavernInteraction.commit = async () => {
+                if (committed) return;
+                committed = true;
+                const completedAt = Date.now();
+                this.accessLogs.set(logKey, Math.max(completedAt, Number(this.accessLogs.get(logKey)) || 0));
+                await this._saveAccessLogs();
+                if (this.debugMode) console.log(`[VCPTavern] 成功交互时间已更新 (Key: ${logKey})`);
+            };
+        }
+
+        resolveExtendedVariables = (content) => {
+            if (!content) return content;
+            
+            const replaceFn = (text) => {
+                if (typeof text !== 'string') return text;
+                let resolved = this._resolveTimeVariables(text);
+                resolved = this._resolveAllowedPlaceholders(resolved, placeholderAllowlist);
+                return resolved
+                    .replace(/\{\{LastChatTime\}\}/g, lastChatTimeStr)
+                    .replace(/\{\{TimeSinceLastChat\}\}/g, timeSinceLastChatStr);
+            };
+
+            if (typeof content === 'string') {
+                return replaceFn(content);
+            } else if (Array.isArray(content)) {
+                return content.map(part => {
+                    if (part && part.type === 'text' && typeof part.text === 'string') {
+                        return { ...part, text: replaceFn(part.text) };
+                    }
+                    return part;
+                });
+            } else if (content && typeof content === 'object') {
+                const resolved = { ...content };
+                if (Object.prototype.hasOwnProperty.call(resolved, 'content')) {
+                    resolved.content = resolveExtendedVariables(resolved.content);
+                }
+                return resolved;
+            }
+            return content;
+        };
+
+      if (this.debugMode)
+        console.log(
+          `[VCPTavern] 预设 "${presetName}" 已启用时间追踪 (Key: ${logKey})`
+        );
+    } else {
+      if (this.debugMode)
+        console.log(
+          `[VCPTavern] 预设 "${presetName}" 未使用时间变量，跳过时间追踪`
+        );
+
+      resolveExtendedVariables = (content) => {
+        if (!content) return content;
+        const replaceFn = (text) => {
+          if (typeof text !== "string") return text;
+          let resolved = this._resolveTimeVariables(text);
+          return this._resolveAllowedPlaceholders(resolved, placeholderAllowlist);
+        };
+        if (typeof content === "string") {
+          return replaceFn(content);
+        } else if (Array.isArray(content)) {
+            return content.map((part) => {
+                if (part && part.type === "text" && typeof part.text === "string") {
+                  return { ...part, text: replaceFn(part.text) };
+                }
+                return part;
+            });
+        } else if (content && typeof content === "object") {
+            const resolved = { ...content };
+            if (Object.prototype.hasOwnProperty.call(resolved, "content")) {
+                resolved.content = resolveExtendedVariables(resolved.content);
+            }
+            return resolved;
+        }
+        return content;
+      };
+    }
+
+        // 辅助函数：确保注入内容是消息对象格式
+        const ensureMessageObject = (content, defaultRole = 'system') => {
+            if (typeof content === 'string') {
+                return { role: defaultRole, content: content };
+            }
+            return content;
+        };
+
+        let newMessages = [...messages];
+
+        // 按照注入规则处理
+        // 为了处理深度注入，我们先处理嵌入注入，再处理相对注入，最后处理深度注入
+        const embedRules = activeRules.filter(r => r.enabled && r.type === 'embed');
+        const relativeRules = activeRules.filter(r => r.enabled && r.type === 'relative').sort((a, b) => (a.position === 'before' ? -1 : 1));
+        const depthRules = activeRules.filter(r => r.enabled && r.type === 'depth').sort((a, b) => b.depth - a.depth);
+
+        // 1. 嵌入注入 (直接修改现有消息内容) - 恢复兼容老版本
+        for (const rule of embedRules) {
+            let textToEmbed = typeof rule.content === 'object' ? rule.content.content : rule.content;
+            if (typeof textToEmbed !== 'string') continue;
+
+            // 解析时间变量
+            textToEmbed = resolveExtendedVariables(textToEmbed);
+
+            const embedFn = (content) => {
+                return this._updateTextInContent(content, (originalText) => {
+                    if (rule.position === 'before') {
+                        return textToEmbed.trim() + '\n\n' + originalText.trim();
+                    } else { // after
+                        return originalText.trim() + '\n\n' + textToEmbed.trim();
+                    }
+                });
+            };
+
+            if (rule.target === 'system') {
+                const systemMsg = newMessages.find(m => m.role === 'system');
+                if (systemMsg) {
+                    systemMsg.content = embedFn(systemMsg.content);
+                }
+            } else if (rule.target === 'last_user') {
+                let lastUserIndex = -1;
+                for (let i = newMessages.length - 1; i >= 0; i--) {
+                    if (newMessages[i].role === 'user') {
+                        lastUserIndex = i;
+                        break;
+                    }
+                }
+                if (lastUserIndex !== -1) {
+                    newMessages[lastUserIndex].content = embedFn(newMessages[lastUserIndex].content);
+                }
+            } else if (rule.target === 'first_user') {
+                const firstUserIndex = newMessages.findIndex(m => m.role === 'user');
+                if (firstUserIndex !== -1) {
+                    newMessages[firstUserIndex].content = embedFn(newMessages[firstUserIndex].content);
+                }
+            }
+        }
+
+        // 2. 相对注入
+        for (const rule of relativeRules) {
+            // 即时解析时间变量（包含新变量），将当前时间"烤死"进注入内容
+            let contentToInject = rule.content;
+
+            contentToInject = resolveExtendedVariables(contentToInject);
+
+            // 确保是对象格式
+            const msgObj = ensureMessageObject(contentToInject);
+
+            if (rule.target === 'system') {
+                const systemIndex = newMessages.findIndex(m => m.role === 'system');
+                if (systemIndex !== -1) {
+                    if (rule.position === 'before') {
+                        newMessages.splice(systemIndex, 0, msgObj);
+                    } else { // after
+                        newMessages.splice(systemIndex + 1, 0, msgObj);
+                    }
+                }
+            } else if (rule.target === 'last_user') {
+                let lastUserIndex = -1;
+                for (let i = newMessages.length - 1; i >= 0; i--) {
+                    if (newMessages[i].role === 'user') {
+                        lastUserIndex = i;
+                        break;
+                    }
+                }
+                if (lastUserIndex !== -1) {
+                    if (rule.position === 'after') {
+                        newMessages.splice(lastUserIndex + 1, 0, msgObj);
+                    } else { // before
+                        newMessages.splice(lastUserIndex, 0, msgObj);
+                    }
+                }
+            } else if (rule.target === 'first_user') {
+                // [PR] 新增：定位第一条 user 消息进行相对注入
+                const firstUserIndex = newMessages.findIndex(m => m.role === 'user');
+                if (firstUserIndex !== -1) {
+                    if (rule.position === 'after') {
+                        newMessages.splice(firstUserIndex + 1, 0, msgObj);
+                    } else { // before
+                        newMessages.splice(firstUserIndex, 0, msgObj);
+                    }
+                }
+            } else if (rule.target === 'all_user') {
+                const userIndices = [];
+                for (let i = 0; i < newMessages.length; i++) {
+                    if (newMessages[i].role === 'user') {
+                        userIndices.push(i);
+                    }
+                }
+
+                for (let j = userIndices.length - 1; j >= 0; j--) {
+                    const userIndex = userIndices[j];
+                    let clonedContent = rule.content;
+                    clonedContent = resolveExtendedVariables(clonedContent);
+
+                    const clonedMsgObj = ensureMessageObject(clonedContent);
+
+                    if (rule.position === 'after') {
+                        newMessages.splice(userIndex + 1, 0, clonedMsgObj);
+                    } else { // before
+                        newMessages.splice(userIndex, 0, clonedMsgObj);
+                    }
+                }
+            }
+        }
+
+        // 3. 深度注入
+        for (const rule of depthRules) {
+            if (rule.depth > 0) {
+                let contentToInject = rule.content;
+                contentToInject = resolveExtendedVariables(contentToInject);
+
+                const msgObj = ensureMessageObject(contentToInject);
+
+                if (rule.depth < newMessages.length) {
+                    const injectionIndex = newMessages.length - rule.depth;
+                    newMessages.splice(injectionIndex, 0, msgObj);
+                } else {
+                    const systemIndex = newMessages.findIndex(m => m.role === 'system');
+                    if (systemIndex !== -1) {
+                        newMessages.splice(systemIndex + 1, 0, msgObj);
+                    }
+                }
+            }
+        }
+
+        if (this.debugMode) {
+            console.log(`[VCPTavern] 原始消息数量: ${messages.length}, 注入后消息数量: ${newMessages.length}`);
+        }
+
+        return newMessages;
+    }
+
+    // 作为 service 插件的核心方法
+    registerRoutes(app, adminApiRouter, config, projectBasePath) {
+        const router = express.Router();
+        router.use(express.json({ limit: '10mb' }));
+
+        // 获取所有预设名称
+        router.get('/presets', (req, res) => {
+            res.json(Array.from(this.presets.keys()));
+        });
+
+        // 获取特定预设的详细内容
+        router.get('/presets/:name', (req, res) => {
+            const preset = this.presets.get(req.params.name);
+            if (preset) {
+                res.json(preset);
+            } else {
+                res.status(404).json({ error: 'Preset not found' });
+            }
+        });
+
+        // 保存/更新预设
+        router.post('/presets/:name', async (req, res) => {
+            const presetName = req.params.name.replace(/[^a-zA-Z0-9_-]/g, ''); // Sanitize
+            if (!presetName) {
+                return res.status(400).json({ error: 'Invalid preset name.' });
+            }
+            const presetData = req.body;
+            try {
+                const filePath = path.join(PRESETS_DIR, `${presetName}.json`);
+                await fs.writeFile(filePath, JSON.stringify(presetData, null, 2));
+                this.presets.set(presetName, presetData);
+                if (this.debugMode) console.log(`[VCPTavern] 预设已保存: ${presetName}`);
+                res.status(200).json({ message: 'Preset saved', name: presetName });
+            } catch (error) {
+                console.error(`[VCPTavern] 保存预设失败 ${presetName}:`, error);
+                res.status(500).json({ error: 'Failed to save preset' });
+            }
+        });
+
+        // 删除预设
+        router.delete('/presets/:name', async (req, res) => {
+            const presetName = req.params.name;
+            try {
+                const filePath = path.join(PRESETS_DIR, `${presetName}.json`);
+                await fs.unlink(filePath);
+                this.presets.delete(presetName);
+                if (this.debugMode) console.log(`[VCPTavern] 预设已删除: ${presetName}`);
+                res.status(200).json({ message: 'Preset deleted' });
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    return res.status(404).json({ error: 'Preset not found' });
+                }
+                console.error(`[VCPTavern] 删除预设失败 ${presetName}:`, error);
+                res.status(500).json({ error: 'Failed to delete preset' });
+            }
+        });
+
+        // 将路由挂载到传入的 adminApiRouter 上
+        adminApiRouter.use('/vcptavern', router);
+
+        if (this.debugMode) console.log('[VCPTavern] API 路由已通过 adminApiRouter 注册到 /vcptavern');
+    }
+
+    async shutdown() {
+        await this.accessLogSaveQueue;
+        console.log('[VCPTavern] 插件已卸载。');
+    }
+}
+
+const vcPTavernInstance = new VCPTavern();
+
+// 使得插件能被 Plugin.js 正确加载和初始化
+module.exports = {
+    initialize: (config, dependencies) => vcPTavernInstance.initialize(config, dependencies),
+    processMessages: (messages, config) => vcPTavernInstance.processMessages(messages, config),
+    registerRoutes: (app, adminApiRouter, config, projectBasePath) => vcPTavernInstance.registerRoutes(app, adminApiRouter, config, projectBasePath),
+    shutdown: () => vcPTavernInstance.shutdown(),
+};

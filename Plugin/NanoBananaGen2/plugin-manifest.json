@@ -1,0 +1,88 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "NanoBananaGen2",
+  "displayName": "NanoBanana 图像生成 (自定义渠道)",
+  "version": "1.2.0",
+  "description": "通过 OpenAI Chat Completions 兼容接口调用 Gemini/NanoBanana 图像生成模型。支持自定义 API 地址（可接入任何 /v1/chat/completions 兼容服务）、多渠道绑定轮询（URL+KEY+多MODEL 对应）、单渠道多模型随机、1K/2K/4K 尺寸选择、内置安全过滤绕过。",
+  "author": "Kilo Code (魔改: CodeCC & infinite-vector)",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node NanoBananaGen.mjs"
+  },
+  "communication": {
+    "protocol": "stdio"
+  },
+  "configSchema": {
+    "API_URL": {
+      "type": "string",
+      "description": "单渠道模式：API 地址（填到 /v1 为止）。",
+      "default": "http://127.0.0.1:3106/v1"
+    },
+    "API_KEY": {
+      "type": "string",
+      "description": "单渠道模式：API 密钥。留空=无鉴权。"
+    },
+    "NANO_BANANA_MODEL": {
+      "type": "string",
+      "description": "单渠道模式：模型名称，多个用逗号隔开可随机轮询。",
+      "default": "hyb-Optimal/antigravity/gemini-3-pro-image"
+    },
+    "MULTI_CHANNEL": {
+      "type": "boolean",
+      "description": "设为 true 启用多渠道绑定模式。",
+      "default": false
+    },
+    "API_CHANNELS": {
+      "type": "string",
+      "description": "多渠道模式：URL|KEY|MODEL1,MODEL2 为一组，分号隔开多组。"
+    },
+    "NanoBananaProxy": {
+      "type": "string",
+      "description": "代理地址，如 http://127.0.0.1:7890"
+    },
+    "DIST_IMAGE_SERVERS": {
+      "type": "string",
+      "description": "分布式图床地址，用于 file:// 路径降级处理"
+    },
+    "USE_PUBLIC_URL": {
+      "type": "boolean",
+      "description": "true=输出不带端口的公网 URL（需反代已做端口映射）；false=输出带端口的本地 URL。本地部署请用 false。",
+      "default": false
+    },
+    "SAFETY_BYPASS_TEXT": {
+      "type": "string",
+      "description": "追加到 prompt 尾部的破限文本。留空字符串则完全不追加。不设置此项时使用内置默认值。",
+      "default": ""
+    },
+    "MAX_RETRIES": {
+      "type": "number",
+      "description": "429/503 请求的最大重试次数。",
+      "default": 2
+    },
+    "RETRY_BASE_DELAY_MS": {
+      "type": "number",
+      "description": "429/503 重试的基础等待毫秒数。",
+      "default": 2000
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "NanoBananaGenerate",
+        "description": "文生图。通过 NanoBanana 模型生成图片。\n",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」NanoBananaGen2「末」,\ncommand:「始」generate「末」,\nprompt:「始」A beautiful sunset over mountains with dramatic clouds「末」,\nimage_size:「始」4K「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "NanoBananaEdit",
+        "description": "图生图/编辑。基于已有图片进行修改。\n",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」NanoBananaGen2「末」,\ncommand:「始」edit「末」,\nprompt:「始」Add a rainbow and make colors more vibrant「末」,\nimage_url:「始」https://example.com/photo.jpg「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "NanoBananaCompose",
+        "description": "多图合成。将多张图片按指令合成新图。\n",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」NanoBananaGen2「末」,\ncommand:「始」compose「末」,\nprompt:「始」Use background from first image, character from second「末」,\nimage_url_1:「始」https://example.com/bg.jpg「末」,\nimage_url_2:「始」https://example.com/char.png「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

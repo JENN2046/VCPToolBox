@@ -1,0 +1,469 @@
+const http = require('http');
+const path = require('path');
+const fs = require('fs').promises;
+const { spawn } = require('child_process');
+
+let vcpConfig = {};
+let vcpProjectBasePath = '';
+let serverPort = '8080';
+let serverKey = '';
+
+const VCP_RAG_BLOCK_REGEX = /<!--\s*VCP_RAG_BLOCK_START\b[\s\S]*?<!--\s*VCP_RAG_BLOCK_END\s*-->/gi;
+
+function stripVcpRagBlocks(text) {
+    return typeof text === 'string' ? text.replace(VCP_RAG_BLOCK_REGEX, '') : text;
+}
+
+function getVcpRagBlockRanges(text) {
+    if (typeof text !== 'string') return [];
+    const ranges = [];
+    const re = new RegExp(VCP_RAG_BLOCK_REGEX.source, VCP_RAG_BLOCK_REGEX.flags);
+    let match;
+    while ((match = re.exec(text)) !== null) {
+        ranges.push({ start: match.index, end: match.index + match[0].length });
+    }
+    return ranges;
+}
+
+function isOutsideVcpRagBlocks(start, end, ranges) {
+    return !ranges.some(range => start < range.end && end > range.start);
+}
+
+function replaceOutsideVcpRagBlocks(text, regex, replacement) {
+    if (typeof text !== 'string' || !(regex instanceof RegExp)) return text;
+    const flags = regex.flags.includes('g') ? regex.flags : `${regex.flags}g`;
+    const re = new RegExp(regex.source, flags);
+    const ranges = getVcpRagBlockRanges(text);
+    let result = '';
+    let lastIndex = 0;
+    let match;
+
+    while ((match = re.exec(text)) !== null) {
+        const start = match.index;
+        const end = start + match[0].length;
+        if (!isOutsideVcpRagBlocks(start, end, ranges)) continue;
+
+        result += text.slice(lastIndex, start);
+        result += typeof replacement === 'function'
+            ? replacement(...match, start, text)
+            : replacement;
+        lastIndex = end;
+    }
+
+    return result + text.slice(lastIndex);
+}
+
+/**
+ * 通过 /v1/human/tool 端点调用分布式 ScreenPilot
+ * @param {Object} params ScreenPilot 的参数；command 默认为 ScreenCapture
+ * @returns {Promise<Object>} ScreenPilot 返回的数据对象
+ */
+function callScreenPilot(params = {}) {
+    return new Promise((resolve, reject) => {
+        if (!serverKey) {
+            return reject(new Error('VCP Server API Key is missing.'));
+        }
+
+        const timeoutMs = parseInt(vcpConfig.MONITOR_TIMEOUT_MS || '30000', 10);
+        const command = params.command || 'ScreenCapture';
+
+        let toolRequestBody = `<<<[TOOL_REQUEST]>>>
+tool_name:「始」ScreenPilot「末」,
+command:「始」${command}「末」`;
+
+        if (command === 'ScreenCapture') {
+            toolRequestBody += `,\nocr:「始」false「末」`;
+        }
+
+        if (params.hwnd) {
+            toolRequestBody += `,\nhwnd:「始」${params.hwnd}「末」`;
+        } else if (params.windowTitle) {
+            toolRequestBody += `,\nwindowTitle:「始」${params.windowTitle}「末」`;
+        }
+
+        toolRequestBody += `\n<<<[END_TOOL_REQUEST]>>>`;
+
+        const options = {
+            hostname: '127.0.0.1',
+            port: serverPort,
+            path: '/v1/human/tool',
+            method: 'POST',
+            timeout: timeoutMs,
+            headers: {
+                'Content-Type': 'text/plain;charset=UTF-8',
+                'Authorization': `Bearer ${serverKey}`,
+                'Content-Length': Buffer.byteLength(toolRequestBody)
+            }
+        };
+
+        const req = http.request(options, (res) => {
+            let data = '';
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        resolve(parsed);
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${e.message}. Raw: ${data.substring(0, 100)}`));
+                    }
+                } else {
+                    let errorMessage = `HTTP Error ${res.statusCode}`;
+                    try {
+                        const parsed = JSON.parse(data);
+                        errorMessage = parsed.error || parsed.plugin_error || parsed.plugin_execution_error || errorMessage;
+                    } catch (e) { }
+                    reject(new Error(errorMessage));
+                }
+            });
+        });
+
+        req.on('error', (e) => {
+            reject(new Error(`Request failed: ${e.message}`));
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error(`ScreenPilot request timed out after ${timeoutMs}ms.`));
+        });
+
+        req.write(toolRequestBody);
+        req.end();
+    });
+}
+
+/**
+ * 使用 ffmpeg 将图片分辨率降低一半
+ * @param {string} base64WithPrefix 带有 MIME 前缀的 base64 字符串
+ * @returns {Promise<string>} 处理后的带有 MIME 前缀的 base64 字符串
+ */
+function resizeImageHalf(base64WithPrefix) {
+    return new Promise((resolve, reject) => {
+        const matches = base64WithPrefix.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            return reject(new Error('Invalid base64 format'));
+        }
+
+        const mimeType = matches[1];
+        const base64Data = matches[2];
+        let inputBuffer = Buffer.from(base64Data, 'base64');
+
+        const ffmpeg = spawn('ffmpeg', [
+            '-i', 'pipe:0',
+            '-vf', 'scale=iw/2:ih/2',
+            '-f', 'image2pipe',
+            '-vcodec', mimeType.includes('png') ? 'png' : 'mjpeg',
+            'pipe:1'
+        ]);
+
+        let outputChunks = [];
+        let errorData = '';
+
+        const timeout = setTimeout(() => {
+            ffmpeg.kill('SIGKILL');
+            reject(new Error('ffmpeg process timed out'));
+        }, 15000); // 15秒超时
+
+        ffmpeg.stdout.on('data', (chunk) => {
+            outputChunks.push(chunk);
+        });
+
+        ffmpeg.stderr.on('data', (chunk) => {
+            errorData += chunk.toString();
+        });
+
+        const cleanup = () => {
+            clearTimeout(timeout);
+            inputBuffer = null;
+            outputChunks = null;
+        };
+
+        ffmpeg.on('error', (err) => {
+            cleanup();
+            reject(new Error(`ffmpeg spawn error: ${err.message}`));
+        });
+
+        ffmpeg.on('close', (code) => {
+            if (code === 0) {
+                const finalBuffer = Buffer.concat(outputChunks);
+                const resizedBase64 = finalBuffer.toString('base64');
+                resolve(`data:${mimeType};base64,${resizedBase64}`);
+            } else {
+                reject(new Error(`ffmpeg failed with code ${code}: ${errorData}`));
+            }
+            cleanup();
+        });
+
+        ffmpeg.stdin.on('error', (err) => {
+            console.error(`[CapturePreprocessor] stdin error: ${err.message}`);
+        });
+
+        ffmpeg.stdin.write(inputBuffer);
+        ffmpeg.stdin.end();
+    });
+}
+
+class CapturePreprocessor {
+    _extractTextFromContent(content) {
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return content
+                .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+                .map(part => part.text)
+                .join('\n')
+                .trim();
+        }
+        if (content && typeof content === 'object' && typeof content.text === 'string') {
+            return content.text;
+        }
+        return '';
+    }
+
+    _replaceTextInContent(content, replacer) {
+        if (typeof replacer !== 'function') return content;
+
+        if (typeof content === 'string') {
+            return replacer(content);
+        }
+
+        if (Array.isArray(content)) {
+            const textIndices = [];
+            const textValues = [];
+
+            content.forEach((part, index) => {
+                if (part && part.type === 'text' && typeof part.text === 'string') {
+                    textIndices.push(index);
+                    textValues.push(part.text);
+                }
+            });
+
+            const mergedText = textValues.join('\n').trim();
+            const replacedText = replacer(mergedText);
+
+            if (textIndices.length > 0) {
+                const firstIndex = textIndices[0];
+                return content
+                    .map((part, index) => {
+                        if (!textIndices.includes(index)) return part;
+                        if (index === firstIndex) {
+                            return { ...part, text: replacedText };
+                        }
+                        return null;
+                    })
+                    .filter(Boolean);
+            }
+
+            return [{ type: 'text', text: replacedText }, ...content];
+        }
+
+        if (content && typeof content === 'object' && typeof content.text === 'string') {
+            return { ...content, text: replacer(content.text) };
+        }
+
+        return content;
+    }
+
+    async processMessages(messages, requestConfig = {}) {
+        const currentConfig = { ...vcpConfig, ...requestConfig };
+        let systemPrompt = messages.find(m => m.role === 'system');
+        let lastUserMessage = messages.findLast(m => m.role === 'user');
+
+        if (!systemPrompt || !lastUserMessage) {
+            return messages;
+        }
+
+        const systemPromptText = this._extractTextFromContent(systemPrompt.content);
+        if (!systemPromptText) {
+            return messages;
+        }
+
+        // 支持 {{VCPScreenShot}}, {{VCPScreenShotMini}}, {{VCPScreenShot:窗口}},
+        // {{VCPScreenShot:[长窗口标题]}}, {{VCPScreenShot:28182346}}, {{VCPCameraCapture(N)}}，
+        // 以及用于查询当前窗口及关联进程信息的 {{VCPWindowList}} / {{VCPProcessList}}。
+        // 说明：纯数字目标会被视为 hwnd；方括号包裹用于兼容带空格、冒号、逗号等标点的长标题。
+        // VCPWindowList 与 VCPProcessList 是同一 QueryWindows 查询的别名；后者并不包含无窗口后台进程。
+        const placeholderRegex = /{{\s*(?:(VCPScreenShotMini|VCPScreenShot)(?::(\[[\s\S]*?\]|[^}]+))?|VCPCameraCapture(?:\((\d+)\))?|(VCPWindowList|VCPProcessList))\s*}}/g;
+        const matches = [...stripVcpRagBlocks(systemPromptText).matchAll(placeholderRegex)];
+
+        if (matches.length === 0) {
+            return messages;
+        }
+
+        // --- Parallel Execution Logic ---
+        const captureTasks = [];
+        const seenTargets = new Set(); // 防止对同一个窗口截获多次
+
+        for (const match of matches) {
+            const screenCommand = match[1];
+
+            if (screenCommand) {
+                const isMini = screenCommand === 'VCPScreenShotMini';
+                let target = match[2] ? match[2].trim() : null;
+
+                if (target && target.startsWith('[') && target.endsWith(']')) {
+                    target = target.slice(1, -1).trim();
+                }
+
+                const params = {};
+                let targetLabel = 'FullScreen';
+
+                if (target) {
+                    if (/^\d+$/.test(target)) {
+                        params.hwnd = target;
+                        targetLabel = `hwnd:${target}`;
+                    } else {
+                        params.windowTitle = target;
+                        targetLabel = target;
+                    }
+                }
+
+                const taskKey = `${isMini ? 'mini_' : ''}${params.hwnd ? `hwnd_${params.hwnd}` : params.windowTitle ? `screen_${params.windowTitle}` : 'screen_full'}`;
+
+                if (!seenTargets.has(taskKey)) {
+                    seenTargets.add(taskKey);
+                    captureTasks.push({
+                        type: 'screen',
+                        isMini: isMini,
+                        params,
+                        targetLabel
+                    });
+                }
+            } else if (match[4]) {
+                const taskKey = 'window_list';
+
+                if (!seenTargets.has(taskKey)) {
+                    seenTargets.add(taskKey);
+                    captureTasks.push({
+                        type: 'windowList'
+                    });
+                }
+            } else {
+                const cameraIndex = match[3] ? parseInt(match[3], 10) : 0;
+                const taskKey = `camera_${cameraIndex}`;
+
+                if (!seenTargets.has(taskKey)) {
+                    seenTargets.add(taskKey);
+                    captureTasks.push({
+                        type: 'camera',
+                        cameraIndex: cameraIndex
+                    });
+                }
+            }
+        }
+
+        const promises = captureTasks.map(task => {
+            if (task.type === 'screen') {
+                return callScreenPilot(task.params)
+                    .then(async result => {
+                        let finalData = result;
+                        if (task.isMini && result && Array.isArray(result.content)) {
+                            // 遍历内容，对 image_url 进行处理
+                            for (let i = 0; i < result.content.length; i++) {
+                                const item = result.content[i];
+                                if (item.type === 'image_url' && item.image_url && typeof item.image_url.url === 'string') {
+                                    try {
+                                        item.image_url.url = await resizeImageHalf(item.image_url.url);
+                                    } catch (e) {
+                                        console.error(`[CapturePreprocessor] Resize failed: ${e.message}`);
+                                    }
+                                }
+                            }
+                        }
+                        return { type: 'screen', title: task.targetLabel || task.params.windowTitle || task.params.hwnd || 'FullScreen', status: 'success', data: finalData, isMini: task.isMini };
+                    })
+                    .catch(e => ({ type: 'screen', title: task.targetLabel || task.params.windowTitle || task.params.hwnd || 'FullScreen', status: 'error', message: e.message }));
+            }
+
+            if (task.type === 'windowList') {
+                return callScreenPilot({ command: 'QueryWindows' })
+                    .then(result => ({
+                        type: 'windowList',
+                        status: 'success',
+                        data: result
+                    }))
+                    .catch(e => ({
+                        type: 'windowList',
+                        status: 'error',
+                        message: e.message
+                    }));
+            }
+
+            // 目前分布式架构仅接管了屏幕截图和窗口查询，未开发分布式的摄像头工具。
+            return Promise.resolve({
+                type: 'camera',
+                index: task.cameraIndex,
+                status: 'error',
+                message: "Distributed VCPCameraCapture is not yet implemented."
+            });
+        });
+
+        const settledResults = await Promise.all(promises);
+
+        // --- Inject results into user message ---
+        let userContent = lastUserMessage.content;
+        if (typeof userContent === 'string') {
+            userContent = [{ type: 'text', text: userContent }];
+        } else if (Array.isArray(userContent)) {
+            userContent = [...userContent];
+        } else if (userContent && typeof userContent === 'object' && typeof userContent.text === 'string') {
+            userContent = [{ type: 'text', text: userContent.text }];
+        } else {
+            return messages;
+        }
+
+        for (const result of settledResults) {
+            if (result.status === 'success') {
+                if (result.data && Array.isArray(result.data.content)) {
+                    userContent.push(...result.data.content);
+                }
+            } else {
+                const taskName = result.type === 'screen'
+                    ? `ScreenShot(${result.title})`
+                    : result.type === 'windowList'
+                        ? 'WindowList'
+                        : `CameraCapture(${result.index})`;
+                userContent.push({ type: 'text', text: `[Capture Error for ${taskName}: ${result.message}]` });
+            }
+        }
+
+        // Clean the system prompt and merge user message content
+        systemPrompt.content = this._replaceTextInContent(systemPrompt.content, (text) =>
+            replaceOutsideVcpRagBlocks(text, placeholderRegex, '').trim()
+        );
+
+        const mergedContent = [];
+        for (const part of userContent) {
+            const lastPart = mergedContent[mergedContent.length - 1];
+            if (part.type === 'text' && lastPart && lastPart.type === 'text') {
+                lastPart.text += '\n' + part.text;
+            } else {
+                mergedContent.push(part);
+            }
+        }
+
+        lastUserMessage.content = mergedContent;
+
+        return messages;
+    }
+
+    initialize(initialConfig, dependencies) {
+        vcpConfig = initialConfig;
+        if (dependencies && dependencies.projectBasePath) {
+            vcpProjectBasePath = dependencies.projectBasePath;
+        } else {
+            vcpProjectBasePath = path.join(__dirname, '..', '..');
+        }
+
+        // Caching PORT and Key for the internal HTTP requests
+        if (initialConfig.PORT) serverPort = initialConfig.PORT;
+        if (initialConfig.Key) serverKey = initialConfig.Key;
+
+        console.log('[CapturePreprocessor] Initialized as distributed facade using ScreenPilot.');
+    }
+}
+
+module.exports = new CapturePreprocessor();
