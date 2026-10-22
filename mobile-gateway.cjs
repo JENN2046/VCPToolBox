@@ -23,14 +23,19 @@ async function main(){
  const manager=require('./Plugin');manager.setProjectBasePath(root);await manager.loadPlugins();
  if(manager.plugins.size!==1||!plugin.snapshot().ready)throw Error('R10_NATIVE_PLUGIN_BOOT_FAILED');
  credential=new(require('./Plugin/NativeSync/mobile/hostCredential').HostCredential)({dataDir:data});if(credential.key)plugin.setExecutionEndpoint({url:credential.backend+'/v1/chat/completions',key:credential.key});
+ const desktops=new(require('./Plugin/NativeSync/mobile/desktopSessions').DesktopSessions)(credential.db,config.topics);
  const app=express();app.set('trust proxy',false);
  const instance=crypto.randomBytes(16).toString('hex');
  app.get('/healthz',(_q,r)=>r.set('Cache-Control','no-store').json({service:'VCPMobileGateway',release:config.release,instance,pid:process.pid,port:8888,nativeSyncReady:true,httpsReady:Boolean(config.httpsOrigin),backendAuthenticated:Boolean(credential.key)}));
  app.get('/',(_q,r)=>r.redirect(302,ORIGIN+'/mobile/'));
  app.get('/mobile/api/connection',(q,r)=>{if(q.secure)return plugin.handleMobile(Object.assign(q,{url:'/api/connection'}),r);r.set('Cache-Control','no-store').json({...plugin.mobileConnectionInfo(),credentialExchangeAllowed:false,httpsReady:false});});
  app.use('/mobile',(q,r,next)=>{if(q.path.startsWith('/api/'))return plugin.handleMobile(q,r);next();},express.static(process.env.NativeMobilePwaDir,{index:'index.html',dotfiles:'deny',maxAge:0}));
- app.use((q,r,next)=>{const header=q.headers.authorization;if(typeof header!=='string'||!header.startsWith('Bearer ')||!credential.matches(header.slice(7)))return r.status(401).json({error:{code:'AUTH_REQUIRED'}});next();});
- app.use(express.json({limit:'8mb'}));manager.initializeServices(app,express.Router(),root);
+ app.use(express.json({limit:'8mb'}));
+ app.use((q,r,next)=>{
+  const header=q.headers.authorization;
+  if(typeof header==='string'&&header.startsWith('Bearer ')&&credential.matches(header.slice(7)))return next();
+  try{desktops.authorize(q);next();}catch(e){r.set('Cache-Control','no-store').status(e.status||401).json({error:{code:e.code||'AUTH_REQUIRED'}});}
+ });manager.initializeServices(app,express.Router(),root);
  app.use((e,_q,r,_next)=>r.status(e.status===413?413:400).json({error:{code:e.status===413?'REQUEST_TOO_LARGE':'BAD_REQUEST'}}));
  const server=await new Promise((resolve,reject)=>{const s=createListener(tls,app);s.once('error',reject);s.listen(8888,'0.0.0.0',()=>resolve(s));});tls.key.fill(0);
  const receipt={event:'R10_GATEWAY_READY',pid:process.pid,port:8888,httpsOrigin:ORIGIN,release:config.release,instance,productionBackend:'http://127.0.0.1:6005',pluginLifecycle:plugin.snapshot().lifecycle};
