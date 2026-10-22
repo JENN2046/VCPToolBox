@@ -3,6 +3,11 @@ const { createHash } = require('node:crypto');
 const { messageKey } = require('../sync/protocol');
 const digest = value => createHash('sha256').update(value).digest('hex');
 const error = (code, status = 400) => Object.assign(new Error(code), { code, status });
+function historyReady(db,topic){
+    if(topic.requiredMessageIds===undefined)return true;
+    if(!Array.isArray(topic.requiredMessageIds)||topic.requiredMessageIds.length>10000||topic.requiredMessageIds.some(id=>typeof id!=='string'||!id)||new Set(topic.requiredMessageIds).size!==topic.requiredMessageIds.length)throw error('INVALID_REQUIRED_HISTORY');
+    return db.prepare('SELECT count(*) AS n FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND msg_id IN (SELECT value FROM json_each(?))').get(topic.ownerType,topic.ownerId,topic.topicId,JSON.stringify(topic.requiredMessageIds)).n===topic.requiredMessageIds.length;
+}
 
 // The existing central journal remains authoritative. Preparing/publishing are
 // durable write-ahead intents, replayed through CentralStore.apply after a crash.
@@ -39,6 +44,7 @@ class ConversationExecution {
         const topic = this.topics.get(topicKey);
         if (!topic) throw error('TOPIC_NOT_ALLOWED', 403);
         if (!topic.agentAlias || !topic.model || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_EXECUTABLE', 409);
+        if(!historyReady(this.db,topic))throw error('HISTORY_IMPORT_PENDING',409);
         if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId) || typeof text !== 'string' || !text.trim() || text.length > 12000) throw error('INVALID_TEXT_SUBMISSION');
         const id = 'job_' + digest(sessionId + '\0' + requestId).slice(0, 32);
         const requestHash = digest(JSON.stringify([topicKey, text]));
@@ -119,4 +125,4 @@ class ConversationExecution {
     async close() { this.beginDrain(); await this.tail; }
     snapshot() { return this.db.prepare('SELECT id,topic_key AS topicKey,state,attempts,cancel_requested AS cancelRequested,reply_message_id AS replyMessageId FROM mobile_executions ORDER BY created_at').all(); }
 }
-module.exports = { ConversationExecution, error, digest };
+module.exports = { ConversationExecution, error, digest, historyReady };

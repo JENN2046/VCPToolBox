@@ -3,7 +3,7 @@ const express = require('express');
 const { randomBytes, randomUUID } = require('node:crypto');
 const path = require('node:path');
 const { identity } = require('../sync/protocol');
-const { ConversationExecution, error, digest } = require('./execution');
+const { ConversationExecution, error, digest, historyReady } = require('./execution');
 const { MobileConnection } = require('./connection');
 const cookieName = '__Secure-vcp_mobile';
 const protectedHttps = req => Boolean(req.socket?.encrypted) || (req.secure === true && ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress));
@@ -45,9 +45,9 @@ class MobilePortal {
         }, express.json({ limit: '128kb', strict: true }));
         this.router.get('/api/connection', (_req,res) => res.json(this.connection.information()));
         this.router.post('/api/connection/test', (req,res,next) => { try { res.json(this.connection.test(req.body?.serverUrl)); } catch(e) { next(e); } });
-        this.router.post('/api/connection/authenticate', (req,res,next) => {
+        this.router.post('/api/connection/authenticate', async (req,res,next) => {
             try {
-                this.connection.authenticate(req.body, req.socket.remoteAddress);
+                await this.connection.authenticate(req.body, req.socket.remoteAddress);
                 this.issueSession(res, JSON.stringify(this.topics.map(t=>t.key)), this.currentSession(req)?.id);
             } catch(e) { if (req.body) delete req.body.apiKey; next(e); }
         });
@@ -79,7 +79,8 @@ class MobilePortal {
                 if (!Number.isSafeInteger(after) || after < 0) throw error('INVALID_CURSOR');
                 const rows = this.db.prepare('SELECT last_seq AS seq,message_json,deleted,msg_id AS id FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND last_seq>? ORDER BY last_seq LIMIT 201').all(topic.ownerType,topic.ownerId,topic.topicId,after);
                 const page = rows.slice(0,200);
-                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:r.message_json?JSON.parse(r.message_json):null})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id) });
+                const ready=historyReady(this.db,topic);
+                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:r.message_json?JSON.parse(r.message_json):null})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id),topicState:{historyReady:ready,executable:Boolean(ready&&topic.agentAlias&&topic.model&&this.agentManager.isAgent(topic.agentAlias))} });
             } catch(e) { next(e); }
         });
         this.router.post('/api/conversations/:key/messages', (req,res,next) => {
@@ -100,8 +101,8 @@ class MobilePortal {
     catalog(session) {
         return this.topics.filter(t=>session.scopes.includes(t.key)).map(t=>{
             const metadata=JSON.parse(this.db.prepare('SELECT metadata FROM mobile_catalog WHERE topic_key=?').get(t.key)?.metadata || '{}');
-            const available=Boolean(t.agentAlias && t.model && this.agentManager.isAgent(t.agentAlias));
-            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,executable:available,unavailableReason:available?null:'SERVER_AGENT_NOT_CONFIGURED',syncStatus:'central',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
+            const ready=historyReady(this.db,t),available=Boolean(ready&&t.agentAlias && t.model && this.agentManager.isAgent(t.agentAlias));
+            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,historyReady:ready,executable:available,unavailableReason:available?null:ready?'SERVER_AGENT_NOT_CONFIGURED':'HISTORY_IMPORT_PENDING',syncStatus:ready?'central':'initial-import-pending',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
         });
     }
     agents(session) {

@@ -21,7 +21,7 @@ class MobileConnection {
     information() {
         return { service: 'VCPToolBox', plugin: 'NativeSync', mobileProtocol: 1,
             serverUrl: this.address, suggestedServerUrl: suggestion,
-            credentialExchangeAllowed: Boolean(this.enabled && this.address && this.hostKey()),
+            credentialExchangeAllowed: Boolean(this.enabled && this.address && (this.hostKey() || this.verifyKey)),
             transport: 'same-host', scope: 'explicitly selected Agent/Topic only' };
     }
     test(value) {
@@ -43,6 +43,7 @@ class MobileConnection {
         delete body.apiKey;
         if (typeof supplied !== 'string' || !supplied || supplied.length > 8192) throw error('AUTH_FAILED', 401);
         const hash = x => createHash('sha256').update(x).digest();
+        if(this.verifyKey)return Promise.resolve(this.verifyKey(supplied)).then(valid=>{if(!valid)throw error('AUTH_FAILED',401);this.failures.delete(peer);return this.information();});
         if (!timingSafeEqual(hash(supplied), hash(this.hostKey()))) throw error('AUTH_FAILED', 401);
         this.failures.delete(peer);
         return this.information();

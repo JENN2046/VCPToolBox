@@ -5,6 +5,7 @@ const { CentralStore } = require('./sync/centralStore');
 const { createSyncHttpService } = require('./sync/httpService');
 let service = null, store = null, dataDir = null;
 let mobile = null;
+let mobileHostAuthority = null;
 const lifecycle = { initialized: 0, namespacedRegistrations: 0, compatibilityRegistrations: 0, shutdowns: 0 };
 const mounted = new WeakSet();
 
@@ -27,7 +28,8 @@ async function initialize(config = {}) {
     store = new CentralStore(dbPath); dataDir = target;
     service = createSyncHttpService(store); lifecycle.initialized++;
     if (config.NativeMobileEnabled === true) {
-        mobile = new (require('./mobile/portal').MobilePortal)({ store, config, agentManager: require('../../modules/agentManager') });
+        mobile = new (require('./mobile/portal').MobilePortal)({ store, config, agentManager: mobileHostAuthority?.agentManager || require('../../modules/agentManager') });
+        if(mobileHostAuthority?.verifyKey)mobile.connection.verifyKey=mobileHostAuthority.verifyKey;
     }
 }
 function dispatch(req, res) {
@@ -65,4 +67,10 @@ function snapshot() {
 function handleMobile(req,res) { if(!mobile)return res.status(503).json({error:{code:'MOBILE_DISABLED'}});return mobile.router(req,res,()=>res.status(404).end()); }
 function setExecutionEndpoint(value) { mobile?.engine.setEndpoint(value); }
 function beginDrain() { mobile?.beginDrain(); }
-module.exports = { initialize, registerApiRoutes, registerRoutes, shutdown, snapshot, handleMobile, setExecutionEndpoint, beginDrain };
+function setMobileHostAuthority(value) {
+    if(!value?.agentManager||typeof value.agentManager.isAgent!=='function'||typeof value.agentManager.getAgentPrompt!=='function'||typeof value.verifyKey!=='function')throw new Error('INVALID_MOBILE_HOST_AUTHORITY');
+    mobileHostAuthority=value;
+    if(mobile){mobile.agentManager=value.agentManager;mobile.engine.agentManager=value.agentManager;mobile.connection.verifyKey=value.verifyKey;}
+}
+function mobileConnectionInfo(){return mobile?.connection.information() || {credentialExchangeAllowed:false};}
+module.exports = { initialize, registerApiRoutes, registerRoutes, shutdown, snapshot, handleMobile, setExecutionEndpoint, beginDrain, setMobileHostAuthority, mobileConnectionInfo };
