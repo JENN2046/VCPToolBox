@@ -4,6 +4,7 @@ const path = require('node:path');
 const { CentralStore } = require('./sync/centralStore');
 const { createSyncHttpService } = require('./sync/httpService');
 let service = null, store = null, dataDir = null;
+let mobile = null;
 const lifecycle = { initialized: 0, namespacedRegistrations: 0, compatibilityRegistrations: 0, shutdowns: 0 };
 const mounted = new WeakSet();
 
@@ -25,6 +26,9 @@ async function initialize(config = {}) {
     if (fs.existsSync(dbPath) && (fs.lstatSync(dbPath).isSymbolicLink() || fs.statSync(dbPath).nlink > 1)) throw new Error('NATIVE_SYNC_DB_ALIAS');
     store = new CentralStore(dbPath); dataDir = target;
     service = createSyncHttpService(store); lifecycle.initialized++;
+    if (config.NativeMobileEnabled === true) {
+        mobile = new (require('./mobile/portal').MobilePortal)({ store, config, agentManager: require('../../modules/agentManager') });
+    }
 }
 function dispatch(req, res) {
     if (service) return service.handle(req, res);
@@ -32,6 +36,10 @@ function dispatch(req, res) {
 }
 function registerApiRoutes(router) {
     router.use('/sync', dispatch); lifecycle.namespacedRegistrations++;
+    router.post('/mobile/pairing', (_req,res) => {
+        if (!mobile) return res.status(503).json({error:{code:'MOBILE_DISABLED'}});
+        res.set('Cache-Control','no-store');res.json(mobile.createPairing());
+    });
 }
 function registerRoutes(app, _adminApiRouter, _config, _projectBasePath) {
     if (mounted.has(app)) return;
@@ -43,9 +51,13 @@ async function shutdown() {
     if (!service) return;
     const closing = service;
     service = null;
+    await mobile?.close(); mobile = null;
     await closing.close(); store = null; dataDir = null; lifecycle.shutdowns++;
 }
 function snapshot() {
-    return { ready: Boolean(service), dataDir, lifecycle: { ...lifecycle }, metrics: store?.metrics() ?? null, entries: store ? store.db.prepare('SELECT owner_type AS ownerType, owner_id AS ownerId, topic_id AS topicId, msg_id AS msgId, hash, deleted, last_seq AS seq FROM messages ORDER BY owner_type,owner_id,topic_id,msg_id').all() : [] };
+    return { ready: Boolean(service), dataDir, lifecycle: { ...lifecycle }, mobile:mobile?.snapshot()??null, metrics: store?.metrics() ?? null, entries: store ? store.db.prepare('SELECT owner_type AS ownerType, owner_id AS ownerId, topic_id AS topicId, msg_id AS msgId, hash, deleted, last_seq AS seq FROM messages ORDER BY owner_type,owner_id,topic_id,msg_id').all() : [] };
 }
-module.exports = { initialize, registerApiRoutes, registerRoutes, shutdown, snapshot };
+function handleMobile(req,res) { if(!mobile)return res.status(503).json({error:{code:'MOBILE_DISABLED'}});return mobile.router(req,res,()=>res.status(404).end()); }
+function setExecutionEndpoint(value) { mobile?.engine.setEndpoint(value); }
+function beginDrain() { mobile?.beginDrain(); }
+module.exports = { initialize, registerApiRoutes, registerRoutes, shutdown, snapshot, handleMobile, setExecutionEndpoint, beginDrain };

@@ -16,7 +16,12 @@
   "hasApiRoutes": true,
   "configSchema": {
     "NativeSyncEnabled": "boolean",
-    "NativeSyncDataDir": "string"
+    "NativeSyncDataDir": "string",
+    "NativeMobileEnabled": "boolean",
+    "NativeMobileOrigin": "string",
+    "NativeMobileTopics": "string",
+    "NativeMobilePwaDir": "string",
+    "NativeMobileStartDelayMs": "integer"
   },
   "capabilities": {
     "services": [

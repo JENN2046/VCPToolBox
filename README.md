@@ -1,4 +1,10 @@
-# VCPToolBox NativeSync R6 完整服务隔离工作树
+# VCPToolBox NativeSync R7 Mobile PWA 工作树
+
+基于已验收的 R6 `3354317`，新增默认关闭的 Vue 3 PWA、受限移动会话认证和持久执行器。仍使用同一 NativeSync SQLite 和完整宿主的 AgentManager / ChatCompletionHandler。手机页面断开不取消后台执行，回复继续写入原中央日志，由现有 Windows VCPChat 拉取。
+
+结果为 `R7_MOBILE_PWA_CORE_PASS`：桌面 Chrome 移动视口、真实 HTTPS/SSH、完整 Ubuntu server.js、重启恢复和 Windows 正式界面已通过。Android 实机未验证。配置/API 见 `Plugin/NativeSync/mobile/README.md`，实际命令、截图及边界见相邻 `vcpchat-mobile-pwa-r7/docs/NATIVE_SYNC_R7_HANDOFF.md`。前端用 `node scripts/build-mobile-pwa.cjs` 构建到隔离 artifacts；验收命令在 VCPChat R7 中执行 `npm run test:native-sync-r7`。
+
+以下保留 R6 完整宿主来源与运行边界；R7 沿用其隔离依赖、原生二进制和启动机制。
 
 基于 R5 `a73d00d` 建立独立工作树，保留原插件和共用鉴权，从 wp08 `/home/admin/VCPKF/vcp/versions/vcptoolbox-dev` 补齐已筛选的完整服务源码。逐文件核对见 `P:\VCPKF\vcp\artifacts\native-sync-r6\FULL_SOURCE_COMPARISON.json`；未复制真实配置、用户数据、依赖或生产原生二进制。原开发快照没有上游 Git 元数据，不给它填入未经验证的作者 SHA。
 

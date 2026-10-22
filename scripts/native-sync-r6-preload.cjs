@@ -9,15 +9,16 @@ const tls = require('node:tls');
 const readline = require('node:readline');
 const crypto = require('node:crypto');
 const { fileURLToPath } = require('node:url');
-const root = path.resolve(process.env.VCP_R6_RUN_ROOT || '');
+const isR7 = Boolean(process.env.VCP_R7_RUN_ROOT);
+const root = path.resolve(process.env.VCP_R7_RUN_ROOT || process.env.VCP_R6_RUN_ROOT || '');
 const source = path.join(root, 'source');
-const base = '/home/admin/VCPKF/vcp/artifacts/native-sync-r6';
+const base = '/home/admin/VCPKF/vcp/artifacts/' + (isR7 ? 'native-sync-r7' : 'native-sync-r6');
 if (process.platform !== 'linux' || path.dirname(root) !== base || !/^run-\d+$/.test(path.basename(root)) || process.cwd() !== source || path.resolve(process.argv[1]) !== path.join(source, 'server.js')) throw new Error('R6_REAL_SERVER_ISOLATION_REQUIRED');
 process.umask(0o077);
 const original = { write: fs.writeFileSync, mkdir: fs.mkdirSync, read: fs.readFileSync, stdout: process.stdout.write.bind(process.stdout), stderr: process.stderr.write.bind(process.stderr) };
 const evidence = { entry: process.argv[1], pid: process.pid, violations: [], outboundAttempts: [], listeners: [], bootReady: false, beforeShutdown: null };
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-const sanitize = text => String(text).replaceAll('isolated-poc-token', '[SYNTHETIC_KEY]').replaceAll('r6-synthetic-provider-unused', '[SYNTHETIC_PROVIDER_VALUE]');
+const sanitize = text => String(text).replaceAll('isolated-poc-token', '[SYNTHETIC_KEY]').replaceAll('r6-synthetic-provider-unused', '[SYNTHETIC_PROVIDER_VALUE]').replaceAll('r7-synthetic-provider-unused','[SYNTHETIC_PROVIDER_VALUE]');
 const emit = value => original.stdout('@@R6_RECEIPT@@' + JSON.stringify(value) + '\n');
 function inside(file) {
     const target = path.resolve(file instanceof URL ? fileURLToPath(file) : String(file));
@@ -30,7 +31,7 @@ function writable(file) {
 function readable(file) {
     if (typeof file === 'number') return;
     const target = path.resolve(file instanceof URL ? fileURLToPath(file) : String(file));
-    if (inside(target) || target.startsWith(base + '/') || target.startsWith('/usr/') || target.startsWith('/lib/') || target.startsWith('/lib64/') || target === '/etc/ld.so.cache') return;
+    if (inside(target) || target.startsWith(base + '/') || target.startsWith('/home/admin/VCPKF/vcp/artifacts/native-sync-r6/deps/') || target.startsWith('/usr/') || target.startsWith('/lib/') || target.startsWith('/lib64/') || target === '/etc/ld.so.cache') return;
     evidence.violations.push('OUTSIDE_READ'); throw Object.assign(new Error('R6 outside experiment read denied'), { code: 'R6_READ_DENIED' });
 }
 for (const [object, methods, check] of [
@@ -79,6 +80,7 @@ net.Server.prototype.listen = function (...args) {
     this.once('listening', () => setImmediate(() => {
         const address = this.address();
         evidence.listeners.push(address);
+        if (this.__nativeSyncFixture) return;
         if (typeof address !== 'object' || evidence.bootReady) return;
         const manager = require('../Plugin');
         const plugin = manager.getServiceModule('NativeSync');

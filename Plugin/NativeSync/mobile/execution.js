@@ -1,0 +1,118 @@
+'use strict';
+const { createHash } = require('node:crypto');
+const { messageKey } = require('../sync/protocol');
+const digest = value => createHash('sha256').update(value).digest('hex');
+const error = (code, status = 400) => Object.assign(new Error(code), { code, status });
+
+// The existing central journal remains authoritative. Preparing/publishing are
+// durable write-ahead intents, replayed through CentralStore.apply after a crash.
+// No second history database or separate model/tool/Agent implementation exists.
+class ConversationExecution {
+    constructor({ store, topics, agentManager, startDelayMs = 0, fault = () => {} }) {
+        this.store = store; this.db = store.db; this.topics = new Map(topics.map(t => [t.key, t]));
+        this.agentManager = agentManager; this.startDelayMs = startDelayMs; this.fault = fault;
+        this.active = new Map(); this.draining = false; this.endpoint = null; this.tail = null;
+        this.db.exec(`PRAGMA synchronous=FULL;
+            CREATE TABLE IF NOT EXISTS mobile_executions (
+                id TEXT PRIMARY KEY, session_id TEXT NOT NULL, request_id TEXT NOT NULL,
+                topic_key TEXT NOT NULL, request_hash TEXT NOT NULL, user_message_id TEXT NOT NULL,
+                user_seq INTEGER, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+                cancel_requested INTEGER NOT NULL DEFAULT 0, pending_operation TEXT,
+                reply_message_id TEXT, error_code TEXT, created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL, not_before INTEGER NOT NULL,
+                UNIQUE(session_id,request_id));`);
+        this.recover();
+        this.timer = setInterval(() => this.tick(), 100); this.timer.unref();
+    }
+    recover() {
+        for (const row of this.db.prepare("SELECT * FROM mobile_executions WHERE state IN ('preparing','publishing') ORDER BY created_at").all()) this.completeIntent(row);
+        this.db.prepare("UPDATE mobile_executions SET state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE 'queued' END,updated_at=? WHERE state IN ('running','cancelling')").run(Date.now());
+    }
+    get(id) { return this.db.prepare('SELECT * FROM mobile_executions WHERE id=?').get(id); }
+    public(row, sessionId) {
+        return { id: row.id, topicKey: row.topic_key, requestId: row.request_id, userMessageId: row.user_message_id, state: row.state, attempts: row.attempts, replyMessageId: row.reply_message_id, errorCode: row.error_code, createdAt: row.created_at, updatedAt: row.updated_at, own: row.session_id === sessionId };
+    }
+    list(topicKey, sessionId) { return this.db.prepare('SELECT * FROM mobile_executions WHERE topic_key=? ORDER BY created_at').all(topicKey).map(r => this.public(r, sessionId)); }
+    accept(sessionId, { topicKey, requestId, text }) {
+        const topic = this.topics.get(topicKey);
+        if (!topic) throw error('TOPIC_NOT_ALLOWED', 403);
+        if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId) || typeof text !== 'string' || !text.trim() || text.length > 12000) throw error('INVALID_TEXT_SUBMISSION');
+        const id = 'job_' + digest(sessionId + '\0' + requestId).slice(0, 32);
+        const requestHash = digest(JSON.stringify([topicKey, text]));
+        const prior = this.get(id);
+        if (prior) {
+            if (prior.request_hash !== requestHash) throw error('REQUEST_ID_REUSED', 409);
+            if (['preparing', 'publishing'].includes(prior.state)) this.completeIntent(prior);
+            return { ...this.public(this.get(id), sessionId), replayed: true };
+        }
+        if (this.db.prepare('SELECT count(*) AS n FROM mobile_executions WHERE session_id=? AND created_at>?').get(sessionId, Date.now() - 60000).n >= 20) throw error('SUBMISSION_RATE_LIMIT', 429);
+        const now = Date.now(), msgId = 'mobile_' + id;
+        const op = { ownerType: topic.ownerType, ownerId: topic.ownerId, topicId: topic.topicId, msgId, deviceId: 'mobile:' + sessionId, opId: 'submit:' + id, action: 'upsert', baseHash: null, message: { id: msgId, role: 'user', content: text, timestamp: now } };
+        this.db.prepare("INSERT INTO mobile_executions(id,session_id,request_id,topic_key,request_hash,user_message_id,state,pending_operation,created_at,updated_at,not_before) VALUES(?,?,?,?,?,?,'preparing',?,?,?,?)").run(id, sessionId, requestId, topicKey, requestHash, msgId, JSON.stringify(op), now, now, now + this.startDelayMs);
+        this.fault('accepted-intent'); this.completeIntent(this.get(id));
+        return { ...this.public(this.get(id), sessionId), replayed: false };
+    }
+    completeIntent(row) {
+        const op = JSON.parse(row.pending_operation);
+        const result = this.store.apply(op);
+        this.fault(row.state === 'preparing' ? 'user-applied' : 'reply-applied');
+        if (row.state === 'preparing') this.db.prepare("UPDATE mobile_executions SET state='queued',user_seq=?,pending_operation=NULL,updated_at=? WHERE id=?").run(result.seq, Date.now(), row.id);
+        else this.db.prepare("UPDATE mobile_executions SET state='completed',reply_message_id=?,pending_operation=NULL,updated_at=? WHERE id=?").run(op.msgId, Date.now(), row.id);
+    }
+    setEndpoint({ url, key }) {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:' || parsed.hostname !== '127.0.0.1' || parsed.pathname !== '/v1/chat/completions' || !key) throw error('INVALID_EXECUTION_ENDPOINT');
+        this.endpoint = { url: parsed.href, key }; this.tick();
+    }
+    tick() {
+        if (this.draining || !this.endpoint || this.tail) return;
+        const row = this.db.prepare("SELECT * FROM mobile_executions WHERE state='queued' AND not_before<=? ORDER BY created_at LIMIT 1").get(Date.now());
+        if (!row) return;
+        this.tail = this.run(row).finally(() => { this.tail = null; });
+    }
+    async run(row) {
+        if (!this.db.prepare("UPDATE mobile_executions SET state='running',attempts=attempts+1,updated_at=? WHERE id=? AND state='queued'").run(Date.now(), row.id).changes) return;
+        const controller = new AbortController(); this.active.set(row.id, controller);
+        try {
+            const topic = this.topics.get(row.topic_key);
+            if (!topic || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_CONFIGURED');
+            const prompt = await this.agentManager.getAgentPrompt(topic.agentAlias);
+            const records = this.db.prepare(`SELECT * FROM (
+                SELECT *,row_number() OVER(PARTITION BY msg_id ORDER BY seq DESC) AS r
+                FROM journal WHERE owner_type=? AND owner_id=? AND topic_id=? AND seq<=?)
+                WHERE r=1 AND action='upsert' ORDER BY seq`).all(topic.ownerType, topic.ownerId, topic.topicId, row.user_seq);
+            if (records.length > 200) throw error('CONTEXT_LIMIT');
+            const messages = records.map(r => JSON.parse(r.message_json)).sort((a,b) => a.timestamp - b.timestamp).filter(m => ['user', 'assistant'].includes(m.role)).map(m => {
+                if (typeof m.content !== 'string') throw error('TEXT_MESSAGES_REQUIRED');
+                return { role: m.role, content: m.content };
+            });
+            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]), body: JSON.stringify({ model: topic.model, stream: false, requestId: row.id, messages: [{ role: 'system', content: prompt }, ...messages] }) });
+            if (!response.ok) throw error('MODEL_EXECUTION_FAILED');
+            const result = await response.json(); const content = result.choices?.[0]?.message?.content;
+            if (typeof content !== 'string' || !content) throw error('INVALID_MODEL_RESULT');
+            const latest = this.get(row.id);
+            if (this.draining) throw error('HOST_DRAINING');
+            if (latest.cancel_requested) throw error('EXECUTION_CANCELLED');
+            const msgId = 'reply_' + row.id;
+            const op = { ownerType: topic.ownerType, ownerId: topic.ownerId, topicId: topic.topicId, msgId, deviceId: 'server:native-execution', opId: 'reply:' + row.id, action: 'upsert', baseHash: null, message: { id: msgId, role: 'assistant', content, timestamp: Date.now(), agentId: topic.ownerId, name: topic.agentName } };
+            this.db.prepare("UPDATE mobile_executions SET state='publishing',pending_operation=?,updated_at=? WHERE id=?").run(JSON.stringify(op), Date.now(), row.id);
+            this.fault('reply-intent'); this.completeIntent(this.get(row.id));
+        } catch (failure) {
+            const latest = this.get(row.id);
+            if (!latest || latest.state === 'publishing') return; // durable result intent recovers on restart
+            const state = latest.cancel_requested ? 'cancelled' : this.draining ? 'queued' : 'failed';
+            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? 'MODEL_EXECUTION_FAILED' : null, Date.now(), row.id);
+        } finally { this.active.delete(row.id); }
+    }
+    cancel(id, sessionId) {
+        const row = this.get(id);
+        if (!row || row.session_id !== sessionId) throw error('EXECUTION_NOT_FOUND', 404);
+        if (['completed','publishing','failed'].includes(row.state)) throw error('EXECUTION_ALREADY_TERMINAL', 409);
+        this.db.prepare("UPDATE mobile_executions SET cancel_requested=1,state=CASE WHEN state='running' THEN 'cancelling' ELSE 'cancelled' END,updated_at=? WHERE id=?").run(Date.now(), id);
+        this.active.get(id)?.abort(); return this.public(this.get(id), sessionId);
+    }
+    beginDrain() { this.draining = true; clearInterval(this.timer); for (const controller of this.active.values()) controller.abort(); }
+    async close() { this.beginDrain(); await this.tail; }
+    snapshot() { return this.db.prepare('SELECT id,topic_key AS topicKey,state,attempts,cancel_requested AS cancelRequested,reply_message_id AS replyMessageId FROM mobile_executions ORDER BY created_at').all(); }
+}
+module.exports = { ConversationExecution, error, digest };
