@@ -1,0 +1,30 @@
+[
+  {
+    "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",
+    "source": "modules/services/nativeSync/centralStore.js",
+    "sourceByteSha256": "e050f5c7bb6dd6ecb64f97a07aa8f76e2ea919b733309164ba577dbfbe960864",
+    "destination": "sync/centralStore.js",
+    "adaptation": "none; newline normalization possible"
+  },
+  {
+    "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",
+    "source": "modules/services/nativeSync/protocol.js",
+    "sourceByteSha256": "889545f6424ef4072299e85795a4cbd11d58503736c102aaaaf7f86a669c702e",
+    "destination": "sync/protocol.js",
+    "adaptation": "require paths only"
+  },
+  {
+    "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",
+    "source": "VCPDistributedServer/Plugin/VCPMobileSync/sync/canonical.js",
+    "sourceByteSha256": "388d514fdd5f5451a707987ca31de3391da52e12d99c39d16d032fa749e3f3d3",
+    "destination": "sync/canonical/canonical.js",
+    "adaptation": "require paths only"
+  },
+  {
+    "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",
+    "source": "VCPDistributedServer/Plugin/VCPMobileSync/core/hash.js",
+    "sourceByteSha256": "88bd3d0a901c0555813309eb6a9ba6a9fc6b00fc48df4b8894bcde05bb36dbb2",
+    "destination": "sync/canonical/hash.js",
+    "adaptation": "none; newline normalization possible"
+  }
+]
