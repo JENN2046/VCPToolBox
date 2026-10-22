@@ -69,7 +69,9 @@ for (const [object, method] of [[net.Socket.prototype, 'connect'], [tls, 'connec
     const fn = object[method]; object[method] = function (...args) {
         const value = options(args); evidence.outboundAttempts.push({ host: value.host || value.hostname || 'pipe', port: value.port || null, path: value.path || null, frames: new Error().stack.split('\n').slice(2, 5) });
         if (value.path && !inside(value.path)) { evidence.violations.push('OUTSIDE_IPC'); throw new Error('R6 outside experiment IPC denied'); }
-        if (!value.path && !loopback(value.host || value.hostname)) { evidence.violations.push('NON_LOOPBACK_CONNECT'); throw new Error('R6 non-loopback connection denied'); }
+        const approved=globalThis.__r9ProviderPolicy;
+        const providerAllowed=approved?.model==='doubao-seed-2.0-mini' && approved.hostname===(value.host||value.hostname) && Number(value.port)===443;
+        if (!value.path && !loopback(value.host || value.hostname) && !providerAllowed) { evidence.violations.push('NON_LOOPBACK_CONNECT'); throw new Error('R6 non-loopback connection denied'); }
         return fn.apply(this, args);
     };
 }
@@ -105,6 +107,8 @@ function stop() {
 }
 readline.createInterface({ input: process.stdin }).on('line', line => {
     if (line === 'stop') stop();
+    else if(line.startsWith('r9-provider:') && globalThis.__r9ProviderRelay) emit({event:'r9-provider',requestId:line.slice(12),...globalThis.__r9ProviderRelay.snapshot()});
+    else if(line==='r9-fail-next' && globalThis.__r9ProviderRelay) {globalThis.__r9ProviderRelay.failNext();emit({event:'r9-fault-armed'});}
     else if (line.startsWith('snapshot:')) emit({ event: 'snapshot', requestId: line.slice(9), pid: process.pid, syncDataCreated: fs.existsSync(process.env.NativeSyncDataDir), ...require('../Plugin').getServiceModule('NativeSync').snapshot() });
 }).on('close', () => { if (evidence.bootReady && !evidence.beforeShutdown) stop(); });
 process.on('exit', code => {
