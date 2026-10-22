@@ -40,6 +40,11 @@ function registerApiRoutes(router) {
         if (!mobile) return res.status(503).json({error:{code:'MOBILE_DISABLED'}});
         res.set('Cache-Control','no-store');res.json(mobile.createPairing());
     });
+    router.post('/mobile/catalog', (req,res) => {
+        if (!mobile) return res.status(503).json({error:{code:'MOBILE_DISABLED'}});
+        try { res.set('Cache-Control','no-store');res.json(mobile.publishCatalog(req.body)); }
+        catch(e) { res.status(e.status||400).json({error:{code:e.code||'INVALID_CATALOG'}}); }
+    });
 }
 function registerRoutes(app, _adminApiRouter, _config, _projectBasePath) {
     if (mounted.has(app)) return;

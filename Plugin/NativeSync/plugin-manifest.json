@@ -21,7 +21,10 @@
     "NativeMobileOrigin": "string",
     "NativeMobileTopics": "string",
     "NativeMobilePwaDir": "string",
-    "NativeMobileStartDelayMs": "integer"
+    "NativeMobileStartDelayMs": "integer",
+    "NativeMobileBackendUrl": "string",
+    "NativeMobileKeyExchangeEnabled": "boolean",
+    "NativeMobileSessionHours": "integer"
   },
   "capabilities": {
     "services": [

@@ -26,7 +26,9 @@ class ConversationExecution {
     }
     recover() {
         for (const row of this.db.prepare("SELECT * FROM mobile_executions WHERE state IN ('preparing','publishing') ORDER BY created_at").all()) this.completeIntent(row);
-        this.db.prepare("UPDATE mobile_executions SET state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE 'queued' END,updated_at=? WHERE state IN ('running','cancelling')").run(Date.now());
+        // A lost in-flight result may already have executed external tools.
+        // Resume queued work, but never automatically repeat uncertain execution.
+        this.db.prepare("UPDATE mobile_executions SET state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE 'failed' END,error_code=CASE WHEN cancel_requested=1 THEN NULL ELSE 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' END,updated_at=? WHERE state IN ('running','cancelling')").run(Date.now());
     }
     get(id) { return this.db.prepare('SELECT * FROM mobile_executions WHERE id=?').get(id); }
     public(row, sessionId) {
@@ -36,6 +38,7 @@ class ConversationExecution {
     accept(sessionId, { topicKey, requestId, text }) {
         const topic = this.topics.get(topicKey);
         if (!topic) throw error('TOPIC_NOT_ALLOWED', 403);
+        if (!topic.agentAlias || !topic.model || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_EXECUTABLE', 409);
         if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId) || typeof text !== 'string' || !text.trim() || text.length > 12000) throw error('INVALID_TEXT_SUBMISSION');
         const id = 'job_' + digest(sessionId + '\0' + requestId).slice(0, 32);
         const requestHash = digest(JSON.stringify([topicKey, text]));
@@ -81,12 +84,13 @@ class ConversationExecution {
                 SELECT *,row_number() OVER(PARTITION BY msg_id ORDER BY seq DESC) AS r
                 FROM journal WHERE owner_type=? AND owner_id=? AND topic_id=? AND seq<=?)
                 WHERE r=1 AND action='upsert' ORDER BY seq`).all(topic.ownerType, topic.ownerId, topic.topicId, row.user_seq);
-            if (records.length > 200) throw error('CONTEXT_LIMIT');
             const messages = records.map(r => JSON.parse(r.message_json)).sort((a,b) => a.timestamp - b.timestamp).filter(m => ['user', 'assistant'].includes(m.role)).map(m => {
                 if (typeof m.content !== 'string') throw error('TEXT_MESSAGES_REQUIRED');
                 return { role: m.role, content: m.content };
             });
-            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]), body: JSON.stringify({ model: topic.model, stream: false, requestId: row.id, messages: [{ role: 'system', content: prompt }, ...messages] }) });
+            // Context budgeting remains in the existing ToolBox handler. The
+            // complete central history is retained, including histories >200 rows.
+            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]), body: JSON.stringify({ model: topic.model, contextTokenLimit: Number(topic.contextTokenLimit)||32000, ...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}), ...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}), stream: false, requestId: row.id, messages: [{ role: 'system', content: prompt }, ...messages] }) });
             if (!response.ok) throw error('MODEL_EXECUTION_FAILED');
             const result = await response.json(); const content = result.choices?.[0]?.message?.content;
             if (typeof content !== 'string' || !content) throw error('INVALID_MODEL_RESULT');
@@ -100,8 +104,8 @@ class ConversationExecution {
         } catch (failure) {
             const latest = this.get(row.id);
             if (!latest || latest.state === 'publishing') return; // durable result intent recovers on restart
-            const state = latest.cancel_requested ? 'cancelled' : this.draining ? 'queued' : 'failed';
-            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? 'MODEL_EXECUTION_FAILED' : null, Date.now(), row.id);
+            const state = latest.cancel_requested ? 'cancelled' : 'failed';
+            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? (this.draining ? 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' : 'MODEL_EXECUTION_FAILED') : null, Date.now(), row.id);
         } finally { this.active.delete(row.id); }
     }
     cancel(id, sessionId) {
