@@ -1538,7 +1538,8 @@ async function startServer() {
     await import('node-fetch');
     console.log('[Server] node-fetch 模块预热完毕，准备处理请求。');
 
-    server = app.listen(port, () => {
+    const bindHost = process.env.SERVER_BIND_HOST?.trim() || undefined;
+    server = app.listen(port, bindHost, () => {
         console.log(`中间层服务器正在监听端口 ${port}`);
         console.log(`API 服务器地址: ${apiUrl}`);
 
