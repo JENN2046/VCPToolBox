@@ -117,7 +117,18 @@ directory. The launcher uses the integration source tree and existing AppData,
 with strict SSH host/TLS checks and loopback-only forwards. Final app is left
 running without acceptance debug port or temporary CDS observer.
 
-Remaining limits: `IOS_NOT_RUN`; manual certificate renewal is still required
+## User iOS follow-up, 2026-10-23
+
+Jenn confirms real iOS use works normally and iOS, Android and Windows all display
+the latest information. Latest iOS status: `IOS_USER_CONFIRMED_PASS`, based on
+Jenn's direct report. This covers normal real-device use and three-platform
+latest-message visibility. Device/browser versions, iOS installation mode and
+iOS-specific background/restart cases were not recorded in this follow-up.
+The original automated run did not exercise iOS; its original receipt is retained.
+The202-message totals above remain the earlier measured snapshot, not a new count
+from this user confirmation. No runtime code, configuration or service changed.
+
+Remaining limits: manual certificate renewal is still required
 before2027-01-20; no OS-reboot/autostart guarantee was tested. Shared Topics retain
 Queue/NativeSync write authority, CDS/MobileSync read-only. Other Agent/Topic
 permissions, missing historical attachments and tools' external side effects are
