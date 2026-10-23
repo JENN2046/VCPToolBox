@@ -40,6 +40,7 @@ export const APP_ROUTE_COMPONENTS = {
   "placeholder-viewer": () => import("@/views/PlaceholderViewer.vue"),
   "placeholder-explorer-manager": () =>
     import("@/views/PlaceholderExplorerManager.vue"),
+  "channel-hub-manager": () => import("@/views/ChannelHubManager.vue"),
   plugins: () => import("@/views/PluginsHub.vue"),
   "plugin-store": () => import("@/views/PluginStore.vue"),
   "plugin-config": () => import("@/views/PluginConfig.vue"),

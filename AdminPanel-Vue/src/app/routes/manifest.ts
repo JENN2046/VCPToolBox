@@ -49,6 +49,7 @@ export type AppRouteId =
   | "placeholder-viewer"
   | "placeholder-explorer-manager"
   | "plugins"
+  | "channel-hub-manager"
   | "plugin-store"
   | "plugin-config";
 
@@ -429,6 +430,16 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     path: "/tool-call-records-manager",
     title: "插件调用记录管理",
     icon: "receipt_long",
+    requiresAuth: true,
+    navGroup: "toolsPlugins",
+    showInSidebar: true,
+  },
+  {
+    id: "channel-hub-manager",
+    routeName: "ChannelHubManager",
+    path: "/channel-hub-manager",
+    title: "ChannelHub 渠道管理",
+    icon: "hub",
     requiresAuth: true,
     navGroup: "toolsPlugins",
     showInSidebar: true,

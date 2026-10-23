@@ -1,0 +1,18 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "ChannelHub",
+  "version": "0.1.0",
+  "displayName": "ChannelHub 多渠道消息接入",
+  "description": "Opt-in ChannelHub integration using the existing host execution and admin authentication.",
+  "author": "Jenn / Nobao",
+  "pluginType": "service",
+  "entryPoint": { "type": "nodejs", "script": "channel-hub.js" },
+  "communication": { "protocol": "direct" },
+  "configSchema": {
+    "ChannelHubEnabled": "boolean",
+    "ChannelHubDataDir": "string",
+    "ChannelHubModel": "string",
+    "ChannelHubAgents": "string",
+    "ChannelHubTimeoutMs": "integer"
+  }
+}
