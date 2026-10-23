@@ -111,11 +111,26 @@ class ConversationExecution {
             const topic = this.topics.get(row.topic_key);
             if (!topic || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_CONFIGURED');
             const prompt = await this.agentManager.getAgentPrompt(topic.agentAlias);
+            // Keep later submissions outside this task's snapshot, but include
+            // replies from completed predecessor jobs even if they published
+            // after this user message was accepted. No new state/schema needed.
+            const predecessors = this.db.prepare("SELECT user_message_id,reply_message_id FROM mobile_executions WHERE topic_key=? AND user_seq<? AND state='completed' AND reply_message_id IS NOT NULL ORDER BY user_seq").all(row.topic_key,row.user_seq);
             const records = this.db.prepare(`SELECT * FROM (
                 SELECT *,row_number() OVER(PARTITION BY msg_id ORDER BY seq DESC) AS r
-                FROM journal WHERE owner_type=? AND owner_id=? AND topic_id=? AND seq<=?)
-                WHERE r=1 AND action='upsert' ORDER BY seq`).all(topic.ownerType, topic.ownerId, topic.topicId, row.user_seq);
-            const messages = records.map(r => JSON.parse(r.message_json)).sort((a,b) => a.timestamp - b.timestamp).filter(m => ['user', 'assistant'].includes(m.role)).map(m => {
+                FROM journal WHERE owner_type=? AND owner_id=? AND topic_id=? AND
+                (seq<=? OR msg_id IN (SELECT value FROM json_each(?))))
+                WHERE r=1 AND action='upsert' ORDER BY seq`).all(topic.ownerType, topic.ownerId, topic.topicId, row.user_seq,JSON.stringify(predecessors.map(p=>p.reply_message_id)));
+            const history=records.map(r=>JSON.parse(r.message_json)).sort((a,b)=>a.timestamp-b.timestamp);
+            const byId=new Map(history.map(m=>[m.id,m])),replyAfter=new Map(),relocated=new Set();
+            for(const p of predecessors)if(byId.has(p.user_message_id)&&byId.has(p.reply_message_id)){
+                replyAfter.set(p.user_message_id,byId.get(p.reply_message_id));relocated.add(p.reply_message_id);
+            }
+            const ordered=[];
+            for(const m of history)if(m.id!==row.user_message_id&&!relocated.has(m.id)){
+                ordered.push(m);if(replyAfter.has(m.id))ordered.push(replyAfter.get(m.id));
+            }
+            if(byId.has(row.user_message_id))ordered.push(byId.get(row.user_message_id));
+            const messages = ordered.filter(m => ['user', 'assistant'].includes(m.role)).map(m => {
                 if (typeof m.content !== 'string') throw error('TEXT_MESSAGES_REQUIRED');
                 return { role: m.role, content: m.content };
             });
