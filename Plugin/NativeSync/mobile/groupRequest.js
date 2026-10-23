@@ -25,7 +25,7 @@ function watcher(topic,history,seq){
 }
 async function groupRequest({topic,config,member,history,currentUserId,requestId,store,attachments,seq}){
  const group=config.group,policy=config.executionPolicy||{},rules=config.tavernRules||[],name=member.name||member.id;
- let prompt=member.promptPolicy==='native-alias-snapshot'?`{{agent:${member.agentAlias}}}`:(member.systemPrompt||`你是${name}。`);
+ let prompt=member.promptPolicy==='native-alias-snapshot'?(member.promptTemplate||`{{agent:${member.agentAlias}}}`):(member.systemPrompt||`你是${name}。`);
  let groupPrompt=group.groupPrompt||'';
  if(groupPrompt.includes('{{VCPChatGroupSessionWatcher}}'))groupPrompt=groupPrompt.replaceAll('{{VCPChatGroupSessionWatcher}}',JSON.stringify(watcher(topic,history,seq)));
  if(groupPrompt)prompt+=`\n\n[群聊设定]:\n${groupPrompt}`;

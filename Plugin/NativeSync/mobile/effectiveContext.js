@@ -14,7 +14,7 @@ async function effectiveRequest(history,config,currentId,buildContent=async m=>[
         if(!checkpoint&&message.role==='user'&&message.id===currentId)content=content.map((p,i)=>i===0&&p.type==='text'?{...p,text:tavern.applyUserSuffix(p.text,rules,'agent')}:p);
         messages.push(attachTimestampMetadata({role:message.role,content,...(checkpoint?{__vcpContextCheckpoint:true}:{}),...(message.name?{name:message.name}:{}),...(message.tool_calls?{tool_calls:message.tool_calls}:{}),...(message.tool_call_id?{tool_call_id:message.tool_call_id}:{})},message));
     }
-    const base=config.promptPolicy==='native-alias-snapshot'?`{{agent:${config.agentAlias}}}`:config.systemPrompt;
+    const base=config.promptPolicy==='native-alias-snapshot'?(config.promptTemplate||`{{agent:${config.agentAlias}}}`):config.systemPrompt;
     const prompt=tavern.applySystemSuffix(base,rules,'agent');
     const injected=tavern.applyContextInject(messages,rules,'agent',{makeMessage:(role,text)=>({role,content:[{type:'text',text}],__tavernInjected:true})});
     return [...(prompt.trim()?[{role:'system',content:prompt}]:[]),...injected];

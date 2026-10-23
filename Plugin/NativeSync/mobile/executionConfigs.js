@@ -42,17 +42,17 @@ class ExecutionConfigs {
         if (!input || Object.keys(input).some(k => !fields.includes(k)) || topic.ownerType !== 'agent') throw fail('INVALID_EXECUTION_CONFIG',400);
         if (!topic.agentAlias || !this.agentManager.isAgent(topic.agentAlias)) throw fail('AGENT_NOT_CONFIGURED');
         if (typeof input.name !== 'string' || !input.name || input.name.length > 200 || typeof input.systemPrompt !== 'string' || input.systemPrompt.length > 128000 || typeof input.model !== 'string' || !input.model.trim() || input.model.length > 200) throw fail('INVALID_EXECUTION_CONFIG',400);
-        let prompt=input.systemPrompt.replace(/\{\{AgentName\}\}/g,input.name),promptPolicy='desktop';
+        let prompt=input.systemPrompt.replace(/\{\{AgentName\}\}/g,input.name),promptPolicy='desktop',promptTemplate;
         const references=text=>this.hasAgentReference(text);
         const refs=references(prompt);
         if(refs.length){
-            const exact=new RegExp('^\\{\\{(?:agent:)?'+topic.agentAlias.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\}\\}$');
-            if(!exact.test(prompt.trim()))throw fail('CONFIG_PROMPT_AUTHORITY_CONFLICT');
+            if(refs.some(reference=>reference[1]!==topic.agentAlias))throw fail('CONFIG_PROMPT_AUTHORITY_CONFLICT');
+            promptTemplate=prompt;
             prompt=await this.agentManager.getAgentPrompt(topic.agentAlias);
             if(typeof prompt!=='string'||!prompt||references(prompt).length||prompt.startsWith('[AgentManager:')||prompt===input.systemPrompt)throw fail('CONFIG_PROMPT_SNAPSHOT_UNAVAILABLE');
             promptPolicy='native-alias-snapshot';
         }
-        const value = {name:input.name,systemPrompt:prompt,model:input.model.trim(),executionPolicy:this.policy(input.executionPolicy),streamOutput:input.streamOutput===true||input.streamOutput==='true',promptPolicy,agentAlias:topic.agentAlias,imageSupported:Array.isArray(topic.imageModels)&&topic.imageModels.includes(input.model),tavernRules:this.rules(input.tavernRules)};
+        const value = {name:input.name,systemPrompt:prompt,...(promptTemplate?{promptTemplate}:{}),model:input.model.trim(),executionPolicy:this.policy(input.executionPolicy),streamOutput:input.streamOutput===true||input.streamOutput==='true',promptPolicy,agentAlias:topic.agentAlias,imageSupported:Array.isArray(topic.imageModels)&&topic.imageModels.includes(input.model),tavernRules:this.rules(input.tavernRules)};
         for (const [key,min,max] of [['temperature',0,2],['contextTokenLimit',1,2000000],['maxOutputTokens',1,2000000]]) {
             if (input[key] !== undefined) {
                 if (!Number.isFinite(input[key]) || input[key] < min || input[key] > max || (key !== 'temperature' && !Number.isSafeInteger(input[key]))) throw fail('INVALID_EXECUTION_CONFIG',400);
@@ -74,7 +74,7 @@ class ExecutionConfigs {
         if(value.some(r=>this.hasAgentReference(r.content).length))throw fail('CONFIG_PROMPT_AUTHORITY_CONFLICT');
         return JSON.parse(JSON.stringify(value));
     }
-    hasAgentReference(text) { return [...text.matchAll(/\{\{(?:agent:)?([^{}]+)\}\}/g)].filter(m=>this.agentManager.isAgent(m[1])); }
+    hasAgentReference(text) { return [...text.matchAll(/\{\{(?:agent:)?([^{}]+)\}\}/g)].filter(m=>m[0].startsWith('{{agent:')||this.agentManager.isAgent(m[1])); }
     async publish(body) {
         if (!body || Object.keys(body).some(k=>k!=='topics') || !Array.isArray(body.topics) || body.topics.length > this.topics.length) throw fail('INVALID_EXECUTION_CONFIG',400);
         const rows = await Promise.all(body.topics.map(async row => {

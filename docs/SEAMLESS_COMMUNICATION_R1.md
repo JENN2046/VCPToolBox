@@ -27,12 +27,15 @@ An accepted job persists its complete private `config_snapshot` before writing
 its user-message intent. Public task/catalog projections contain version/hash
 and model display information only. Queued snapshots survive SQLite reopen.
 
-The effective prompt is the desktop prompt. A prompt consisting exclusively of
-the explicitly mapped native alias (`{{alias}}` or `{{agent:alias}}`) instead
-uses a native AgentManager prompt snapshot captured at publication. Mixed Agent
-authority and recursive Agent references are rejected; no second prompt is
-appended. RAG, other native variables and tools still belong to the original
-host handler. Group membership requires explicit host `memberAliases` bindings.
+The effective prompt is the desktop prompt. A template referencing only the
+explicitly mapped native alias (`{{alias}}` or `{{agent:alias}}`) retains its
+original prefix/suffix and native variable placeholders, while that alias uses
+a native AgentManager prompt snapshot captured at publication. The original
+native expansion/AgentGuard path performs the substitution. Foreign/recursive
+Agent references and unknown explicit `agent:` references are rejected; no
+second prompt is appended. RAG, other native variables and tools still belong
+to the original host handler. Group membership requires explicit host
+`memberAliases` bindings. Old exact-alias snapshots remain readable.
 
 The accompanying desktop branch adds explicit `publishExecutionConfigs:true`
 in the non-secret connection selection. Publication reads native DTOs through
@@ -188,7 +191,7 @@ execution. Automatic approval rejected a proposed catch-and-send fallback as a
 possible disclosure path; that fallback was not applied. This deliberate
 fail-closed behavior is covered by a negative-path test.
 
-Current development validation: 124/124 Ubuntu Node24 focused tests, including
+Current development validation: 125/125 Ubuntu Node24 focused tests, including
 fixed-author-output parity, native PluginManager approval cancellation, Group
 Scope, crash/cancel recovery, three-mode plans and attachment-intent lifetime.
 An independent full `server.js` fixture additionally exercises native Agent,

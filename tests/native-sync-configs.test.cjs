@@ -81,3 +81,10 @@ test('group snapshots preserve native identities, member order and parameters wi
   request.topics[0].config.group.members=['foreign'];request.topics[0].config.agents=[{id:'foreign',...config}];await assert.rejects(()=>configs.publish(request),e=>e.code==='GROUP_MEMBER_NOT_AUTHORIZED');
  }finally{store.close();}
 });
+
+test('native desktop template preserves same-owner alias composition, freezes its expansion and rejects foreign authority',async()=>{
+ const store=new CentralStore(':memory:');let prompt='native-version-1';const manager={isAgent:a=>['test-alias','foreign-alias'].includes(a),getAgentPrompt:async()=>prompt},configs=new ExecutionConfigs(store.db,[topic],manager,true),template='Desktop prefix {{agent:test-alias}}\n{{VarToolList}} desktop suffix';
+ try{await configs.publish(body({...config,systemPrompt:template}));const snapshot=configs.snapshot(topic);prompt='native-version-2';assert.equal(snapshot.systemPrompt,'native-version-1');assert.equal(snapshot.promptTemplate,template);const messages=await require('../Plugin/NativeSync/mobile/effectiveContext').effectiveRequest([],snapshot,'none');assert.equal(messages[0].content,template);assert.equal(snapshot.promptPolicy,'native-alias-snapshot');
+  await assert.rejects(()=>configs.publish(body({...config,systemPrompt:'prefix {{foreign-alias}}'},1)),e=>e.code==='CONFIG_PROMPT_AUTHORITY_CONFLICT');await assert.rejects(()=>configs.publish(body({...config,systemPrompt:'{{agent:never-loaded}}'},1)),e=>e.code==='CONFIG_PROMPT_AUTHORITY_CONFLICT');prompt='recursive {{test-alias}}';await assert.rejects(()=>configs.publish(body({...config,systemPrompt:template},1)),e=>e.code==='CONFIG_PROMPT_SNAPSHOT_UNAVAILABLE');
+ }finally{store.close();}
+});
