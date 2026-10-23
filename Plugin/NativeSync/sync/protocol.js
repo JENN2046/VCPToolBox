@@ -12,15 +12,16 @@ function identity(value) {
     if (typeof value.msgId !== 'string' || !value.msgId) throw new Error('INVALID_IDENTITY');
     return { ownerType: value.ownerType, ownerId: value.ownerId, topicId: value.topicId, msgId: value.msgId };
 }
-function canonicalMessage(value, topicId = '_') {
+function contentMessage(value, topicId = '_') {
     const warnings = new BoundedWarnings();
     const message = canonicalizeMessage(value, topicId, warnings);
     if (warnings.count) throw new Error('INVALID_ATTACHMENT');
     return message;
 }
+function canonicalMessage(value, topicId = '_') { return require('./metadata').preserveMetadata(value,contentMessage(value,topicId)); }
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 const messageKey = value => { const v = identity(value); return JSON.stringify([v.ownerType, v.ownerId, v.topicId, v.msgId]); };
-const messageHash = message => messageContentHash(canonicalMessage(message, message.topicId || '_'));
+const messageHash = message => messageContentHash(contentMessage(message, message.topicId || '_'));
 const tombstoneHash = id => sha256(`deleted:${messageKey(id)}`);
 const descriptor = id => ({ itemId: id.ownerId, itemType: id.ownerType, topicId: id.topicId });
 const wireTopic = d => ({ ownerId: d.itemId, ownerType: d.itemType || 'agent', topicId: d.topicId });

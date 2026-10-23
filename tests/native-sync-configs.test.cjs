@@ -40,7 +40,7 @@ test('accepted tasks retain configuration across updates and SQLite reopen, exec
   await wait(()=>engine.get(two.id).state==='completed');
   assert.deepEqual(requests.map(r=>[r.model,r.temperature]),[['model-v1',0.2],['model-v2',0.8]]);
   assert.equal(requests[0].messages[0].content,'Synthetic Test prompt');
-  assert.ok(requests[1].messages.some(m=>m.content==='done'));
+  assert.ok(requests[1].messages.some(m=>m.content==='done'||m.content?.[0]?.text==='done'));
   assert.equal(JSON.stringify(engine.public(engine.get(one.id),'session')).includes('Synthetic'),false);
  }finally{await engine.close();store.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 });

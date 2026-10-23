@@ -77,10 +77,10 @@ class MobilePortal {
             try {
                 const topic = this.authorize(req); const after = Number(req.query.after || 0);
                 if (!Number.isSafeInteger(after) || after < 0) throw error('INVALID_CURSOR');
-                const rows = this.db.prepare('SELECT last_seq AS seq,message_json,deleted,msg_id AS id FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND last_seq>? ORDER BY last_seq LIMIT 201').all(topic.ownerType,topic.ownerId,topic.topicId,after);
+                const rows = this.db.prepare('SELECT last_seq AS seq,message_json,deleted,msg_id AS id,metadata_version,metadata_hash FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND last_seq>? ORDER BY last_seq LIMIT 201').all(topic.ownerType,topic.ownerId,topic.topicId,after);
                 const page = rows.slice(0,200);
                 const ready=historyReady(this.db,topic);
-                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:r.message_json?JSON.parse(r.message_json):null})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id),topicState:{historyReady:ready,executable:this.catalog(req.mobileSession).find(t=>t.key===topic.key).executable,...this.engine.configs.public(topic.key)} });
+                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:this.store.projectMessage(r)})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id),topicState:{historyReady:ready,executable:this.catalog(req.mobileSession).find(t=>t.key===topic.key).executable,...this.engine.configs.public(topic.key)} });
             } catch(e) { next(e); }
         });
         this.router.post('/api/conversations/:key/messages', (req,res,next) => {

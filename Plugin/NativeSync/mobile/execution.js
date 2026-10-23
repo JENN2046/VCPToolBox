@@ -126,7 +126,7 @@ class ConversationExecution {
                 FROM journal WHERE owner_type=? AND owner_id=? AND topic_id=? AND
                 (seq<=? OR msg_id IN (SELECT value FROM json_each(?))))
                 WHERE r=1 AND action='upsert' ORDER BY seq`).all(topic.ownerType, topic.ownerId, topic.topicId, row.user_seq,JSON.stringify(predecessors.map(p=>p.reply_message_id)));
-            const history=records.map(r=>JSON.parse(r.message_json)).sort((a,b)=>a.timestamp-b.timestamp);
+            const history=records.map(r=>this.store.projectMessage(r)).sort((a,b)=>a.timestamp-b.timestamp);
             const byId=new Map(history.map(m=>[m.id,m])),replyAfter=new Map(),relocated=new Set();
             for(const p of predecessors)if(byId.has(p.user_message_id)&&byId.has(p.reply_message_id)){
                 replyAfter.set(p.user_message_id,byId.get(p.reply_message_id));relocated.add(p.reply_message_id);
@@ -140,10 +140,11 @@ class ConversationExecution {
                 if (typeof m.content !== 'string') throw error('TEXT_MESSAGES_REQUIRED');
                 return { role: m.role, content: m.content };
             });
+            const requestMessages=published?await require('./effectiveContext').effectiveRequest(ordered,published,row.user_message_id):[{role:'system',content:prompt},...messages];
             // Context budgeting remains in the existing ToolBox handler. The
             // complete central history is retained, including histories >200 rows.
             deadline = AbortSignal.timeout(this.executionTimeoutMs);
-            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, deadline]), body: JSON.stringify({ model: topic.model, contextTokenLimit: Number(topic.contextTokenLimit)||32000, ...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}), ...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}), stream: false, requestId: row.id, messages: [{ role: 'system', content: prompt }, ...messages] }) });
+            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, deadline]), body: JSON.stringify({ model: topic.model, contextTokenLimit: Number(topic.contextTokenLimit)||32000, ...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}), ...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}), stream: false, requestId: row.id, messages: requestMessages }) });
             if (!response.ok) throw error('MODEL_EXECUTION_FAILED');
             const result = await response.json(); const content = result.choices?.[0]?.message?.content;
             if (typeof content !== 'string' || !content) throw error('INVALID_MODEL_RESULT');

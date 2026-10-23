@@ -4,18 +4,18 @@
     "source": "modules/services/nativeSync/centralStore.js",
     "sourceByteSha256": "e050f5c7bb6dd6ecb64f97a07aa8f76e2ea919b733309164ba577dbfbe960864",
     "destination": "sync/centralStore.js",
-    "adaptation": "R10_POST_REVIEW_P1_FIX: pull scans a bounded global window, filters device topic scope before message parsing, and reports the actual scanned nextSeq; schema and apply unchanged; newline normalization possible",
+    "adaptation": "R1: same-hash authorized metadata versions append ordinary upsert Journal records; preserve prior metadata on legacy edits; reject unauthorized/downgrade/tombstone updates. Existing content fingerprint and scoped pagination preserved.",
     "sourceRepository": "https://github.com/JENN2046/VCPChat",
-    "destinationNormalizedLfSha256": "905e53ea09c126631b76c64fd303ed32d889273119e100a053bf31a755b32f8c"
+    "destinationNormalizedLfSha256": "39bb81533069e416ff5ee7f57e0d6620328775aa07394be0fa7fd35c53eb86cd"
   },
   {
     "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",
     "source": "modules/services/nativeSync/protocol.js",
     "sourceByteSha256": "889545f6424ef4072299e85795a4cbd11d58503736c102aaaaf7f86a669c702e",
     "destination": "sync/protocol.js",
-    "adaptation": "require paths only",
+    "adaptation": "R1: retain original fingerprint through contentMessage; canonicalMessage additionally validates/preserves independently versioned control metadata; require paths adapted. Original canonical and computeMessageFingerprint remain unchanged.",
     "sourceRepository": "https://github.com/JENN2046/VCPChat",
-    "destinationNormalizedLfSha256": "62fe7045d91bae38533be546ea671f2159e928961326876b98e35acb78f97446"
+    "destinationNormalizedLfSha256": "d3e522948d2676a3b4f6e3d931ec0435fd1387bd62fd2c6f422f75569df25b0f"
   },
   {
     "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",
@@ -97,5 +97,32 @@
     "destination": "nativeRules/modules/chat/contextCompactionState.js",
     "adaptation": "Extract only COMPACTION_KIND, isContextCheckpoint, effectiveContextHistory; remove ESM export keywords, add CommonJS exports. Function bodies unchanged; renderer imports and all other functions excluded.",
     "destinationByteSha256": "ca2a2e8b9fd59445dd986a6cfcae47dafebdcb6bb4dc27fb616e3a5f3116906f"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "modules/renderer/toolResultRegions.js",
+    "sourceByteSha256": "f684a4be9a7ff2f76dc6e97e498883c088bbf618591d6cdc5fb8eec7a00888aa",
+    "destination": "nativeRules/modules/renderer/toolResultRegions.js",
+    "adaptation": "none; byte-for-byte Git blob mirror; pure scanning only",
+    "destinationByteSha256": "f684a4be9a7ff2f76dc6e97e498883c088bbf618591d6cdc5fb8eec7a00888aa"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "modules/renderer/markdownCodeDomainScanner.js",
+    "sourceByteSha256": "512b3b8364d7b2e6d53d80e5c86c57a51007cf270a5e43c3987be90aacb1ada7",
+    "destination": "nativeRules/modules/renderer/markdownCodeDomainScanner.js",
+    "adaptation": "none; byte-for-byte Git blob mirror; pure scanning only",
+    "destinationByteSha256": "512b3b8364d7b2e6d53d80e5c86c57a51007cf270a5e43c3987be90aacb1ada7"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "modules/chat/singleChatRequestOrchestrator.js",
+    "sourceByteSha256": "3f802a46c91e584ec4051fe686fb9bda97b3c5bdb41ba3df2ef98c3e1789a852",
+    "destination": "nativeRules/modules/chat/requestMetadata.js",
+    "adaptation": "Extract only pure attachTimestampMetadata; body unchanged; CommonJS exports. No Renderer or Electron orchestrator deployed.",
+    "destinationByteSha256": "f1b7064e896fe05e22359d86a2a1a8305ae817f08ed3dfa0ab1186432931615b"
   }
 ]

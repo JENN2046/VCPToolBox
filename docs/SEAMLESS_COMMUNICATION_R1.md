@@ -50,3 +50,39 @@ acceptance for this R1 candidate. A/B/C/D final milestones remain evidence-gated
 
 Author pure rules are deployed under `Plugin/NativeSync/nativeRules` with fixed
 Git blob provenance. No Electron group runtime is copied to Ubuntu.
+
+## Versioned control metadata
+
+The existing upsert/Journal contract now accepts an independent `metadata`
+envelope `{version,hash,fields}` only from the trusted host publication path.
+Content identity/fingerprint remains unchanged. Same-hash metadata changes use
+consecutive versions, compare-and-swap against the content hash and ordinary
+Journal upsert events. Exact metadata retries do not append another event.
+Legacy upserts preserve existing validated metadata; stale/conflicting versions
+and metadata updates on tombstones are rejected.
+
+`messages` and `journal` each add `metadata_version` (default 0) and
+`metadata_hash`. These authority columns and the message projection commit in
+the same transaction. Old JSON cannot self-assert authority by containing an
+envelope-shaped field. All product readers project/validate the same columns.
+No live database was migrated during development; upgrade fixtures are synthetic.
+
+The bounded whitelist retains Checkpoint kind/version/body and the author's
+diary/audit state, thinking flags, tool-call identity and attachment content
+metadata. Checkpoint body must be present in the original user-message text.
+There is no content rewrite or historical reimport.
+
+Desktop Queue/Outbox capture compares metadata digest independently of content
+hash; ACK/Pending retain its version and digest. New clients send
+`X-NativeSync-Protocol: 2`. A legacy HTTP reader encountering validated metadata
+receives `METADATA_PROTOCOL_UPGRADE_REQUIRED`, rather than silently stripping it.
+
+Published tasks use the deployed author `effectiveContextHistory`, Checkpoint
+predicate, timestamp projection, hidden-tool-result scanner and Tavern engine.
+The original Checkpoint message body enters the model; complete history remains
+in the Journal. Native ToolBox RAG/model/tool handling remains downstream.
+
+2026-10-23: 90/90 focused Linux tests and fixed-source parity checks passed,
+including same-hash backfill through the real desktop Queue, Pending recovery,
+schema-upgrade forgery rejection and metadata durability. Final full-host/RAG
+and physical three-device acceptance remain pending for this candidate.
