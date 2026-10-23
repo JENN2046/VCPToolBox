@@ -22,6 +22,7 @@
     "NativeMobileTopics": "string",
     "NativeMobilePwaDir": "string",
     "NativeMobileStartDelayMs": "integer",
+    "NativeMobileMaxConcurrency": "integer",
     "NativeMobileBackendUrl": "string",
     "NativeMobileKeyExchangeEnabled": "boolean",
     "NativeMobileSessionHours": "integer"

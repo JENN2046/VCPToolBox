@@ -77,13 +77,17 @@ test('HTTP adapter drains an already accepted raw request before closing SQLite 
     release(JSON.stringify(operation)); await first; await closing; assert.equal(applied, 1); assert.equal(closed, true);
 });
 
-test('vendored store and pure canonical rules retain the R4 implementation apart from import locations', () => {
-    const chat = path.resolve(__dirname, '../../vcpchat-native-sync-r1');
+test('R4 schema/write authority and canonical/hash rules remain unchanged; scoped pull is tested separately', () => {
+    const chat = process.env.VCP_P1_CHAT_SOURCE || path.resolve(__dirname, '../../vcpchat-native-sync-r1');
     const normalize = s => s.replaceAll('\r\n', '\n');
     for (const item of JSON.parse(fs.readFileSync(path.resolve(__dirname, '../Plugin/NativeSync/SOURCE_PROVENANCE.json'), 'utf8'))) {
         let expected = normalize(fs.readFileSync(path.join(chat, item.source), 'utf8'));
         if (item.destination === 'sync/protocol.js') expected = expected.replaceAll('../../../VCPDistributedServer/Plugin/VCPMobileSync/sync/canonical', './canonical/canonical').replaceAll('../../../VCPDistributedServer/Plugin/VCPMobileSync/core/hash', './canonical/hash');
         if (item.destination.endsWith('/canonical.js')) expected = expected.replace('../core/hash', './hash');
-        assert.equal(normalize(fs.readFileSync(path.resolve(__dirname, '../Plugin/NativeSync', item.destination), 'utf8')), expected);
+        const actual = normalize(fs.readFileSync(path.resolve(__dirname, '../Plugin/NativeSync', item.destination), 'utf8'));
+        if (item.destination === 'sync/centralStore.js') {
+            assert.equal(actual.slice(0, actual.indexOf('  pull(')), expected.slice(0, expected.indexOf('  pull(')));
+            assert.equal(actual.slice(actual.indexOf('  metrics(')), expected.slice(expected.indexOf('  metrics(')));
+        } else assert.equal(actual, expected);
     }
 });

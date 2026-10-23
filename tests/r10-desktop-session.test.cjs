@@ -41,5 +41,5 @@ test('real HTTP sync routes accept scoped push/pull and refuse out-of-scope data
  const pulled=await(await send('/api/plugins/NativeSync/sync/pull?after_seq=0')).json();assert.equal(pulled.events.length,1);assert.equal(pulled.events[0].message.content,'synthetic selected');
  assert.equal((await send('/api/v1/sync/push',{...op,ownerId:'other',opId:'bad'})).status,403);
  store.apply({...op,ownerId:'unselected-owner',opId:'separate-authority',message:{...op.message,content:'OUTSIDE_SCOPE_MARKER'}});
- const refused=await send('/api/v1/sync/pull?after_seq=0');assert.equal(refused.status,403);assert.equal((await refused.text()).includes('OUTSIDE_SCOPE_MARKER'),false);
+ const filtered=await send('/api/v1/sync/pull?after_seq=0');assert.equal(filtered.status,200);const body=await filtered.text();assert.equal(body.includes('OUTSIDE_SCOPE_MARKER'),false);const page=JSON.parse(body);assert.equal(page.events.length,1);assert.equal(page.nextSeq,2);assert.equal(page.hasMore,false);
 });

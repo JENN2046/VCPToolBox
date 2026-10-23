@@ -4,7 +4,7 @@
     "source": "modules/services/nativeSync/centralStore.js",
     "sourceByteSha256": "e050f5c7bb6dd6ecb64f97a07aa8f76e2ea919b733309164ba577dbfbe960864",
     "destination": "sync/centralStore.js",
-    "adaptation": "none; newline normalization possible"
+    "adaptation": "R10_POST_REVIEW_P1_FIX: pull scans a bounded global window, filters device topic scope before message parsing, and reports the actual scanned nextSeq; schema and apply unchanged; newline normalization possible"
   },
   {
     "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",

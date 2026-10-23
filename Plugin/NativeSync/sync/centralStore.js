@@ -100,19 +100,25 @@ class CentralStore {
       throw error;
     }
   }
-  pull(afterSeq, limit = 100) {
+  pull(afterSeq, limit = 100, allowedTopics) {
     if (!Number.isSafeInteger(afterSeq) || afterSeq < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
       throw new SyncError('INVALID_CURSOR', 'afterSeq must be >= 0; limit must be 1..500');
     }
+    if (allowedTopics !== undefined && (!Array.isArray(allowedTopics) || allowedTopics.some(key => typeof key !== 'string'))) {
+      throw new SyncError('INVALID_TOPIC_SCOPE', 'Topic scope must be an array of identity keys', 403);
+    }
+    const allowed = allowedTopics === undefined ? null : new Set(allowedTopics);
+    // LIMIT bounds the global scan, not just the authorized output. An empty
+    // filtered page must still acknowledge precisely this scanned window.
     const rows = this.pullStmt.all(afterSeq, limit);
     const headSeq = Number(this.headStmt.get().seq);
-    const events = rows.map(row => ({
+    const nextSeq = rows.at(-1)?.seq ?? afterSeq;
+    const events = rows.filter(row => !allowed || allowed.has(JSON.stringify([row.owner_type, row.owner_id, row.topic_id]))).map(row => ({
       seq: Number(row.seq), ownerType: row.owner_type, ownerId: row.owner_id,
       topicId: row.topic_id, msgId: row.msg_id,
       action: row.action, hash: row.hash, message: row.message_json ? JSON.parse(row.message_json) : null,
       sourceDevice: row.device_id
     }));
-    const nextSeq = events.at(-1)?.seq ?? afterSeq;
     return { events, headSeq, nextSeq, hasMore: nextSeq < headSeq };
   }
   metrics() {

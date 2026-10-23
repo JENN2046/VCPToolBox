@@ -13,10 +13,13 @@ function historyReady(db,topic){
 // durable write-ahead intents, replayed through CentralStore.apply after a crash.
 // No second history database or separate model/tool/Agent implementation exists.
 class ConversationExecution {
-    constructor({ store, topics, agentManager, startDelayMs = 0, fault = () => {} }) {
+    constructor({ store, topics, agentManager, startDelayMs = 0, maxConcurrency = 4, fault = () => {} }) {
+        if (!Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 64) throw error('INVALID_EXECUTION_CONCURRENCY');
         this.store = store; this.db = store.db; this.topics = new Map(topics.map(t => [t.key, t]));
         this.agentManager = agentManager; this.startDelayMs = startDelayMs; this.fault = fault;
-        this.active = new Map(); this.draining = false; this.endpoint = null; this.tail = null;
+        this.active = new Map(); this.draining = false; this.endpoint = null;
+        this.maxConcurrency = maxConcurrency; this.runningTopics = new Set(); this.inFlight = new Set();
+        this.scheduling = false; this.wakePending = false;
         this.db.exec(`PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS mobile_executions (
                 id TEXT PRIMARY KEY, session_id TEXT NOT NULL, request_id TEXT NOT NULL,
@@ -67,17 +70,37 @@ class ConversationExecution {
         this.fault(row.state === 'preparing' ? 'user-applied' : 'reply-applied');
         if (row.state === 'preparing') this.db.prepare("UPDATE mobile_executions SET state='queued',user_seq=?,pending_operation=NULL,updated_at=? WHERE id=?").run(result.seq, Date.now(), row.id);
         else this.db.prepare("UPDATE mobile_executions SET state='completed',reply_message_id=?,pending_operation=NULL,updated_at=? WHERE id=?").run(op.msgId, Date.now(), row.id);
+        this.wake();
     }
     setEndpoint({ url, key }) {
         const parsed = new URL(url);
         if (parsed.protocol !== 'http:' || parsed.hostname !== '127.0.0.1' || parsed.pathname !== '/v1/chat/completions' || !key) throw error('INVALID_EXECUTION_ENDPOINT');
         this.endpoint = { url: parsed.href, key }; this.tick();
     }
+    wake() {
+        if (this.draining || this.wakePending) return;
+        this.wakePending = true;
+        queueMicrotask(() => { this.wakePending = false; this.tick(); });
+    }
     tick() {
-        if (this.draining || !this.endpoint || this.tail) return;
-        const row = this.db.prepare("SELECT * FROM mobile_executions WHERE state='queued' AND not_before<=? ORDER BY created_at LIMIT 1").get(Date.now());
-        if (!row) return;
-        this.tail = this.run(row).finally(() => { this.tail = null; });
+        if (this.draining || !this.endpoint || this.scheduling) return;
+        this.scheduling = true;
+        try {
+            while (!this.draining && this.inFlight.size < this.maxConcurrency) {
+                const row = this.db.prepare("SELECT * FROM mobile_executions WHERE state='queued' AND not_before<=? AND topic_key NOT IN (SELECT value FROM json_each(?)) ORDER BY created_at,rowid LIMIT 1").get(Date.now(), JSON.stringify([...this.runningTopics]));
+                if (!row) break;
+                // Reserve before run() reaches its first await or a reentrant tick.
+                this.runningTopics.add(row.topic_key);
+                const task = this.run(row).finally(() => {
+                    this.inFlight.delete(task); this.runningTopics.delete(row.topic_key);
+                    this.wake();
+                });
+                this.inFlight.add(task);
+                // run() persists expected failures. Retain the original promise
+                // for close() while suppressing unhandled-rejection reporting.
+                task.catch(() => {});
+            }
+        } finally { this.scheduling = false; }
     }
     async run(row) {
         if (!this.db.prepare("UPDATE mobile_executions SET state='running',attempts=attempts+1,updated_at=? WHERE id=? AND state='queued'").run(Date.now(), row.id).changes) return;
@@ -122,7 +145,12 @@ class ConversationExecution {
         this.active.get(id)?.abort(); return this.public(this.get(id), sessionId);
     }
     beginDrain() { this.draining = true; clearInterval(this.timer); for (const controller of this.active.values()) controller.abort(); }
-    async close() { this.beginDrain(); await this.tail; }
+    async close() {
+        this.beginDrain();
+        const settled = await Promise.allSettled([...this.inFlight]);
+        const failed = settled.find(row => row.status === 'rejected');
+        if (failed) throw failed.reason;
+    }
     snapshot() { return this.db.prepare('SELECT id,topic_key AS topicKey,state,attempts,cancel_requested AS cancelRequested,reply_message_id AS replyMessageId FROM mobile_executions ORDER BY created_at').all(); }
 }
 module.exports = { ConversationExecution, error, digest, historyReady };

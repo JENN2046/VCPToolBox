@@ -15,9 +15,7 @@ function createSyncHttpService(store) {
         try {
             const url = new URL(req.url, 'http://localhost');
             if (req.method === 'GET' && url.pathname === '/pull') {
-                const result=store.pull(Number(url.searchParams.get('after_seq') ?? 0), Number(url.searchParams.get('limit') ?? 100));
-                // Fail closed before serializing any history outside a device grant.
-                if(req.nativeSyncTopics&&result.events.some(t=>!req.nativeSyncTopics.includes(JSON.stringify([t.ownerType,t.ownerId,t.topicId]))))throw new SyncError('DESKTOP_TOPIC_FORBIDDEN','Central history exceeds approved desktop scope',403);
+                const result=store.pull(Number(url.searchParams.get('after_seq') ?? 0), Number(url.searchParams.get('limit') ?? 100), req.nativeSyncTopics);
                 return send(res,200,result);
             }
             if (req.method === 'GET' && url.pathname === '/status') return send(res, 200, store.metrics());
