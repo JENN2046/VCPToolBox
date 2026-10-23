@@ -10,7 +10,7 @@ async function effectiveRequest(history,config,currentId,buildContent=async m=>[
     const rules=config.tavernRules||[],messages=[];
     for(const message of effectiveContextHistory(history)){
         const checkpoint=isContextCheckpoint(message);
-        let content=checkpoint?[{type:'text',text:message.content}]:await buildContent(message);
+        let content=checkpoint?[{type:'text',text:message.content}]:await buildContent({...message,content:stripHiddenToolResults(message.content)});
         if(!checkpoint&&message.role==='user'&&message.id===currentId)content=content.map((p,i)=>i===0&&p.type==='text'?{...p,text:tavern.applyUserSuffix(p.text,rules,'agent')}:p);
         messages.push(attachTimestampMetadata({role:message.role,content,...(checkpoint?{__vcpContextCheckpoint:true}:{}),...(message.name?{name:message.name}:{}),...(message.tool_calls?{tool_calls:message.tool_calls}:{}),...(message.tool_call_id?{tool_call_id:message.tool_call_id}:{})},message));
     }

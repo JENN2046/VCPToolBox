@@ -26,11 +26,14 @@ class MobilePortal {
         this.db.exec(`CREATE TABLE IF NOT EXISTS mobile_pairings(hash TEXT PRIMARY KEY,expires INTEGER NOT NULL,scopes TEXT NOT NULL,used INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS mobile_sessions(hash TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,expires INTEGER NOT NULL,scopes TEXT NOT NULL);`);
         if(!this.db.prepare('PRAGMA table_info(mobile_sessions)').all().some(c=>c.name==='last_topic_key'))this.db.exec('ALTER TABLE mobile_sessions ADD COLUMN last_topic_key TEXT');
+        if(config.NativeMobileAttachments===true&&config.NativeMobileConfigSync!==true)throw error('ATTACHMENTS_REQUIRE_VERSIONED_CONFIG');
         this.engine = new ConversationExecution({ store, topics: this.topics, agentManager, configRequired: config.NativeMobileConfigSync === true, startDelayMs: Math.max(0, Math.min(Number(config.NativeMobileStartDelayMs) || 0, 10000)), maxConcurrency: config.NativeMobileMaxConcurrency === undefined ? 4 : Number(config.NativeMobileMaxConcurrency), executionTimeoutMs: config.NativeMobileExecutionTimeoutMs === undefined ? 120000 : Number(config.NativeMobileExecutionTimeoutMs) });
         this.agentManager = agentManager;
         this.connection = new MobileConnection(config, () => this.engine.endpoint?.key);
         this.sessionSeconds = Math.floor(hours * 3600);
         this.db.exec('CREATE TABLE IF NOT EXISTS mobile_catalog(topic_key TEXT PRIMARY KEY,metadata TEXT NOT NULL)');
+        this.attachments=config.NativeMobileAttachments===true?new (require('./attachments').AttachmentStore)({store,root:config.NativeSyncDataDir,topics:this.topics}):null;
+        this.engine.attachments=this.attachments;
         this.router = express.Router();
         this.router.use((req, res, next) => {
             if (!protectedHttps(req)) return res.status(403).json({error:{code:'HTTPS_REQUIRED'}});
@@ -86,11 +89,12 @@ class MobilePortal {
         this.router.post('/api/conversations/:key/messages', (req,res,next) => {
             try {
                 const topic=this.authorize(req);
-                if (!req.body || Object.keys(req.body).some(k=>!['requestId','text'].includes(k))) throw error('INVALID_SUBMISSION');
+                if (!req.body || Object.keys(req.body).some(k=>!['requestId','text','attachments'].includes(k))) throw error('INVALID_SUBMISSION');
                 res.status(202).json(this.engine.accept(req.mobileSession.id,{topicKey:topic.key,...req.body}));
             } catch(e) { next(e); }
         });
         this.router.post('/api/executions/:id/cancel', (req,res,next) => { try {res.status(202).json(this.engine.cancel(req.params.id,req.mobileSession.id));} catch(e) {next(e);} });
+        this.router.use('/api/conversations/:key/attachments',require('./attachmentRoutes').attachmentRoutes({storage:()=>this.attachments,authorize:req=>this.authorize(req),principal:req=>'mobile:'+req.mobileSession.id}));
         this.router.use('/api', (_req,res) => res.status(404).json({error:{code:'NOT_FOUND'}}));
         const dist=path.resolve(config.NativeMobilePwaDir || path.join(__dirname,'../mobile-dist'));
         this.router.use(express.static(dist,{index:'index.html',dotfiles:'deny',maxAge:0,fallthrough:true}));
@@ -102,7 +106,7 @@ class MobilePortal {
         return this.topics.filter(t=>session.scopes.includes(t.key)).map(t=>{
             const metadata=JSON.parse(this.db.prepare('SELECT metadata FROM mobile_catalog WHERE topic_key=?').get(t.key)?.metadata || '{}');
             const ready=historyReady(this.db,t),available=Boolean(ready&&t.agentAlias && t.model && this.agentManager.isAgent(t.agentAlias));
-            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,historyReady:ready,executable:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key))),unavailableReason:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key)))?null:ready?(this.engine.configs.required&&!this.engine.configs.latest(t.key)?'EXECUTION_CONFIG_REQUIRED':'SERVER_AGENT_NOT_CONFIGURED'):'HISTORY_IMPORT_PENDING',...this.engine.configs.public(t.key),syncStatus:ready?'central':'initial-import-pending',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
+            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,historyReady:ready,executable:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key))),unavailableReason:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key)))?null:ready?(this.engine.configs.required&&!this.engine.configs.latest(t.key)?'EXECUTION_CONFIG_REQUIRED':'SERVER_AGENT_NOT_CONFIGURED'):'HISTORY_IMPORT_PENDING',attachmentsEnabled:Boolean(this.attachments),...this.engine.configs.public(t.key),syncStatus:ready?'central':'initial-import-pending',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
         });
     }
     agents(session) {
@@ -151,7 +155,7 @@ class MobilePortal {
         res.json({authenticated:true});
     }
     beginDrain(){this.engine.beginDrain();}
-    async close(){await this.engine.close();}
+    async close(){await this.engine.close();await this.attachments?.close();}
     snapshot(){return {executions:this.engine.snapshot(),sessionCount:this.db.prepare('SELECT count(*) AS n FROM mobile_sessions').get().n};}
 }
 module.exports={MobilePortal,cookieName,protectedHttps};

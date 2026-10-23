@@ -33,6 +33,7 @@ class ConversationExecution {
                 updated_at INTEGER NOT NULL, not_before INTEGER NOT NULL,
                 UNIQUE(session_id,request_id));`);
         if (!this.db.prepare('PRAGMA table_info(mobile_executions)').all().some(c=>c.name==='config_snapshot')) this.db.exec('ALTER TABLE mobile_executions ADD COLUMN config_snapshot TEXT');
+        if (!this.db.prepare('PRAGMA table_info(mobile_executions)').all().some(c=>c.name==='request_payload')) this.db.exec('ALTER TABLE mobile_executions ADD COLUMN request_payload TEXT');
         this.recover();
         this.timer = setInterval(() => this.tick(), 100); this.timer.unref();
     }
@@ -45,17 +46,18 @@ class ConversationExecution {
     get(id) { return this.db.prepare('SELECT * FROM mobile_executions WHERE id=?').get(id); }
     public(row, sessionId) {
         const config = row.config_snapshot ? JSON.parse(row.config_snapshot) : null;
-        return { id: row.id, topicKey: row.topic_key, requestId: row.request_id, userMessageId: row.user_message_id, state: row.state, attempts: row.attempts, replyMessageId: row.reply_message_id, errorCode: row.error_code, configVersion:config?.version??null,configHash:config?.hash??null,createdAt: row.created_at, updatedAt: row.updated_at, own: row.session_id === sessionId };
+        return { id: row.id, topicKey: row.topic_key, requestId: row.request_id, userMessageId: row.user_message_id, state: row.state, attempts: row.attempts, replyMessageId: row.reply_message_id, errorCode: row.error_code, configVersion:config?.version??null,configHash:config?.hash??null,createdAt: row.created_at, updatedAt: row.updated_at, own: row.session_id === sessionId,...(row.session_id===sessionId&&row.request_payload?{submission:JSON.parse(row.request_payload)}:{}) };
     }
     list(topicKey, sessionId) { return this.db.prepare('SELECT * FROM mobile_executions WHERE topic_key=? ORDER BY created_at').all(topicKey).map(r => this.public(r, sessionId)); }
-    accept(sessionId, { topicKey, requestId, text }) {
+    accept(sessionId, { topicKey, requestId, text, attachments = [] }) {
+        if(!Array.isArray(attachments))throw error('INVALID_ATTACHMENT_SUBMISSION');
         const topic = this.topics.get(topicKey);
         if (!topic) throw error('TOPIC_NOT_ALLOWED', 403);
-        if (!topic.agentAlias || !topic.model || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_EXECUTABLE', 409);
+        if (!topic.agentAlias || (!topic.model&&!this.configs.latest(topic.key)) || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_EXECUTABLE', 409);
         if(!historyReady(this.db,topic))throw error('HISTORY_IMPORT_PENDING',409);
-        if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId) || typeof text !== 'string' || !text.trim() || text.length > 12000) throw error('INVALID_TEXT_SUBMISSION');
+        if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId) || typeof text !== 'string' || (!text.trim()&&!attachments.length) || text.length > 12000 || !Array.isArray(attachments) || attachments.length>8 || attachments.some(id=>typeof id!=='string')) throw error('INVALID_TEXT_SUBMISSION');
         const id = 'job_' + digest(sessionId + '\0' + requestId).slice(0, 32);
-        const requestHash = digest(JSON.stringify([topicKey, text]));
+        const requestHash = digest(JSON.stringify(attachments.length?[topicKey,text,attachments]:[topicKey,text]));
         const prior = this.get(id);
         if (prior) {
             if (prior.request_hash !== requestHash) throw error('REQUEST_ID_REUSED', 409);
@@ -65,14 +67,16 @@ class ConversationExecution {
         if (this.db.prepare('SELECT count(*) AS n FROM mobile_executions WHERE session_id=? AND created_at>?').get(sessionId, Date.now() - 60000).n >= 20) throw error('SUBMISSION_RATE_LIMIT', 429);
         const config = this.configs.snapshot(topic);
         const now = Date.now(), msgId = 'mobile_' + id;
-        const op = { ownerType: topic.ownerType, ownerId: topic.ownerId, topicId: topic.topicId, msgId, deviceId: 'mobile:' + sessionId, opId: 'submit:' + id, action: 'upsert', baseHash: null, message: { id: msgId, role: 'user', content: text, timestamp: now } };
-        this.db.prepare("INSERT INTO mobile_executions(id,session_id,request_id,topic_key,request_hash,user_message_id,state,pending_operation,created_at,updated_at,not_before,config_snapshot) VALUES(?,?,?,?,?,?,'preparing',?,?,?,?,?)").run(id, sessionId, requestId, topicKey, requestHash, msgId, JSON.stringify(op), now, now, now + this.startDelayMs,config?JSON.stringify(config):null);
+        const files=attachments.length?(this.attachments?this.attachments.claim('mobile:'+sessionId,topicKey,attachments):(()=>{throw error('ATTACHMENTS_NOT_ENABLED');})()):[];
+        const op = { ownerType: topic.ownerType, ownerId: topic.ownerId, topicId: topic.topicId, msgId, deviceId: 'mobile:' + sessionId, opId: 'submit:' + id, action: 'upsert', baseHash: null, message: { id: msgId, role: 'user', content: text, timestamp: now,...(files.length?{attachments:files}:{}) } };
+        if(files.length)op.metadata=require('../sync/metadata').envelopeFor(op.message,1);
+        this.db.prepare("INSERT INTO mobile_executions(id,session_id,request_id,topic_key,request_hash,user_message_id,state,pending_operation,created_at,updated_at,not_before,config_snapshot,request_payload) VALUES(?,?,?,?,?,?,'preparing',?,?,?,?,?,?)").run(id, sessionId, requestId, topicKey, requestHash, msgId, JSON.stringify(op), now, now, now + this.startDelayMs,config?JSON.stringify(config):null,JSON.stringify({requestId,text,...(attachments.length?{attachments}:{})}));
         this.fault('accepted-intent'); this.completeIntent(this.get(id));
         return { ...this.public(this.get(id), sessionId), replayed: false };
     }
     completeIntent(row) {
         const op = JSON.parse(row.pending_operation);
-        const result = this.store.apply(op);
+        const result = this.store.apply(op,{metadataPublisher:Boolean(op.metadata),attachmentPrincipal:'mobile:'+row.session_id});
         this.fault(row.state === 'preparing' ? 'user-applied' : 'reply-applied');
         if (row.state === 'preparing') this.db.prepare("UPDATE mobile_executions SET state='queued',user_seq=?,pending_operation=NULL,updated_at=? WHERE id=?").run(result.seq, Date.now(), row.id);
         else this.db.prepare("UPDATE mobile_executions SET state='completed',reply_message_id=?,pending_operation=NULL,updated_at=? WHERE id=?").run(op.msgId, Date.now(), row.id);
@@ -140,12 +144,13 @@ class ConversationExecution {
                 if (typeof m.content !== 'string') throw error('TEXT_MESSAGES_REQUIRED');
                 return { role: m.role, content: m.content };
             });
-            const requestMessages=published?await require('./effectiveContext').effectiveRequest(ordered,published,row.user_message_id):[{role:'system',content:prompt},...messages];
+            const attachmentBudget={bytes:0};
+            const requestMessages=published?await require('./effectiveContext').effectiveRequest(ordered,published,row.user_message_id,async m=>m.attachments?.length?(this.attachments?this.attachments.content(row.topic_key,m,published.imageSupported,attachmentBudget):(()=>{throw error('ATTACHMENTS_NOT_ENABLED');})()):[{type:'text',text:m.content}]):[{role:'system',content:prompt},...messages];
             // Context budgeting remains in the existing ToolBox handler. The
             // complete central history is retained, including histories >200 rows.
             deadline = AbortSignal.timeout(this.executionTimeoutMs);
             const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, deadline]), body: JSON.stringify({ model: topic.model, contextTokenLimit: Number(topic.contextTokenLimit)||32000, ...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}), ...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}), stream: false, requestId: row.id, messages: requestMessages }) });
-            if (!response.ok) throw error('MODEL_EXECUTION_FAILED');
+            if (!response.ok) {let code;try{code=(await response.json()).error?.code;}catch{}if(['unsupported_image','image_not_supported','unsupported_content_type'].includes(code))throw error('MODEL_IMAGE_UNSUPPORTED');throw error('MODEL_EXECUTION_FAILED');}
             const result = await response.json(); const content = result.choices?.[0]?.message?.content;
             if (typeof content !== 'string' || !content) throw error('INVALID_MODEL_RESULT');
             const latest = this.get(row.id);
@@ -159,7 +164,7 @@ class ConversationExecution {
             const latest = this.get(row.id);
             if (!latest || latest.state === 'publishing') return; // durable result intent recovers on restart
             const state = latest.cancel_requested ? 'cancelled' : 'failed';
-            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? (this.draining ? 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' : deadline?.aborted ? 'EXECUTION_TIMEOUT_REVIEW_REQUIRED' : 'MODEL_EXECUTION_FAILED') : null, Date.now(), row.id);
+            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? (this.draining ? 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' : deadline?.aborted ? 'EXECUTION_TIMEOUT_REVIEW_REQUIRED' : /^(ATTACHMENT_|ATTACHMENTS_|MODEL_IMAGE_)/.test(failure.code||'')?failure.code:'MODEL_EXECUTION_FAILED') : null, Date.now(), row.id);
         } finally { this.active.delete(row.id); }
     }
     cancel(id, sessionId) {

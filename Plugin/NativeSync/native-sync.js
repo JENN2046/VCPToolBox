@@ -45,6 +45,7 @@ function dispatch(req, res) {
 }
 function registerApiRoutes(router) {
     router.use('/sync', dispatch); lifecycle.namespacedRegistrations++;
+    router.use('/attachments/:key',require('./mobile/attachmentRoutes').attachmentRoutes({storage:()=>mobile?.attachments,authorize:req=>{const t=mobile.attachments.topic(req.params.key);if(req.nativeSyncTopics!==undefined&&!req.nativeSyncTopics.includes(JSON.stringify([t.ownerType,t.ownerId,t.topicId])))throw Object.assign(Error(),{code:'TOPIC_NOT_ALLOWED',status:403});},principal:req=>req.nativeSyncDeviceId?'desktop:'+req.nativeSyncDeviceId:'host-bearer'}));
     router.post('/mobile/pairing', (_req,res) => {
         if (!mobile) return res.status(503).json({error:{code:'MOBILE_DISABLED'}});
         res.set('Cache-Control','no-store');res.json(mobile.createPairing());

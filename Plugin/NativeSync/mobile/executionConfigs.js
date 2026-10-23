@@ -45,7 +45,7 @@ class ExecutionConfigs {
             if(typeof prompt!=='string'||!prompt||references(prompt).length||prompt.startsWith('[AgentManager:')||prompt===input.systemPrompt)throw fail('CONFIG_PROMPT_SNAPSHOT_UNAVAILABLE');
             promptPolicy='native-alias-snapshot';
         }
-        const value = {name:input.name,systemPrompt:prompt,model:input.model.trim(),promptPolicy,agentAlias:topic.agentAlias,tavernRules:this.rules(input.tavernRules)};
+        const value = {name:input.name,systemPrompt:prompt,model:input.model.trim(),promptPolicy,agentAlias:topic.agentAlias,imageSupported:Array.isArray(topic.imageModels)&&topic.imageModels.includes(input.model),tavernRules:this.rules(input.tavernRules)};
         for (const [key,min,max] of [['temperature',0,2],['contextTokenLimit',1,2000000],['maxOutputTokens',1,2000000]]) {
             if (input[key] !== undefined) {
                 if (!Number.isFinite(input[key]) || input[key] < min || input[key] > max || (key !== 'temperature' && !Number.isSafeInteger(input[key]))) throw fail('INVALID_EXECUTION_CONFIG',400);

@@ -104,7 +104,7 @@ class CentralStore {
       }else if(message?.contextCompaction!==undefined||message?.tool_calls!==undefined||message?.tool_call_id!==undefined||message?.isThinking!==undefined){
         if(!priorMetadata)throw new SyncError('VERSIONED_METADATA_REQUIRED','Control metadata requires a versioned envelope',409);
       }
-      if(message&&metadata){message=withFields(message,metadata);fieldsFrom(message);}
+      if(message&&metadata){message=withFields(message,metadata);validateEnvelope(message,metadata);}
       const metadataChanged=(metadata?.hash||null)!==(priorMetadata?.hash||null);
       let seq;
       if (previous && previous.hash === hash && Boolean(previous.deleted) === (raw.action === 'delete') && !metadataChanged) {
@@ -119,6 +119,7 @@ class CentralStore {
         this.upsertMessage.run(...args, hash, raw.action === 'delete' ? 1 : 0,
           message ? JSON.stringify(message) : null, seq,message&&metadata?metadata.version:0,message&&metadata?metadata.hash:null);
       }
+      if(message)this.attachments?.associate(id,message,authority.attachmentPrincipal);
       const result = { seq, hash, deleted: raw.action === 'delete', ...(metadata&&raw.action!=='delete'?{metadataVersion:metadata.version,metadataHash:metadata.hash}:{}) };
       this.insertOp.run(raw.deviceId, raw.opId, requestHash, JSON.stringify(result));
       this.db.exec('COMMIT');

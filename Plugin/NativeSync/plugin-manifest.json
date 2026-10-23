@@ -19,6 +19,7 @@
     "NativeSyncDataDir": "string",
     "NativeMobileEnabled": "boolean",
     "NativeMobileConfigSync": "boolean",
+    "NativeMobileAttachments": "boolean",
     "NativeMobileOrigin": "string",
     "NativeMobileTopics": "string",
     "NativeMobilePwaDir": "string",

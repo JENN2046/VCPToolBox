@@ -4,16 +4,16 @@
     "source": "modules/services/nativeSync/centralStore.js",
     "sourceByteSha256": "e050f5c7bb6dd6ecb64f97a07aa8f76e2ea919b733309164ba577dbfbe960864",
     "destination": "sync/centralStore.js",
-    "adaptation": "R1: same-hash authorized metadata versions append ordinary upsert Journal records; preserve prior metadata on legacy edits; reject unauthorized/downgrade/tombstone updates. Existing content fingerprint and scoped pagination preserved.",
+    "adaptation": "R1: same-hash authorized metadata versions append ordinary upsert Journal records; preserve prior metadata on legacy edits; reject unauthorized/downgrade/tombstone updates. Existing content fingerprint and scoped pagination preserved. R1-C: associate verified attachment grants in the same existing Journal transaction; no second message Writer.",
     "sourceRepository": "https://github.com/JENN2046/VCPChat",
-    "destinationNormalizedLfSha256": "39bb81533069e416ff5ee7f57e0d6620328775aa07394be0fa7fd35c53eb86cd"
+    "destinationNormalizedLfSha256": "df46783715f66217f290924b439253be3b552e71c21640234a195d49e17e527d"
   },
   {
     "sourceCommit": "be828e4429639539773629c3a6568d7275cf7e9f",
     "source": "modules/services/nativeSync/protocol.js",
     "sourceByteSha256": "889545f6424ef4072299e85795a4cbd11d58503736c102aaaaf7f86a669c702e",
     "destination": "sync/protocol.js",
-    "adaptation": "R1: retain original fingerprint through contentMessage; canonicalMessage additionally validates/preserves independently versioned control metadata; require paths adapted. Original canonical and computeMessageFingerprint remain unchanged.",
+    "adaptation": "R1: retain original fingerprint through contentMessage; canonicalMessage additionally validates/preserves independently versioned control metadata; require paths adapted. Original canonical and computeMessageFingerprint remain unchanged. R1-C: preserve native attachment IDs/content identity and CAS frame references outside the original fingerprint.",
     "sourceRepository": "https://github.com/JENN2046/VCPChat",
     "destinationNormalizedLfSha256": "d3e522948d2676a3b4f6e3d931ec0435fd1387bd62fd2c6f422f75569df25b0f"
   },
@@ -124,5 +124,14 @@
     "destination": "nativeRules/modules/chat/requestMetadata.js",
     "adaptation": "Extract only pure attachTimestampMetadata; body unchanged; CommonJS exports. No Renderer or Electron orchestrator deployed.",
     "destinationByteSha256": "f1b7064e896fe05e22359d86a2a1a8305ae817f08ed3dfa0ab1186432931615b"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPToolBox",
+    "sourceCommit": "214941a22377572df1b14a816f5bcdd907291402",
+    "source": "Plugin/FileOperator/FileOperator.js",
+    "sourceByteSha256": "8f76f4bcc130b51db9226221d17fd9764b6df303cacece883d9a1d1df0b0261e",
+    "destination": "mobile/pdfText.js",
+    "adaptation": "Minimal buffer-only adapter of FileOperator PDFParse/getText/finally-destroy branch. Add an explicit empty-text-layer refusal; retain existing parser and native engine.",
+    "destinationNormalizedLfSha256": "d0e4af4acddf651c635abf372177e19613d97ad64607bac8008bc25245b5c7fa"
   }
 ]

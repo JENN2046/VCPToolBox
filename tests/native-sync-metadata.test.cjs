@@ -78,3 +78,12 @@ test('legacy stored JSON cannot forge metadata authority during schema upgrade',
   const updated=store.apply({...op(checkpoint,'authorized-backfill',hash),metadata:envelopeFor(checkpoint,1)},{metadataPublisher:true});assert.equal(updated.seq,2);assert.equal(store.pull(1).events[0].message.contextCompaction.kind,checkpoint.contextCompaction.kind);
  }finally{store.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+test('R1-B attachment metadata remains readable and an incapable client explicitly refuses the richer attachment contract',async()=>{
+ const {sha256,stable}=require('../Plugin/NativeSync/sync/protocol'),store=new CentralStore(':memory:');
+ const m={...old,attachments:[{id:'legacy-attachment',hash:'1'.repeat(64),type:'text/plain',name:'test.txt',size:1,extractedText:'synthetic'}]};
+ const fields={attachmentData:[{id:'legacy-attachment',extractedText:'synthetic'}]},legacy={version:1,hash:sha256(stable(fields)),fields};
+ store.apply({...op(m,'legacy-att'),metadata:legacy},{metadataPublisher:true});assert.equal(store.pull(0).events[0].message.attachments[0].id,'legacy-attachment');
+ const upgraded=envelopeFor(m,2);store.apply({...op(m,'upgrade-att',messageHash(m)),metadata:upgraded},{metadataPublisher:true});
+ const service=require('../Plugin/NativeSync/sync/httpService').createSyncHttpService(store),server=http.createServer(service.handle);await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ try{const url=`http://127.0.0.1:${server.address().port}/pull?after_seq=1`,oldClient=await fetch(url,{headers:{'X-NativeSync-Protocol':'2'}});assert.equal(oldClient.status,409);assert.equal((await oldClient.json()).error.code,'ATTACHMENT_PROTOCOL_UPGRADE_REQUIRED');const capable=await fetch(url,{headers:{'X-NativeSync-Protocol':'2','X-NativeSync-Capabilities':'attachments-v1'}});assert.equal(capable.status,200);}finally{server.closeAllConnections();await new Promise(r=>server.close(r));await service.close();}
+});

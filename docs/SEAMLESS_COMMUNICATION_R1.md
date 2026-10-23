@@ -86,3 +86,43 @@ in the Journal. Native ToolBox RAG/model/tool handling remains downstream.
 including same-hash backfill through the real desktop Queue, Pending recovery,
 schema-upgrade forgery rejection and metadata durability. Final full-host/RAG
 and physical three-device acceptance remain pending for this candidate.
+
+## Attachments candidate
+
+`NativeMobileAttachments=true` additionally requires versioned configuration.
+The existing host Bearer namespace and mobile scoped session expose the same
+CAS service, not another history store. Uploads use 64 KiB resumable chunks,
+actual server-side SHA-256, type validation, fsync/atomic rename, idempotent
+request identities and durable finalization state. The dedicated NativeSync
+root owns `attachments/<hash-prefix>/<sha256>` and temporary uploads only.
+
+Limits: 20 MiB per file, 8 submitted attachments, 512 MiB allocated storage,
+16 unfinished uploads per principal, 200 starts/hour and 96 MiB HTTP request
+budget/minute. Unassociated grants expire after 24 hours; bounded expiry cleanup
+does not remove blobs retained by message/frame links. No real database or
+production attachment tree was read or changed during development.
+
+Blob existence does not grant access. Downloads name a scoped Topic/message/
+attachment, never an arbitrary hash or host path. A verified upload grant must
+associate with that actual message before download. Tombstoned/removed references
+do not authorize reads. Mobile principals are the existing restricted sessions;
+the existing shared host Bearer authority remains the desktop administrative
+principal (no additional device credential registry is introduced).
+
+Text/PDF extraction uses the existing PDFParse contract. Windows extraction
+metadata remains independently versioned. Large native PDF image frames become
+scoped CAS references under that same metadata envelope, retaining the original
+message fingerprint. A legacy metadata client lacking `attachments-v1` receives
+an explicit upgrade refusal. R1-B metadata digests remain readable.
+
+Image model execution requires the effective model to appear in the host topic's
+explicit `imageModels` list, captured in the immutable config version. Unknown or
+unsupported image capability, missing/corrupt binary and unavailable PDF text
+return explicit states. The original ChatCompletionHandler remains the executor.
+
+The PWA uploads files, shows scoped previews/downloads/extracted text, retains
+unconfirmed selections on the open page and resumes interrupted chunks. After a
+page closes before submission, selecting the same file resumes its staged upload;
+unsubmitted local file bytes are not durably cached by this UI. Accepted task
+payloads are persisted, so reopening and checking/retrying the same submission
+retains attachment IDs and does not execute another model request.

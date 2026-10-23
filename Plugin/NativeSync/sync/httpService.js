@@ -17,6 +17,7 @@ function createSyncHttpService(store) {
             if (req.method === 'GET' && url.pathname === '/pull') {
                 const result=store.pull(Number(url.searchParams.get('after_seq') ?? 0), Number(url.searchParams.get('limit') ?? 100), req.nativeSyncTopics);
                 if(req.headers['x-nativesync-protocol']!=='2'&&result.events.some(e=>e.message?._nativeSyncMetadata))throw new SyncError('METADATA_PROTOCOL_UPGRADE_REQUIRED','NativeSync metadata protocol 2 required',409);
+                if(!String(req.headers['x-nativesync-capabilities']||'').split(',').includes('attachments-v1')&&result.events.some(e=>e.message?._nativeSyncMetadata?.fields.attachmentData?.some(a=>a.contentHash||a.frameHashes?.length)))throw new SyncError('ATTACHMENT_PROTOCOL_UPGRADE_REQUIRED','Attachment identity/frame capability required',409);
                 return send(res,200,result);
             }
             if (req.method === 'GET' && url.pathname === '/status') return send(res, 200, store.metrics());
@@ -31,7 +32,7 @@ function createSyncHttpService(store) {
                     }
                     op = JSON.parse(raw);
                 } else if (Buffer.byteLength(JSON.stringify(op)) > 1024 * 1024) throw new SyncError('BODY_TOO_LARGE', '1 MiB maximum', 413);
-                return send(res, 200, store.apply(op,{metadataPublisher:req.nativeSyncTopics===undefined}));
+                return send(res, 200, store.apply(op,{metadataPublisher:req.nativeSyncTopics===undefined,attachmentPrincipal:req.nativeSyncDeviceId?'desktop:'+req.nativeSyncDeviceId:'host-bearer'}));
             }
             return send(res, 404, { error: { code: 'NOT_FOUND', message: 'Unknown route' } });
         } catch (error) {

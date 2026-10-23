@@ -30,9 +30,9 @@ function fieldsFrom(message){
     if(message.tool_call_id!==undefined){if(message.role!=='tool'||typeof message.tool_call_id!=='string')throw fail('INVALID_CONTROL_METADATA');fields.tool_call_id=message.tool_call_id;}
     const attachments=[];
     for(const a of message.attachments||[]){
-        const source=a._fileManagerData||a,entry={id:a.id||source.id};
-        for(const key of ['extractedText','imageFrames','blobHash'])if(source[key]!==undefined)entry[key]=source[key];
-        if(Object.keys(entry).length===1)continue;
+        const source=a._fileManagerData||a,entry={id:a.id||source.id||'attachment_'+(a.hash||source.hash),contentHash:a.hash||source.hash};
+        for(const key of ['extractedText','imageFrames','blobHash','frameHashes'])if(source[key]!==undefined)entry[key]=source[key];
+        if(entry.frameHashes!==undefined){if(!Array.isArray(entry.frameHashes)||entry.frameHashes.length>10||entry.frameHashes.some(h=>!/^[a-f0-9]{64}$/.test(h)))throw fail('INVALID_ATTACHMENT_METADATA');delete entry.imageFrames;}
         if(typeof entry.id!=='string'||!entry.id||(entry.extractedText!==undefined&&typeof entry.extractedText!=='string')||(entry.blobHash!==undefined&&!/^[a-f0-9]{64}$/.test(entry.blobHash))||(entry.imageFrames!==undefined&&(!Array.isArray(entry.imageFrames)||entry.imageFrames.some(f=>typeof f!=='string'))))throw fail('INVALID_ATTACHMENT_METADATA');
         attachments.push(entry);
     }
@@ -46,9 +46,10 @@ function withFields(message,envelope){
     const fields=envelope.fields;
     for(const key of controls)if(Object.hasOwn(fields,key))result[key]=fields[key];
     if(result.attachments)result.attachments=result.attachments.map(a=>{
-        const copy={...a};for(const k of ['extractedText','imageFrames','blobHash'])delete copy[k];
-        const data=fields.attachmentData?.find(item=>item.id===a.id);
-        if(data)for(const k of ['extractedText','imageFrames','blobHash'])if(Object.hasOwn(data,k))copy[k]=data[k];
+        const copy={...a};for(const k of ['extractedText','imageFrames','blobHash','frameHashes'])delete copy[k];
+        const data=fields.attachmentData?.find(item=>item.id===a.id||item.contentHash===a.hash);
+        copy.id=data?.id||a.id||'attachment_'+a.hash;
+        if(data)for(const k of ['extractedText','imageFrames','blobHash','frameHashes'])if(Object.hasOwn(data,k))copy[k]=data[k];
         return copy;
     });
     result._nativeSyncMetadata=envelope;return result;
@@ -57,16 +58,19 @@ function envelopeFor(message,version){const fields=fieldsFrom(message);return {v
 function validateEnvelope(message,envelope){
     if(!envelope||Object.keys(envelope).some(k=>!['version','hash','fields'].includes(k))||!Number.isSafeInteger(envelope.version)||envelope.version<1||!envelope.fields||Object.keys(envelope.fields).some(k=>![...controls,'attachmentData'].includes(k)))throw fail('INVALID_CONTROL_METADATA');
     const normalized=fieldsFrom(withFields(message,envelope));
+    // R1-B envelopes predate attachment identity binding. Preserve their digest
+    // on read; a new publisher may advance them to the richer R1-C projection.
+    for(const item of normalized.attachmentData||[]){const original=envelope.fields.attachmentData?.find(a=>a.id===item.id);if(original&&!Object.hasOwn(original,'contentHash'))delete item.contentHash;}
     if(stable(normalized)!==stable(envelope.fields)||sha256(stable(normalized))!==envelope.hash)throw fail('INVALID_METADATA_DIGEST');
     return {version:envelope.version,hash:envelope.hash,fields:normalized};
 }
 function preserveMetadata(source,target){
     if(target.attachments)target.attachments=target.attachments.map((a,index)=>{
         const raw=source.attachments[index],data=raw?._fileManagerData||raw;
-        return {...a,...(data?.blobHash!==undefined?{blobHash:data.blobHash}:{})};
+        return {...a,id:raw?.id||data?.id||'attachment_'+a.hash,...(data?.blobHash!==undefined?{blobHash:data.blobHash}:{}),...(data?.frameHashes!==undefined?{frameHashes:data.frameHashes}:{})};
     });
     for(const key of controls)if(Object.hasOwn(source,key))target[key]=source[key];
     if(source._nativeSyncMetadata)return withFields(target,validateEnvelope(target,source._nativeSyncMetadata));
-    fieldsFrom(target);return target;
+    const cleaned=withFields(target,{fields:fieldsFrom(target)});delete cleaned._nativeSyncMetadata;return cleaned;
 }
 module.exports={fieldsFrom,withFields,envelopeFor,validateEnvelope,preserveMetadata,emptyHash};
