@@ -24,7 +24,7 @@ class MobilePortal {
         this.db.exec(`CREATE TABLE IF NOT EXISTS mobile_pairings(hash TEXT PRIMARY KEY,expires INTEGER NOT NULL,scopes TEXT NOT NULL,used INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS mobile_sessions(hash TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,expires INTEGER NOT NULL,scopes TEXT NOT NULL);`);
         if(!this.db.prepare('PRAGMA table_info(mobile_sessions)').all().some(c=>c.name==='last_topic_key'))this.db.exec('ALTER TABLE mobile_sessions ADD COLUMN last_topic_key TEXT');
-        this.engine = new ConversationExecution({ store, topics: this.topics, agentManager, startDelayMs: Math.max(0, Math.min(Number(config.NativeMobileStartDelayMs) || 0, 10000)), maxConcurrency: config.NativeMobileMaxConcurrency === undefined ? 4 : Number(config.NativeMobileMaxConcurrency) });
+        this.engine = new ConversationExecution({ store, topics: this.topics, agentManager, startDelayMs: Math.max(0, Math.min(Number(config.NativeMobileStartDelayMs) || 0, 10000)), maxConcurrency: config.NativeMobileMaxConcurrency === undefined ? 4 : Number(config.NativeMobileMaxConcurrency), executionTimeoutMs: config.NativeMobileExecutionTimeoutMs === undefined ? 120000 : Number(config.NativeMobileExecutionTimeoutMs) });
         this.agentManager = agentManager;
         this.connection = new MobileConnection(config, () => this.engine.endpoint?.key);
         const hours=Number(config.NativeMobileSessionHours ?? 8);

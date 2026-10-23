@@ -23,6 +23,7 @@
     "NativeMobilePwaDir": "string",
     "NativeMobileStartDelayMs": "integer",
     "NativeMobileMaxConcurrency": "integer",
+    "NativeMobileExecutionTimeoutMs": "integer",
     "NativeMobileBackendUrl": "string",
     "NativeMobileKeyExchangeEnabled": "boolean",
     "NativeMobileSessionHours": "integer"

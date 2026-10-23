@@ -6,6 +6,8 @@ VCPToolBox `service` / `direct` 插件。通过现有 PluginManager 发现与初
 
 移动执行的 `NativeMobileMaxConcurrency` 默认 4，允许整数 1–64。同一 Topic 始终串行；其他 Topic 按最早可执行任务补位。取消和宿主 drain 后，Topic 锁保留至执行清理结束，`close()` 等待全部在途任务。重启不会重跑结果不确定的运行中任务，原 preparing/publishing 意图恢复和 queued 恢复保持不变。
 
+`NativeMobileExecutionTimeoutMs` 默认保持 120000，允许整数 1000–300000。超时后记录 `EXECUTION_TIMEOUT_REVIEW_REQUIRED`，同一个幂等请求不会自动重跑；取消和宿主 Drain 的既有语义优先。R10 可为实际较慢模型显式配置 300000，不改变模型通道、请求正文或工具接口。
+
 Pull 的 `limit` 限定全局日志扫描窗口；设备 Scope 在响应前过滤消息和墓碑。`nextSeq` 是实际扫描位置，`headSeq` 仅用于判断 `hasMore`。过滤后允许空页，客户端完成当页持久应用后按 `nextSeq` 继续，不能直接跳到 `headSeq`。
 
 路由遵循原宿主的全局 Bearer 中间件，注册顺序与 `server.js` 相同：

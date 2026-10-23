@@ -43,3 +43,11 @@ Three new HTTPS tests cover the pre-fix stall, unfinished/idle TLS drainage and 
 accepted partial NativeSync push persisted/acknowledged before close. All 74 related
 Node tests pass after this direct integration fix. Actual clean exit and device
 acceptance remain separate required runtime evidence.
+
+A real Kerr request hit the fixed request deadline at 120,012 ms, although its
+configured model was present in the existing6005 model directory. The executor now
+accepts a bounded `NativeMobileExecutionTimeoutMs` setting (1000–300000, unchanged
+120000 default); R10 explicitly selects300000. Timeouts are marked as requiring
+review and never requeued. The same model, tool interface, hashes and SQLite schema
+remain unchanged. Three deadline tests verify bounds/default, cleanup/Topic release
+and failed-request non-replay, plus portal wiring. All77 affected tests pass.

@@ -13,12 +13,14 @@ function historyReady(db,topic){
 // durable write-ahead intents, replayed through CentralStore.apply after a crash.
 // No second history database or separate model/tool/Agent implementation exists.
 class ConversationExecution {
-    constructor({ store, topics, agentManager, startDelayMs = 0, maxConcurrency = 4, fault = () => {} }) {
+    constructor({ store, topics, agentManager, startDelayMs = 0, maxConcurrency = 4, executionTimeoutMs = 120000, fault = () => {} }) {
         if (!Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 64) throw error('INVALID_EXECUTION_CONCURRENCY');
+        if (!Number.isSafeInteger(executionTimeoutMs) || executionTimeoutMs < 1000 || executionTimeoutMs > 300000) throw error('INVALID_EXECUTION_TIMEOUT');
         this.store = store; this.db = store.db; this.topics = new Map(topics.map(t => [t.key, t]));
         this.agentManager = agentManager; this.startDelayMs = startDelayMs; this.fault = fault;
         this.active = new Map(); this.draining = false; this.endpoint = null;
         this.maxConcurrency = maxConcurrency; this.runningTopics = new Set(); this.inFlight = new Set();
+        this.executionTimeoutMs = executionTimeoutMs;
         this.scheduling = false; this.wakePending = false;
         this.db.exec(`PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS mobile_executions (
@@ -104,7 +106,7 @@ class ConversationExecution {
     }
     async run(row) {
         if (!this.db.prepare("UPDATE mobile_executions SET state='running',attempts=attempts+1,updated_at=? WHERE id=? AND state='queued'").run(Date.now(), row.id).changes) return;
-        const controller = new AbortController(); this.active.set(row.id, controller);
+        const controller = new AbortController(); this.active.set(row.id, controller); let deadline;
         try {
             const topic = this.topics.get(row.topic_key);
             if (!topic || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_CONFIGURED');
@@ -119,7 +121,8 @@ class ConversationExecution {
             });
             // Context budgeting remains in the existing ToolBox handler. The
             // complete central history is retained, including histories >200 rows.
-            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]), body: JSON.stringify({ model: topic.model, contextTokenLimit: Number(topic.contextTokenLimit)||32000, ...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}), ...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}), stream: false, requestId: row.id, messages: [{ role: 'system', content: prompt }, ...messages] }) });
+            deadline = AbortSignal.timeout(this.executionTimeoutMs);
+            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, deadline]), body: JSON.stringify({ model: topic.model, contextTokenLimit: Number(topic.contextTokenLimit)||32000, ...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}), ...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}), stream: false, requestId: row.id, messages: [{ role: 'system', content: prompt }, ...messages] }) });
             if (!response.ok) throw error('MODEL_EXECUTION_FAILED');
             const result = await response.json(); const content = result.choices?.[0]?.message?.content;
             if (typeof content !== 'string' || !content) throw error('INVALID_MODEL_RESULT');
@@ -134,7 +137,7 @@ class ConversationExecution {
             const latest = this.get(row.id);
             if (!latest || latest.state === 'publishing') return; // durable result intent recovers on restart
             const state = latest.cancel_requested ? 'cancelled' : 'failed';
-            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? (this.draining ? 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' : 'MODEL_EXECUTION_FAILED') : null, Date.now(), row.id);
+            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? (this.draining ? 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' : deadline?.aborted ? 'EXECUTION_TIMEOUT_REVIEW_REQUIRED' : 'MODEL_EXECUTION_FAILED') : null, Date.now(), row.id);
         } finally { this.active.delete(row.id); }
     }
     cancel(id, sessionId) {
