@@ -197,6 +197,7 @@ Scope, crash/cancel recovery, three-mode plans and attachment-intent lifetime.
 An independent full `server.js` fixture additionally exercises native Agent,
 variables, RAG direct diary, ContextFolding, multimodal bytes, three-member relay,
 ordinary error continuation, a native read-only tool and restart without replay.
-All models in this evidence are synthetic. Physical Windows/Android/iPhone and
-real provider acceptance remain separately required; this document does not
-declare production release readiness.
+That fixture uses synthetic models. Additional original Windows Electron and
+real provider acceptance is recorded in [the integrated report](R1_INTEGRATED_ACCEPTANCE.md),
+with device limits kept explicit. [The release verdict](R1_RELEASE_VERDICT.md)
+governs overall readiness; synthetic and API fixtures do not replace phones.
