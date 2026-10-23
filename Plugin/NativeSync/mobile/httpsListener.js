@@ -2,6 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),https=require('node:https');
 const {execFileSync}=require('node:child_process');
 const ORIGIN='https://dnvcp.skmt617.top:13848';
+const listeners=new WeakMap();
 function tlsOptions(config){
  if(config.port!==8888||config.httpsOrigin!==ORIGIN||'publicHttpOrigin' in config)throw Error('R10_HTTPS_ONLY_PROFILE_REQUIRED');
  const certFile=config.tls?.certFile,keyFile=config.tls?.keyFile;
@@ -23,10 +24,33 @@ function tlsOptions(config){
  return {key,cert,minVersion:'TLSv1.2'};
 }
 function createListener(options,app){
- const server=https.createServer(options,app);
+ const server=https.createServer(options),state={sockets:new Map(),closing:false,closed:null};listeners.set(server,state);
+ const key=s=>`${s.remoteAddress}:${s.remotePort}`;
+ server.on('connection',socket=>{
+  const id=key(socket),entry={socket,secure:null,active:0};state.sockets.set(id,entry);
+  socket.once('close',()=>{if(state.sockets.get(id)===entry)state.sockets.delete(id);});
+ });
+ server.on('secureConnection',socket=>{const entry=state.sockets.get(key(socket));if(entry)entry.secure=socket;});
+ server.on('request',(req,res)=>{
+  const entry=state.sockets.get(key(req.socket));if(!entry)return;entry.active++;
+  let ended=false;const end=()=>{if(ended)return;ended=true;entry.active--;if(state.closing&&entry.active===0)(entry.secure||entry.socket).end();};
+  res.once('finish',end);res.once('close',end);
+ });
+ server.on('request',app);
  // A cleartext request to this port is closed; there is no HTTP listener or
  // redirect service, and forwarded headers never establish transport trust.
  server.on('clientError',(_error,socket)=>socket.destroy());
  return server;
 }
-module.exports={ORIGIN,tlsOptions,createListener};
+function listenerState(server){const state=listeners.get(server);if(!state)throw Error('R10_OWNED_LISTENER_REQUIRED');return {connections:state.sockets.size,activeRequests:[...state.sockets.values()].reduce((n,s)=>n+s.active,0),closing:state.closing};}
+function drainListener(server){
+ const state=listeners.get(server);if(!state)throw Error('R10_OWNED_LISTENER_REQUIRED');if(state.closed)return state.closed;
+ state.closing=true;state.closed=new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));
+ server.closeIdleConnections?.();
+ // HTTPS preconnects may have no HTTP parser/request yet. Node's HTTP idle
+ // closer cannot account for unfinished TLS handshakes; no accepted work lives
+ // on these sockets. Active requests remain until their response finishes.
+ for(const entry of state.sockets.values())if(entry.active===0)entry.socket.destroy();
+ return state.closed;
+}
+module.exports={ORIGIN,tlsOptions,createListener,drainListener,listenerState};

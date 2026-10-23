@@ -16,10 +16,10 @@ The database, HTTPS Origin, sessions and selected four owner/topic identities st
 in place. `/app/VCPToolBox` / port6005 is never stopped, replaced or restarted.
 
 Upgrade order: live inventory; online SQLite/source/profile backup and isolated
-restore/decryption check; stop/drain only R10; consistent cold backup; exact six-file
+restore/decryption check; stop/drain only R10; consistent cold backup; exact bounded source
 replacement and profile release/concurrency update; restart the same R10 app;
 verify HTTPS, database prefix, sessions, real Android/Windows and controlled tasks.
-Rollback restores the old six source files/profile with R10 stopped, preserving
+Rollback restores the old source files/profile with R10 stopped, preserving
 the current compatible database and any newer committed results. Database backup
 restoration is tested in an isolated directory, never over newer live histories.
 
@@ -29,3 +29,17 @@ native IPC/refresh and R8 writer exclusion. Only synthetic tests ran at that sta
 Actual deployment/daily acceptance is a separate receipt; this source commit alone
 does not claim it passed. Evidence root:
 `P:/VCPKF/vcp/artifacts/native-sync-r10-p1-integration/run-20261023T021129460Z`.
+
+The real in-flight restart retained the queued job and interrupted-state semantics,
+but lacked a normal exit receipt within the existing PM2 deadline. A focused HTTPS
+fixture independently reproduced `server.close()` waiting on a TCP/TLS preconnect
+with no HTTP request. The existing HTTPS listener now tracks connections/active
+responses, closes only idle/unrequested sockets at drain, and lets accepted partial
+JSON pushes finish before HTTP/SQLite close. The R10 host also records sanitized
+drain phases and explicit failure receipts. No timeout forcibly discards accepted
+requests, and the reviewed execution engine remains unchanged.
+
+Three new HTTPS tests cover the pre-fix stall, unfinished/idle TLS drainage and an
+accepted partial NativeSync push persisted/acknowledged before close. All 74 related
+Node tests pass after this direct integration fix. Actual clean exit and device
+acceptance remain separate required runtime evidence.

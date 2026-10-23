@@ -9,7 +9,7 @@ process.umask(0o077);
 const emit=x=>process.stdout.write(JSON.stringify(x)+'\n');console.log=console.warn=console.error=()=>{};
 async function main(){
  const config=JSON.parse(fs.readFileSync(path.join(root,'mobile-host.json'),'utf8'));
- const {ORIGIN,tlsOptions,createListener}=require('./Plugin/NativeSync/mobile/httpsListener');
+ const {ORIGIN,tlsOptions,createListener,drainListener,listenerState}=require('./Plugin/NativeSync/mobile/httpsListener');
  // Validate TLS before Agent initialization, SQLite, plugin startup or listening.
  const tls=tlsOptions(config);
  for(const key of ['NativeSyncEnabled','NativeMobileEnabled'])process.env[key]='true';
@@ -41,7 +41,16 @@ async function main(){
  const server=await new Promise((resolve,reject)=>{const s=createListener(tls,app);s.once('error',reject);s.listen(8888,'0.0.0.0',()=>resolve(s));});tls.key.fill(0);
  const receipt={event:'R10_GATEWAY_READY',pid:process.pid,port:8888,httpsOrigin:ORIGIN,release:config.release,instance,productionBackend:'http://127.0.0.1:6005',pluginLifecycle:plugin.snapshot().lifecycle};
  fs.writeFileSync(path.join(data,'service-ready.json'),JSON.stringify(receipt,null,2));emit(receipt);
- let stopping=false;async function stop(){if(stopping)return;stopping=true;plugin.beginDrain();await new Promise(r=>server.close(r));await manager.shutdownAllPlugins();credential.close();await manager.toolApprovalManager.watcher?.close();manager.toolApprovalManager.shutdown();fs.writeFileSync(path.join(data,'service-exit.json'),JSON.stringify({pid:process.pid,exitCode:0,pluginLifecycle:plugin.snapshot().lifecycle}));process.exit(0);}
+ let stopping=false;async function stop(){
+  if(stopping)return;stopping=true;let phase='begin-drain';
+  const mark=value=>{phase=value;fs.writeFileSync(path.join(data,'service-drain.json'),JSON.stringify({pid:process.pid,phase,...listenerState(server)}));};
+  try{
+   mark('begin-drain');plugin.beginDrain();await drainListener(server);mark('http-drained');
+   await manager.shutdownAllPlugins();mark('plugins-drained');credential.close();
+   await manager.toolApprovalManager.watcher?.close();manager.toolApprovalManager.shutdown();
+   fs.writeFileSync(path.join(data,'service-exit.json'),JSON.stringify({pid:process.pid,exitCode:0,pluginLifecycle:plugin.snapshot().lifecycle}));process.exit(0);
+  }catch(e){fs.writeFileSync(path.join(data,'service-exit.json'),JSON.stringify({pid:process.pid,exitCode:1,phase,code:/^[A-Z0-9_]+$/.test(e.code||'')?e.code:'R10_DRAIN_FAILED'}));process.exit(1);}
+ }
  process.on('SIGTERM',()=>void stop());process.on('SIGINT',()=>void stop());
 }
 main().catch(e=>{emit({event:'R10_GATEWAY_FAILED',code:/^R10_TLS_|^R10_HTTPS_ONLY_/.test(e.message)?e.message:e.code||'BOOT_FAILED'});process.exit(1);});
