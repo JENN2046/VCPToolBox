@@ -42,7 +42,7 @@ function createListener(options,app){
  server.on('clientError',(_error,socket)=>socket.destroy());
  return server;
 }
-function listenerState(server){const state=listeners.get(server);if(!state)throw Error('R10_OWNED_LISTENER_REQUIRED');return {connections:state.sockets.size,activeRequests:[...state.sockets.values()].reduce((n,s)=>n+s.active,0),closing:state.closing};}
+function listenerState(server){const state=listeners.get(server);if(!state)throw Error('R10_OWNED_LISTENER_REQUIRED');return {connections:[...state.sockets.values()].filter(s=>!s.socket.destroyed).length,activeRequests:[...state.sockets.values()].reduce((n,s)=>n+s.active,0),closing:state.closing};}
 function drainListener(server){
  const state=listeners.get(server);if(!state)throw Error('R10_OWNED_LISTENER_REQUIRED');if(state.closed)return state.closed;
  state.closing=true;state.closed=new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));

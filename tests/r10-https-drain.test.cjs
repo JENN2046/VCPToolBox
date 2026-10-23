@@ -20,7 +20,7 @@ test('R10 drains both unfinished TLS and established idle HTTPS preconnects, ide
  const raw=net.connect(port,'127.0.0.1');await new Promise(r=>raw.once('connect',r));
  const secure=tls.connect({host:'127.0.0.1',port,rejectUnauthorized:false});await new Promise(r=>secure.once('secureConnect',r));await pause(10);
  assert.equal(listenerState(s).connections,2);assert.equal(listenerState(s).activeRequests,0);
- const closing=drainListener(s);assert.equal(drainListener(s),closing);await within(closing);raw.destroy();secure.destroy();
+ const closing=drainListener(s);assert.equal(drainListener(s),closing);await within(closing);assert.equal(listenerState(s).connections,0);raw.destroy();secure.destroy();
 });
 
 test('R10 lets an accepted partial JSON push persist and acknowledge before HTTP/SQLite close',async()=>{
