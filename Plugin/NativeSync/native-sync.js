@@ -54,6 +54,17 @@ function registerApiRoutes(router) {
         try { res.set('Cache-Control','no-store');res.json(mobile.publishCatalog(req.body)); }
         catch(e) { res.status(e.status||400).json({error:{code:e.code||'INVALID_CATALOG'}}); }
     });
+    // Mounted behind the existing host Bearer gate; mobile cookies cannot
+    // publish private configuration or reach this namespace.
+    router.get('/mobile/execution-configs', (_req,res) => {
+        if (!mobile) return res.status(503).json({error:{code:'MOBILE_DISABLED'}});
+        res.set('Cache-Control','no-store').json({topics:mobile.topics.map(t=>({key:t.key,ownerType:t.ownerType,ownerId:t.ownerId,topicId:t.topicId,...mobile.engine.configs.public(t.key)}))});
+    });
+    router.post('/mobile/execution-configs', async (req,res) => {
+        if (!mobile) return res.status(503).json({error:{code:'MOBILE_DISABLED'}});
+        try { res.set('Cache-Control','no-store').json(await mobile.engine.configs.publish(req.body)); }
+        catch(e) { res.status(e.status||400).json({error:{code:e.code||'INVALID_EXECUTION_CONFIG'}}); }
+    });
 }
 function registerRoutes(app, _adminApiRouter, _config, _projectBasePath) {
     if (mounted.has(app)) return;

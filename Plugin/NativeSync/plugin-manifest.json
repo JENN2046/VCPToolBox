@@ -18,6 +18,7 @@
     "NativeSyncEnabled": "boolean",
     "NativeSyncDataDir": "string",
     "NativeMobileEnabled": "boolean",
+    "NativeMobileConfigSync": "boolean",
     "NativeMobileOrigin": "string",
     "NativeMobileTopics": "string",
     "NativeMobilePwaDir": "string",

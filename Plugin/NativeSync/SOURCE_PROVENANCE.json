@@ -34,5 +34,68 @@
     "adaptation": "none; newline normalization possible",
     "sourceRepository": "https://github.com/JENN2046/VCPChat",
     "destinationNormalizedLfSha256": "1d8accca65491332f2462cc8c735998444be782dfd59e7933195155a09489d37"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/groupContextWindow.js",
+    "sourceByteSha256": "50348c483de22cbe2335cbdf66eea1e713d6504166ac47651990eb479e48ba32",
+    "destination": "nativeRules/Groupmodules/groupContextWindow.js",
+    "adaptation": "none; byte-for-byte Git blob mirror",
+    "destinationByteSha256": "50348c483de22cbe2335cbdf66eea1e713d6504166ac47651990eb479e48ba32"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/modes/baseChatMode.js",
+    "sourceByteSha256": "e76f53930084405516709b5b6e8314202f29300a1e3e84017de5feb89a072fad",
+    "destination": "nativeRules/Groupmodules/modes/baseChatMode.js",
+    "adaptation": "none; byte-for-byte Git blob mirror",
+    "destinationByteSha256": "e76f53930084405516709b5b6e8314202f29300a1e3e84017de5feb89a072fad"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/modes/sequentialMode.js",
+    "sourceByteSha256": "7d4a3a2e89aeb8e3dd7c13dbc6427c29f4d2b85d46f04a0ae0f233d662cb06c4",
+    "destination": "nativeRules/Groupmodules/modes/sequentialMode.js",
+    "adaptation": "none; byte-for-byte Git blob mirror",
+    "destinationByteSha256": "7d4a3a2e89aeb8e3dd7c13dbc6427c29f4d2b85d46f04a0ae0f233d662cb06c4"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/modes/natureRandomMode.js",
+    "sourceByteSha256": "eeea58c6e70acb435d38d906707aeb6e97118ede6f0f687715614de53aa9ac64",
+    "destination": "nativeRules/Groupmodules/modes/natureRandomMode.js",
+    "adaptation": "none; byte-for-byte Git blob mirror",
+    "destinationByteSha256": "eeea58c6e70acb435d38d906707aeb6e97118ede6f0f687715614de53aa9ac64"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/modes/inviteOnlyMode.js",
+    "sourceByteSha256": "1e77da13df87a8d12bddd0b8d474bbc8b90dfaf4d7ae2934d2814f8b33ba553c",
+    "destination": "nativeRules/Groupmodules/modes/inviteOnlyMode.js",
+    "adaptation": "none; byte-for-byte Git blob mirror",
+    "destinationByteSha256": "1e77da13df87a8d12bddd0b8d474bbc8b90dfaf4d7ae2934d2814f8b33ba553c"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "modules/tavernRulesEngine.js",
+    "sourceByteSha256": "ede855fbe40b70cd7b13684671047d040180cef2b354a6e8677a1b1b5c1c51bb",
+    "destination": "nativeRules/modules/tavernRulesEngine.js",
+    "adaptation": "none; byte-for-byte Git blob mirror",
+    "destinationByteSha256": "ede855fbe40b70cd7b13684671047d040180cef2b354a6e8677a1b1b5c1c51bb"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "modules/chat/contextCompactionState.js",
+    "sourceByteSha256": "05d672067f2012b1e22c98f80f231737078a79ddbf39eb885376caeba12edd63",
+    "destination": "nativeRules/modules/chat/contextCompactionState.js",
+    "adaptation": "Extract only COMPACTION_KIND, isContextCheckpoint, effectiveContextHistory; remove ESM export keywords, add CommonJS exports. Function bodies unchanged; renderer imports and all other functions excluded.",
+    "destinationByteSha256": "ca2a2e8b9fd59445dd986a6cfcae47dafebdcb6bb4dc27fb616e3a5f3116906f"
   }
 ]

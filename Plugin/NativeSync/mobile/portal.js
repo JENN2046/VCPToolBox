@@ -26,7 +26,7 @@ class MobilePortal {
         this.db.exec(`CREATE TABLE IF NOT EXISTS mobile_pairings(hash TEXT PRIMARY KEY,expires INTEGER NOT NULL,scopes TEXT NOT NULL,used INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS mobile_sessions(hash TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,expires INTEGER NOT NULL,scopes TEXT NOT NULL);`);
         if(!this.db.prepare('PRAGMA table_info(mobile_sessions)').all().some(c=>c.name==='last_topic_key'))this.db.exec('ALTER TABLE mobile_sessions ADD COLUMN last_topic_key TEXT');
-        this.engine = new ConversationExecution({ store, topics: this.topics, agentManager, startDelayMs: Math.max(0, Math.min(Number(config.NativeMobileStartDelayMs) || 0, 10000)), maxConcurrency: config.NativeMobileMaxConcurrency === undefined ? 4 : Number(config.NativeMobileMaxConcurrency), executionTimeoutMs: config.NativeMobileExecutionTimeoutMs === undefined ? 120000 : Number(config.NativeMobileExecutionTimeoutMs) });
+        this.engine = new ConversationExecution({ store, topics: this.topics, agentManager, configRequired: config.NativeMobileConfigSync === true, startDelayMs: Math.max(0, Math.min(Number(config.NativeMobileStartDelayMs) || 0, 10000)), maxConcurrency: config.NativeMobileMaxConcurrency === undefined ? 4 : Number(config.NativeMobileMaxConcurrency), executionTimeoutMs: config.NativeMobileExecutionTimeoutMs === undefined ? 120000 : Number(config.NativeMobileExecutionTimeoutMs) });
         this.agentManager = agentManager;
         this.connection = new MobileConnection(config, () => this.engine.endpoint?.key);
         this.sessionSeconds = Math.floor(hours * 3600);
@@ -80,7 +80,7 @@ class MobilePortal {
                 const rows = this.db.prepare('SELECT last_seq AS seq,message_json,deleted,msg_id AS id FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND last_seq>? ORDER BY last_seq LIMIT 201').all(topic.ownerType,topic.ownerId,topic.topicId,after);
                 const page = rows.slice(0,200);
                 const ready=historyReady(this.db,topic);
-                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:r.message_json?JSON.parse(r.message_json):null})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id),topicState:{historyReady:ready,executable:Boolean(ready&&topic.agentAlias&&topic.model&&this.agentManager.isAgent(topic.agentAlias))} });
+                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:r.message_json?JSON.parse(r.message_json):null})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id),topicState:{historyReady:ready,executable:this.catalog(req.mobileSession).find(t=>t.key===topic.key).executable,...this.engine.configs.public(topic.key)} });
             } catch(e) { next(e); }
         });
         this.router.post('/api/conversations/:key/messages', (req,res,next) => {
@@ -102,7 +102,7 @@ class MobilePortal {
         return this.topics.filter(t=>session.scopes.includes(t.key)).map(t=>{
             const metadata=JSON.parse(this.db.prepare('SELECT metadata FROM mobile_catalog WHERE topic_key=?').get(t.key)?.metadata || '{}');
             const ready=historyReady(this.db,t),available=Boolean(ready&&t.agentAlias && t.model && this.agentManager.isAgent(t.agentAlias));
-            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,historyReady:ready,executable:available,unavailableReason:available?null:ready?'SERVER_AGENT_NOT_CONFIGURED':'HISTORY_IMPORT_PENDING',syncStatus:ready?'central':'initial-import-pending',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
+            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,historyReady:ready,executable:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key))),unavailableReason:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key)))?null:ready?(this.engine.configs.required&&!this.engine.configs.latest(t.key)?'EXECUTION_CONFIG_REQUIRED':'SERVER_AGENT_NOT_CONFIGURED'):'HISTORY_IMPORT_PENDING',...this.engine.configs.public(t.key),syncStatus:ready?'central':'initial-import-pending',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
         });
     }
     agents(session) {

@@ -13,11 +13,12 @@ function historyReady(db,topic){
 // durable write-ahead intents, replayed through CentralStore.apply after a crash.
 // No second history database or separate model/tool/Agent implementation exists.
 class ConversationExecution {
-    constructor({ store, topics, agentManager, startDelayMs = 0, maxConcurrency = 4, executionTimeoutMs = 120000, fault = () => {} }) {
+    constructor({ store, topics, agentManager, configRequired = false, startDelayMs = 0, maxConcurrency = 4, executionTimeoutMs = 120000, fault = () => {} }) {
         if (!Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 64) throw error('INVALID_EXECUTION_CONCURRENCY');
         if (!Number.isSafeInteger(executionTimeoutMs) || executionTimeoutMs < 1000 || executionTimeoutMs > 300000) throw error('INVALID_EXECUTION_TIMEOUT');
         this.store = store; this.db = store.db; this.topics = new Map(topics.map(t => [t.key, t]));
         this.agentManager = agentManager; this.startDelayMs = startDelayMs; this.fault = fault;
+        this.configs = new (require('./executionConfigs').ExecutionConfigs)(this.db, topics, agentManager, configRequired);
         this.active = new Map(); this.draining = false; this.endpoint = null;
         this.maxConcurrency = maxConcurrency; this.runningTopics = new Set(); this.inFlight = new Set();
         this.executionTimeoutMs = executionTimeoutMs;
@@ -31,6 +32,7 @@ class ConversationExecution {
                 reply_message_id TEXT, error_code TEXT, created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL, not_before INTEGER NOT NULL,
                 UNIQUE(session_id,request_id));`);
+        if (!this.db.prepare('PRAGMA table_info(mobile_executions)').all().some(c=>c.name==='config_snapshot')) this.db.exec('ALTER TABLE mobile_executions ADD COLUMN config_snapshot TEXT');
         this.recover();
         this.timer = setInterval(() => this.tick(), 100); this.timer.unref();
     }
@@ -42,7 +44,8 @@ class ConversationExecution {
     }
     get(id) { return this.db.prepare('SELECT * FROM mobile_executions WHERE id=?').get(id); }
     public(row, sessionId) {
-        return { id: row.id, topicKey: row.topic_key, requestId: row.request_id, userMessageId: row.user_message_id, state: row.state, attempts: row.attempts, replyMessageId: row.reply_message_id, errorCode: row.error_code, createdAt: row.created_at, updatedAt: row.updated_at, own: row.session_id === sessionId };
+        const config = row.config_snapshot ? JSON.parse(row.config_snapshot) : null;
+        return { id: row.id, topicKey: row.topic_key, requestId: row.request_id, userMessageId: row.user_message_id, state: row.state, attempts: row.attempts, replyMessageId: row.reply_message_id, errorCode: row.error_code, configVersion:config?.version??null,configHash:config?.hash??null,createdAt: row.created_at, updatedAt: row.updated_at, own: row.session_id === sessionId };
     }
     list(topicKey, sessionId) { return this.db.prepare('SELECT * FROM mobile_executions WHERE topic_key=? ORDER BY created_at').all(topicKey).map(r => this.public(r, sessionId)); }
     accept(sessionId, { topicKey, requestId, text }) {
@@ -60,9 +63,10 @@ class ConversationExecution {
             return { ...this.public(this.get(id), sessionId), replayed: true };
         }
         if (this.db.prepare('SELECT count(*) AS n FROM mobile_executions WHERE session_id=? AND created_at>?').get(sessionId, Date.now() - 60000).n >= 20) throw error('SUBMISSION_RATE_LIMIT', 429);
+        const config = this.configs.snapshot(topic);
         const now = Date.now(), msgId = 'mobile_' + id;
         const op = { ownerType: topic.ownerType, ownerId: topic.ownerId, topicId: topic.topicId, msgId, deviceId: 'mobile:' + sessionId, opId: 'submit:' + id, action: 'upsert', baseHash: null, message: { id: msgId, role: 'user', content: text, timestamp: now } };
-        this.db.prepare("INSERT INTO mobile_executions(id,session_id,request_id,topic_key,request_hash,user_message_id,state,pending_operation,created_at,updated_at,not_before) VALUES(?,?,?,?,?,?,'preparing',?,?,?,?)").run(id, sessionId, requestId, topicKey, requestHash, msgId, JSON.stringify(op), now, now, now + this.startDelayMs);
+        this.db.prepare("INSERT INTO mobile_executions(id,session_id,request_id,topic_key,request_hash,user_message_id,state,pending_operation,created_at,updated_at,not_before,config_snapshot) VALUES(?,?,?,?,?,?,'preparing',?,?,?,?,?)").run(id, sessionId, requestId, topicKey, requestHash, msgId, JSON.stringify(op), now, now, now + this.startDelayMs,config?JSON.stringify(config):null);
         this.fault('accepted-intent'); this.completeIntent(this.get(id));
         return { ...this.public(this.get(id), sessionId), replayed: false };
     }
@@ -108,9 +112,11 @@ class ConversationExecution {
         if (!this.db.prepare("UPDATE mobile_executions SET state='running',attempts=attempts+1,updated_at=? WHERE id=? AND state='queued'").run(Date.now(), row.id).changes) return;
         const controller = new AbortController(); this.active.set(row.id, controller); let deadline;
         try {
-            const topic = this.topics.get(row.topic_key);
+            const published = row.config_snapshot ? JSON.parse(row.config_snapshot) : null;
+            const topic = {...this.topics.get(row.topic_key),...(published||{})};
             if (!topic || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_CONFIGURED');
-            const prompt = await this.agentManager.getAgentPrompt(topic.agentAlias);
+            if (!published && this.configs.required) throw error('EXECUTION_CONFIG_REQUIRED');
+            const prompt = published ? published.systemPrompt : await this.agentManager.getAgentPrompt(topic.agentAlias);
             // Keep later submissions outside this task's snapshot, but include
             // replies from completed predecessor jobs even if they published
             // after this user message was accepted. No new state/schema needed.

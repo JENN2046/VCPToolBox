@@ -88,6 +88,7 @@ test('canonical/hash/protocol bytes match their audited V1 provenance', () => {
     for (const item of JSON.parse(fs.readFileSync(path.resolve(__dirname, '../Plugin/NativeSync/SOURCE_PROVENANCE.json'), 'utf8'))) {
         if (item.destination === 'sync/centralStore.js') continue;
         const bytes = fs.readFileSync(path.resolve(__dirname, '../Plugin/NativeSync', item.destination));
-        assert.equal(crypto.createHash('sha256').update(bytes.toString('utf8').replaceAll('\r\n', '\n')).digest('hex'), item.destinationNormalizedLfSha256);
+        const checked = item.destinationByteSha256 ? bytes : bytes.toString('utf8').replaceAll('\r\n', '\n');
+        assert.equal(crypto.createHash('sha256').update(checked).digest('hex'), item.destinationByteSha256||item.destinationNormalizedLfSha256);
     }
 });
