@@ -16,6 +16,7 @@ async function main(){
  process.env.NativeSyncDataDir=data;process.env.NativeMobileOrigin=ORIGIN;
  process.env.NativeMobileTopics=JSON.stringify(config.topics);process.env.NativeMobileBackendUrl='http://wp10.unicorn.org.cn:13546';
  process.env.NativeMobileKeyExchangeEnabled='true';process.env.NativeMobileSessionHours='720';process.env.NativeMobilePwaDir=path.join(root,'Plugin/NativeSync/mobile-dist');
+ process.env.NativeMobileMaxConcurrency=String(config.NativeMobileMaxConcurrency??4);
  process.env.DebugMode='false';process.env.PORT='8888';
  const authority=require('/app/VCPToolBox/modules/agentManager');await authority.initialize(false);
  const plugin=require('./Plugin/NativeSync/native-sync');let credential;
