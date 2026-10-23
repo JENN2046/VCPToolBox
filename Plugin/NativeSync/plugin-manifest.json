@@ -26,6 +26,7 @@
     "NativeMobileStartDelayMs": "integer",
     "NativeMobileMaxConcurrency": "integer",
     "NativeMobileExecutionTimeoutMs": "integer",
+    "NativeMobileGroupIdleTimeoutMs": "integer",
     "NativeMobileBackendUrl": "string",
     "NativeMobileKeyExchangeEnabled": "boolean",
     "NativeMobileSessionHours": "integer"

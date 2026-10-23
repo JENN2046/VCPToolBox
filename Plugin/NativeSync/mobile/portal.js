@@ -16,7 +16,8 @@ class MobilePortal {
         if (!Array.isArray(list) || !list.length || list.length > 8) throw error('EXPLICIT_MOBILE_TOPICS_REQUIRED');
         this.topics = list.map(t => {
             identity({ ...t, msgId: '_' });
-            if (t.ownerType !== 'agent' || !/^[a-zA-Z0-9_-]{1,64}$/.test(t.key)) throw error('INVALID_MOBILE_TOPIC');
+            if (!['agent','group'].includes(t.ownerType) || !/^[a-zA-Z0-9_-]{1,64}$/.test(t.key)) throw error('INVALID_MOBILE_TOPIC');
+            if(t.ownerType==='group'&&config.NativeMobileConfigSync!==true)throw error('GROUP_EXECUTION_CONFIG_REQUIRED');
             return { ...t };
         });
         if (new Set(this.topics.map(t=>t.key)).size !== this.topics.length) throw error('DUPLICATE_MOBILE_TOPIC');
@@ -27,12 +28,12 @@ class MobilePortal {
             CREATE TABLE IF NOT EXISTS mobile_sessions(hash TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,expires INTEGER NOT NULL,scopes TEXT NOT NULL);`);
         if(!this.db.prepare('PRAGMA table_info(mobile_sessions)').all().some(c=>c.name==='last_topic_key'))this.db.exec('ALTER TABLE mobile_sessions ADD COLUMN last_topic_key TEXT');
         if(config.NativeMobileAttachments===true&&config.NativeMobileConfigSync!==true)throw error('ATTACHMENTS_REQUIRE_VERSIONED_CONFIG');
-        this.engine = new ConversationExecution({ store, topics: this.topics, agentManager, configRequired: config.NativeMobileConfigSync === true, startDelayMs: Math.max(0, Math.min(Number(config.NativeMobileStartDelayMs) || 0, 10000)), maxConcurrency: config.NativeMobileMaxConcurrency === undefined ? 4 : Number(config.NativeMobileMaxConcurrency), executionTimeoutMs: config.NativeMobileExecutionTimeoutMs === undefined ? 120000 : Number(config.NativeMobileExecutionTimeoutMs) });
+        this.attachments=config.NativeMobileAttachments===true?new (require('./attachments').AttachmentStore)({store,root:config.NativeSyncDataDir,topics:this.topics}):null;
+        this.engine = new ConversationExecution({ store, topics: this.topics, agentManager, configRequired: config.NativeMobileConfigSync === true, startDelayMs: Math.max(0, Math.min(Number(config.NativeMobileStartDelayMs) || 0, 10000)), maxConcurrency: config.NativeMobileMaxConcurrency === undefined ? 4 : Number(config.NativeMobileMaxConcurrency), executionTimeoutMs: config.NativeMobileExecutionTimeoutMs === undefined ? 120000 : Number(config.NativeMobileExecutionTimeoutMs),groupIdleTimeoutMs:config.NativeMobileGroupIdleTimeoutMs===undefined?62000:Number(config.NativeMobileGroupIdleTimeoutMs) });
         this.agentManager = agentManager;
         this.connection = new MobileConnection(config, () => this.engine.endpoint?.key);
         this.sessionSeconds = Math.floor(hours * 3600);
         this.db.exec('CREATE TABLE IF NOT EXISTS mobile_catalog(topic_key TEXT PRIMARY KEY,metadata TEXT NOT NULL)');
-        this.attachments=config.NativeMobileAttachments===true?new (require('./attachments').AttachmentStore)({store,root:config.NativeSyncDataDir,topics:this.topics}):null;
         this.engine.attachments=this.attachments;
         this.router = express.Router();
         this.router.use((req, res, next) => {
@@ -83,7 +84,7 @@ class MobilePortal {
                 const rows = this.db.prepare('SELECT last_seq AS seq,message_json,deleted,msg_id AS id,metadata_version,metadata_hash FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND last_seq>? ORDER BY last_seq LIMIT 201').all(topic.ownerType,topic.ownerId,topic.topicId,after);
                 const page = rows.slice(0,200);
                 const ready=historyReady(this.db,topic);
-                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:this.store.projectMessage(r)})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id),topicState:{historyReady:ready,executable:this.catalog(req.mobileSession).find(t=>t.key===topic.key).executable,...this.engine.configs.public(topic.key)} });
+                res.json({ messages: page.map(r=>({seq:r.seq,id:r.id,deleted:Boolean(r.deleted),message:this.store.projectMessage(r)})), next:page.at(-1)?.seq??after, hasMore:rows.length>200, executions:this.engine.list(topic.key,req.mobileSession.id),topicState:{historyReady:ready,executable:this.catalog(req.mobileSession).find(t=>t.key===topic.key).executable,unavailableReason:this.catalog(req.mobileSession).find(t=>t.key===topic.key).unavailableReason,...this.engine.configs.public(topic.key)} });
             } catch(e) { next(e); }
         });
         this.router.post('/api/conversations/:key/messages', (req,res,next) => {
@@ -93,6 +94,9 @@ class MobilePortal {
                 res.status(202).json(this.engine.accept(req.mobileSession.id,{topicKey:topic.key,...req.body}));
             } catch(e) { next(e); }
         });
+        this.router.post('/api/conversations/:key/invitations',(req,res,next)=>{try{const topic=this.authorize(req);if(!req.body||Object.keys(req.body).some(k=>!['requestId','agentId'].includes(k)))throw error('INVALID_GROUP_SUBMISSION');res.status(202).json(this.engine.invite(req.mobileSession.id,{topicKey:topic.key,...req.body}));}catch(e){next(e);}});
+        this.router.post('/api/executions/:id/resolve',(req,res,next)=>{try{if(!req.body||Object.keys(req.body).some(k=>k!=='action'))throw error('INVALID_REVIEW_RESOLUTION');res.json(this.engine.resolveReview(req.params.id,req.mobileSession.id,req.body.action));}catch(e){next(e);}});
+        this.router.get('/api/groups',(req,res)=>res.json({groups:this.agents(req.mobileSession).filter(a=>a.ownerType==='group')}));
         this.router.post('/api/executions/:id/cancel', (req,res,next) => { try {res.status(202).json(this.engine.cancel(req.params.id,req.mobileSession.id));} catch(e) {next(e);} });
         this.router.use('/api/conversations/:key/attachments',require('./attachmentRoutes').attachmentRoutes({storage:()=>this.attachments,authorize:req=>this.authorize(req),principal:req=>'mobile:'+req.mobileSession.id}));
         this.router.use('/api', (_req,res) => res.status(404).json({error:{code:'NOT_FOUND'}}));
@@ -105,12 +109,15 @@ class MobilePortal {
     catalog(session) {
         return this.topics.filter(t=>session.scopes.includes(t.key)).map(t=>{
             const metadata=JSON.parse(this.db.prepare('SELECT metadata FROM mobile_catalog WHERE topic_key=?').get(t.key)?.metadata || '{}');
-            const ready=historyReady(this.db,t),available=Boolean(ready&&t.agentAlias && t.model && this.agentManager.isAgent(t.agentAlias));
-            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,historyReady:ready,executable:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key))),unavailableReason:available&&(!this.engine.configs.required||Boolean(this.engine.configs.latest(t.key)))?null:ready?(this.engine.configs.required&&!this.engine.configs.latest(t.key)?'EXECUTION_CONFIG_REQUIRED':'SERVER_AGENT_NOT_CONFIGURED'):'HISTORY_IMPORT_PENDING',attachmentsEnabled:Boolean(this.attachments),...this.engine.configs.public(t.key),syncStatus:ready?'central':'initial-import-pending',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
+            const ready=historyReady(this.db,t),published=this.engine.configs.public(t.key);let available=false,reason='SERVER_AGENT_NOT_CONFIGURED';
+            try{if(t.ownerType==='group'){const snapshot=this.engine.configs.snapshot(t);if(!snapshot)reason='EXECUTION_CONFIG_REQUIRED';else if(!['sequential','naturerandom','invite_only'].includes(snapshot.group.mode))reason='GROUP_MODE_REQUIRES_DESKTOP';else available=true;}
+            else {available=Boolean(t.agentAlias&&(published.model||t.model)&&this.agentManager.isAgent(t.agentAlias)&&(!this.engine.configs.required||this.engine.configs.snapshot(t)));reason=this.engine.configs.required&&!published.configVersion?'EXECUTION_CONFIG_REQUIRED':'SERVER_AGENT_NOT_CONFIGURED';}}catch(e){reason=e.code||'CONFIG_SNAPSHOT_CORRUPT';}
+            if(!ready){available=false;reason='HISTORY_IMPORT_PENDING';}
+            return {key:t.key,ownerId:t.ownerId,ownerType:t.ownerType,topicId:t.topicId,agentName:metadata.agentName||t.agentName||t.ownerId,topicName:metadata.topicName||t.topicName||t.topicId,avatar:metadata.avatar||null,updatedAt:metadata.updatedAt||null,model:t.model||null,historyReady:ready,executable:available,unavailableReason:available?null:reason,attachmentsEnabled:Boolean(this.attachments),...published,syncStatus:ready?'central':'initial-import-pending',...this.db.prepare('SELECT count(*) AS messageCount,coalesce(max(last_seq),0) AS seq FROM messages WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted=0').get(t.ownerType,t.ownerId,t.topicId)};
         });
     }
     agents(session) {
-        const agents=new Map();for(const t of this.catalog(session))if(!agents.has(t.ownerId))agents.set(t.ownerId,{id:t.ownerId,name:t.agentName,avatar:t.avatar,model:t.model,executable:t.executable,unavailableReason:t.unavailableReason});return [...agents.values()];
+        const agents=new Map();for(const t of this.catalog(session))if(!agents.has(JSON.stringify([t.ownerType,t.ownerId])))agents.set(JSON.stringify([t.ownerType,t.ownerId]),{id:t.ownerId,ownerType:t.ownerType,name:t.agentName,avatar:t.avatar,model:t.model,executable:t.executable,unavailableReason:t.unavailableReason});return [...agents.values()];
     }
     publishCatalog(body) {
         if (!body || Object.keys(body).some(k=>k!=='topics') || !Array.isArray(body.topics) || body.topics.length>this.topics.length) throw error('INVALID_CATALOG');

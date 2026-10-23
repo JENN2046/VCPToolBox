@@ -13,7 +13,7 @@ function historyReady(db,topic){
 // durable write-ahead intents, replayed through CentralStore.apply after a crash.
 // No second history database or separate model/tool/Agent implementation exists.
 class ConversationExecution {
-    constructor({ store, topics, agentManager, configRequired = false, startDelayMs = 0, maxConcurrency = 4, executionTimeoutMs = 120000, fault = () => {} }) {
+    constructor({ store, topics, agentManager, configRequired = false, startDelayMs = 0, maxConcurrency = 4, executionTimeoutMs = 120000, groupIdleTimeoutMs = 62000, fault = () => {} }) {
         if (!Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 64) throw error('INVALID_EXECUTION_CONCURRENCY');
         if (!Number.isSafeInteger(executionTimeoutMs) || executionTimeoutMs < 1000 || executionTimeoutMs > 300000) throw error('INVALID_EXECUTION_TIMEOUT');
         this.store = store; this.db = store.db; this.topics = new Map(topics.map(t => [t.key, t]));
@@ -21,7 +21,8 @@ class ConversationExecution {
         this.configs = new (require('./executionConfigs').ExecutionConfigs)(this.db, topics, agentManager, configRequired);
         this.active = new Map(); this.draining = false; this.endpoint = null;
         this.maxConcurrency = maxConcurrency; this.runningTopics = new Set(); this.inFlight = new Set();
-        this.executionTimeoutMs = executionTimeoutMs;
+        if(!Number.isSafeInteger(groupIdleTimeoutMs)||groupIdleTimeoutMs<1000||groupIdleTimeoutMs>300000)throw error('INVALID_GROUP_IDLE_TIMEOUT');
+        this.executionTimeoutMs = executionTimeoutMs;this.groupIdleTimeoutMs=groupIdleTimeoutMs;
         this.scheduling = false; this.wakePending = false;
         this.db.exec(`PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS mobile_executions (
@@ -34,6 +35,7 @@ class ConversationExecution {
                 UNIQUE(session_id,request_id));`);
         if (!this.db.prepare('PRAGMA table_info(mobile_executions)').all().some(c=>c.name==='config_snapshot')) this.db.exec('ALTER TABLE mobile_executions ADD COLUMN config_snapshot TEXT');
         if (!this.db.prepare('PRAGMA table_info(mobile_executions)').all().some(c=>c.name==='request_payload')) this.db.exec('ALTER TABLE mobile_executions ADD COLUMN request_payload TEXT');
+        require('./groupTurn').schema(this);
         this.recover();
         this.timer = setInterval(() => this.tick(), 100); this.timer.unref();
     }
@@ -41,18 +43,20 @@ class ConversationExecution {
         for (const row of this.db.prepare("SELECT * FROM mobile_executions WHERE state IN ('preparing','publishing') ORDER BY created_at").all()) this.completeIntent(row);
         // A lost in-flight result may already have executed external tools.
         // Resume queued work, but never automatically repeat uncertain execution.
-        this.db.prepare("UPDATE mobile_executions SET state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE 'failed' END,error_code=CASE WHEN cancel_requested=1 THEN NULL ELSE 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' END,updated_at=? WHERE state IN ('running','cancelling')").run(Date.now());
+        this.db.prepare("UPDATE mobile_executions SET state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE 'failed' END,error_code=CASE WHEN cancel_requested=1 THEN NULL ELSE 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' END,updated_at=? WHERE state IN ('running','cancelling','waiting_approval') AND coalesce(kind,'') NOT IN ('group_message','group_invitation')").run(Date.now());
+        require('./groupTurn').recover(this);
     }
-    get(id) { return this.db.prepare('SELECT * FROM mobile_executions WHERE id=?').get(id); }
+    get(id) { return this.db.prepare('SELECT rowid AS ordinal,* FROM mobile_executions WHERE id=?').get(id); }
     public(row, sessionId) {
         const config = row.config_snapshot ? JSON.parse(row.config_snapshot) : null;
-        return { id: row.id, topicKey: row.topic_key, requestId: row.request_id, userMessageId: row.user_message_id, state: row.state, attempts: row.attempts, replyMessageId: row.reply_message_id, errorCode: row.error_code, configVersion:config?.version??null,configHash:config?.hash??null,createdAt: row.created_at, updatedAt: row.updated_at, own: row.session_id === sessionId,...(row.session_id===sessionId&&row.request_payload?{submission:JSON.parse(row.request_payload)}:{}) };
+        return { id: row.id, topicKey: row.topic_key, requestId: row.request_id, userMessageId: row.user_message_id, state: row.state, attempts: row.attempts, replyMessageId: row.reply_message_id, errorCode: row.error_code, configVersion:config?.version??null,configHash:config?.hash??null,createdAt: row.created_at, updatedAt: row.updated_at, own: row.session_id === sessionId,...(require('./groupTurn').isGroup(row)?require('./groupTurn').publicState(this,row):{}),...(row.session_id===sessionId&&row.request_payload?{submission:JSON.parse(row.request_payload)}:{}) };
     }
     list(topicKey, sessionId) { return this.db.prepare('SELECT * FROM mobile_executions WHERE topic_key=? ORDER BY created_at').all(topicKey).map(r => this.public(r, sessionId)); }
     accept(sessionId, { topicKey, requestId, text, attachments = [] }) {
         if(!Array.isArray(attachments))throw error('INVALID_ATTACHMENT_SUBMISSION');
         const topic = this.topics.get(topicKey);
         if (!topic) throw error('TOPIC_NOT_ALLOWED', 403);
+        if(topic.ownerType==='group'){if(!historyReady(this.db,topic))throw error('HISTORY_IMPORT_PENDING',409);return require('./groupTurn').accept(this,sessionId,{topicKey,requestId,text,attachments});}
         if (!topic.agentAlias || (!topic.model&&!this.configs.latest(topic.key)) || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_EXECUTABLE', 409);
         if(!historyReady(this.db,topic))throw error('HISTORY_IMPORT_PENDING',409);
         if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId) || typeof text !== 'string' || (!text.trim()&&!attachments.length) || text.length > 12000 || !Array.isArray(attachments) || attachments.length>8 || attachments.some(id=>typeof id!=='string')) throw error('INVALID_TEXT_SUBMISSION');
@@ -70,7 +74,11 @@ class ConversationExecution {
         const files=attachments.length?(this.attachments?this.attachments.claim('mobile:'+sessionId,topicKey,attachments):(()=>{throw error('ATTACHMENTS_NOT_ENABLED');})()):[];
         const op = { ownerType: topic.ownerType, ownerId: topic.ownerId, topicId: topic.topicId, msgId, deviceId: 'mobile:' + sessionId, opId: 'submit:' + id, action: 'upsert', baseHash: null, message: { id: msgId, role: 'user', content: text, timestamp: now,...(files.length?{attachments:files}:{}) } };
         if(files.length)op.metadata=require('../sync/metadata').envelopeFor(op.message,1);
+        if(files.length)this.db.exec('BEGIN IMMEDIATE');
+        try {
         this.db.prepare("INSERT INTO mobile_executions(id,session_id,request_id,topic_key,request_hash,user_message_id,state,pending_operation,created_at,updated_at,not_before,config_snapshot,request_payload) VALUES(?,?,?,?,?,?,'preparing',?,?,?,?,?,?)").run(id, sessionId, requestId, topicKey, requestHash, msgId, JSON.stringify(op), now, now, now + this.startDelayMs,config?JSON.stringify(config):null,JSON.stringify({requestId,text,...(attachments.length?{attachments}:{})}));
+            if(files.length){this.attachments.bindExecution('mobile:'+sessionId,topicKey,attachments,id,msgId);this.db.exec('COMMIT');}
+        }catch(e){if(files.length)this.db.exec('ROLLBACK');throw e;}
         this.fault('accepted-intent'); this.completeIntent(this.get(id));
         return { ...this.public(this.get(id), sessionId), replayed: false };
     }
@@ -79,13 +87,14 @@ class ConversationExecution {
         const result = this.store.apply(op,{metadataPublisher:Boolean(op.metadata),attachmentPrincipal:'mobile:'+row.session_id});
         this.fault(row.state === 'preparing' ? 'user-applied' : 'reply-applied');
         if (row.state === 'preparing') this.db.prepare("UPDATE mobile_executions SET state='queued',user_seq=?,pending_operation=NULL,updated_at=? WHERE id=?").run(result.seq, Date.now(), row.id);
-        else this.db.prepare("UPDATE mobile_executions SET state='completed',reply_message_id=?,pending_operation=NULL,updated_at=? WHERE id=?").run(op.msgId, Date.now(), row.id);
+        else this.db.prepare("UPDATE mobile_executions SET state=?,reply_message_id=?,pending_operation=NULL,updated_at=? WHERE id=?").run(row.terminal_state||'completed',op.msgId, Date.now(), row.id);
+        if(row.state==='preparing'&&require('./groupTurn').isGroup(row)&&JSON.parse(row.group_plan).length===0)this.db.prepare("UPDATE mobile_executions SET state='completed' WHERE id=?").run(row.id);
         this.wake();
     }
     setEndpoint({ url, key }) {
         const parsed = new URL(url);
         if (parsed.protocol !== 'http:' || parsed.hostname !== '127.0.0.1' || parsed.pathname !== '/v1/chat/completions' || !key) throw error('INVALID_EXECUTION_ENDPOINT');
-        this.endpoint = { url: parsed.href, key }; this.tick();
+        this.endpoint = { url: parsed.href, key }; require('./groupTurn').observe(this);this.tick();
     }
     wake() {
         if (this.draining || this.wakePending) return;
@@ -97,7 +106,7 @@ class ConversationExecution {
         this.scheduling = true;
         try {
             while (!this.draining && this.inFlight.size < this.maxConcurrency) {
-                const row = this.db.prepare("SELECT * FROM mobile_executions WHERE state='queued' AND not_before<=? AND topic_key NOT IN (SELECT value FROM json_each(?)) ORDER BY created_at,rowid LIMIT 1").get(Date.now(), JSON.stringify([...this.runningTopics]));
+                const row = this.db.prepare("SELECT jobs.* FROM mobile_executions jobs WHERE jobs.state='queued' AND jobs.not_before<=? AND jobs.topic_key NOT IN (SELECT value FROM json_each(?)) AND NOT EXISTS (SELECT 1 FROM mobile_executions held WHERE held.topic_key=jobs.topic_key AND held.kind IN ('group_message','group_invitation') AND (held.state IN ('review_required','recovering','blocked_config') OR (held.review_resolved=0 AND held.error_code LIKE '%REVIEW_REQUIRED'))) ORDER BY jobs.created_at,jobs.rowid LIMIT 1").get(Date.now(), JSON.stringify([...this.runningTopics]));
                 if (!row) break;
                 // Reserve before run() reaches its first await or a reentrant tick.
                 this.runningTopics.add(row.topic_key);
@@ -113,10 +122,12 @@ class ConversationExecution {
         } finally { this.scheduling = false; }
     }
     async run(row) {
+        if(require('./groupTurn').isGroup(row))return require('./groupTurn').run(this,row);
         if (!this.db.prepare("UPDATE mobile_executions SET state='running',attempts=attempts+1,updated_at=? WHERE id=? AND state='queued'").run(Date.now(), row.id).changes) return;
-        const controller = new AbortController(); this.active.set(row.id, controller); let deadline;
+        const controller = new AbortController(); this.active.set(row.id, controller); let deadline,releaseContext,published;
         try {
-            const published = row.config_snapshot ? JSON.parse(row.config_snapshot) : null;
+            published = row.config_snapshot ? JSON.parse(row.config_snapshot) : null;
+            if(published)this.configs.verify(this.topics.get(row.topic_key),published);
             const topic = {...this.topics.get(row.topic_key),...(published||{})};
             if (!topic || !this.agentManager.isAgent(topic.agentAlias)) throw error('AGENT_NOT_CONFIGURED');
             if (!published && this.configs.required) throw error('EXECUTION_CONFIG_REQUIRED');
@@ -148,10 +159,20 @@ class ConversationExecution {
             const requestMessages=published?await require('./effectiveContext').effectiveRequest(ordered,published,row.user_message_id,async m=>m.attachments?.length?(this.attachments?this.attachments.content(row.topic_key,m,published.imageSupported,attachmentBudget):(()=>{throw error('ATTACHMENTS_NOT_ENABLED');})()):[{type:'text',text:m.content}]):[{role:'system',content:prompt},...messages];
             // Context budgeting remains in the existing ToolBox handler. The
             // complete central history is retained, including histories >200 rows.
-            deadline = AbortSignal.timeout(this.executionTimeoutMs);
-            const response = await fetch(this.endpoint.url, { method: 'POST', headers: { Authorization: `Bearer ${this.endpoint.key}`, 'Content-Type': 'application/json' }, redirect: 'error', signal: AbortSignal.any([controller.signal, deadline]), body: JSON.stringify({ model: topic.model, contextTokenLimit: Number(topic.contextTokenLimit)||32000, ...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}), ...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}), stream: false, requestId: row.id, messages: requestMessages }) });
-            if (!response.ok) {let code;try{code=(await response.json()).error?.code;}catch{}if(['unsupported_image','image_not_supported','unsupported_content_type'].includes(code))throw error('MODEL_IMAGE_UNSUPPORTED');throw error('MODEL_EXECUTION_FAILED');}
-            const result = await response.json(); const content = result.choices?.[0]?.message?.content;
+            releaseContext=require('../../../modules/requestExecutionContext').register(row.id,published);
+            const prepared=published?require('./groupRequest').sanitize(requestMessages,published.executionPolicy,true):requestMessages;
+            if(published)require('./groupRequest').assertPortableContext(prepared);
+            const packet=require('./nativePacket').nativePacket(prepared,published?{agentId:topic.ownerId,agentName:published.name||topic.agentName,topicId:topic.topicId}:null,row.id,{model:topic.model,contextTokenLimit:Number(topic.contextTokenLimit)||32000,...(Number.isFinite(topic.temperature)?{temperature:topic.temperature}:{}),...(Number.isFinite(topic.maxOutputTokens)?{max_tokens:topic.maxOutputTokens}:{}),stream:published?.streamOutput===true});
+            let content;
+            if(published){
+                const url=require('../nativeRules/Groupmodules/groupChatUrl').resolveGroupChatUrl(this.endpoint.url,published.executionPolicy?.enableVcpToolInjection);
+                const result=await require('./nativeResponse').nativeResponse({endpoint:{...this.endpoint,url},body:packet,controller,headerTimeoutMs:this.executionTimeoutMs,idleTimeoutMs:this.groupIdleTimeoutMs,onWaiting:setter=>{if(setter)this.nativeWaiters.set(row.id,{jobId:row.id,setter});else this.nativeWaiters.delete(row.id);}});
+                if(result.modelError)throw Object.assign(error('MODEL_EXECUTION_FAILED'),{partialContent:result.content||''});content=result.content;
+            }else{
+                deadline=AbortSignal.timeout(this.executionTimeoutMs);
+                const response=await fetch(this.endpoint.url,{method:'POST',headers:{Authorization:`Bearer ${this.endpoint.key}`,'Content-Type':'application/json'},redirect:'error',signal:AbortSignal.any([controller.signal,deadline]),body:JSON.stringify(packet)});
+                if(!response.ok)throw error('MODEL_EXECUTION_FAILED');const result=await response.json();content=result.choices?.[0]?.message?.content;
+            }
             if (typeof content !== 'string' || !content) throw error('INVALID_MODEL_RESULT');
             const latest = this.get(row.id);
             if (this.draining) throw error('HOST_DRAINING');
@@ -164,21 +185,32 @@ class ConversationExecution {
             const latest = this.get(row.id);
             if (!latest || latest.state === 'publishing') return; // durable result intent recovers on restart
             const state = latest.cancel_requested ? 'cancelled' : 'failed';
-            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? (this.draining ? 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' : deadline?.aborted ? 'EXECUTION_TIMEOUT_REVIEW_REQUIRED' : /^(ATTACHMENT_|ATTACHMENTS_|MODEL_IMAGE_)/.test(failure.code||'')?failure.code:'MODEL_EXECUTION_FAILED') : null, Date.now(), row.id);
-        } finally { this.active.delete(row.id); }
+            if(published&&failure.partialContent){
+                const topic=this.topics.get(row.topic_key),msgId='reply_'+row.id,code=latest.cancel_requested?'EXECUTION_CANCELLED':failure.code||'EXECUTION_INTERRUPTED_REVIEW_REQUIRED';
+                const content=failure.partialContent+'\n\n[System Message] 本轮已中断；系统不会自动重跑不确定执行。';
+                const op={ownerType:topic.ownerType,ownerId:topic.ownerId,topicId:topic.topicId,msgId,deviceId:'server:native-execution',opId:'reply:'+row.id,action:'upsert',baseHash:null,message:{id:msgId,role:'assistant',name:published.name,agentId:topic.ownerId,content,timestamp:Date.now(),finishReason:'interrupted'}};
+                this.db.prepare("UPDATE mobile_executions SET state='publishing',pending_operation=?,terminal_state=?,error_code=?,updated_at=? WHERE id=?").run(JSON.stringify(op),state,code,Date.now(),row.id);this.fault('reply-intent');this.completeIntent(this.get(row.id));return;
+            }
+            this.db.prepare('UPDATE mobile_executions SET state=?,error_code=?,updated_at=? WHERE id=?').run(state, state === 'failed' ? (this.draining ? 'EXECUTION_INTERRUPTED_REVIEW_REQUIRED' : deadline?.aborted ? 'EXECUTION_TIMEOUT_REVIEW_REQUIRED' : (/^(ATTACHMENT_|ATTACHMENTS_|MODEL_IMAGE_|CONFIG_)/.test(failure.code||'')||failure.code==='DESKTOP_CONTEXT_REQUIRED'||/^[A-Z_]+_REVIEW_REQUIRED$/.test(failure.code||''))?failure.code:'MODEL_EXECUTION_FAILED') : null, Date.now(), row.id);
+        } finally { releaseContext?.();this.nativeWaiters.delete(row.id);this.active.delete(row.id); }
     }
     cancel(id, sessionId) {
         const row = this.get(id);
+        if(require('./groupTurn').isGroup(row))return require('./groupTurn').cancel(this,id,sessionId);
         if (!row || row.session_id !== sessionId) throw error('EXECUTION_NOT_FOUND', 404);
+        if(row.state==='preparing')this.completeIntent(row);
         if (['completed','publishing','failed'].includes(row.state)) throw error('EXECUTION_ALREADY_TERMINAL', 409);
-        this.db.prepare("UPDATE mobile_executions SET cancel_requested=1,state=CASE WHEN state='running' THEN 'cancelling' ELSE 'cancelled' END,updated_at=? WHERE id=?").run(Date.now(), id);
+        this.db.prepare("UPDATE mobile_executions SET cancel_requested=1,state=CASE WHEN state IN ('running','waiting_approval') THEN 'cancelling' ELSE 'cancelled' END,updated_at=? WHERE id=?").run(Date.now(), id);
         this.active.get(id)?.abort(); return this.public(this.get(id), sessionId);
     }
+    invite(sessionId,input){const topic=this.topics.get(input.topicKey);if(!topic||!historyReady(this.db,topic))throw error('HISTORY_IMPORT_PENDING',409);return require('./groupTurn').accept(this,sessionId,input,true);}
+    resolveReview(id,sessionId,action){return require('./groupTurn').resolve(this,id,sessionId,action);}
     beginDrain() { this.draining = true; clearInterval(this.timer); for (const controller of this.active.values()) controller.abort(); }
     async close() {
         this.beginDrain();
         const settled = await Promise.allSettled([...this.inFlight]);
         const failed = settled.find(row => row.status === 'rejected');
+        this.nativeObservers?.();this.nativeObservers=null;
         if (failed) throw failed.reason;
     }
     snapshot() { return this.db.prepare('SELECT id,topic_key AS topicKey,state,attempts,cancel_requested AS cancelRequested,reply_message_id AS replyMessageId FROM mobile_executions ORDER BY created_at').all(); }

@@ -133,5 +133,59 @@
     "destination": "mobile/pdfText.js",
     "adaptation": "Minimal buffer-only adapter of FileOperator PDFParse/getText/finally-destroy branch. Add an explicit empty-text-layer refusal; retain existing parser and native engine.",
     "destinationNormalizedLfSha256": "d0e4af4acddf651c635abf372177e19613d97ad64607bac8008bc25245b5c7fa"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "modules/contextSanitizer.js",
+    "sourceByteSha256": "ddbef2472d52fb641b25d64690bde04bfc074294a8457561b5b1ed6eeacd057f",
+    "destination": "nativeRules/modules/contextSanitizer.js",
+    "adaptation": "none; byte-for-byte pure module mirror; only author pure request/context/watchdog functions consumed",
+    "destinationByteSha256": "ddbef2472d52fb641b25d64690bde04bfc074294a8457561b5b1ed6eeacd057f"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/groupChatUrl.js",
+    "sourceByteSha256": "b1fc3e79467705eef02da96710ebf9d9daadfa06ad57ed1957f2086e291b3855",
+    "destination": "nativeRules/Groupmodules/groupChatUrl.js",
+    "adaptation": "none; byte-for-byte pure module mirror; only author pure request/context/watchdog functions consumed",
+    "destinationByteSha256": "b1fc3e79467705eef02da96710ebf9d9daadfa06ad57ed1957f2086e291b3855"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/streamWatchdog.js",
+    "sourceByteSha256": "139d1b568ba40264a740c636cf65bf7e2dc20f8ba2e6d85d8bf68c8092efec60",
+    "destination": "nativeRules/Groupmodules/streamWatchdog.js",
+    "adaptation": "none; byte-for-byte pure module mirror; only author pure request/context/watchdog functions consumed",
+    "destinationByteSha256": "139d1b568ba40264a740c636cf65bf7e2dc20f8ba2e6d85d8bf68c8092efec60"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "modules/ipc/chatHandlers.js",
+    "sourceByteSha256": "32df645391fdebc3e84b1c28cecc97a0c5a9c77926b317d3e711ace68fc897bd",
+    "destination": "nativeRules/modules/chat/requestEnvelope.js",
+    "adaptation": "Extract only text hashing, timestamp/request-context extension and internal-metadata stripping pure functions; bodies unchanged; add CommonJS exports and node:crypto. No IPC/Renderer handler copied.",
+    "destinationByteSha256": "f311d0ce8e7becd4f97b4f1180a51e4051f3f66d7a7c1f1fd2df7403bc25ef96"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/groupchat.js",
+    "sourceByteSha256": "0308687cee3e373f27dfcaf3190f9a09f2c5e2c6fa9137acb6fa71342d73f0a0",
+    "destination": "nativeRules/Groupmodules/streamDelta.js",
+    "adaptation": "Extract the original four-format streaming delta precedence only; accumulatedResponse becomes a local return string. No group runtime, Renderer or scheduling code copied.",
+    "destinationByteSha256": "e8984983e8b8938e32b411565c08481d3f66d02291598fdfb187af3d775d6e80"
+  },
+  {
+    "sourceRepository": "https://github.com/lioensky/VCPChat",
+    "sourceCommit": "c1d721f27cf7b59e9cf1f861d9210005bb3aaefb",
+    "source": "Groupmodules/groupchat.js",
+    "sourceByteSha256": "0308687cee3e373f27dfcaf3190f9a09f2c5e2c6fa9137acb6fa71342d73f0a0",
+    "destination": "nativeRules/Groupmodules/modelSelection.js",
+    "adaptation": "Extract only pure resolveEffectiveModel; unchanged body; CommonJS export. No Renderer, runtime or model engine copied.",
+    "destinationByteSha256": "1fc60600dacf29ec4601c45e9a167284db3de2a2c6df87cce0eae1fe8926298f"
   }
 ]

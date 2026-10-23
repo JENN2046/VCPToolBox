@@ -30,6 +30,7 @@ class AttachmentStore{
    CREATE TABLE IF NOT EXISTS attachment_blobs(hash TEXT PRIMARY KEY,size INTEGER NOT NULL,type TEXT NOT NULL,state TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS attachment_links(topic_identity TEXT NOT NULL,msg_id TEXT NOT NULL,attachment_id TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(topic_identity,msg_id,attachment_id));`);
   if(!this.db.prepare('PRAGMA table_info(attachment_uploads)').all().some(c=>c.name==='frame_index'))this.db.exec('ALTER TABLE attachment_uploads ADD COLUMN frame_index INTEGER');
+  if(!this.db.prepare('PRAGMA table_info(attachment_uploads)').all().some(c=>c.name==='execution_id'))this.db.exec('ALTER TABLE attachment_uploads ADD COLUMN execution_id TEXT');
   this.db.exec('CREATE TABLE IF NOT EXISTS attachment_frames(topic_identity TEXT NOT NULL,msg_id TEXT NOT NULL,attachment_id TEXT NOT NULL,frame_index INTEGER NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(topic_identity,msg_id,attachment_id,frame_index))');
   store.attachments=this;
  }
@@ -45,7 +46,7 @@ class AttachmentStore{
   for(const k of ['messageId','attachmentId'])if(input[k]!==undefined&&(typeof input[k]!=='string'||!input[k]||input[k].length>200))throw fail('INVALID_ATTACHMENT_UPLOAD',400);
   if(input.frameIndex!==undefined&&(!Number.isSafeInteger(input.frameIndex)||input.frameIndex<0||input.frameIndex>=10||!input.messageId||!input.attachmentId))throw fail('INVALID_ATTACHMENT_UPLOAD',400);
   const previous=this.db.prepare('SELECT * FROM attachment_uploads WHERE principal=? AND topic_key=? AND request_id=?').get(principal,key,input.requestId);
-  if(previous){if(previous.expires<=Date.now())throw fail('UPLOAD_EXPIRED',410);if(previous.name!==input.name||previous.size!==input.size||previous.expected_hash!==(input.expectedHash||null)||previous.msg_id!==(input.messageId||null)||previous.attachment_id!==(input.attachmentId||null)||previous.frame_index!==(input.frameIndex??null))throw fail('UPLOAD_ID_REUSED');return this.public(previous);}
+  if(previous){if(previous.expires<=Date.now())throw fail('UPLOAD_EXPIRED',410);if(previous.name!==input.name||previous.size!==input.size||previous.expected_hash!==(input.expectedHash||null)||(input.messageId!==undefined&&previous.msg_id!==input.messageId)||(input.attachmentId!==undefined&&previous.attachment_id!==input.attachmentId)||previous.frame_index!==(input.frameIndex??null))throw fail('UPLOAD_ID_REUSED');return this.public(previous);}
   if(this.db.prepare("SELECT count(*) AS n FROM attachment_uploads WHERE principal=? AND state!='ready' AND expires>?").get(principal,Date.now()).n>=16||this.db.prepare('SELECT count(*) AS n FROM attachment_uploads WHERE principal=? AND expires>?').get(principal,Date.now()+TTL-3600000).n>=200)throw fail('ATTACHMENT_UPLOAD_BUDGET',429);
   const used=this.db.prepare("SELECT (SELECT coalesce(sum(size),0) FROM attachment_blobs)+(SELECT coalesce(sum(size),0) FROM attachment_uploads WHERE state!='ready') AS n").get().n;
   if(used+input.size>MAX_STORAGE)throw fail('ATTACHMENT_STORAGE_BUDGET',413);
@@ -99,7 +100,7 @@ class AttachmentStore{
   if(stat.size>MAX_FILE)throw fail('ATTACHMENT_BLOB_CORRUPT');const bytes=fs.readFileSync(file);if(hash(bytes)!==digest)throw fail('ATTACHMENT_BLOB_CORRUPT');return bytes;
  }
  linkExisting(upload){
-  if(upload.expires<=Date.now())return;
+   if(upload.expires<=Date.now()&&(!upload.execution_id||!this.hasExecutions()||!this.db.prepare('SELECT 1 FROM mobile_executions WHERE id=? AND topic_key=? AND user_message_id=? AND ?=\'mobile:\'||session_id').get(upload.execution_id,upload.topic_key,upload.msg_id,upload.principal)))return;
   if(!upload.msg_id||!upload.attachment_id)return;
   const topic=this.topic(upload.topic_key),row=this.store.findMessage.get(topic.ownerType,topic.ownerId,topic.topicId,upload.msg_id);
   if(!row||row.deleted)return;const message=this.store.projectMessage(row),a=message.attachments?.find(a=>a.id===upload.attachment_id);
@@ -109,7 +110,8 @@ class AttachmentStore{
  associate(id,message,principal){
   if(!message?.attachments?.length)return;const topic=[...this.topics.values()].find(t=>byIdentity(t)===byIdentity(id));if(!topic)return;
   for(const a of message.attachments){const digest=a.blobHash||a.hash;if(!/^[a-f0-9]{64}$/.test(digest||''))continue;
-   const grant=this.db.prepare("SELECT id FROM attachment_uploads WHERE principal=? AND topic_key=? AND hash=? AND state='ready' AND expires>? LIMIT 1").get(principal||'',topic.key,digest,Date.now());
+   let grant=this.db.prepare("SELECT id FROM attachment_uploads WHERE principal=? AND topic_key=? AND hash=? AND state='ready' AND expires>? LIMIT 1").get(principal||'',topic.key,digest,Date.now());
+   if(!grant&&this.hasExecutions())grant=this.db.prepare("SELECT id FROM attachment_uploads WHERE principal=? AND topic_key=? AND hash=? AND state='ready' AND execution_id IN (SELECT id FROM mobile_executions WHERE user_message_id=? AND topic_key=?) LIMIT 1").get(principal||'',topic.key,digest,id.msgId,topic.key);
    if(grant)this.db.prepare('INSERT INTO attachment_links(topic_identity,msg_id,attachment_id,hash) VALUES(?,?,?,?) ON CONFLICT(topic_identity,msg_id,attachment_id) DO UPDATE SET hash=excluded.hash').run(byIdentity(id),id.msgId,a.id,digest);
    for(const [index,frame]of(a.frameHashes||[]).entries()){const grant=this.db.prepare("SELECT 1 FROM attachment_uploads WHERE principal=? AND topic_key=? AND hash=? AND state='ready' AND expires>? LIMIT 1").get(principal||'',topic.key,frame,Date.now());if(grant)this.db.prepare('INSERT INTO attachment_frames VALUES(?,?,?,?,?) ON CONFLICT(topic_identity,msg_id,attachment_id,frame_index) DO UPDATE SET hash=excluded.hash').run(byIdentity(id),id.msgId,a.id,index,frame);}
   }
@@ -117,6 +119,12 @@ class AttachmentStore{
  claim(principal,key,ids){
   if(!Array.isArray(ids)||ids.length>8||new Set(ids).size!==ids.length)throw fail('INVALID_ATTACHMENT_SUBMISSION',400);
   return ids.map(id=>{const r=this.get(principal,key,id);if(r.state!=='ready'||r.expires<=Date.now())throw fail('UPLOAD_NOT_READY');this.readBlob(r.hash);return {id:'attachment_'+r.hash,name:r.name,type:r.actual_type,size:r.size,hash:r.hash,...(r.extracted_text!==null?{extractedText:r.extracted_text}:{}),blobHash:r.hash};});
+ }
+ hasExecutions(){return Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mobile_executions'").get());}
+ bindExecution(principal,key,ids,executionId,messageId){
+  const job=this.db.prepare('SELECT session_id,topic_key,user_message_id FROM mobile_executions WHERE id=?').get(executionId);
+  if(!job||'mobile:'+job.session_id!==principal||job.topic_key!==key||job.user_message_id!==messageId)throw fail('ATTACHMENT_NOT_ALLOWED',403);
+  for(const id of ids){const r=this.get(principal,key,id);if(r.state!=='ready')throw fail('UPLOAD_NOT_READY');this.db.prepare('UPDATE attachment_uploads SET execution_id=?,msg_id=?,attachment_id=? WHERE id=?').run(executionId,messageId,'attachment_'+r.hash,id);}
  }
  locate(key,messageId,attachmentId,read=true){
   const t=this.topic(key);identity({...t,msgId:messageId});
@@ -165,6 +173,7 @@ class AttachmentStore{
  expire(){
   const rows=this.db.prepare('SELECT * FROM attachment_uploads WHERE expires<=? LIMIT 100').all(Date.now());
   for(const r of rows){if(this.finishing.has(r.id))continue;
+   if(r.execution_id){const job=this.db.prepare('SELECT state,pending_operation FROM mobile_executions WHERE id=?').get(r.execution_id);if(job?.pending_operation)continue;this.linkExisting(r);}
    const temp=this.temporary(r.id);try{regular(temp);fs.unlinkSync(temp);}catch(e){if(e.code!=='ENOENT')throw e;}
    this.db.prepare('DELETE FROM attachment_uploads WHERE id=?').run(r.id);
    if(!r.hash||this.db.prepare('SELECT 1 FROM attachment_links WHERE hash=? LIMIT 1').get(r.hash)||this.db.prepare('SELECT 1 FROM attachment_frames WHERE hash=? LIMIT 1').get(r.hash)||this.db.prepare('SELECT 1 FROM attachment_uploads WHERE hash=? LIMIT 1').get(r.hash))continue;

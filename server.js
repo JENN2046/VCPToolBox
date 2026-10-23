@@ -563,6 +563,8 @@ app.use(cors({ origin: '*' })); // 启用 CORS，允许所有来源的跨域请�
 
 // 在路由决策之前解析请求体，以便 req.body 可用
 app.use(express.json({ limit: '300mb' }));
+// Scoped observation/cancellation only; original model and approval pipelines remain authoritative.
+app.use(require('./modules/requestExecutionContext').middleware);
 app.use(express.urlencoded({ limit: '300mb', extended: true }));
 app.use(express.text({ limit: '300mb', type: 'text/plain' })); // 新增：用于处理纯文本请求体
 

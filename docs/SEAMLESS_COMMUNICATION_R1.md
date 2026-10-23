@@ -126,3 +126,74 @@ page closes before submission, selecting the same file resumes its staged upload
 unsubmitted local file bytes are not durably cached by this UI. Accepted task
 payloads are persisted, so reopening and checking/retrying the same submission
 retains attachment IDs and does not execute another model request.
+
+## Durable Group candidate (Phase D)
+
+`NativeMobileConfigSync=true` admits explicitly scoped Group topics with the
+original `ownerType`, owner/topic IDs and host-owned `memberAliases`. Private
+versioned configurations retain native Group DTOs, ordered member snapshots,
+stream/model parameters, active Tavern rules and the whitelisted execution
+policy. Unavailable native member configurations are excluded from selection.
+JEV/Game remain history-readable and return `GROUP_MODE_REQUIRES_DESKTOP`.
+
+The existing ConversationExecution owns all scheduling, per-topic locks,
+concurrency, cancellation and lifecycle. `mobile_execution_steps` extends its
+same SQLite database; there is no second scheduler, timer or history writer.
+Each accepted turn persists its configuration version and author-selected plan
+before committing the user-message intent. Random plans are never selected
+again after acceptance. Each member has a stable step/request/reply identity;
+its result intent commits through CentralStore.apply before the next member.
+Original group context windows apply only to requests, never persistent history.
+
+The deployed pure author modules provide member selection, model resolution,
+Tavern rules, speaker formatting conventions, timestamp/request-context
+projection, stream delta precedence and watchdog notes. SOURCE_PROVENANCE.json
+records byte mirrors and minimal extractions. A central Journal watcher is
+truthfully identified as `storage:NativeSyncJournal`, with `filePath:null`;
+it does not pretend to be a Windows file watcher. User Canvas placeholders are
+explicitly unavailable in cloud requests. Desktop-only workspace/Canvas state
+is not fabricated or implicitly copied to the server.
+
+The original ToolBox HTTP handler still owns Agent expansion/AgentGuard, RAG,
+variables, model routing, tools and approval decisions. Request-scoped frozen
+native alias lookup preserves this AgentGuard path rather than inlining a
+ToolBox Agent prompt. The middleware activates only internally registered
+request IDs. Its observer exposes only waiting/started booleans and identity;
+it neither approves tools nor changes approval policies. Cancelling a pending
+request denies that original pending approval and fences later dispatch.
+
+Known member HTTP failures append an identified `[System Message]` and continue
+the original plan. Existing streamed text is retained. Header/idle timeout,
+malformed/incomplete streams, host interruption or uncertain dispatched tools
+pause dependent work without rerunning it. Original approval waits pause the
+transport watchdog. The bounded idle timeout is configured by
+`NativeMobileGroupIdleTimeoutMs` (default 62000, range 1000–300000 ms).
+
+Only the owning mobile session can cancel or resolve its task. Private HTTP
+`POST /mobile/api/conversations/:key/invitations` takes `{requestId,agentId}`.
+`POST /mobile/api/executions/:id/resolve` accepts only
+`{action:acknowledge_and_abandon_remaining}` after the person checks the original
+host. It abandons that task's remaining steps and releases the dependency hold;
+it never approves a tool or retries an uncertain step. Other sessions' queued
+work is not cancelled. This adds no public MCP tool or schema.
+
+The PWA separates Agent and Group identities, shows config versions and member
+progress, supports manual invitations, cancellation and explicit abandonment.
+Inviting a member preserves any unsent draft/files. Accepted attachment intents
+pin their staged grants across TTL expiry and restart until the same Journal
+intent associates them. No real database was inspected or changed in tests.
+
+Safety adaptation: context/thought/hidden-tool filtering failure blocks model
+execution. Automatic approval rejected a proposed catch-and-send fallback as a
+possible disclosure path; that fallback was not applied. This deliberate
+fail-closed behavior is covered by a negative-path test.
+
+Current development validation: 124/124 Ubuntu Node24 focused tests, including
+fixed-author-output parity, native PluginManager approval cancellation, Group
+Scope, crash/cancel recovery, three-mode plans and attachment-intent lifetime.
+An independent full `server.js` fixture additionally exercises native Agent,
+variables, RAG direct diary, ContextFolding, multimodal bytes, three-member relay,
+ordinary error continuation, a native read-only tool and restart without replay.
+All models in this evidence are synthetic. Physical Windows/Android/iPhone and
+real provider acceptance remain separately required; this document does not
+declare production release readiness.
