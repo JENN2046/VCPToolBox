@@ -628,7 +628,7 @@ class ChannelHubService extends EventEmitter {
    * No platform names, module paths, or adapter exports are known to the core.
    * The B2 inline path does not need a local adapter instance.
    */
-  async _createAdapterInstanceFromContract(adapterConfig) {
+  async _createAdapterInstanceFromContract(adapterConfig, trustedHooks = {}) {
     if (!adapterConfig?.adapterId || !adapterConfig?.channel || !this.adapterResolver) {
       return null;
     }
@@ -636,7 +636,7 @@ class ChannelHubService extends EventEmitter {
     const { adapterId, channel } = adapterConfig;
     let instance = null;
     try {
-      instance = await this.adapterResolver(adapterConfig, this.logger);
+      instance = await this.adapterResolver(adapterConfig, this.logger, trustedHooks);
       if (!instance) return null;
       if (typeof instance.initialize !== 'function') {
         throw new Error('CHANNELHUB_ADAPTER_INITIALIZE_REQUIRED');

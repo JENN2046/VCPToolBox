@@ -1,7 +1,7 @@
 'use strict';
 const path = require('node:path');
 const fs = require('node:fs');
-let service = null, runtime = null;
+let service = null, runtime = null, managedHost = null;
 const mounted = new WeakSet();
 const pending = new Set();
 let draining = false;
@@ -44,7 +44,9 @@ async function initialize(config = {}) {
         const admin = require('./routes/admin/channelHub');
         const media = require('./routes/admin/mediaGateway');
         const internal = require('./routes/internal/channelHub');
-        admin.initialize(service); media.initialize(service.mediaGateway);
+        const { ManagedAdapterHost } = require('./managed-adapters');
+        managedHost = new ManagedAdapterHost({ service, adapterResolver });
+        admin.initialize(service, managedHost); media.initialize(service.mediaGateway);
         internal.initialize({ channelHubService: service });
         // The HTTP client can disconnect before processing ends. Track actual
         // work as well as response lifetimes so shutdown cannot close underneath it.
@@ -56,6 +58,7 @@ async function initialize(config = {}) {
             return operation;
         };
         draining = false;
+        await managedHost.startActive();
     } catch (error) {
         await shutdown();
         throw error;
@@ -106,13 +109,14 @@ function registerRoutes(app, adminApiRouter, _config, _projectBasePath) {
 }
 
 function setExecutionEndpoint(endpoint) { runtime?.setEndpoint(endpoint); }
-function beginDrain() { draining = true; runtime?.beginDrain(); service?.deliveryOutbox?.stop(); }
+function beginDrain() { draining = true; managedHost?.beginDrain(); runtime?.beginDrain(); service?.deliveryOutbox?.stop(); }
 async function shutdown() {
     beginDrain();
     await runtime?.close();
     await Promise.allSettled([...pending]);
+    await managedHost?.shutdown();
     await service?.shutdown();
-    service = null; runtime = null;
+    service = null; runtime = null; managedHost = null;
 }
 function snapshot() { return { ready: Boolean(service?.initialized) && !draining, deliveryMode: 'inline' }; }
 module.exports = { initialize, registerRoutes, shutdown, beginDrain, setExecutionEndpoint, snapshot };
