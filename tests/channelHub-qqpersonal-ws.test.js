@@ -153,6 +153,33 @@ test('one NapCat WS does inbound QQ -> ChannelHub -> Agent -> outbound private a
   assert.equal(napcat.state.connections, 1, 'manual stop cannot auto-reconnect');
 });
 
+test('same QQ conversation is FIFO while replies still share the same WebSocket', async t => {
+  const napcat = await mockNapCat(t);
+  const timeline = [];
+  const { service, host } = await setupHub(t, {
+    async invoke(envelope) {
+      const id = String(envelope.client.messageId);
+      timeline.push('start:' + id);
+      if (id === '201') await sleep(120);
+      timeline.push('end:' + id);
+      return { messages: [{ role: 'assistant', content: [{ type: 'text', text: 'reply ' + id }] }] };
+    }
+  });
+  await service.adapterRegistry.upsertAdapter({
+    adapterId: 'qq-fifo', channel: 'qq', status: 'active', config: accountConfig(napcat.url)
+  });
+  await host.startActive();
+  assert.ok(service.adapterRegistry.getAdapterInstance('qq-fifo'));
+  napcat.send(qqMessage(201));
+  napcat.send(qqMessage(202));
+  await until(() => napcat.state.api.filter(x => x.action === 'send_private_msg').length === 2, 'two ordered replies');
+  assert.deepEqual(timeline, ['start:201', 'end:201', 'start:202', 'end:202']);
+  const replies = napcat.state.api.filter(x => x.action === 'send_private_msg').map(x => JSON.stringify(x.params.message));
+  assert.match(replies[0], /reply 201/);
+  assert.match(replies[1], /reply 202/);
+  assert.equal(napcat.state.connections, 1);
+});
+
 test('managed QQ refuses unknown account and does not enable it after failure', async t => {
   const napcat = await mockNapCat(t);
   const { service, host } = await setupHub(t, { async invoke() { throw Error('Unexpected execution'); } });
