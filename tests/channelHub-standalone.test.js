@@ -13,6 +13,8 @@ test('ChannelHub is a native VCP service with a self-contained implementation', 
     assert.equal(manifest.communication.protocol, 'direct');
     for (const file of [
         'core/ChannelHubService.js',
+        'api/adapter-api.mjs',
+        'adapter-loader.js',
         'core/schemas/ChannelEventEnvelope.schema.json',
         'routes/admin/channelHub.js',
         'routes/admin/mediaGateway.js',
@@ -28,9 +30,12 @@ test('ChannelHub is a native VCP service with a self-contained implementation', 
     for (const platform of ['dingtalk', 'wecom', 'onebot']) {
         const adapterPath = path.resolve(__dirname, '../Plugin/vcp-' + platform + '-adapter/src/adapter/contract.js');
         const source = fs.readFileSync(adapterPath, 'utf8');
-        assert.ok(source.includes('ChannelHub/core/AdapterContract.js'), platform + ': contract import missing');
-        assert.ok(!source.includes('modules/channelHub/AdapterContract.js'), platform + ': stale contract import');
+        assert.ok(source.includes('ChannelHub/api/adapter-api.mjs'), platform + ': public contract import missing');
+        assert.ok(!source.includes('ChannelHub/core/AdapterContract.js'), platform + ': internal contract import');
+        assert.ok(!source.includes('modules/channelHub/AdapterContract.js'), platform + ': legacy contract import');
     }
+    const core = fs.readFileSync(path.join(pluginRoot, 'core/ChannelHubService.js'), 'utf8');
+    assert.doesNotMatch(core, /vcp-(?:dingtalk|wecom|onebot)-adapter/);
     const entry = fs.readFileSync(path.join(pluginRoot, 'channel-hub.js'), 'utf8');
     assert.doesNotMatch(entry, /\.\.\/\.\.\/(?:routes|modules\/channelHub)/);
 });

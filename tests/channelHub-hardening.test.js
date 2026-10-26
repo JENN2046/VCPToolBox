@@ -775,7 +775,11 @@ test('ChannelHubService loads DingTalk adapter contract from Plugin directory an
   };
 
   try {
-    const service = new ChannelHubService({ logger: console, config: { debugMode: false } });
+    const { discoverAdapterFactories } = require('../Plugin/ChannelHub/adapter-loader');
+    const resolver = await discoverAdapterFactories({ pluginsDir: require('node:path').resolve(__dirname, '../Plugin') });
+    const service = new ChannelHubService({
+      logger: console, config: { debugMode: false }, adapterResolver: resolver
+    });
     service.adapterRegistry = {
       registerAdapterInstance() {}
     };

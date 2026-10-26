@@ -209,6 +209,8 @@ class AdapterRegistry {
       throw new Error(`Adapter not found: ${adapterId}`);
     }
 
+    // Stop the live connection before advertising that this adapter is disabled.
+    await this.stopAdapterInstance(adapterId);
     adapter.status = ADAPTER_STATUS.INACTIVE;
     adapter.updatedAt = new Date().toISOString();
 
@@ -227,10 +229,32 @@ class AdapterRegistry {
       throw new Error(`Adapter not found: ${adapterId}`);
     }
 
+    await this.stopAdapterInstance(adapterId);
     this._cache.delete(adapterId);
-    this._instances.delete(adapterId);
     await this._persist();
     this.logger.log('[AdapterRegistry] Unregistered adapter:', adapterId);
+  }
+
+  /**
+   * Stop a concrete adapter without deleting its saved configuration.
+   * Fail closed: if shutdown fails, the caller does not report success.
+   */
+  async stopAdapterInstance(adapterId) {
+    const instance = this._instances.get(adapterId);
+    if (!instance) return false;
+    await instance.shutdown?.();
+    this._instances.delete(adapterId);
+    this.logger.log('[AdapterRegistry] Stopped runtime instance:', adapterId);
+    return true;
+  }
+
+  async shutdownAllInstances() {
+    const failures = [];
+    for (const adapterId of [...this._instances.keys()]) {
+      try { await this.stopAdapterInstance(adapterId); }
+      catch (error) { failures.push(new Error(`CHANNELHUB_ADAPTER_SHUTDOWN_FAILED:${adapterId}`, { cause: error })); }
+    }
+    if (failures.length) throw new AggregateError(failures, 'CHANNELHUB_ADAPTER_SHUTDOWN_INCOMPLETE');
   }
 
   registerAdapterInstance(adapterId, instance) {

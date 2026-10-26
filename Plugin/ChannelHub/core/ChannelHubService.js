@@ -818,6 +818,15 @@ class ChannelHubService extends EventEmitter {
       this.eventDeduplicator?.stop();
       this.mediaGateway?.stopAutoCleanup();
 
+      // Adapter lifecycles belong to ChannelHub, not the VCP host.
+      // Keep closing telemetry even if one optional platform refuses to stop.
+      let adapterCloseError = null;
+      try { await this.adapterRegistry?.shutdownAllInstances?.(); }
+      catch (error) {
+        adapterCloseError = error;
+        this.logger.error('[ChannelHub] Adapter shutdown failed:', error);
+      }
+
       // 关闭审计日志
       if (this.auditLogger) {
         await this.auditLogger.close();
@@ -830,6 +839,7 @@ class ChannelHubService extends EventEmitter {
 
       this.initialized = false;
       this.stopping = false;
+      if (adapterCloseError) throw adapterCloseError;
 
       this.logger.log('[ChannelHub] Shutdown complete');
       this.emit('shutdown');

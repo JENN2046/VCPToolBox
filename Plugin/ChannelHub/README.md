@@ -1,18 +1,20 @@
 # ChannelHub 独立服务插件
 
-> 版本 0.2.0；基于 `codex/channelhub-native-sync-integration` 的代码收敛。默认关闭，不迁移历史数据、不启动外部渠道进程。
+> 版本 0.3.0；基于 `codex/channelhub-native-sync-integration` 的代码收敛。默认关闭，不迁移历史数据、不启动外部渠道进程。
 
 ## 结构与边界
 
 此插件的所有 ChannelHub 核心代码、管理页与路由均位于 `Plugin/ChannelHub/`：
 
-- `core/`：适配器协议、独立状态、消息标准化、去重、会话映射、可观测性、媒体与回发结构
+- `api/adapter-api.mjs`：公开、稳定的适配器契约（API v1，供外部适配器使用）
+- `adapter-loader.js`：只读取已安装适配器的 `channelhub-adapter.json` 声明，按需创建实例
+- `core/`：内部实现、独立状态、消息标准化、去重、会话映射、可观测性、媒体与回发结构
 - `routes/`：宿主管理员 API、媒体管理 API、Bearer 保护的兼容路由、独立适配器密钥保护的 B2 事件
 - `ui/`：自包含的轻量管理页，可直接访问 `/admin_api/channelHub/ui`（宿主管理员认证）
 - `channel-hub.js`：可选 service 插件入口、挂载与停止；`host-runtime.js`：调用宿主原生对话执行链
 - `plugin-manifest.json` 与 `config.env.example`：标准 VCP 插件发现与配置
 
-不会复制 AgentManager、VCP 模型路由、工具运行器、NativeSync 或整个插件管理器；唯一宿主源码依赖为 VCP 自带的 `modules/agentManager` 和既有 service 路由契约。外部平台适配器（钉钉、企业微信、OneBot）为可选同级插件；它们的契约继承改为从 `Plugin/ChannelHub/core/AdapterContract.js` 导入，未安装不影响 ChannelHub 自身初始化。钉钉主入口已区分 B2 inline 与旧 outbox jobId，避免 inline 成功后不发送或重复发送。未完成的飞书接入不能宣称可用。
+不会复制 AgentManager、VCP 模型路由、工具运行器、NativeSync 或整个插件管理器；唯一宿主源码依赖为 VCP 自带的 `modules/agentManager` 和既有 service 路由契约。外部平台适配器（钉钉、企业微信、OneBot）为可选同级插件；它们只依赖公开的 `Plugin/ChannelHub/api/adapter-api.mjs`，未安装不影响 ChannelHub 自身初始化。钉钉主入口已区分 B2 inline 与旧 outbox jobId，避免 inline 成功后不发送或重复发送。未完成的飞书接入不能宣称可用。
 
 ## 安装
 
@@ -33,6 +35,31 @@ ChannelHubTimeoutMs=120000
 `PORT` 和 `Key` **直接由已有 VCP PluginManager 注入**，插件只向 `127.0.0.1:PORT/v1/chat/completions` 发起请求，不需要在 `server.js` 单独为 ChannelHub 注入密钥。缺少宿主 PORT/Key 时返回明确初始化错误；不允许从渠道事件覆盖目标 URL、模型或 API Key。
 
 发布分支通过 `.github/workflows/channelhub-standalone.yml` 自动执行独立回归，并产生包含 `ChannelHub/` 顶层目录的 ZIP 构建物。ZIP 只是安装候选包，不能替代真实渠道验收。
+
+## 适配器公共接口（API v1）
+
+适配器独立安装在 `Plugin/<AdapterName>/`，ChannelHub 不内置任何平台实现，也不会主动启动平台接收进程。要参与 ChannelHub 的内建适配器运行时，适配器目录需要自行提供 `channelhub-adapter.json`：
+
+```json
+{
+  "apiVersion": 1,
+  "channels": ["example"],
+  "entryPoint": "src/adapter/contract.js",
+  "exportName": "ExampleAdapter"
+}
+```
+
+平台实现通过 ESM 明确导入公开类：
+
+```js
+import { AdapterContract } from '../../../ChannelHub/api/adapter-api.mjs';
+```
+
+`entryPoint` 只能指向该适配器安装目录内的本地文件；重复声明同一 channel 时该 channel 禁用，不能靠扫描顺序选择任意实现。发现阶段只读清单，不运行代码；B1 解码/旧发件箱需要本地运行时实例时才动态加载。启用新插件、变更清单或卸载适配器后需要重启 VCP 才会刷新发现结果。适配器配置的密钥和渠道状态仍由 ChannelHub 原有管理接口处理，不写入清单。
+
+若适配器是独立的钉钉 Stream、企业微信回调或 OneBot 进程，可只使用公开的 `POST /plugin-callback/ChannelHub/events` B2 HTTP 协议，无须加载进程内的适配器类。ChannelHub 对平台代码零硬编码，不会给未安装的渠道自动补装依赖。
+
+适配器调用 `initialize()` 后注册到现有 AdapterRegistry；管理员停用、移除适配器或 ChannelHub 关闭时，对创建过的实例调用 `shutdown()`，不会删除 ChannelHub 的持久配置。新接口没有引入第二套消息处理、鉴权或投递链。
 
 ## 路由和安全边界
 
