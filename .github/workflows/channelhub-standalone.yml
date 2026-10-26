@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - codex/channelhub-standalone-plugin
+      - codex/channelhub-qqpersonal-ws
     paths:
       - 'Plugin/ChannelHub/**'
       - 'Plugin/vcp-*-adapter/channelhub-adapter.json'
       - 'Plugin/vcp-*-adapter/src/adapter/contract.js'
+      - 'Plugin/vcp-onebot-adapter/**'
       - 'tests/channelHub*.test.js'
       - 'server.js'
       - '.github/workflows/channelhub-standalone.yml'
@@ -30,6 +32,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: ChannelHub contract and integration tests
         run: npm run test:channelhub
+      - name: OneBot adapter regression
+        run: node --test Plugin/vcp-onebot-adapter/test/onebot-adapter.test.js
       - name: NativeSync regression
         run: NODE_PATH="$PWD/node_modules" npm run test:native-sync
       - name: Build standalone ZIP

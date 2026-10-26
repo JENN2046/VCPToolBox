@@ -5,5 +5,6 @@
     "onebot"
   ],
   "entryPoint": "src/adapter/contract.js",
-  "exportName": "OneBotAdapter"
+  "exportName": "OneBotAdapter",
+  "managedInbound": true
 }

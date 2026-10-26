@@ -26,6 +26,7 @@ async function discoverAdapterFactories({ pluginsDir = path.dirname(__dirname), 
         }
         try {
             if (manifest.apiVersion !== 1 ||
+                (manifest.managedInbound !== undefined && typeof manifest.managedInbound !== 'boolean') ||
                 !Array.isArray(manifest.channels) ||
                 !manifest.channels.length ||
                 new Set(manifest.channels).size !== manifest.channels.length ||
@@ -49,7 +50,7 @@ async function discoverAdapterFactories({ pluginsDir = path.dirname(__dirname), 
                     conflicts.add(channel);
                     logger.warn?.(`[ChannelHub] Duplicate adapter declaration for ${channel}; channel disabled`);
                 } else {
-                    factories.set(channel, { root: item.name, entry: realEntry, exported: manifest.exportName });
+                    factories.set(channel, { root: item.name, entry: realEntry, exported: manifest.exportName, managedInbound: manifest.managedInbound === true });
                 }
             }
         } catch (error) {
@@ -57,7 +58,7 @@ async function discoverAdapterFactories({ pluginsDir = path.dirname(__dirname), 
         }
     }
 
-    return async function resolveAdapter(adapterConfig, adapterLogger = logger) {
+    async function resolveAdapter(adapterConfig, adapterLogger = logger, runtimeHooks = {}) {
         const channel = adapterConfig?.channel;
         if (conflicts.has(channel)) throw new Error(`CHANNELHUB_ADAPTER_CHANNEL_CONFLICT:${channel}`);
         const declaration = factories.get(channel);
@@ -81,10 +82,15 @@ async function discoverAdapterFactories({ pluginsDir = path.dirname(__dirname), 
             options: {
                 logger: adapterLogger,
                 ...(adapterConfig.config || {}),
-                ...(adapterConfig.options || {})
+                ...(adapterConfig.options || {}),
+                // Private callback injected from ChannelHub after user configuration.
+                ...(declaration.managedInbound && typeof runtimeHooks.onInboundEvent === 'function'
+                    ? { onInboundEvent: runtimeHooks.onInboundEvent } : {})
             }
         });
-    };
+    }
+    resolveAdapter.supportsManaged = channel => Boolean(factories.get(channel)?.managedInbound) && !conflicts.has(channel);
+    return resolveAdapter;
 }
 
 module.exports = { discoverAdapterFactories };
