@@ -206,6 +206,9 @@ test('online QQ Agent switch routes the next message to a different native VCP A
   await until(() => napcat.state.api.filter(x => x.action === 'send_private_msg').length === 2, 'new Agent reply');
   assert.deepEqual(observed, ['大肥鱼', '摄影助手']);
   assert.equal(napcat.state.connections, startConnections);
+  const bindings = await service.sessionBindingStore.list({ adapterId: 'qq-native-agent' });
+  assert.ok(bindings.some(record => record.agentId === '摄影助手'),
+    'persisted session binding should reflect the new Agent');
   assert.equal(JSON.stringify(napcat.state.api.filter(x => x.action === 'send_private_msg').at(-1).params.message).includes('摄影助手'), true);
   await service.adapterRegistry.disableAdapter('qq-native-agent');
 });
