@@ -31,6 +31,7 @@ const router = express.Router();
 
 // Service instance (injected during initialization)
 let channelHubService = null;
+let managedAdapterHost = null;
 
 function getServiceModule(moduleName) {
   if (!channelHubService) return null;
@@ -66,8 +67,9 @@ function fail(res, error, statusCode = 500, extra = {}) {
  * Initialize admin routes with service instance
  * @param {ChannelHubService} service - ChannelHub service instance
  */
-function initialize(service) {
+function initialize(service, host = null) {
   channelHubService = service;
+  managedAdapterHost = host;
 }
 
 // Helper to ensure service is initialized
@@ -285,13 +287,16 @@ router.post('/adapters', async (req, res) => {
     }
 
     // Use upsertAdapter instead of register for consistency
-    const adapter = await registry.upsertAdapter({
+    const definition = {
       adapterId,
       channel: adapterConfig.channel || 'unknown',
       name: adapterConfig.name || adapterId,
       config: adapterConfig.config || {},
       status: adapterConfig.status || 'inactive'
-    });
+    };
+    const adapter = managedAdapterHost
+      ? await managedAdapterHost.create(definition)
+      : await registry.upsertAdapter(definition);
 
     return ok(res, adapter, 'Adapter created successfully', 201, {
       hints: [
@@ -338,7 +343,8 @@ router.put('/adapters/:id', async (req, res) => {
       return fail(res, 'Adapter not found', 404);
     }
 
-    await registry.updateAdapter(id, updates);
+    if (managedAdapterHost) await managedAdapterHost.update(id, updates);
+    else await registry.updateAdapter(id, updates);
     const adapter = await registry.getAdapter(id);
 
     return ok(res, adapter, 'Adapter updated successfully');
@@ -373,7 +379,8 @@ router.post('/adapters/:id/enable', async (req, res) => {
     const { id } = req.params;
     const registry = getServiceModule('adapterRegistry');
 
-    await registry.enableAdapter(id);
+    if (managedAdapterHost) await managedAdapterHost.enable(id);
+    else await registry.enableAdapter(id);
 
     return ok(res, null, 'Adapter enabled successfully');
   } catch (error) {
