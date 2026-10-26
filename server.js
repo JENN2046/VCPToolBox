@@ -1611,12 +1611,9 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
     shutdownReason = reason;
     shutdownStartedAt = Date.now();
     serverLifecycleState = SERVER_LIFECYCLE.DRAINING;
-    // Drain every lifecycle-aware service before the rest of the host shuts down.
-    // Do not couple the host to a particular optional plugin name.
-    for (const [serviceName, item] of pluginManager.serviceModules) {
-        try { item.module?.beginDrain?.(); }
-        catch (error) { console.error(`[Server] Service drain failed for ${serviceName}:`, error); }
-    }
+    // Preserve NativeSync's existing shutdown behavior; ChannelHub is managed
+    // entirely through its standard service-plugin shutdown lifecycle.
+    pluginManager.getServiceModule('NativeSync')?.beginDrain?.();
 
     console.log(`[Server] Initiating graceful shutdown. reason=${reason}, exitCode=${exitCode}`);
     console.log(`[Server][ShutdownTrace] Phase 0/10 - shutdown requested. activeRequests=${activeRequests.size}`);

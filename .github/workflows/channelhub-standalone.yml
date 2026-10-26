@@ -28,6 +28,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: ChannelHub contract and integration tests
         run: npm run test:channelhub
+      - name: NativeSync regression
+        run: NODE_PATH="$PWD/node_modules" npm run test:native-sync
       - name: Build standalone ZIP
         shell: bash
         run: |
