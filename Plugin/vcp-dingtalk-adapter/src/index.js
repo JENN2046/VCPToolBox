@@ -9,7 +9,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { DingTalkAdapter, createDingTalkAdapter } from './adapter/contract.js';
-import { createVcpClient } from './adapters/vcp/client.js';
+import { createVcpClient, shouldSendInlineReply } from './adapters/vcp/client.js';
 
 const logger = {
   info: (...args) => console.log('[INFO]', ...args),
@@ -162,9 +162,11 @@ async function main() {
         fileCount: richReply.files?.length || 0,
       });
 
-      // 5. Bridge 模式下由 ChannelHub DeliveryOutbox 负责出站投递，避免本地重复发送
-      if (config.useBridge) {
-        logger.info('↪ Reply delivery delegated to ChannelHub outbound pipeline', {
+      // 5. B2 inline replies are delivered by this adapter.
+      // Only a response with an actual outbox jobId is delegated to ChannelHub.
+      // Duplicate/control messages are never sent twice.
+      if (!shouldSendInlineReply(config.useBridge, vcpResponse)) {
+        logger.info('↪ Reply suppressed or delegated to ChannelHub outbox', {
           requestId,
           status: vcpResponse?.status || 'unknown',
           jobId: vcpResponse?.jobId || null,

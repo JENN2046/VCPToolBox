@@ -45,3 +45,24 @@ test('enabled ChannelHub refuses to start without injected host authority', asyn
     assert.equal(plugin.snapshot().ready, false);
     await plugin.shutdown();
 });
+
+test('DingTalk B2 inline reply is extracted and not misrouted to the old outbox', async () => {
+    const { createVcpClient, shouldSendInlineReply } =
+        await import('../Plugin/vcp-dingtalk-adapter/src/adapters/vcp/client.js');
+    const instance = createVcpClient({
+        bridgeUrl: 'http://127.0.0.1/plugin-callback/ChannelHub/events',
+        useBridge: true,
+        bridgeKey: 'synthetic-only',
+        baseUrl: 'http://127.0.0.1',
+        model: 'synthetic-model'
+    });
+    const inline = {
+        ok: true, status: 'success', jobId: null,
+        reply: { messages: [{ role: 'assistant', content: [{ type: 'text', text: 'inline hello' }] }] }
+    };
+    assert.equal(instance.extractRichReply(inline).text, 'inline hello');
+    assert.equal(shouldSendInlineReply(true, inline), true);
+    assert.equal(shouldSendInlineReply(true, { ...inline, jobId: 'queued-1' }), false);
+    assert.equal(shouldSendInlineReply(true, { ok: true, status: 'duplicate' }), false);
+    assert.equal(shouldSendInlineReply(false, { choices: [{ message: { content: 'direct hello' } }] }), true);
+});

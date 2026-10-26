@@ -94,6 +94,16 @@ function isControlStatusResponse(vcpResponse) {
   const status = String(vcpResponse.status || '').toLowerCase();
   return status === 'duplicate';
 }
+/**
+ * Delivery policy for B1 queued replies and B2 inline replies.
+ * Adapter owns platform sends; ChannelHub owns only the old queued job when
+ * an explicit jobId exists. Never reply to deduplication controls.
+ */
+export function shouldSendInlineReply(useBridge, vcpResponse) {
+  if (isControlStatusResponse(vcpResponse)) return false;
+  if (useBridge && vcpResponse && typeof vcpResponse === 'object' && vcpResponse.jobId != null) return false;
+  return true;
+}
 
 function resolveBridgeVersion(explicitBridgeVersion, envBridgeVersion = process.env.VCP_CHANNEL_HUB_VERSION) {
   const candidate = explicitBridgeVersion ?? envBridgeVersion ?? 'b1';
@@ -642,6 +652,14 @@ export function createVcpClient({
 
     if (Array.isArray(vcpResponse?.reply?.content)) {
       const text = collectTextFromContent(vcpResponse.reply.content);
+      if (text) return stripHtml(text);
+    }
+
+    if (Array.isArray(vcpResponse?.reply?.messages)) {
+      const text = vcpResponse.reply.messages
+        .map((message) => collectTextFromContent(message?.content))
+        .filter(Boolean)
+        .join('\n\n');
       if (text) return stripHtml(text);
     }
 
