@@ -58,7 +58,11 @@ async function initialize(config = {}) {
             return operation;
         };
         draining = false;
-        await managedHost.startActive();
+        // Optional QQ/NapCat must not delay VCP server bootstrap.
+        // Wait for the host loopback listener before consuming QQ events.
+        managedHost.startWhenHostListening(hostPort).catch(error => {
+            console.error('[ChannelHub] Managed adapter bootstrap failed:', error.message);
+        });
     } catch (error) {
         await shutdown();
         throw error;

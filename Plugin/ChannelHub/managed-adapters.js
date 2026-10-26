@@ -1,4 +1,23 @@
 'use strict';
+const net = require('node:net');
+
+function probeLocalListener(port) {
+    return new Promise(resolve => {
+        const socket = net.connect({ host: '127.0.0.1', port });
+        let finished = false;
+        const finish = ok => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timeout);
+            socket.destroy();
+            resolve(ok);
+        };
+        const timeout = setTimeout(() => finish(false), 250);
+        socket.once('connect', () => finish(true));
+        socket.once('error', () => finish(false));
+    });
+}
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Generic, optional adapter runtime supervisor inside ChannelHub plugin.
@@ -12,6 +31,8 @@ class ManagedAdapterHost {
         this.logger = logger;
         this.starts = new Map();
         this.stopping = false;
+        this.startup = null;
+        this.reconcileTimer = null;
     }
 
     manages(channel) {
@@ -61,6 +82,37 @@ class ManagedAdapterHost {
         return true;
     }
 
+    /**
+     * Optional channel connections are launched after the VCP host is listening.
+     * A dead NapCat instance can recover without blocking/restarting VCP.
+     */
+    async startWhenHostListening(port) {
+        const configured = await this.service.adapterRegistry.listAdapters({ status: 'active' });
+        if (!configured.some(item => this.manages(item.channel))) return;
+        if (this.startup) return this.startup;
+        this.startup = (async () => {
+            let ready = false;
+            for (let attempt = 0; attempt < 120 && !this.stopping; attempt++) {
+                if (await probeLocalListener(port)) { ready = true; break; }
+                if (!this.stopping) await sleep(250);
+            }
+            if (this.stopping) return;
+            if (!ready) {
+                this.logger.error('[ChannelHub] Host port never became ready; optional adapter startup skipped');
+                return;
+            }
+            await this.startActive();
+            if (this.stopping) return;
+            this.reconcileTimer = setInterval(() => {
+                if (!this.stopping) this.startActive().catch(error => {
+                    this.logger.error('[ChannelHub] Managed adapter reconcile failed: ' + error.message);
+                });
+            }, 30000);
+            this.reconcileTimer.unref?.();
+        })();
+        return this.startup;
+    }
+
     async startActive() {
         const list = await this.service.adapterRegistry.listAdapters({ status: 'active' });
         for (const entry of list) {
@@ -107,11 +159,14 @@ class ManagedAdapterHost {
         return this.service.adapterRegistry.updateAdapter(adapterId, updates);
     }
 
-    beginDrain() { this.stopping = true; }
+    beginDrain() {
+        this.stopping = true;
+        if (this.reconcileTimer) { clearInterval(this.reconcileTimer); this.reconcileTimer = null; }
+    }
 
     async shutdown() {
         this.beginDrain();
-        await Promise.allSettled([...this.starts.values()]);
+        await Promise.allSettled([this.startup, ...this.starts.values()].filter(Boolean));
         // ChannelHubService.shutdown owns every created adapter instance.
     }
 }
