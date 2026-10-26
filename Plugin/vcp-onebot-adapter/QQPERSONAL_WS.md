@@ -1,6 +1,6 @@
 # QQPersonal：NapCat 单 WebSocket 接入 ChannelHub
 
-版本：QQPersonal-OneBot v1.1.0 + ChannelHub v0.4.0（待真实 QQ 账号验收）。
+版本：QQPersonal-OneBot v1.1.0 + ChannelHub v0.4.1（待真实 QQ 账号验收）。
 
 ## 产品边界
 
@@ -40,6 +40,8 @@ VCP Agent / 模型 / 工具权限
 ```
 
 `expectedQqId` 是 NapCat 已登录的 **QQ 号**；`allowedUserIds` 是明确允许触发 Agent 的 QQ 号码；`allowedGroupIds` 是允许响应的群号，留空表示 **全部群聊拒绝**。QQ 群里还必须有明确的 `@自己QQ号`，`@全体成员` 不触发。没有用户白名单时插件无法启动。要绑定其他 Agent，先明确 VCP Agent 路由和实际工具权限。
+
+**ChannelHub v0.4.1 管理面板优化：** 创建时可通过「绑定 VCP Agent」下拉框选择实际 AgentManager 中的「大肥鱼」等别名；已有 QQ 适配器点击「编辑」即可更换 Agent。只切换 Agent 时保持 NapCat 长连接，不重登 QQ、不清除原会话绑定。连接地址、Token 或用户/群白名单修改仍须先停用 QQ 适配器，再保存并启用。管理页面查询不会回显已保存的 Token，留空则保留原值。实际使用模型继续由 VCP 的 ChannelHubModel/ChannelHubAgents 配置决定，不在这里创建模型。
 
 7. 点击该适配器“启用”。ChannelHub 从描述清单加载 `OneBotAdapter`，连接 NapCat 后先调用 `get_login_info` 核对实际 QQ 号。账号不一致、Token 无效、连接不可达、白名单缺失时拒绝启用并恢复 inactive。
 8. 使用**另一个**已允许的 QQ 号给专用账号发送私聊；再在允许群中明确 @ 专用账号测试回复。检查 ChannelHub 审计记录和 NapCat 的同一条 WS 上是否出现 `send_private_msg`、`send_group_msg`。再测试断网恢复、禁用后停止连接。
