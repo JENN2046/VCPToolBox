@@ -67,7 +67,7 @@ test('upstream PluginManager serves durable mobile execution and native routes o
     vm.runInNewContext(hostSource.slice(mobileStart, mobileEnd), { app, pluginManager: manager });
     app.use(express.json()); app.use(auth(key));
     manager.initializeServices(app, express.Router(), root);
-    const endpointLine = hostSource.split('\n').find(line => line.includes("?.setExecutionEndpoint?.(")); assert.ok(endpointLine);
+    const endpointLine = hostSource.split('\n').find(line => line.includes("pluginManager.setServiceExecutionEndpoint(")); assert.ok(endpointLine);
     vm.runInNewContext(endpointLine, { pluginManager: manager, bindHost: undefined, server: { address: () => ({ port: modelPort }) }, serverKey: key });
     const request = (route, { body, cookie, authorization, requestOrigin = origin } = {}) => new Promise((resolve, reject) => {
         const req = https.request({ host: '127.0.0.1', port, servername: 'localhost', ca: cert, path: route, method: body ? 'POST' : 'GET', agent: false, headers: { Origin: requestOrigin, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...(authorization ? { Authorization: 'Bearer ' + key } : {}) } }, res => { const bytes = []; res.on('data', b => bytes.push(b)); res.on('end', () => resolve({ status: res.statusCode, cookie: res.headers['set-cookie']?.[0]?.split(';')[0], data: JSON.parse(Buffer.concat(bytes)) })); }); req.on('error', reject); req.end(body ? JSON.stringify(body) : undefined);
@@ -97,6 +97,6 @@ test('upstream PluginManager serves durable mobile execution and native routes o
     assert.equal(plugin.snapshot().metrics.headSeq, before.metrics.headSeq);
     assert.equal((await request('/api/v1/sync/push', { authorization: true, body: native })).data.replayed, true);
     assert.equal(modelCalls, 3); // Reopen must not replay completed model work.
-    const drainLine = hostSource.split('\n').find(line => line.includes("?.beginDrain?.()")); assert.ok(drainLine);
+    const drainLine = hostSource.split('\n').find(line => line.includes("pluginManager.beginDrainServices()")); assert.ok(drainLine);
     vm.runInNewContext(drainLine, { pluginManager: manager });
 });

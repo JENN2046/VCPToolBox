@@ -116,6 +116,3 @@ export type * from "./tarotDivination";
 // 插件商店 API
 export { pluginStoreApi } from "./pluginStore";
 export type * from "./pluginStore";
-
-export { channelHubApi } from "./channelHub";
-export type * from "./channelHub";

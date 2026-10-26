@@ -1,0 +1,21 @@
+{
+  "name": "vcp-channelhub",
+  "version": "0.2.0",
+  "private": true,
+  "main": "channel-hub.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build:ui": "npm --prefix ui run build"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mime-types": "^3.0.1",
+    "ws": "^8.17.0"
+  },
+  "optionalDependencies": {
+    "sharp": "0.35.5"
+  }
+}

@@ -6,7 +6,7 @@ const mounted = new WeakSet();
 const pending = new Set();
 let draining = false;
 
-async function initialize(config = {}) {
+async function initialize(config = {}, dependencies = {}) {
     await shutdown();
     if (config.ChannelHubEnabled !== true) return;
     if (!path.isAbsolute(config.ChannelHubDataDir || '')) throw new Error('CHANNELHUB_ABSOLUTE_DATA_DIR_REQUIRED');
@@ -21,9 +21,10 @@ async function initialize(config = {}) {
     }
     const agents = JSON.parse(config.ChannelHubAgents || '{}');
     if (!agents || Array.isArray(agents) || typeof agents !== 'object') throw new Error('CHANNELHUB_INVALID_AGENT_MAPPING');
-    const { ChannelHubService } = require('../../modules/channelHub/ChannelHubService');
+    if (!dependencies.agentManager) throw new Error('CHANNELHUB_HOST_AGENT_MANAGER_REQUIRED');
+    const { ChannelHubService } = require('./lib/ChannelHubService');
     const { HostRuntime } = require('./host-runtime');
-    runtime = new HostRuntime({ agentManager: require('../../modules/agentManager'), agents, model: config.ChannelHubModel, timeoutMs });
+    runtime = new HostRuntime({ agentManager: dependencies.agentManager, agents, model: config.ChannelHubModel, timeoutMs });
     service = new ChannelHubService({ runtimeGateway: runtime, config: {
         baseDir, deliveryMode: 'inline', enforceAdapterIdentity: true, CHANNEL_HUB_AUTH_MODE: 'enforce',
         mediaStoragePath: path.join(baseDir, 'state/channelHub/media'),
@@ -31,9 +32,9 @@ async function initialize(config = {}) {
     } });
     try {
         await service.initialize();
-        const admin = require('../../routes/admin/channelHub');
-        const media = require('../../routes/admin/mediaGateway');
-        const internal = require('../../routes/internal/channelHub');
+        const admin = require('./routes/admin/channelHub');
+        const media = require('./routes/admin/mediaGateway');
+        const internal = require('./routes/internal/channelHub');
         admin.initialize(service); media.initialize(service.mediaGateway);
         internal.initialize({ channelHubService: service });
         // The HTTP client can disconnect before processing ends. Track actual
@@ -68,15 +69,17 @@ function dispatch(modulePath) {
 function registerRoutes(app, adminApiRouter, _config, _projectBasePath) {
     if (mounted.has(app)) return;
     mounted.add(app);
-    adminApiRouter.use('/channelHub', guard, dispatch('../../routes/admin/channelHub'));
-    adminApiRouter.use('/mediaGateway', guard, dispatch('../../routes/admin/mediaGateway'));
+    const express = require('express');
+    adminApiRouter.use('/channelHub/ui', guard, express.static(path.join(__dirname, 'ui/dist')), (_req, res) => res.status(503).type('text').send('ChannelHub UI is not built. Run npm --prefix Plugin/ChannelHub/ui ci && npm --prefix Plugin/ChannelHub/ui run build.'));
+    adminApiRouter.use('/channelHub', guard, dispatch('./routes/admin/channelHub'));
+    adminApiRouter.use('/mediaGateway', guard, dispatch('./routes/admin/mediaGateway'));
     // Legacy internal URL retains the host Bearer gate. External adapters use
     // the existing plugin-callback surface with strict, per-adapter credentials.
-    app.use('/internal/channelHub', guard, dispatch('../../routes/internal/channelHub'));
+    app.use('/internal/channelHub', guard, dispatch('./routes/internal/channelHub'));
     app.use('/plugin-callback/ChannelHub', guard, (req, res, next) => {
         if (req.method !== 'POST' || req.path !== '/events' || !req.headers['x-channel-adapter-id'] || !['2.0', 'B2'].includes(req.body?.version)) return res.status(404).end();
         next();
-    }, dispatch('../../routes/internal/channelHub'));
+    }, dispatch('./routes/internal/channelHub'));
 }
 
 function setExecutionEndpoint(endpoint) { runtime?.setEndpoint(endpoint); }

@@ -50,6 +50,7 @@
               {{ isReadmeLoading ? '读取中…' : '阅读 README' }}
             </UiButton>
           </div>
+          <a v-if="pluginUiPath" :href="pluginUiPath" target="_blank" rel="noopener">打开插件管理页</a>
           <p class="plugin-manifest-description">
             {{ pluginData.manifest.description?.trim() || '该插件暂未提供描述信息。' }}
           </p>
@@ -476,6 +477,12 @@ const {
   hasCustomFields,
   invocationCommands
 } = storeToRefs(pluginConfigStore)
+const pluginUiPath = computed(() => {
+  const data = pluginData.value
+  const value = data?.manifest.adminPanel?.uiPath
+  // Only local, admin-authenticated pages; never arbitrary manifest URLs.
+  return data?.enabled && !data.isDistributed && typeof value === 'string' && /^\/admin_api\/[A-Za-z0-9/_-]+$/.test(value) ? value : null
+})
 const isDistributedPlugin = computed(() => Boolean(pluginData.value?.isDistributed))
 const isReadmeOpen = ref(false)
 const isReadmeLoading = ref(false)

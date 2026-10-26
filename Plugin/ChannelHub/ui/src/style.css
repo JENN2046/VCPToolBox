@@ -1,0 +1,22 @@
+:root {
+  font-family: system-ui, sans-serif; color: #18202b; background: #f5f7fa;
+  --primary-text: #18202b; --secondary-text: #526171; --highlight-text: #2356a3;
+  --primary-bg: #fff; --secondary-bg: #fff; --input-bg: #f8fafc;
+  --border-color: #ccd5df; --success-color: #176342; --success-bg: #e5f4eb;
+  --danger-color: #a82737; --warning-color: #946313;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --radius-sm: 6px; --radius-md: 10px; --font-size-helper: 13px; --font-size-display: 28px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; }
+main { max-width: 1500px; margin: auto; }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: white; }
+button:disabled { cursor: default; opacity: .6; }
+.btn-primary { background: #2356a3; color: white; }
+.btn-danger { color: var(--danger-color); }
+.description { color: var(--secondary-text); }
+.material-symbols-outlined { display: none; }
+#feedback { position: sticky; top: 8px; z-index: 10; padding: 12px; margin-bottom: 16px; border: 1px solid var(--border-color); background: white; }
+#feedback[data-type="error"] { color: var(--danger-color); }
+@media (max-width: 640px) { body { padding: 12px; } }

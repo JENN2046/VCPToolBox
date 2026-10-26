@@ -69,6 +69,7 @@ export interface PluginManifest {
     invocationCommands?: PluginInvocationCommand[];
   };
   adminPanel?: {
+    uiPath?: string;
     dashboard?: {
       cards?: Array<Record<string, unknown>>;
     };
