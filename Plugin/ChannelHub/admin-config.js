@@ -96,4 +96,4 @@ function buildPatch(existing, payload, runtime) {
   return update;
 }
 
-module.exports = { publicAdapter, validateAgent, listAgents, assertPatch, buildPatch, isRecord, hideSecrets };
+module.exports = { publicAdapter, validateAgent, listAgents, assertPatch, buildPatch, isRecord, hideSecrets, rejectUnsafeKeys };

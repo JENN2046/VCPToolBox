@@ -28,6 +28,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { publicAdapter, validateAgent, listAgents, buildPatch, isRecord, rejectUnsafeKeys } = require('../../admin-config');
 
 // Service instance (injected during initialization)
 let channelHubService = null;
@@ -253,6 +254,21 @@ router.get('/health/live', async (req, res) => {
 });
 
 // ============================================================================
+// Agent catalog is provided by VCP AgentManager, not a ChannelHub-owned store.
+// ============================================================================
+router.get('/agents', async (_req, res) => {
+  try {
+    const runtime = getServiceModule('runtimeGateway');
+    return ok(res, {
+      agents: listAgents(runtime),
+      defaultModel: runtime?.model || null
+    });
+  } catch (error) {
+    return fail(res, error, 503);
+  }
+});
+
+// ============================================================================
 // Adapter Management Routes
 // ============================================================================
 
@@ -264,7 +280,7 @@ router.get('/adapters', async (req, res) => {
   try {
     const registry = getServiceModule('adapterRegistry');
     const adapters = await registry.listAdapters();
-    return ok(res, adapters);
+    return ok(res, adapters.map(publicAdapter));
   } catch (error) {
     return fail(res, error);
   }
@@ -276,35 +292,40 @@ router.get('/adapters', async (req, res) => {
  */
 router.post('/adapters', async (req, res) => {
   try {
-    const adapterConfig = req.body;
+    const data = req.body;
+    if (!isRecord(data)) return fail(res, 'CHANNELHUB_ADAPTER_CONFIG_INVALID', 400);
     const registry = getServiceModule('adapterRegistry');
-
-    // Validate required fields (support both adapterId and id for compatibility)
-    const adapterId = adapterConfig.adapterId || adapterConfig.id;
-
-    if (!adapterId) {
-      return fail(res, 'Adapter ID is required (field: adapterId or id)', 400);
+    const adapterId = data.adapterId || data.id;
+    if (typeof adapterId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(adapterId)) {
+      return fail(res, 'CHANNELHUB_ADAPTER_ID_INVALID', 400);
     }
-
-    // Use upsertAdapter instead of register for consistency
+    if (await registry.getAdapter(adapterId)) return fail(res, 'CHANNELHUB_ADAPTER_ALREADY_EXISTS', 409);
+    const channel = data.channel;
+    if (typeof channel !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(channel)) {
+      return fail(res, 'CHANNELHUB_ADAPTER_CHANNEL_INVALID', 400);
+    }
+    const config = data.config || {};
+    rejectUnsafeKeys(config);
+    if (Object.hasOwn(config, 'agentId')) validateAgent(config.agentId, getServiceModule('runtimeGateway'));
+    if (data.status && !['active', 'inactive'].includes(data.status)) {
+      return fail(res, 'CHANNELHUB_ADAPTER_STATUS_INVALID', 400);
+    }
     const definition = {
       adapterId,
-      channel: adapterConfig.channel || 'unknown',
-      name: adapterConfig.name || adapterId,
-      config: adapterConfig.config || {},
-      status: adapterConfig.status || 'inactive'
+      channel,
+      name: typeof data.name === 'string' && data.name.trim() ? data.name.trim() : adapterId,
+      config,
+      status: data.status || 'inactive'
     };
     const adapter = managedAdapterHost
       ? await managedAdapterHost.create(definition)
       : await registry.upsertAdapter(definition);
 
-    return ok(res, adapter, 'Adapter created successfully', 201, {
-      hints: [
-        'B1 compatibility is frozen. New adapters should use B2 endpoint: /internal/channelHub/events'
-      ]
+    return ok(res, publicAdapter(adapter), 'Adapter created successfully', 201, {
+      hints: ['B2 adapters use /plugin-callback/ChannelHub/events']
     });
   } catch (error) {
-    return fail(res, error, 400);
+    return fail(res, error, error.httpStatus || 400);
   }
 });
 
@@ -322,7 +343,7 @@ router.get('/adapters/:id', async (req, res) => {
       return fail(res, 'Adapter not found', 404);
     }
 
-    return ok(res, adapter);
+    return ok(res, publicAdapter(adapter));
   } catch (error) {
     return fail(res, error);
   }
@@ -335,21 +356,20 @@ router.get('/adapters/:id', async (req, res) => {
 router.put('/adapters/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
     const registry = getServiceModule('adapterRegistry');
-
     const existingAdapter = await registry.getAdapter(id);
-    if (!existingAdapter) {
-      return fail(res, 'Adapter not found', 404);
-    }
+    if (!existingAdapter) return fail(res, 'Adapter not found', 404);
 
+    // Enforce immutable adapter identity; preserve credentials not echoed to
+    // the browser; reject stale edits and validate aliases against real VCP.
+    const updates = buildPatch(existingAdapter, req.body, getServiceModule('runtimeGateway'));
     if (managedAdapterHost) await managedAdapterHost.update(id, updates);
     else await registry.updateAdapter(id, updates);
     const adapter = await registry.getAdapter(id);
 
-    return ok(res, adapter, 'Adapter updated successfully');
+    return ok(res, publicAdapter(adapter), 'Adapter updated successfully');
   } catch (error) {
-    return fail(res, error, 400);
+    return fail(res, error, error.httpStatus || 400);
   }
 });
 
