@@ -132,7 +132,7 @@ export class OneBotAdapter extends AdapterContract {
       if (typeof this.options.accessToken !== 'string' || this.options.accessToken.length < 8) {
         throw new Error('ONEBOT_MANAGED_ACCESS_TOKEN_REQUIRED');
       }
-      if (!/^\\d{5,15}$/.test(String(this.options.expectedQqId || ''))) {
+      if (!/^\d{5,15}$/.test(String(this.options.expectedQqId || ''))) {
         throw new Error('ONEBOT_MANAGED_EXPECTED_QQ_ID_REQUIRED');
       }
       if (typeof this.options.agentId !== 'string' || !this.options.agentId.trim()) {
@@ -140,11 +140,11 @@ export class OneBotAdapter extends AdapterContract {
       }
       const allowed = this.options.allowedUserIds;
       if (!Array.isArray(allowed) || !allowed.length ||
-          !allowed.every(id => /^\\d{5,15}$/.test(String(id)))) {
+          !allowed.every(id => /^\d{5,15}$/.test(String(id)))) {
         throw new Error('ONEBOT_MANAGED_ALLOWED_USERS_REQUIRED');
       }
       const groups = this.options.allowedGroupIds ?? [];
-      if (!Array.isArray(groups) || !groups.every(id => /^\\d{5,15}$/.test(String(id)))) {
+      if (!Array.isArray(groups) || !groups.every(id => /^\d{5,15}$/.test(String(id)))) {
         throw new Error('ONEBOT_MANAGED_ALLOWED_GROUPS_INVALID');
       }
       this._allowUsers = new Set(allowed.map(String));
@@ -194,7 +194,7 @@ export class OneBotAdapter extends AdapterContract {
     const me = String(this.client.selfId || this._selfId || '');
     if (!me || me !== String(this.options.expectedQqId)) return false;
     if (event.self_id == null || String(event.self_id) !== me) return false;
-    if (!/^\\d{5,15}$/.test(String(event.user_id || '')) || String(event.user_id) === me) return false;
+    if (!/^\d{5,15}$/.test(String(event.user_id || '')) || String(event.user_id) === me) return false;
     if (!this._allowUsers.has(String(event.user_id))) return false;
     if (event.message_id == null) return false;
     if (event.message_type === 'group') {
