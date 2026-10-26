@@ -12,7 +12,7 @@
 - `channel-hub.js`：可选 service 插件入口、挂载与停止；`host-runtime.js`：调用宿主原生对话执行链
 - `plugin-manifest.json` 与 `config.env.example`：标准 VCP 插件发现与配置
 
-不会复制 AgentManager、VCP 模型路由、工具运行器、NativeSync 或整个插件管理器；唯一宿主源码依赖为 VCP 自带的 `modules/agentManager` 和既有 service 路由契约。外部平台适配器（钉钉、企业微信、OneBot）为可选同级插件；未安装不影响 ChannelHub 自身初始化。未完成的飞书接入不能宣称可用。
+不会复制 AgentManager、VCP 模型路由、工具运行器、NativeSync 或整个插件管理器；唯一宿主源码依赖为 VCP 自带的 `modules/agentManager` 和既有 service 路由契约。外部平台适配器（钉钉、企业微信、OneBot）为可选同级插件；它们的契约继承改为从 `Plugin/ChannelHub/core/AdapterContract.js` 导入，未安装不影响 ChannelHub 自身初始化。未完成的飞书接入不能宣称可用。
 
 ## 安装
 

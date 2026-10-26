@@ -23,6 +23,14 @@ test('ChannelHub is a native VCP service with a self-contained implementation', 
     ]) assert.ok(fs.existsSync(path.join(pluginRoot, file)), file);
     assert.equal(fs.existsSync(path.resolve(__dirname, '../modules/channelHub')), false);
     assert.equal(fs.existsSync(path.resolve(__dirname, '../routes/internal/channelHub.js')), false);
+    // Optional sibling adapters must import the contract exported by the plugin,
+    // not the deleted modules/channelHub path.
+    for (const platform of ['dingtalk', 'wecom', 'onebot']) {
+        const adapterPath = path.resolve(__dirname, '../Plugin/vcp-' + platform + '-adapter/src/adapter/contract.js');
+        const source = fs.readFileSync(adapterPath, 'utf8');
+        assert.match(source, /ChannelHub\\/core\\/AdapterContract\\.js/);
+        assert.doesNotMatch(source, /modules\\/channelHub\\/AdapterContract\\.js/);
+    }
     const entry = fs.readFileSync(path.join(pluginRoot, 'channel-hub.js'), 'utf8');
     assert.doesNotMatch(entry, /\.\.\/\.\.\/(?:routes|modules\/channelHub)/);
 });
