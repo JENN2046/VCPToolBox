@@ -30,7 +30,8 @@
         <div class="section-header"><div><h2>渠道适配器</h2><p>创建后默认关闭，确认接入凭据和权限后再启用。</p></div></div>
         <form id="adapterForm" autocomplete="off">
           <label>适配器 ID <input name="adapterId" required maxlength="100" placeholder="my-dingtalk" pattern="[a-zA-Z0-9_-]+"></label>
-          <label>渠道类型 <select name="channel"><option value="dingtalk">钉钉</option><option value="wecom">企业微信</option><option value="qq">QQ / OneBot</option></select></label>
+          <label>渠道类型 <input name="channel" required list="channel-options" pattern="[a-z][a-z0-9_-]{0,39}" maxlength="40" placeholder="例如 dingtalk"></label>
+          <datalist id="channel-options"><option value="dingtalk"></option><option value="wecom"></option><option value="qq"></option></datalist>
           <label>Bridge Key <input name="bridgeKey" type="password" required minlength="16" placeholder="独立渠道密钥" autocomplete="new-password"></label>
           <button type="submit">添加适配器</button>
         </form>

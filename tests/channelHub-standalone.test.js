@@ -36,6 +36,8 @@ test('ChannelHub is a native VCP service with a self-contained implementation', 
     }
     const core = fs.readFileSync(path.join(pluginRoot, 'core/ChannelHubService.js'), 'utf8');
     assert.doesNotMatch(core, /vcp-(?:dingtalk|wecom|onebot)-adapter/);
+    const ui = fs.readFileSync(path.join(pluginRoot, 'ui/index.html'), 'utf8');
+    assert.match(ui, /list="channel-options"/, 'new platform channels must be enterable without changing code');
     const entry = fs.readFileSync(path.join(pluginRoot, 'channel-hub.js'), 'utf8');
     assert.doesNotMatch(entry, /\.\.\/\.\.\/(?:routes|modules\/channelHub)/);
 });

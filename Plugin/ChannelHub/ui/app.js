@@ -116,11 +116,12 @@
     const values = new FormData(form);
     const payload = {
       adapterId: String(values.get('adapterId') || '').trim(),
-      channel: String(values.get('channel') || ''),
+      channel: String(values.get('channel') || '').trim().toLowerCase(),
       config: { bridgeKey: String(values.get('bridgeKey') || '') },
       status: 'inactive'
     };
     if (!payload.adapterId || payload.config.bridgeKey.length < 16) return notify('请输入适配器 ID 和至少 16 位的独立密钥', true);
+    if (!/^[a-z][a-z0-9_-]{0,39}$/.test(payload.channel)) return notify('渠道类型只能使用小写字母、数字、下划线和连字符', true);
     busy = true;
     try {
       await api('/adapters', { method: 'POST', body: JSON.stringify(payload) });
