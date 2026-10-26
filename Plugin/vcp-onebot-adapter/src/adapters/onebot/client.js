@@ -27,7 +27,10 @@ export function createOneBotClient({ wsUrl, accessToken = '', logger = console }
   let isConnected = false;
   let reconnectAttempt = 0;
   let heartbeatTimer = null;
-  let selfId = null; // 机器人 QQ 号
+  let selfId = null; // 当前已验证的 QQ 号
+  let reconnectTimer = null;
+  let manualClose = true;
+  let connecting = null;
 
   /**
    * 生成 API 调用的 echo 字段
@@ -67,8 +70,21 @@ export function createOneBotClient({ wsUrl, accessToken = '', logger = console }
 
       pendingApiCalls.set(echo, { resolve, reject, timer });
 
-      ws.send(JSON.stringify(payload));
-      logger.debug('[onebot] API call sent:', { action, echo });
+      // A socket can close between isConnected and send().
+      try {
+        ws.send(JSON.stringify(payload), error => {
+          if (error && pendingApiCalls.has(echo)) {
+            clearTimeout(timer);
+            pendingApiCalls.delete(echo);
+            reject(error);
+          }
+        });
+        logger.debug('[onebot] API call sent:', { action, echo });
+      } catch (error) {
+        clearTimeout(timer);
+        pendingApiCalls.delete(echo);
+        reject(error);
+      }
     });
   }
 
@@ -158,91 +174,115 @@ export function createOneBotClient({ wsUrl, accessToken = '', logger = console }
     }
   }
 
+  function rejectPending(error) {
+    for (const [echo, call] of pendingApiCalls) {
+      clearTimeout(call.timer);
+      pendingApiCalls.delete(echo);
+      call.reject(error);
+    }
+  }
+
   /**
-   * 连接到 OneBot
+   * One socket handles both OneBot events and API calls. Reconnect only after
+   * unexpected loss. Manual disable/shutdown always suppresses reconnect.
    */
-  async function connect() {
-    return new Promise((resolve, reject) => {
+  function connect() {
+    if (isConnected && ws?.readyState === WebSocket.OPEN) return Promise.resolve();
+    if (connecting) return connecting;
+    manualClose = false;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+
+    connecting = new Promise((resolve, reject) => {
       const headers = {};
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
       logger.info('[onebot] Connecting to:', wsUrl);
-
-      ws = new WebSocket(wsUrl, { headers });
-
-      const connectTimeout = setTimeout(() => {
-        if (!isConnected) {
-          ws.terminate();
-          reject(new Error('Connection timeout'));
-        }
+      const socket = new WebSocket(wsUrl, { headers });
+      ws = socket;
+      let settled = false;
+      const succeed = () => { if (!settled) { settled = true; resolve(); } };
+      const fail = error => { if (!settled) { settled = true; reject(error); } };
+      const timer = setTimeout(() => {
+        fail(new Error('OneBot connection timeout'));
+        socket.terminate();
       }, 10000);
 
-      ws.on('open', () => {
-        clearTimeout(connectTimeout);
+      socket.on('open', () => {
+        clearTimeout(timer);
+        if (manualClose || ws !== socket) { socket.close(); return; }
         isConnected = true;
         reconnectAttempt = 0;
         logger.info('[onebot] WebSocket connected');
         startHeartbeat();
-        resolve();
+        succeed();
+        // Lifecycle packets are optional in some OneBot implementations.
+        // Verify selfId through an API read, including after automatic reconnect.
+        getLoginInfo().then(info => {
+          if (!manualClose && ws === socket && info?.user_id != null) {
+            selfId = String(info.user_id);
+            emitter.emit('connect', { selfId });
+          }
+        }).catch(error => {
+          logger.warn('[onebot] Could not verify QQ identity: ' + error.message);
+        });
       });
-
-      ws.on('message', handleMessage);
-
-      ws.on('pong', () => {
-        logger.debug('[onebot] Pong received');
-      });
-
-      ws.on('error', (error) => {
-        clearTimeout(connectTimeout);
+      socket.on('message', data => { if (!manualClose && ws === socket) handleMessage(data); });
+      socket.on('pong', () => logger.debug('[onebot] Pong received'));
+      socket.on('error', error => {
+        clearTimeout(timer);
         logger.error('[onebot] WebSocket error:', error);
-        emitter.emit('error', error);
+        fail(error);
+        if (emitter.listenerCount('error')) emitter.emit('error', error);
       });
-
-      ws.on('close', (code, reason) => {
-        clearTimeout(connectTimeout);
+      socket.on('close', (code, reason) => {
+        clearTimeout(timer);
+        if (ws === socket) ws = null;
         isConnected = false;
+        selfId = null;
         stopHeartbeat();
-        logger.warn('[onebot] WebSocket closed:', { code, reason: reason.toString() });
+        rejectPending(new Error('OneBot disconnected'));
+        fail(new Error('OneBot closed before opening'));
         emitter.emit('close', code, reason);
-
-        // 自动重连
-        scheduleReconnect();
+        if (!manualClose) queueMicrotask(() => { if (!manualClose) scheduleReconnect(); });
       });
-    });
+    }).finally(() => { connecting = null; });
+    return connecting;
   }
 
-  /**
-   * 安排重连
-   */
   function scheduleReconnect() {
+    if (manualClose || reconnectTimer || connecting) return;
     reconnectAttempt++;
-    const delay = Math.min(
-      RECONNECT_DELAY_BASE * Math.pow(2, reconnectAttempt - 1),
-      RECONNECT_DELAY_MAX
-    );
-
+    const delay = Math.min(RECONNECT_DELAY_BASE * 2 ** (reconnectAttempt - 1), RECONNECT_DELAY_MAX);
     logger.info(`[onebot] Reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
     emitter.emit('reconnecting', reconnectAttempt);
-
-    setTimeout(() => {
-      connect().catch((error) => {
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (manualClose || isConnected) return;
+      connect().catch(error => {
         logger.error('[onebot] Reconnect failed:', error);
+        // The failed socket's close event schedules the next attempt.
       });
     }, delay);
+    reconnectTimer.unref?.();
   }
 
-  /**
-   * 断开连接
-   */
   async function disconnect() {
+    manualClose = true;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     stopHeartbeat();
-    if (ws) {
-      ws.close();
-      ws = null;
+    rejectPending(new Error('OneBot manually disconnected'));
+    const socket = ws;
+    if (!socket) { isConnected = false; selfId = null; return; }
+    if (socket.readyState === WebSocket.CONNECTING) socket.terminate();
+    else if (socket.readyState === WebSocket.OPEN) socket.close();
+    if (socket.readyState !== WebSocket.CLOSED) {
+      await new Promise(resolve => {
+        const timer = setTimeout(() => { socket.terminate(); resolve(); }, 1000);
+        socket.once('close', () => { clearTimeout(timer); resolve(); });
+      });
     }
+    if (ws === socket) ws = null;
     isConnected = false;
+    selfId = null;
   }
 
   /**
