@@ -382,12 +382,26 @@ class ChannelHubService extends EventEmitter {
         );
       }
       envelope = validation.envelope;
+      const registeredAdapter = await this.adapterRegistry.getAdapter(adapterId);
       if (this.config.enforceAdapterIdentity) {
-        const registered = await this.adapterRegistry.getAdapter(adapterId);
-        if (!registered || (envelope.adapterId && envelope.adapterId !== adapterId) || registered.channel !== envelope.channel) {
+        if (!registeredAdapter || (envelope.adapterId && envelope.adapterId !== adapterId) ||
+            registeredAdapter.channel !== envelope.channel) {
           throw new Errors.EventValidationError('Authenticated adapter does not match event identity');
         }
         envelope.adapterId = adapterId;
+      }
+
+      // Agent ownership stays in VCP. An explicit, administrator-selected
+      // adapter binding overrides a channel-supplied target for this message,
+      // including after an online QQ Agent switch. No new Agent store.
+      const boundAgentId = registeredAdapter?.config?.agentId;
+      if (typeof boundAgentId === 'string' && boundAgentId.trim()) {
+        envelope.target = {
+          ...envelope.target,
+          agentId: boundAgentId,
+          itemType: 'agent',
+          itemId: boundAgentId
+        };
       }
 
       // 5. 事件去重

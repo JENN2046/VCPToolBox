@@ -147,16 +147,34 @@ class ManagedAdapterHost {
     }
 
     async update(adapterId, updates) {
-        const current = await this.service.adapterRegistry.getAdapter(adapterId);
+        const registry = this.service.adapterRegistry;
+        const current = await registry.getAdapter(adapterId);
         if (!current) throw new Error('Adapter not found: ' + adapterId);
-        if (this.manages(current.channel) || this.manages(updates?.channel)) {
-            if (current.status === 'active' || updates?.status === 'active') {
-                const error = new Error('CHANNELHUB_DISABLE_MANAGED_ADAPTER_BEFORE_EDIT');
-                error.httpStatus = 409;
-                throw error;
+        if (this.manages(current.channel) && current.status === 'active') {
+            // A bound Agent may be switched without touching the sole NapCat
+            // socket. ChannelHubService reads this binding for every new event.
+            const keys = Object.keys(updates || {});
+            const nextConfig = updates?.config;
+            const changes = nextConfig && typeof nextConfig === 'object' && !Array.isArray(nextConfig)
+                ? Object.keys(nextConfig).filter(key => JSON.stringify(nextConfig[key]) !== JSON.stringify(current.config?.[key]))
+                : [];
+            if (keys.length === 1 && keys[0] === 'config' &&
+                changes.length === 1 && changes[0] === 'agentId' &&
+                typeof nextConfig.agentId === 'string' && nextConfig.agentId.trim()) {
+                return registry.updateAdapter(adapterId, {
+                    config: { ...(current.config || {}), agentId: nextConfig.agentId }
+                });
             }
+            const error = new Error('CHANNELHUB_DISABLE_MANAGED_ADAPTER_BEFORE_EDIT');
+            error.httpStatus = 409;
+            throw error;
         }
-        return this.service.adapterRegistry.updateAdapter(adapterId, updates);
+        if (this.manages(updates?.channel) && updates?.status === 'active') {
+            const error = new Error('CHANNELHUB_DISABLE_MANAGED_ADAPTER_BEFORE_EDIT');
+            error.httpStatus = 409;
+            throw error;
+        }
+        return registry.updateAdapter(adapterId, updates);
     }
 
     beginDrain() {
