@@ -73,15 +73,29 @@ export class OneBotAdapter extends AdapterContract {
     this._initialized = false;
     this._selfId = null;
     this._connectionState = 'disconnected';
+    this._stopping = false;
+    this._pendingMessages = new Set();
+    this._seenMessages = new Map();
+    // Only ChannelHub's trusted runtime hook enables managed QQ mode.
+    this._managedInbound = typeof this.options.onInboundEvent === 'function';
 
     // Bind event handlers
     this.client.on('connect', ({ selfId }) => {
-      this._selfId = selfId;
+      const actualId = String(selfId || '');
+      if (this._managedInbound && this.options.expectedQqId && actualId !== String(this.options.expectedQqId)) {
+        this._connectionState = 'account_mismatch';
+        this._selfId = null;
+        this.options.logger.error('[OneBotAdapter] QQ identity mismatch; disconnecting');
+        this.client.disconnect().catch(error => this.options.logger.error('[OneBotAdapter] Disconnect failed:', error));
+        return;
+      }
+      this._selfId = actualId;
       this._connectionState = 'connected';
       this.options.logger.info('[OneBotAdapter] Connected, self_id:', selfId);
     });
 
     this.client.on('close', (code, reason) => {
+      this._selfId = null;
       this._connectionState = 'disconnected';
       this.options.logger.warn('[OneBotAdapter] WebSocket closed:', { code, reason });
     });
@@ -90,6 +104,14 @@ export class OneBotAdapter extends AdapterContract {
       this._connectionState = 'error';
       this.options.logger.error('[OneBotAdapter] WebSocket error:', error);
     });
+    if (this._managedInbound) {
+      this.client.on('message', event => {
+        const task = this._handleManagedMessage(event);
+        this._pendingMessages.add(task);
+        task.catch(error => this.options.logger.error('[OneBotAdapter] Inbound message failed:', error))
+          .finally(() => this._pendingMessages.delete(task));
+      });
+    }
   }
 
   /**
@@ -100,18 +122,51 @@ export class OneBotAdapter extends AdapterContract {
 
     this.options.logger.info('[OneBotAdapter] Initializing...');
 
-    // Validate required config
-    if (!this.options.wsUrl) {
-      throw new Error('ONEBOT_WS_URL is required');
+    // Legacy standalone mode retains its existing defaults. Managed mode
+    // requires exact account identity, explicit permissions and WS token.
+    if (!this.options.wsUrl) throw new Error('ONEBOT_WS_URL_REQUIRED');
+    if (this._managedInbound) {
+      const url = new URL(this.options.wsUrl);
+      if (!['ws:', 'wss:'].includes(url.protocol) || url.username || url.password || url.hash
+          || !url.hostname || url.hostname === '0.0.0.0') throw new Error('ONEBOT_MANAGED_WS_URL_INVALID');
+      if (typeof this.options.accessToken !== 'string' || this.options.accessToken.length < 8) {
+        throw new Error('ONEBOT_MANAGED_ACCESS_TOKEN_REQUIRED');
+      }
+      if (!/^\\d{5,15}$/.test(String(this.options.expectedQqId || ''))) {
+        throw new Error('ONEBOT_MANAGED_EXPECTED_QQ_ID_REQUIRED');
+      }
+      if (typeof this.options.agentId !== 'string' || !this.options.agentId.trim()) {
+        throw new Error('ONEBOT_MANAGED_AGENT_ID_REQUIRED');
+      }
+      const allowed = this.options.allowedUserIds;
+      if (!Array.isArray(allowed) || !allowed.length ||
+          !allowed.every(id => /^\\d{5,15}$/.test(String(id)))) {
+        throw new Error('ONEBOT_MANAGED_ALLOWED_USERS_REQUIRED');
+      }
+      const groups = this.options.allowedGroupIds ?? [];
+      if (!Array.isArray(groups) || !groups.every(id => /^\\d{5,15}$/.test(String(id)))) {
+        throw new Error('ONEBOT_MANAGED_ALLOWED_GROUPS_INVALID');
+      }
+      this._allowUsers = new Set(allowed.map(String));
+      this._allowGroups = new Set(groups.map(String));
     }
 
-    // Connect to OneBot
+    this._stopping = false;
     try {
       await this.client.connect();
+      if (this._managedInbound) {
+        const login = await this.client.getLoginInfo();
+        const account = String(login?.user_id || '');
+        if (account !== String(this.options.expectedQqId)) {
+          throw new Error('ONEBOT_MANAGED_QQ_ACCOUNT_MISMATCH');
+        }
+        this._selfId = account;
+      }
       this._initialized = true;
       this._connectionState = 'connected';
       this.options.logger.info('[OneBotAdapter] Initialized successfully');
     } catch (error) {
+      await this.client.disconnect().catch(() => {});
       this.options.logger.error('[OneBotAdapter] Connection failed:', error);
       throw error;
     }
@@ -121,16 +176,71 @@ export class OneBotAdapter extends AdapterContract {
    * Shutdown the adapter
    */
   async shutdown() {
-    if (!this._initialized) return;
-
+    this._stopping = true;
     this._initialized = false;
-    try {
-      await this.client.disconnect();
-    } catch (error) {
-      this.options.logger.error('[OneBotAdapter] Disconnect error:', error);
-    }
+    await this.client.disconnect();
+    // Work already submitted to VCP may have side effects. Never retry on
+    // shutdown or after timeout; suppress replies after deactivation.
+    await Promise.allSettled([...this._pendingMessages]);
+    this._selfId = null;
     this._connectionState = 'disconnected';
     this.options.logger.info('[OneBotAdapter] Shutdown complete');
+  }
+
+  _shouldHandleManagedMessage(event) {
+    if (!this._managedInbound || !this._initialized || this._stopping ||
+        !this.client.isConnected) return false;
+    if (event?.post_type !== 'message' || !['private', 'group'].includes(event.message_type)) return false;
+    const me = String(this.client.selfId || this._selfId || '');
+    if (!me || me !== String(this.options.expectedQqId)) return false;
+    if (event.self_id == null || String(event.self_id) !== me) return false;
+    if (!/^\\d{5,15}$/.test(String(event.user_id || '')) || String(event.user_id) === me) return false;
+    if (!this._allowUsers.has(String(event.user_id))) return false;
+    if (event.message_id == null) return false;
+    if (event.message_type === 'group') {
+      if (!this._allowGroups.has(String(event.group_id || ''))) return false;
+      const segments = Array.isArray(event.message) ? event.message : [];
+      // @all is not an explicit authorization to trigger this Agent.
+      if (!segments.some(seg => seg?.type === 'at' && String(seg.data?.qq) === me)) return false;
+    }
+    return true;
+  }
+
+  async _handleManagedMessage(event) {
+    if (!this._shouldHandleManagedMessage(event)) return;
+    const id = String(this.options.expectedQqId) + ':' + String(event.message_id);
+    const now = Date.now();
+    if (this._seenMessages.has(id) && now - this._seenMessages.get(id) < 86400000) return;
+    // Mark before invoking AI: an unknown/timeout result must not re-execute
+    // a tool when NapCat re-delivers the same OneBot event.
+    this._seenMessages.set(id, now);
+    while (this._seenMessages.size > 2000) this._seenMessages.delete(this._seenMessages.keys().next().value);
+    const envelope = await this.decodeInbound(event);
+    envelope.eventId = 'qq:' + id;
+    envelope.requestId = envelope.eventId;
+    envelope.target = {
+      agentId: this.options.agentId,
+      itemType: 'agent',
+      itemId: this.options.agentId
+    };
+    // QQ group administrator is not a VCP administrator.
+    envelope.sender.isAdmin = false;
+    envelope.sender.roles = ['external_user'];
+    envelope.runtime = { stream: false, model: null, overrides: {} };
+
+    const result = await this.options.onInboundEvent(envelope);
+    if (result?.status !== 'success' || result.jobId != null || !result.reply) return;
+    if (!this._initialized || this._stopping || !this.client.isConnected ||
+        String(this.client.selfId || '') !== String(this.options.expectedQqId)) return;
+    const platformMessages = await this.encodeOutbound(result.reply);
+    const destination = event.message_type === 'group' ? event.group_id : event.user_id;
+    await this.sendBySession({
+      conversationType: event.message_type,
+      conversationId: destination,
+      bindingKey: envelope.session.bindingKey,
+      externalSessionKey: envelope.session.externalSessionKey,
+      adapterId: envelope.adapterId
+    }, platformMessages);
   }
 
   /**
