@@ -32,8 +32,12 @@
           <label>适配器 ID <input name="adapterId" required maxlength="100" placeholder="my-dingtalk" pattern="[a-zA-Z0-9_-]+"></label>
           <label>渠道类型 <input name="channel" required list="channel-options" pattern="[a-z][a-z0-9_-]{0,39}" maxlength="40" placeholder="例如 dingtalk"></label>
           <datalist id="channel-options"><option value="dingtalk"></option><option value="wecom"></option><option value="qq"></option></datalist>
-          <label>Bridge Key <input name="bridgeKey" type="password" required minlength="16" placeholder="独立渠道密钥" autocomplete="new-password"></label>
+          <label>Bridge Key（仅 B2 外部回调使用）<input name="bridgeKey" type="password" minlength="16" placeholder="外部适配器专用；WS 内置模式留空" autocomplete="new-password"></label>
           <button type="submit">添加适配器</button>
+          <label class="wide">渠道配置 JSON
+            <textarea name="configJson" rows="7" spellcheck="false" placeholder='例如 QQ：{"wsUrl":"ws://127.0.0.1:3001/","expectedQqId":"你的QQ号","agentId":"已有Agent别名","allowedUserIds":["允许的QQ号"],"allowedGroupIds":[]}'></textarea>
+          </label>
+          <p class="wide hint">NapCat 的 OneBot Token 建议放在 VCP 后端配置的 ONEBOT_ACCESS_TOKEN 中，不要粘贴进渠道配置。保存后先确认内容，再启用。</p>
         </form>
         <div class="table-wrap"><table><thead><tr><th>适配器</th><th>渠道</th><th>状态</th><th>操作</th></tr></thead><tbody id="adapterRows"></tbody></table></div>
       </section>

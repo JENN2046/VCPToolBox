@@ -114,13 +114,22 @@
     if (busy) return;
     const form = event.currentTarget;
     const values = new FormData(form);
+    const bridgeKey = String(values.get('bridgeKey') || '');
+    let config = {};
+    try {
+      const raw = String(values.get('configJson') || '').trim();
+      if (raw) config = JSON.parse(raw);
+      if (!config || Array.isArray(config) || typeof config !== 'object') throw Error('配置必须是 JSON 对象');
+    } catch (error) { return notify('渠道配置 JSON 无效：' + error.message, true); }
+    if (bridgeKey && bridgeKey.length < 16) return notify('Bridge Key 至少需要 16 位', true);
+    if (bridgeKey) config.bridgeKey = bridgeKey;
     const payload = {
       adapterId: String(values.get('adapterId') || '').trim(),
       channel: String(values.get('channel') || '').trim().toLowerCase(),
-      config: { bridgeKey: String(values.get('bridgeKey') || '') },
+      config,
       status: 'inactive'
     };
-    if (!payload.adapterId || payload.config.bridgeKey.length < 16) return notify('请输入适配器 ID 和至少 16 位的独立密钥', true);
+    if (!payload.adapterId || (!bridgeKey && Object.keys(config).length === 0)) return notify('请输入适配器 ID 和渠道配置', true);
     if (!/^[a-z][a-z0-9_-]{0,39}$/.test(payload.channel)) return notify('渠道类型只能使用小写字母、数字、下划线和连字符', true);
     busy = true;
     try {

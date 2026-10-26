@@ -1,5 +1,5 @@
 :root{font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;color:#e8edf3;background:#0c1119;font-synthesis:none}
-*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer}
+*{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}button{cursor:pointer}
 .page{max-width:1400px;margin:auto;padding:40px 34px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:36px}
 .eyebrow{color:#82b9ca;text-transform:uppercase;letter-spacing:.18em;font-size:12px;font-weight:700}
 h1{font-size:34px;margin:10px 0 8px;letter-spacing:-.04em}h1 span{font-size:19px;color:#91a7b7;font-weight:450;letter-spacing:0}
@@ -11,8 +11,10 @@ h1{font-size:34px;margin:10px 0 8px;letter-spacing:-.04em}h1 span{font-size:19px
 .panel{padding:24px;min-width:0}.section-header{margin-bottom:18px}h2{font-size:18px;margin:0}
 form{display:grid;grid-template-columns:1.2fr 1fr 1.5fr auto;gap:10px;align-items:end;margin-bottom:24px}
 label{font-size:12px;color:#aabaca;display:grid;gap:8px}
-input,select{min-width:0;width:100%;background:#0c141e;border:1px solid #3b4c5f;border-radius:8px;color:#f1f5f9;padding:10px 11px;min-height:41px}
-input:focus,select:focus{outline:2px solid #76b3c6;outline-offset:1px}
+input,select,textarea{min-width:0;width:100%;background:#0c141e;border:1px solid #3b4c5f;border-radius:8px;color:#f1f5f9;padding:10px 11px;min-height:41px}
+textarea{resize:vertical;line-height:1.5;font-family:ui-monospace,monospace;font-size:12px}
+.wide{grid-column:1/-1}.hint{color:#90a2b2;font-size:12px;margin:0;line-height:1.6}
+input:focus,select:focus,textarea:focus{outline:2px solid #76b3c6;outline-offset:1px}
 button{background:#afd3df;border:1px solid #afd3df;color:#0a222a;border-radius:8px;padding:10px 13px;font-weight:650;min-height:41px}
 button.secondary,button.small{background:transparent;color:#c5d5dd;border-color:#3d5263}
 button.small{font-size:12px;min-height:29px;padding:5px 9px;margin:2px}
