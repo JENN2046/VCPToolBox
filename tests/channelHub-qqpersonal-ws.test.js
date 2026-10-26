@@ -180,6 +180,36 @@ test('same QQ conversation is FIFO while replies still share the same WebSocket'
   assert.equal(napcat.state.connections, 1);
 });
 
+test('online QQ Agent switch routes the next message to a different native VCP Agent without reconnecting', async t => {
+  const napcat = await mockNapCat(t);
+  const observed = [];
+  const { service, host } = await setupHub(t, {
+    async invoke(envelope, route) {
+      observed.push(route.agentId);
+      return { messages: [{ role: 'assistant', content: [{ type: 'text', text: 'reply-' + route.agentId }] }] };
+    }
+  });
+  await service.adapterRegistry.upsertAdapter({
+    adapterId: 'qq-native-agent', channel: 'qq', status: 'active',
+    config: accountConfig(napcat.url, { agentId: '大肥鱼' })
+  });
+  await host.startActive();
+  const socketOwner = service.adapterRegistry.getAdapterInstance('qq-native-agent');
+  assert.ok(socketOwner);
+  napcat.send(qqMessage(410));
+  await until(() => napcat.state.api.some(x => x.action === 'send_private_msg'), 'original Agent reply');
+  assert.deepEqual(observed, ['大肥鱼']);
+  const startConnections = napcat.state.connections;
+  await host.update('qq-native-agent', { config: { agentId: '摄影助手' } });
+  assert.equal(service.adapterRegistry.getAdapterInstance('qq-native-agent'), socketOwner);
+  napcat.send(qqMessage(411));
+  await until(() => napcat.state.api.filter(x => x.action === 'send_private_msg').length === 2, 'new Agent reply');
+  assert.deepEqual(observed, ['大肥鱼', '摄影助手']);
+  assert.equal(napcat.state.connections, startConnections);
+  assert.equal(JSON.stringify(napcat.state.api.filter(x => x.action === 'send_private_msg').at(-1).params.message).includes('摄影助手'), true);
+  await service.adapterRegistry.disableAdapter('qq-native-agent');
+});
+
 test('managed QQ refuses unknown account and does not enable it after failure', async t => {
   const napcat = await mockNapCat(t);
   const { service, host } = await setupHub(t, { async invoke() { throw Error('Unexpected execution'); } });
