@@ -24,6 +24,9 @@ th{color:#8ea3b4;font-weight:550;border-bottom:1px solid #334150;padding:12px 9p
 .empty{color:#7e94a5;padding:25px 9px}td .sub{display:block;color:#91a4b4;font-size:11px;margin-top:3px}
 .state{font-size:12px;color:#bac8d2}.state.active{color:#8dceb4}.notice{background:#142332;border-left:3px solid #739ab4;border-radius:6px;color:#a9c1d0;font-size:13px;line-height:1.75;margin-top:20px;padding:15px 18px}
 code{font-size:12px;color:#bbdfe8;overflow-wrap:anywhere}.message{min-height:22px;font-size:13px;margin:17px 2px;color:#95cead}.message.error{color:#eaa7a7}
+.editor{border-top:1px solid #2d4152;padding-top:20px;margin-top:20px}.editor[hidden]{display:none}
+.editor h3{margin:0;font-size:17px}.editor form{grid-template-columns:repeat(2,minmax(0,1fr))}
+.editor-actions{display:flex;gap:12px;align-items:center}
 footer{margin-top:46px;color:#718a9e;font-size:12px}
 @media(max-width:1050px){.layout{grid-template-columns:1fr}form{grid-template-columns:1fr 1fr}.stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.page{padding:20px 14px}.topbar{align-items:flex-start}h1{font-size:26px}h1 span{display:block}.stats{gap:8px}.stat{padding:15px}form{grid-template-columns:1fr}.panel{padding:14px}}
