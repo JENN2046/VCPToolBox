@@ -21,9 +21,18 @@ async function initialize(config = {}) {
     }
     const agents = JSON.parse(config.ChannelHubAgents || '{}');
     if (!agents || Array.isArray(agents) || typeof agents !== 'object') throw new Error('CHANNELHUB_INVALID_AGENT_MAPPING');
-    const { ChannelHubService } = require('../../modules/channelHub/ChannelHubService');
+    const { ChannelHubService } = require('./core/ChannelHubService');
     const { HostRuntime } = require('./host-runtime');
     runtime = new HostRuntime({ agentManager: require('../../modules/agentManager'), agents, model: config.ChannelHubModel, timeoutMs });
+    // Plugin.js injects the host's own PORT and Key into service initialize().
+    // The endpoint is loopback-only, configured before the HTTP listener starts.
+    // No ChannelHub-specific server.js bootstrap hook is required.
+    const hostPort = Number(config.PORT);
+    if (!Number.isSafeInteger(hostPort) || hostPort < 1 || hostPort > 65535
+        || typeof config.Key !== 'string' || !config.Key.trim()) {
+        throw new Error('CHANNELHUB_HOST_PORT_OR_KEY_UNAVAILABLE');
+    }
+    runtime.setEndpoint({ url: `http://127.0.0.1:${hostPort}/v1/chat/completions`, key: config.Key });
     service = new ChannelHubService({ runtimeGateway: runtime, config: {
         baseDir, deliveryMode: 'inline', enforceAdapterIdentity: true, CHANNEL_HUB_AUTH_MODE: 'enforce',
         mediaStoragePath: path.join(baseDir, 'state/channelHub/media'),
@@ -31,9 +40,9 @@ async function initialize(config = {}) {
     } });
     try {
         await service.initialize();
-        const admin = require('../../routes/admin/channelHub');
-        const media = require('../../routes/admin/mediaGateway');
-        const internal = require('../../routes/internal/channelHub');
+        const admin = require('./routes/admin/channelHub');
+        const media = require('./routes/admin/mediaGateway');
+        const internal = require('./routes/internal/channelHub');
         admin.initialize(service); media.initialize(service.mediaGateway);
         internal.initialize({ channelHubService: service });
         // The HTTP client can disconnect before processing ends. Track actual
@@ -68,15 +77,15 @@ function dispatch(modulePath) {
 function registerRoutes(app, adminApiRouter, _config, _projectBasePath) {
     if (mounted.has(app)) return;
     mounted.add(app);
-    adminApiRouter.use('/channelHub', guard, dispatch('../../routes/admin/channelHub'));
-    adminApiRouter.use('/mediaGateway', guard, dispatch('../../routes/admin/mediaGateway'));
+    adminApiRouter.use('/channelHub', guard, dispatch('./routes/admin/channelHub'));
+    adminApiRouter.use('/mediaGateway', guard, dispatch('./routes/admin/mediaGateway'));
     // Legacy internal URL retains the host Bearer gate. External adapters use
     // the existing plugin-callback surface with strict, per-adapter credentials.
-    app.use('/internal/channelHub', guard, dispatch('../../routes/internal/channelHub'));
+    app.use('/internal/channelHub', guard, dispatch('./routes/internal/channelHub'));
     app.use('/plugin-callback/ChannelHub', guard, (req, res, next) => {
         if (req.method !== 'POST' || req.path !== '/events' || !req.headers['x-channel-adapter-id'] || !['2.0', 'B2'].includes(req.body?.version)) return res.status(404).end();
         next();
-    }, dispatch('../../routes/internal/channelHub'));
+    }, dispatch('./routes/internal/channelHub'));
 }
 
 function setExecutionEndpoint(endpoint) { runtime?.setEndpoint(endpoint); }

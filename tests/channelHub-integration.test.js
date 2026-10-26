@@ -6,7 +6,7 @@ const http = require('node:http');
 const { spawnSync } = require('node:child_process');
 const express = require('express');
 const { HostRuntime } = require('../Plugin/ChannelHub/host-runtime');
-const { ChannelHubService } = require('../modules/channelHub/ChannelHubService');
+const { ChannelHubService } = require('../Plugin/ChannelHub/core/ChannelHubService');
 const plugin = require('../Plugin/ChannelHub/channel-hub');
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 const close = server => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); };
@@ -58,7 +58,7 @@ test('plugin mounts admin and authenticated B2 routes, returns one inline reply,
     const admin = express.Router(); plugin.registerRoutes(app, admin, {}, root); app.use('/admin_api', admin);
     const server = http.createServer(app), port = await listen(server), url = `http://127.0.0.1:${port}`;
     t.after(async () => { await plugin.shutdown(); manager.isAgent = originalIsAgent; manager.getAgentPrompt = originalPrompt; await close(server); fs.rmSync(root, { recursive: true, force: true }); });
-    const config = { ChannelHubEnabled: true, ChannelHubDataDir: root, ChannelHubModel: 'synthetic-model' };
+    const config = { ChannelHubEnabled: true, ChannelHubDataDir: root, ChannelHubModel: 'synthetic-model', PORT: String(port), Key: 'synthetic-host' };
     await plugin.initialize(config); plugin.setExecutionEndpoint({ url: url + '/v1/chat/completions', key: 'synthetic-host' });
     const request = (endpoint, body, headers = {}) => fetch(url + endpoint, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
     const adminHeaders = { 'x-synthetic-admin': 'yes' };
@@ -108,9 +108,9 @@ test('unchanged PluginManager discovers, initializes, mounts and shuts down Chan
         }
     }
     copyCode('Plugin.js'); copyCode('Plugin/ChannelHub/channel-hub.js');
-    for (const relative of ['routes/admin/channelHub.js', 'routes/admin/mediaGateway.js', 'routes/internal/channelHub.js']) copyCode(relative);
+    for (const relative of ['Plugin/ChannelHub/routes/admin/channelHub.js', 'Plugin/ChannelHub/routes/admin/mediaGateway.js', 'Plugin/ChannelHub/routes/internal/channelHub.js']) copyCode(relative);
     fs.copyFileSync(path.join(source, 'Plugin/ChannelHub/plugin-manifest.json'), path.join(root, 'Plugin/ChannelHub/plugin-manifest.json'));
-    const names = { ChannelHubEnabled: 'true', ChannelHubDataDir: path.join(root, 'data'), ChannelHubModel: 'synthetic', DebugMode: 'false' };
+    const names = { ChannelHubEnabled: 'true', ChannelHubDataDir: path.join(root, 'data'), ChannelHubModel: 'synthetic', PORT: '6005', Key: 'synthetic-host', DebugMode: 'false' };
     const previous = Object.fromEntries(Object.keys(names).map(key => [key, process.env[key]]));
     Object.assign(process.env, names);
     let manager, server;

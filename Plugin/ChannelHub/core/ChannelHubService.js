@@ -641,17 +641,17 @@ class ChannelHubService extends EventEmitter {
       // 根据 channel 确定适配器路径和导出名称
       switch (channel) {
         case 'dingtalk':
-          adapterModulePath = '../../Plugin/vcp-dingtalk-adapter/src/adapter/contract.js';
+          adapterModulePath = '../../vcp-dingtalk-adapter/src/adapter/contract.js';
           adapterExportName = 'DingTalkAdapter';
           break;
         case 'wecom':
         case 'wework':
-          adapterModulePath = '../../Plugin/vcp-wecom-adapter/src/adapter/contract.js';
+          adapterModulePath = '../../vcp-wecom-adapter/src/adapter/contract.js';
           adapterExportName = 'WecomAdapter';
           break;
         case 'qq':
         case 'onebot':
-          adapterModulePath = '../../Plugin/vcp-onebot-adapter/src/adapter/contract.js';
+          adapterModulePath = '../../vcp-onebot-adapter/src/adapter/contract.js';
           adapterExportName = 'OneBotAdapter';
           break;
         default:

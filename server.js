@@ -1549,7 +1549,6 @@ async function startServer() {
     if (bindHost !== undefined && bindHost !== '127.0.0.1') throw new Error('SERVER_BIND_HOST_MUST_BE_LOOPBACK_IPV4');
     server = app.listen(port, bindHost, () => {
         pluginManager.getServiceModule('NativeSync')?.setExecutionEndpoint?.({ url: `http://127.0.0.1:${server.address().port}/v1/chat/completions`, key: serverKey });
-        pluginManager.getServiceModule('ChannelHub')?.setExecutionEndpoint?.({ url: `http://127.0.0.1:${server.address().port}/v1/chat/completions`, key: serverKey });
         console.log(`中间层服务器正在监听端口 ${port}`);
         console.log(`API 服务器地址: ${apiUrl}`);
 
@@ -1612,8 +1611,12 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
     shutdownReason = reason;
     shutdownStartedAt = Date.now();
     serverLifecycleState = SERVER_LIFECYCLE.DRAINING;
-    pluginManager.getServiceModule('NativeSync')?.beginDrain?.();
-    pluginManager.getServiceModule('ChannelHub')?.beginDrain?.();
+    // Drain every lifecycle-aware service before the rest of the host shuts down.
+    // Do not couple the host to a particular optional plugin name.
+    for (const [serviceName, item] of pluginManager.serviceModules) {
+        try { item.module?.beginDrain?.(); }
+        catch (error) { console.error(`[Server] Service drain failed for ${serviceName}:`, error); }
+    }
 
     console.log(`[Server] Initiating graceful shutdown. reason=${reason}, exitCode=${exitCode}`);
     console.log(`[Server][ShutdownTrace] Phase 0/10 - shutdown requested. activeRequests=${activeRequests.size}`);

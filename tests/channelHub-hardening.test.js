@@ -1,11 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const AdapterAuthManager = require('../modules/channelHub/AdapterAuthManager');
-const EventSchemaValidatorV2 = require('../modules/channelHub/EventSchemaValidatorV2');
-const { ChannelHubService } = require('../modules/channelHub/ChannelHubService');
-const RuntimeGateway = require('../modules/channelHub/RuntimeGateway');
-const channelHubRoutes = require('../routes/internal/channelHub');
+const AdapterAuthManager = require('../Plugin/ChannelHub/core/AdapterAuthManager');
+const EventSchemaValidatorV2 = require('../Plugin/ChannelHub/core/EventSchemaValidatorV2');
+const { ChannelHubService } = require('../Plugin/ChannelHub/core/ChannelHubService');
+const RuntimeGateway = require('../Plugin/ChannelHub/core/RuntimeGateway');
+const channelHubRoutes = require('../Plugin/ChannelHub/routes/internal/channelHub');
 
 function createMockRes() {
   const headers = new Map();

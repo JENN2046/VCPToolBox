@@ -21,7 +21,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { toHttpResponse } = require('../../modules/channelHub/errors');
+const { toHttpResponse } = require('../../core/errors');
 
 // 服务实例引用
 let channelHubService = null;
