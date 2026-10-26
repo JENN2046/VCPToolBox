@@ -7,7 +7,7 @@
  * Reference: docs/interaction-middleware/VCP_INTERACTION_MIDDLEWARE_SCHEMA.md
  */
 
-import { AdapterContract } from '../../../ChannelHub/core/AdapterContract.js';
+import { AdapterContract } from '../../../ChannelHub/api/adapter-api.mjs';
 import { createWecomSender } from '../adapters/wecom/sender.js';
 
 // Capability profile for WeCom adapter

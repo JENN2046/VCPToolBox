@@ -31,7 +31,10 @@ async function initialize(config = {}) {
     }
     runtime = new HostRuntime({ agentManager: require('../../modules/agentManager'), agents, model: config.ChannelHubModel, timeoutMs });
     runtime.setEndpoint({ url: `http://127.0.0.1:${hostPort}/v1/chat/completions`, key: config.Key });
-    service = new ChannelHubService({ runtimeGateway: runtime, config: {
+    // Adapter discovery is manifest-driven, inactive until ChannelHub is enabled.
+    const { discoverAdapterFactories } = require('./adapter-loader');
+    const adapterResolver = await discoverAdapterFactories({ pluginsDir: path.dirname(__dirname) });
+    service = new ChannelHubService({ runtimeGateway: runtime, adapterResolver, config: {
         baseDir, deliveryMode: 'inline', enforceAdapterIdentity: true, CHANNEL_HUB_AUTH_MODE: 'enforce',
         mediaStoragePath: path.join(baseDir, 'state/channelHub/media'),
         auditLogDir: path.join(baseDir, 'state/channelHub/logs')

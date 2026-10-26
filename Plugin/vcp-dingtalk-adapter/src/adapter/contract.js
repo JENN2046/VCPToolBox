@@ -6,7 +6,7 @@
  *
  * Reference: docs/interaction-middleware/VCP_INTERACTION_MIDDLEWARE_SCHEMA.md
  */
-import { AdapterContract } from '../../../ChannelHub/core/AdapterContract.js';
+import { AdapterContract } from '../../../ChannelHub/api/adapter-api.mjs';
 import { createDingAuthClient } from '../adapters/dingtalk/auth.js';
 import { createMediaUploader, isPublicHttpUrl } from '../adapters/dingtalk/mediaUploader.js';
 

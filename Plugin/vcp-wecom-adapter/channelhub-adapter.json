@@ -1,0 +1,9 @@
+{
+  "apiVersion": 1,
+  "channels": [
+    "wecom",
+    "wework"
+  ],
+  "entryPoint": "src/adapter/contract.js",
+  "exportName": "WecomAdapter"
+}

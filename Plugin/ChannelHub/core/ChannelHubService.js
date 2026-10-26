@@ -20,8 +20,8 @@
  */
 
 const EventEmitter = require('events');
-const path = require('path');
-const { pathToFileURL } = require('node:url');
+// Platform implementations are supplied by the service plugin through an
+// adapter resolver. Core has no platform-specific code or filesystem paths.
 
 // 导入所有子模块
 const Constants = require('./constants');
@@ -72,6 +72,7 @@ class ChannelHubService extends EventEmitter {
         });
     this.chatCompletionHandler = options.chatCompletionHandler;
     this.pluginManager = options.pluginManager;
+    this.adapterResolver = typeof options.adapterResolver === 'function' ? options.adapterResolver : null;
 
     // 服务状态
     this.initialized = false;
@@ -623,79 +624,32 @@ class ChannelHubService extends EventEmitter {
   }
 
   /**
-   * 从 AdapterContract 动态创建适配器实例
-   * @param {Object} adapterConfig - 适配器配置
-   * @returns {Promise<Object|null>} AdapterContract 实例或 null
+   * Instantiate a registered adapter by its public discovery contract.
+   * No platform names, module paths, or adapter exports are known to the core.
+   * The B2 inline path does not need a local adapter instance.
    */
   async _createAdapterInstanceFromContract(adapterConfig) {
-    if (!adapterConfig?.adapterId || !adapterConfig?.channel) {
+    if (!adapterConfig?.adapterId || !adapterConfig?.channel || !this.adapterResolver) {
       return null;
     }
 
     const { adapterId, channel } = adapterConfig;
-
+    let instance = null;
     try {
-      let adapterModulePath;
-      let adapterExportName;
-
-      // 根据 channel 确定适配器路径和导出名称
-      switch (channel) {
-        case 'dingtalk':
-          adapterModulePath = '../../vcp-dingtalk-adapter/src/adapter/contract.js';
-          adapterExportName = 'DingTalkAdapter';
-          break;
-        case 'wecom':
-        case 'wework':
-          adapterModulePath = '../../vcp-wecom-adapter/src/adapter/contract.js';
-          adapterExportName = 'WecomAdapter';
-          break;
-        case 'qq':
-        case 'onebot':
-          adapterModulePath = '../../vcp-onebot-adapter/src/adapter/contract.js';
-          adapterExportName = 'OneBotAdapter';
-          break;
-        default:
-          return null;
+      instance = await this.adapterResolver(adapterConfig, this.logger);
+      if (!instance) return null;
+      if (typeof instance.initialize !== 'function') {
+        throw new Error('CHANNELHUB_ADAPTER_INITIALIZE_REQUIRED');
       }
-
-      // 使用动态 import 加载适配器模块
-      // 注意：Node.js require 不支持动态路径，使用 import() 需要绝对路径
-      const absoluteModulePath = path.resolve(__dirname, adapterModulePath);
-      const moduleUrl = pathToFileURL(absoluteModulePath).href;
-      const module = await import(moduleUrl);
-
-      const AdapterClass = module[adapterExportName] || module.default?.[adapterExportName];
-      if (!AdapterClass) {
-        this.logger.warn(`[ChannelHub] Adapter class ${adapterExportName} not found in ${adapterModulePath}`);
-        return null;
-      }
-
-      // 创建实例
-      const adapterInstance = new AdapterClass({
-        metadata: {
-          id: adapterId,
-          channel,
-          displayName: adapterConfig.displayName || adapterConfig.name || `${channel}-adapter`,
-          transportMode: adapterConfig.transportMode || 'http_webhook',
-          sessionGrammar: adapterConfig.sessionGrammar || `${channel}:{conversationType}:{conversationId}`,
-          capabilities: adapterConfig.capabilities || adapterConfig.capabilityProfile || {}
-        },
-        options: {
-          logger: this.logger,
-          ...(adapterConfig.config || {}),
-          ...(adapterConfig.options || {})
-        }
-      });
-
-      // 初始化适配器
-      await adapterInstance.initialize();
-
-      // 注册到适配器注册中心
-      this.adapterRegistry.registerAdapterInstance(adapterId, adapterInstance);
-
+      await instance.initialize();
+      this.adapterRegistry.registerAdapterInstance(adapterId, instance);
       this.logger.log(`[ChannelHub] Created adapter instance for ${adapterId} (${channel})`);
-      return adapterInstance;
+      return instance;
     } catch (error) {
+      if (instance) {
+        try { await instance.shutdown?.(); }
+        catch (stopError) { this.logger.error('[ChannelHub] Failed to cleanup adapter after initialization error:', stopError); }
+      }
       this.logger.error(`[ChannelHub] Failed to create adapter instance for ${adapterId}:`, error);
       return null;
     }

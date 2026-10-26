@@ -8,7 +8,7 @@
  * OneBot 11 Protocol: https://github.com/botuniverse/onebot-11
  */
 
-import { AdapterContract } from '../../../ChannelHub/core/AdapterContract.js';
+import { AdapterContract } from '../../../ChannelHub/api/adapter-api.mjs';
 import { createOneBotClient } from '../adapters/onebot/client.js';
 import WebSocket from 'ws';
 
