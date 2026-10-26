@@ -134,6 +134,40 @@ test('unchanged PluginManager discovers, initializes, mounts and shuts down Chan
     await manager.shutdownAllPlugins(); assert.equal(module.snapshot().ready, false);
 });
 
+test('VCP host PluginManager remains usable with ChannelHub physically uninstalled', async t => {
+    const source = path.resolve(__dirname, '..');
+    const root = fs.mkdtempSync(path.join(source, 'node_modules/.no-channelhub-host-'));
+    const copied = new Set();
+    function copyCode(relative) {
+        if (copied.has(relative)) return; copied.add(relative);
+        const file = path.join(source, relative), target = path.join(root, relative);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(file, target);
+        for (const match of fs.readFileSync(file, 'utf8').matchAll(/require\(['"]([.][^'"]+)['"]\)/g)) {
+            const base = path.resolve(path.dirname(file), match[1]);
+            const dependency = [base, base + '.js', base + '.json']
+                .find(p => fs.existsSync(p) && fs.statSync(p).isFile());
+            if (dependency) copyCode(path.relative(source, dependency));
+        }
+    }
+    copyCode('Plugin.js');
+    fs.mkdirSync(path.join(root, 'Plugin'), { recursive: true });
+    let manager;
+    t.after(async () => {
+        await manager?.shutdownAllPlugins();
+        await manager?.toolApprovalManager.watcher?.close();
+        manager?.toolApprovalManager.shutdown();
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+    manager = require(path.join(root, 'Plugin'));
+    manager.setProjectBasePath(root);
+    await manager.loadPlugins();
+    assert.equal(manager.getServiceModule('ChannelHub'), undefined);
+    const app = express(), admin = express.Router();
+    manager.initializeServices(app, admin, root);
+    assert.equal(manager.plugins.size, 0);
+});
+
 test('drain aborts and awaits an in-flight host request without publishing a reply', async t => {
     let entered; const received = new Promise(resolve => { entered = resolve; });
     const server = http.createServer(async (req, _res) => { for await (const chunk of req) {} entered(); });
