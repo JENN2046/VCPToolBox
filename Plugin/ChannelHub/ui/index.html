@@ -27,10 +27,11 @@
     </section>
     <div class="layout">
       <section class="panel">
-        <div class="section-header"><div><h2>渠道适配器</h2><p>创建后默认关闭，确认接入凭据和权限后再启用。</p></div></div>
+        <div class="section-header"><div><h2>渠道适配器</h2><p>创建、编辑、绑定已有 VCP Agent；连接配置修改前需停用，只有 Agent 切换允许保持 QQ 在线。</p></div></div>
         <form id="adapterForm" autocomplete="off">
           <label>适配器 ID <input name="adapterId" required maxlength="100" placeholder="my-dingtalk" pattern="[a-zA-Z0-9_-]+"></label>
           <label>渠道类型 <input name="channel" required list="channel-options" pattern="[a-z][a-z0-9_-]{0,39}" maxlength="40" placeholder="例如 dingtalk"></label>
+          <label>绑定 VCP Agent <select name="agentId" id="createAgent"><option value="">继承渠道原有路由</option></select></label>
           <datalist id="channel-options"><option value="dingtalk"></option><option value="wecom"></option><option value="qq"></option></datalist>
           <label>Bridge Key（仅 B2 外部回调使用）<input name="bridgeKey" type="password" minlength="16" placeholder="外部适配器专用；WS 内置模式留空" autocomplete="new-password"></label>
           <button type="submit">添加适配器</button>
@@ -39,7 +40,25 @@
           </label>
           <p class="wide hint">NapCat 的 OneBot Token 建议放在 VCP 后端配置的 ONEBOT_ACCESS_TOKEN 中，不要粘贴进渠道配置。保存后先确认内容，再启用。</p>
         </form>
-        <div class="table-wrap"><table><thead><tr><th>适配器</th><th>渠道</th><th>状态</th><th>操作</th></tr></thead><tbody id="adapterRows"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>适配器</th><th>渠道</th><th>Agent</th><th>状态</th><th>操作</th></tr></thead><tbody id="adapterRows"></tbody></table></div>
+        <section class="editor" id="adapterEditor" hidden aria-label="编辑适配器">
+          <div class="section-header"><div><h3 id="editHeading">编辑适配器</h3><p>Agent 列表只从 VCP 原生 AgentManager 获取。秘钥不回显，留空即保留原凭据。</p></div></div>
+          <form id="adapterEditForm" autocomplete="off">
+            <label>名称 <input name="name" maxlength="120" required></label>
+            <label>接待 Agent <select name="agentId" id="editAgent" required></select></label>
+            <label class="wide">渠道配置 JSON（编辑前已隐藏敏感密钥）
+              <textarea name="configJson" rows="8" spellcheck="false"></textarea>
+            </label>
+            <label class="wide">更换 Bridge Key（不更换则留空）
+              <input name="bridgeKey" type="password" minlength="16" autocomplete="new-password" placeholder="仅用于外部 B2 回调渠道">
+            </label>
+            <p id="editHint" class="wide hint"></p>
+            <div class="wide editor-actions">
+              <button type="submit">保存修改</button>
+              <button id="cancelEdit" class="secondary" type="button">取消</button>
+            </div>
+          </form>
+        </section>
       </section>
       <section class="panel">
         <div class="section-header"><div><h2>会话绑定</h2><p>只表示路由映射，不意味着 NativeSync 聊天历史同步。</p></div></div>
@@ -49,7 +68,7 @@
     <aside class="notice">B2 事件入口：<code>POST /plugin-callback/ChannelHub/events</code>。必须由可信适配器提交标准事件及独立认证头。Bridge Key 不能代替群成员级执行授权。</aside>
     <p id="message" role="status" aria-live="polite" class="message"></p>
   </main>
-  <footer>ChannelHub v0.4.0 · 与 NativeSync 独立 · 所有管理操作仍受宿主权限保护</footer>
+  <footer>ChannelHub v0.4.1 · 与 NativeSync 独立 · 所有管理操作仍受宿主权限保护</footer>
 </div>
 </body>
 </html>
