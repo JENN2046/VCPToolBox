@@ -78,10 +78,10 @@ function accountConfig(wsUrl, override = {}) {
     ...override
   };
 }
-async function setupHub(t, runtimeGateway) {
+async function setupHub(t, runtimeGateway, diagnostics = quiet) {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'qqpersonal-hub-'));
   const service = new ChannelHubService({
-    logger: quiet,
+    logger: diagnostics,
     runtimeGateway,
     config: {
       baseDir: data, deliveryMode: 'inline',
@@ -91,8 +91,8 @@ async function setupHub(t, runtimeGateway) {
     }
   });
   await service.initialize();
-  const resolver = await discoverAdapterFactories({ pluginsDir: path.resolve(__dirname, '../Plugin'), logger: quiet });
-  const host = new ManagedAdapterHost({ service, adapterResolver: resolver, logger: quiet });
+  const resolver = await discoverAdapterFactories({ pluginsDir: path.resolve(__dirname, '../Plugin'), logger: diagnostics });
+  const host = new ManagedAdapterHost({ service, adapterResolver: resolver, logger: diagnostics });
   t.after(async () => {
     host.beginDrain();
     await service.shutdown();
@@ -109,7 +109,7 @@ test('one NapCat WS does inbound QQ -> ChannelHub -> Agent -> outbound private a
       observed.push({ envelope, route });
       return { messages: [{ role: 'assistant', content: [{ type: 'text', text: '诺宝回复' }] }] };
     }
-  });
+  }, { ...quiet, error: (...args) => console.error('[QQManagedTest]', ...args) });
   await service.adapterRegistry.upsertAdapter({
     adapterId: 'qq-personal', channel: 'qq', status: 'active',
     config: accountConfig(napcat.url)
