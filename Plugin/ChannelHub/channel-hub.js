@@ -23,15 +23,13 @@ async function initialize(config = {}) {
     if (!agents || Array.isArray(agents) || typeof agents !== 'object') throw new Error('CHANNELHUB_INVALID_AGENT_MAPPING');
     const { ChannelHubService } = require('./core/ChannelHubService');
     const { HostRuntime } = require('./host-runtime');
-    runtime = new HostRuntime({ agentManager: require('../../modules/agentManager'), agents, model: config.ChannelHubModel, timeoutMs });
-    // Plugin.js injects the host's own PORT and Key into service initialize().
-    // The endpoint is loopback-only, configured before the HTTP listener starts.
-    // No ChannelHub-specific server.js bootstrap hook is required.
+    // Plugin.js injects the host's own PORT and Key. Validate before allocating resources.
     const hostPort = Number(config.PORT);
     if (!Number.isSafeInteger(hostPort) || hostPort < 1 || hostPort > 65535
         || typeof config.Key !== 'string' || !config.Key.trim()) {
         throw new Error('CHANNELHUB_HOST_PORT_OR_KEY_UNAVAILABLE');
     }
+    runtime = new HostRuntime({ agentManager: require('../../modules/agentManager'), agents, model: config.ChannelHubModel, timeoutMs });
     runtime.setEndpoint({ url: `http://127.0.0.1:${hostPort}/v1/chat/completions`, key: config.Key });
     service = new ChannelHubService({ runtimeGateway: runtime, config: {
         baseDir, deliveryMode: 'inline', enforceAdapterIdentity: true, CHANNEL_HUB_AUTH_MODE: 'enforce',
@@ -77,6 +75,22 @@ function dispatch(modulePath) {
 function registerRoutes(app, adminApiRouter, _config, _projectBasePath) {
     if (mounted.has(app)) return;
     mounted.add(app);
+    // Small, bundled admin page: no Vue build or additional host routes required.
+    // The host's /admin_api Basic Auth runs before these plugin-owned handlers.
+    function serveUi(filename, contentType) {
+        return (_req, res) => {
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            if (filename === 'index.html') {
+                res.setHeader('Content-Security-Policy',
+                    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+            }
+            res.type(contentType).sendFile(path.join(__dirname, 'ui', filename));
+        };
+    }
+    adminApiRouter.get('/channelHub/ui', guard, serveUi('index.html', 'html'));
+    adminApiRouter.get('/channelHub/ui/app.js', guard, serveUi('app.js', 'application/javascript'));
+    adminApiRouter.get('/channelHub/ui/style.css', guard, serveUi('style.css', 'text/css'));
     adminApiRouter.use('/channelHub', guard, dispatch('./routes/admin/channelHub'));
     adminApiRouter.use('/mediaGateway', guard, dispatch('./routes/admin/mediaGateway'));
     // Legacy internal URL retains the host Bearer gate. External adapters use

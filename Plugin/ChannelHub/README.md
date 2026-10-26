@@ -4,10 +4,11 @@
 
 ## 结构与边界
 
-此插件的所有 ChannelHub 核心代码与路由均位于 `Plugin/ChannelHub/`：
+此插件的所有 ChannelHub 核心代码、管理页与路由均位于 `Plugin/ChannelHub/`：
 
 - `core/`：适配器协议、独立状态、消息标准化、去重、会话映射、可观测性、媒体与回发结构
 - `routes/`：宿主管理员 API、媒体管理 API、Bearer 保护的兼容路由、独立适配器密钥保护的 B2 事件
+- `ui/`：自包含的轻量管理页，可直接访问 `/admin_api/channelHub/ui`（宿主管理员认证）
 - `channel-hub.js`：可选 service 插件入口、挂载与停止；`host-runtime.js`：调用宿主原生对话执行链
 - `plugin-manifest.json` 与 `config.env.example`：标准 VCP 插件发现与配置
 
@@ -30,6 +31,8 @@ ChannelHubTimeoutMs=120000
 ```
 
 `PORT` 和 `Key` **直接由已有 VCP PluginManager 注入**，插件只向 `127.0.0.1:PORT/v1/chat/completions` 发起请求，不需要在 `server.js` 单独为 ChannelHub 注入密钥。缺少宿主 PORT/Key 时返回明确初始化错误；不允许从渠道事件覆盖目标 URL、模型或 API Key。
+
+发布分支通过 `.github/workflows/channelhub-standalone.yml` 自动执行独立回归，并产生包含 `ChannelHub/` 顶层目录的 ZIP 构建物。ZIP 只是安装候选包，不能替代真实渠道验收。
 
 ## 路由和安全边界
 

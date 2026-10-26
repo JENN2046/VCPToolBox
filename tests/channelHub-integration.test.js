@@ -64,6 +64,10 @@ test('plugin mounts admin and authenticated B2 routes, returns one inline reply,
     const adminHeaders = { 'x-synthetic-admin': 'yes' };
     assert.equal((await request('/admin_api/channelHub/health')).status, 401);
     assert.equal((await request('/admin_api/channelHub/health', null, adminHeaders)).status, 200);
+    assert.equal((await request('/admin_api/channelHub/ui')).status, 401);
+    const uiPage = await request('/admin_api/channelHub/ui', null, adminHeaders);
+    assert.equal(uiPage.status, 200); assert.match(await uiPage.text(), /ChannelHub/);
+    assert.equal((await request('/admin_api/channelHub/ui/app.js', null, adminHeaders)).status, 200);
     assert.equal((await request('/internal/channelHub/health')).status, 401);
     const created = await request('/admin_api/channelHub/adapters', { adapterId: 'synthetic-adapter', channel: 'dingtalk', status: 'active', config: { bridgeKey: 'synthetic-adapter-key' } }, adminHeaders);
     assert.equal(created.status, 201, await created.text());

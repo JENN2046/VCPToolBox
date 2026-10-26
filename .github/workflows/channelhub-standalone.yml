@@ -1,0 +1,45 @@
+name: ChannelHub Standalone
+
+on:
+  push:
+    branches:
+      - codex/channelhub-standalone-plugin
+    paths:
+      - 'Plugin/ChannelHub/**'
+      - 'tests/channelHub*.test.js'
+      - 'server.js'
+      - '.github/workflows/channelhub-standalone.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install existing host dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: ChannelHub contract and integration tests
+        run: npm run test:channelhub
+      - name: Build standalone ZIP
+        shell: bash
+        run: |
+          mkdir -p dist
+          cd Plugin
+          zip -q -r ../dist/ChannelHub-v0.2.0.zip ChannelHub \
+            -x 'ChannelHub/config.env' 'ChannelHub/state/*' 'ChannelHub/node_modules/*'
+          unzip -l ../dist/ChannelHub-v0.2.0.zip | grep 'ChannelHub/plugin-manifest.json'
+      - name: Publish installable test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChannelHub-standalone
+          path: dist/ChannelHub-v0.2.0.zip
+          if-no-files-found: error
+          retention-days: 14

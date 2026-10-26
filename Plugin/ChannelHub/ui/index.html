@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>ChannelHub · 管理</title>
+  <link rel="stylesheet" href="/admin_api/channelHub/ui/style.css">
+  <script src="/admin_api/channelHub/ui/app.js" defer></script>
+</head>
+<body>
+<div class="page">
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">VCP · 可选服务插件</div>
+      <h1>ChannelHub <span>独立管理</span></h1>
+      <p>渠道身份、会话绑定与消息运行状态。模型、Agent 和工具执行由 VCP 宿主管理。</p>
+    </div>
+    <button id="refresh" class="secondary" type="button">刷新状态</button>
+  </header>
+  <main>
+    <section class="stats" aria-label="运行概览">
+      <article class="stat"><span>服务状态</span><strong id="health">检查中</strong></article>
+      <article class="stat"><span>已配置渠道</span><strong id="adapterCount">–</strong></article>
+      <article class="stat"><span>已处理消息</span><strong id="processed">–</strong></article>
+      <article class="stat"><span>会话绑定</span><strong id="bindingCount">–</strong></article>
+    </section>
+    <div class="layout">
+      <section class="panel">
+        <div class="section-header"><div><h2>渠道适配器</h2><p>创建后默认关闭，确认接入凭据和权限后再启用。</p></div></div>
+        <form id="adapterForm" autocomplete="off">
+          <label>适配器 ID <input name="adapterId" required maxlength="100" placeholder="my-dingtalk" pattern="[a-zA-Z0-9_-]+"></label>
+          <label>渠道类型 <select name="channel"><option value="dingtalk">钉钉</option><option value="wecom">企业微信</option><option value="qq">QQ / OneBot</option></select></label>
+          <label>Bridge Key <input name="bridgeKey" type="password" required minlength="16" placeholder="独立渠道密钥" autocomplete="new-password"></label>
+          <button type="submit">添加适配器</button>
+        </form>
+        <div class="table-wrap"><table><thead><tr><th>适配器</th><th>渠道</th><th>状态</th><th>操作</th></tr></thead><tbody id="adapterRows"></tbody></table></div>
+      </section>
+      <section class="panel">
+        <div class="section-header"><div><h2>会话绑定</h2><p>只表示路由映射，不意味着 NativeSync 聊天历史同步。</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>绑定标识</th><th>适配器</th><th>Agent</th></tr></thead><tbody id="bindingRows"></tbody></table></div>
+      </section>
+    </div>
+    <aside class="notice">B2 事件入口：<code>POST /plugin-callback/ChannelHub/events</code>。必须由可信适配器提交标准事件及独立认证头。Bridge Key 不能代替群成员级执行授权。</aside>
+    <p id="message" role="status" aria-live="polite" class="message"></p>
+  </main>
+  <footer>ChannelHub v0.2.0 · 与 NativeSync 独立 · 所有管理操作仍受宿主权限保护</footer>
+</div>
+</body>
+</html>
