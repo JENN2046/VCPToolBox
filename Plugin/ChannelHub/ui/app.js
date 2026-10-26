@@ -62,6 +62,18 @@
       await refresh();
     } finally { busy = false; }
   }
+  async function testAdapterConnection(item) {
+    if (busy) return;
+    busy = true;
+    try {
+      const result = await api('/adapters/' + encodeURIComponent(item.adapterId) + '/test', { method: 'POST' });
+      notify(result.success
+        ? '连接正常：' + item.adapterId
+        : '连接未就绪：' + item.adapterId + ' (' + (result.message || '未连接') + ')',
+        result.success !== true);
+    } finally { busy = false; }
+  }
+
   function displayAdapters(adapters) {
     const tbody = byId('adapterRows');
     tbody.replaceChildren();
@@ -77,6 +89,7 @@
       const td = document.createElement('td');
       const toggle = item.status === 'active' ? 'disable' : 'enable';
       td.append(action(toggle === 'enable' ? '启用' : '停用', () => editAdapter(item, toggle)));
+      td.append(action('测试连接', () => testAdapterConnection(item)));
       td.append(action('删除', () => editAdapter(item, 'delete'), true));
       tr.append(td);
       tbody.append(tr);
