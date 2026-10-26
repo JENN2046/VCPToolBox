@@ -28,8 +28,8 @@ test('ChannelHub is a native VCP service with a self-contained implementation', 
     for (const platform of ['dingtalk', 'wecom', 'onebot']) {
         const adapterPath = path.resolve(__dirname, '../Plugin/vcp-' + platform + '-adapter/src/adapter/contract.js');
         const source = fs.readFileSync(adapterPath, 'utf8');
-        assert.match(source, /ChannelHub\\/core\\/AdapterContract\\.js/);
-        assert.doesNotMatch(source, /modules\\/channelHub\\/AdapterContract\\.js/);
+        assert.ok(source.includes('ChannelHub/core/AdapterContract.js'), platform + ': contract import missing');
+        assert.ok(!source.includes('modules/channelHub/AdapterContract.js'), platform + ': stale contract import');
     }
     const entry = fs.readFileSync(path.join(pluginRoot, 'channel-hub.js'), 'utf8');
     assert.doesNotMatch(entry, /\.\.\/\.\.\/(?:routes|modules\/channelHub)/);
