@@ -426,7 +426,18 @@ router.post('/adapters/:id/test', async (req, res) => {
 
     try {
       const adapterInstance = registry.getAdapterInstance(id);
-      if (adapterInstance && typeof adapterInstance.testConnection === 'function') {
+      if (managedAdapterHost?.manages(adapter.channel)) {
+        if (!adapterInstance) {
+          testResult = { success: false, message: 'Managed adapter not connected' };
+        } else {
+          const state = await adapterInstance.healthCheck();
+          testResult = {
+            success: state.healthy === true,
+            message: state.healthy ? 'OneBot WebSocket connected' : 'OneBot WebSocket unavailable',
+            adapterState: state.connectionState || 'unknown'
+          };
+        }
+      } else if (adapterInstance && typeof adapterInstance.testConnection === 'function') {
         testResult = await adapterInstance.testConnection();
       }
     } catch (testError) {
@@ -459,16 +470,25 @@ router.get('/adapters/:id/health', async (req, res) => {
       return fail(res, 'Adapter not found', 404);
     }
 
+    const isManaged = managedAdapterHost?.manages(adapter.channel) === true;
+    const runtime = registry.getAdapterInstance(id);
+    const live = isManaged && runtime?.healthCheck ? await runtime.healthCheck() : null;
+    const healthy = isManaged
+      ? adapter.status === 'active' && live?.healthy === true
+      : isAdapterHealthy(adapter);
     const health = {
-      healthy: isAdapterHealthy(adapter),
+      healthy,
       adapterId: adapter.adapterId,
       status: adapter.status,
+      connectionState: isManaged ? (live?.connectionState || 'disconnected') : 'not_managed',
       lastCheck: new Date().toISOString(),
       responseTime: 0,
       errorCount: 0,
-      issues: adapter.status === 'error'
-        ? [{ severity: 'error', message: 'Adapter status is error', timestamp: new Date().toISOString() }]
-        : []
+      issues: healthy ? [] : [{
+        severity: 'warning',
+        message: isManaged ? 'Managed WebSocket connection is not ready' : 'Adapter is not active',
+        timestamp: new Date().toISOString()
+      }]
     };
 
     return ok(res, health);
