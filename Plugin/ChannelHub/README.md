@@ -1,14 +1,35 @@
 # ChannelHub：多渠道消息接入
 
-基于 `codex/mobile-native-sync-upstream-aligned` 的可选服务插件，选择性复用
-`prod/stable` 的 ChannelHub 模块、管理界面和渠道源码。默认关闭，不启动独立
-HTTP 监听器，也不自动启动钉钉、企业微信或 OneBot 进程。
+ChannelHub 是一个自包含的 VCPToolBox `service` 插件。核心、HTTP 路由、渠道源码、
+管理页、依赖声明和插件测试全部位于本目录。默认关闭，不启动独立 HTTP 监听器，
+也不自动启动钉钉、企业微信或 OneBot 进程。独立指插件可以整体安装、更新和停用；
+执行仍使用 VCP 宿主，不是脱离 VCP 运行的第二套模型服务。
+
+## 目录与宿主契约
+
+- `lib/`：事件校验、身份/会话映射、媒体、审计和消息处理。
+- `routes/`：管理员 API、兼容内部 API、外部适配器回调。
+- `adapters/{dingtalk,wecom,onebot,feishu}/`：渠道接收和发送源码；按各目录说明独立启动。
+- `ui/`：独立 Vue 管理页，构建不依赖宿主 `AdminPanel-Vue`。
+- `tests/`：插件回归及脱离宿主源码的安装边界验证。宿主集成测试位于根 `tests/`。
+
+宿主通过 `initialize(config, { agentManager })` 注入 AgentManager 的公开接口，
+通过通用 `setExecutionEndpoint`、`beginDrain` 和 `shutdown` 钩子管理执行与关闭。
+`registerRoutes(app, adminApiRouter, config, projectBasePath)` 沿用既有插件契约。
+宿主 PluginManager 负责在重新初始化服务时重新注入实际监听端点。
+宿主不导入本插件内部文件，也不在 `server.js` 点名 ChannelHub。
+
+这需要本分支的通用 PluginManager 生命周期支持。仅把目录复制到缺少这些接口的
+旧版宿主不会自动完成集成，应同时升级宿主；插件不会回退去读取宿主私有源码。
+
+管理入口由 manifest 的 `adminPanel.uiPath` 声明，宿主插件配置页以通用链接展示。
+该字段只接受 `/admin_api/` 下的本地路径，不改变 API 认证。
 
 ## 边界与优化
 
 - ChannelHub 负责渠道认证、格式转换、会话映射和返回结构化回复。
 - 执行通过实际宿主的 `/v1/chat/completions`，复用现有模型路由、预处理和工具链。
-  宿主 Key 由 `server.js` 在监听完成后注入，只发往本机固定端点。
+  宿主 Key 由 PluginManager 在监听完成后通过服务钩子注入，只发往本机固定端点。
 - 通过现有 AgentManager 读取人格；桌面内部 ID 可显式映射到宿主别名。
   模型从服务配置取得，拒绝未知 Agent，忽略渠道提交的上游地址、密钥与模型覆盖。
 - 外部适配器负责回发。此插件采用 `inline` 模式，不同时进入中台发件箱，避免
@@ -18,7 +39,20 @@ HTTP 监听器，也不自动启动钉钉、企业微信或 OneBot 进程。
 
 ## 启用
 
-按既有插件配置方式填写 `config.env.example` 中的字段，再重启宿主：
+安装插件依赖并构建管理页（在仓库根目录执行）：
+
+```bash
+npm --prefix Plugin/ChannelHub ci
+npm --prefix Plugin/ChannelHub/ui ci
+npm --prefix Plugin/ChannelHub/ui run build
+```
+
+`sharp` 是可选媒体依赖；需要图片变换时安装它。音视频转码仍需要系统 `ffmpeg`。
+构建产物位于 `ui/dist/`，发布插件时应携带该目录；源码安装按上述命令生成。
+未构建时管理页返回明确的 503 提示，API 仍可使用。
+渠道进程的依赖各自安装，插件启动不会自动执行这些进程。
+
+按既有插件配置方式填写本目录 `config.env`（参考 `config.env.example`），再重启宿主：
 
 ```dotenv
 ChannelHubEnabled=true
@@ -38,7 +72,9 @@ ChannelHubTimeoutMs=120000
 
 ## 管理与渠道入口
 
-管理页：`/AdminPanel/channel-hub-manager`，沿用现有管理员登录。
+在宿主管理面板的 **插件中心 → ChannelHub 配置 → 打开插件管理页** 进入。
+管理页地址为 `/admin_api/channelHub/ui/`，沿用现有管理员登录和同源 Cookie。
+原 `/AdminPanel/channel-hub-manager` 固定页面已移除，请更新书签。
 
 | 路径 | 认证与用途 |
 |---|---|
@@ -80,20 +116,24 @@ ChannelHubTimeoutMs=120000
 不能保证外部工具副作用恰好一次。此版也不承诺“HTTP 回复已经返回但渠道发送
 失败”后的自动补投；请先检查平台发送状态，避免重复执行工具。
 
-回滚：设置 `ChannelHubEnabled=false` 并重启，或撤销整合提交。原生同步代码与
+迁移只涉及源码位置；现有 `ChannelHubDataDir` 和 HTTP API 路径保持不变，不搬动运行数据。
+已有渠道进程的启动命令和工作目录需从 `Plugin/vcp-*-adapter` 改为
+`Plugin/ChannelHub/adapters/<channel>`；私有 `.env` 由操作者保留在对应新目录，不随源码提交。
+
+停用：设置 `ChannelHubEnabled=false`，或将 manifest 改为 `.json.block` 后重启宿主。
+完整卸载时移除 `Plugin/ChannelHub` 并重启；数据目录保留供恢复。回滚可撤销本次提交。
+原生同步代码与
 SQLite 格式未变；本次没有切换生产入口或迁移任何运行态。
 
 ## 验证
 
 ```bash
-npm ci --ignore-scripts
+npm --prefix Plugin/ChannelHub test
 npm run test:channelhub
 NODE_PATH="$PWD/node_modules" npm run test:native-sync
-cd AdminPanel-Vue
-npm ci --ignore-scripts
-npx vue-tsc --noEmit
-npm run build:no-type-check
+npm --prefix Plugin/ChannelHub/ui run build
 ```
 
-`NODE_PATH` 供现有原生同步测试复制到系统临时目录的 PluginManager fixture
-解析本仓库依赖；生产启动不需要它。构建产物不作为此次源码变更提交。
+根目录测试需先安装宿主依赖；插件自身测试只需插件依赖。`NODE_PATH` 供原生同步
+测试复制到临时目录的 PluginManager fixture 解析宿主依赖，生产启动不需要它。
+验证使用合成凭据和回环服务，不代表真实平台账号、真实模型或生产部署验收。

@@ -724,6 +724,7 @@ class PluginManager extends EventEmitter {
     }
 
     async shutdownAllPlugins() {
+        this.beginDrainServices();
         console.log('[PluginManager] Shutting down all plugins...'); // Keep
 
         clearTimeout(this.reloadTimeout);
@@ -1007,7 +1008,8 @@ class PluginManager extends EventEmitter {
                         manifest,
                         {
                             vcpLogFunctions: this.getVCPLogFunctions(),
-                            pluginManager: this
+                            pluginManager: this,
+                            agentManager: require('./modules/agentManager')
                         },
                         {
                             vectorDBManager: this.vectorDBManager,
@@ -1020,6 +1022,9 @@ class PluginManager extends EventEmitter {
                     );
 
                     await module.initialize(initialConfig, dependencies);
+                    if (this.serviceExecutionEndpoint && this.serviceModules.has(manifest.name)) {
+                        module.setExecutionEndpoint?.(this.serviceExecutionEndpoint);
+                    }
                 } catch (e) {
                     console.error(`[PluginManager] Error initializing module for ${manifest.name}:`, e instanceof Error ? e.message : JSON.stringify(e));
                     if (e instanceof Error && e.stack) {
@@ -1180,6 +1185,23 @@ class PluginManager extends EventEmitter {
 
     getPlugin(name) {
         return this.plugins.get(name);
+    }
+
+    // Optional service hooks, shared by any plugin using host execution.
+    setServiceExecutionEndpoint(endpoint) {
+        this.serviceExecutionEndpoint = endpoint;
+        for (const [name, { module }] of this.serviceModules) {
+            try { module.setExecutionEndpoint?.(endpoint); }
+            catch (error) { console.error(`[PluginManager] Execution endpoint setup failed for ${name}:`, error.message); }
+        }
+    }
+
+    beginDrainServices() {
+        this.serviceExecutionEndpoint = null;
+        for (const [name, { module }] of this.serviceModules) {
+            try { module.beginDrain?.(); }
+            catch (error) { console.error(`[PluginManager] Drain failed for ${name}:`, error.message); }
+        }
     }
 
     getServiceModule(name) {

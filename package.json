@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "Server.js",
   "scripts": {
-    "test:channelhub": "node --test tests/channelHub*.test.js",
+    "test:channelhub": "node --test tests/channelHub*.test.js Plugin/ChannelHub/tests/*.test.js",
     "test:native-sync": "node --test tests/native-sync*.test.cjs tests/mobile-execution.test.cjs tests/r10-mobile-connection.test.cjs tests/r10-execution-deadline.test.cjs",
     "build:mobile": "node scripts/build-mobile-pwa.cjs",
     "test": "echo \"Error: no test specified\" && exit 1",

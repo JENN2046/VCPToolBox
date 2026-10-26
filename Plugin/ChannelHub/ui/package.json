@@ -1,0 +1,14 @@
+{
+  "name": "vcp-channelhub-ui",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "vue-tsc --noEmit && vite build" },
+  "dependencies": { "vue": "^3.5.31" },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.5",
+    "typescript": "^5.9.2",
+    "vite": "^8.0.3",
+    "vue-tsc": "^3.2.6"
+  }
+}

@@ -6,7 +6,7 @@ const http = require('node:http');
 const { spawnSync } = require('node:child_process');
 const express = require('express');
 const { HostRuntime } = require('../Plugin/ChannelHub/host-runtime');
-const { ChannelHubService } = require('../modules/channelHub/ChannelHubService');
+const { ChannelHubService } = require('../Plugin/ChannelHub/lib/ChannelHubService');
 const plugin = require('../Plugin/ChannelHub/channel-hub');
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 const close = server => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); };
@@ -59,10 +59,19 @@ test('plugin mounts admin and authenticated B2 routes, returns one inline reply,
     const server = http.createServer(app), port = await listen(server), url = `http://127.0.0.1:${port}`;
     t.after(async () => { await plugin.shutdown(); manager.isAgent = originalIsAgent; manager.getAgentPrompt = originalPrompt; await close(server); fs.rmSync(root, { recursive: true, force: true }); });
     const config = { ChannelHubEnabled: true, ChannelHubDataDir: root, ChannelHubModel: 'synthetic-model' };
-    await plugin.initialize(config); plugin.setExecutionEndpoint({ url: url + '/v1/chat/completions', key: 'synthetic-host' });
+    await plugin.initialize(config, { agentManager: manager }); plugin.setExecutionEndpoint({ url: url + '/v1/chat/completions', key: 'synthetic-host' });
     const request = (endpoint, body, headers = {}) => fetch(url + endpoint, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
     const adminHeaders = { 'x-synthetic-admin': 'yes' };
     assert.equal((await request('/admin_api/channelHub/health')).status, 401);
+    assert.equal((await request('/admin_api/channelHub/ui/')).status, 401);
+    const uiResponse = await request('/admin_api/channelHub/ui/', null, adminHeaders);
+    if (fs.existsSync(path.resolve(__dirname, '../Plugin/ChannelHub/ui/dist/index.html'))) {
+        assert.equal(uiResponse.status, 200);
+        assert.match(await uiResponse.text(), /ChannelHub/);
+    } else {
+        assert.equal(uiResponse.status, 503);
+        assert.match(await uiResponse.text(), /not built/);
+    }
     assert.equal((await request('/admin_api/channelHub/health', null, adminHeaders)).status, 200);
     assert.equal((await request('/internal/channelHub/health')).status, 401);
     const created = await request('/admin_api/channelHub/adapters', { adapterId: 'synthetic-adapter', channel: 'dingtalk', status: 'active', config: { bridgeKey: 'synthetic-adapter-key' } }, adminHeaders);
@@ -80,7 +89,7 @@ test('plugin mounts admin and authenticated B2 routes, returns one inline reply,
     assert.equal((await request('/plugin-callback/ChannelHub/events', forged, headers)).status, 400);
     plugin.beginDrain(); assert.equal((await request('/plugin-callback/ChannelHub/events', { ...body, eventId: 'after-drain' }, headers)).status, 503);
     await plugin.shutdown(); assert.equal(plugin.snapshot().ready, false);
-    await plugin.initialize(config); assert.equal(plugin.snapshot().ready, true);
+    await plugin.initialize(config, { agentManager: manager }); assert.equal(plugin.snapshot().ready, true);
     const adapters = await (await request('/admin_api/channelHub/adapters', null, adminHeaders)).json(); assert.equal(adapters.data.length, 1);
 });
 
@@ -91,10 +100,11 @@ test('inline service never starts legacy outbox delivery', async t => {
     await service.initialize(); assert.equal(service.deliveryOutbox.isProcessing, false); assert.equal(service.deliveryOutbox.processTimer, null);
 });
 
-test('unchanged PluginManager discovers, initializes, mounts and shuts down ChannelHub', async t => {
+test('PluginManager discovers, initializes, mounts and shuts down ChannelHub', async t => {
     const source = path.resolve(__dirname, '..');
     // Locate the fixture below node_modules so its copied host resolves the same
     // installed dependencies without changing the package or production loader.
+    fs.mkdirSync(path.join(source, 'node_modules'), { recursive: true });
     const root = fs.mkdtempSync(path.join(source, 'node_modules/.channelhub-host-'));
     const copied = new Set();
     function copyCode(relative) {
@@ -107,8 +117,8 @@ test('unchanged PluginManager discovers, initializes, mounts and shuts down Chan
             if (dependency) copyCode(path.relative(source, dependency));
         }
     }
-    copyCode('Plugin.js'); copyCode('Plugin/ChannelHub/channel-hub.js');
-    for (const relative of ['routes/admin/channelHub.js', 'routes/admin/mediaGateway.js', 'routes/internal/channelHub.js']) copyCode(relative);
+    copyCode('Plugin.js');
+    fs.cpSync(path.join(source, 'Plugin/ChannelHub'), path.join(root, 'Plugin/ChannelHub'), { recursive: true, filter: file => !file.split(path.sep).some(part => ['node_modules', 'ui', 'tests'].includes(part)) });
     fs.copyFileSync(path.join(source, 'Plugin/ChannelHub/plugin-manifest.json'), path.join(root, 'Plugin/ChannelHub/plugin-manifest.json'));
     const names = { ChannelHubEnabled: 'true', ChannelHubDataDir: path.join(root, 'data'), ChannelHubModel: 'synthetic', DebugMode: 'false' };
     const previous = Object.fromEntries(Object.keys(names).map(key => [key, process.env[key]]));
@@ -124,10 +134,36 @@ test('unchanged PluginManager discovers, initializes, mounts and shuts down Chan
     await manager.loadPlugins();
     assert.equal(manager.plugins.size, 1);
     const module = manager.getServiceModule('ChannelHub'); assert.equal(module.snapshot().ready, true);
-    const app = express(), admin = express.Router(); app.use(express.json()); manager.initializeServices(app, admin, root); app.use('/admin_api', admin);
+    const hostAgents = require(path.join(root, 'modules/agentManager'));
+    hostAgents.isAgent = agents.isAgent; hostAgents.getAgentPrompt = agents.getAgentPrompt;
+    const app = express(), admin = express.Router(); app.use(express.json());
+    let hostCalls = 0;
+    app.post('/v1/chat/completions', (req, res) => {
+        assert.equal(req.headers.authorization, 'Bearer synthetic-host');
+        assert.equal(req.body.messages[0].content, 'SYNTHETIC_AGENT');
+        hostCalls++; res.json({ choices: [{ message: { content: 'reply after reload' } }] });
+    });
+    manager.initializeServices(app, admin, root); app.use('/admin_api', admin);
     server = http.createServer(app); const port = await listen(server);
     assert.equal((await fetch(`http://127.0.0.1:${port}/admin_api/channelHub/health`)).status, 200);
+    manager.setServiceExecutionEndpoint({ url: `http://127.0.0.1:${port}/v1/chat/completions`, key: 'synthetic-host' });
+    await manager.loadPlugins(); // Reinitialization must retain the actual listener endpoint.
+    const request = (route, body, headers = {}) => fetch(`http://127.0.0.1:${port}${route}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body)
+    });
+    assert.equal((await request('/admin_api/channelHub/adapters', { adapterId: 'reload-adapter', channel: 'dingtalk', status: 'active', config: { bridgeKey: 'synthetic-adapter' } })).status, 201);
+    const event = { version: '2.0', eventId: 'after-reload', adapterId: 'reload-adapter', channel: 'dingtalk', eventType: 'message.created', occurredAt: Date.now(), target: { agentId: 'synthetic' }, client: { messageId: 'reload-message', conversationId: 'reload-chat' }, sender: { userId: 'synthetic-user' }, payload: { messages: [{ role: 'user', content: 'hello' }] } };
+    const headers = { 'x-channel-adapter-id': 'reload-adapter', 'x-channel-bridge-key': 'synthetic-adapter' };
+    const response = await request('/plugin-callback/ChannelHub/events', event, headers);
+    assert.equal(response.status, 200, await response.text()); assert.equal(hostCalls, 1);
+    manager.beginDrainServices();
+    assert.equal((await request('/plugin-callback/ChannelHub/events', { ...event, eventId: 'after-drain' }, headers)).status, 503);
     await manager.shutdownAllPlugins(); assert.equal(module.snapshot().ready, false);
+    const manifest = path.join(root, 'Plugin/ChannelHub/plugin-manifest.json');
+    fs.renameSync(manifest, manifest + '.block');
+    await manager.loadPlugins();
+    assert.equal(manager.getServiceModule('ChannelHub'), undefined);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/admin_api/channelHub/health`)).status, 503);
 });
 
 test('drain aborts and awaits an in-flight host request without publishing a reply', async t => {
