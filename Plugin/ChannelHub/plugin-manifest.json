@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0.0",
   "name": "ChannelHub",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "displayName": "ChannelHub 多渠道消息接入",
   "description": "Standalone, opt-in service plugin for authenticated channel adapters, sessions and VCP-native execution.",
   "author": "Jenn / Nobao",

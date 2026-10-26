@@ -42,9 +42,9 @@ jobs:
         run: |
           mkdir -p dist
           cd Plugin
-          zip -q -r ../dist/ChannelHub-v0.4.0.zip ChannelHub \
+          zip -q -r ../dist/ChannelHub-v0.4.1.zip ChannelHub \
             -x 'ChannelHub/config.env' 'ChannelHub/state/*' 'ChannelHub/node_modules/*'
-          unzip -l ../dist/ChannelHub-v0.4.0.zip | grep 'ChannelHub/plugin-manifest.json'
+          unzip -l ../dist/ChannelHub-v0.4.1.zip | grep 'ChannelHub/plugin-manifest.json'
           zip -q -r ../dist/QQPersonal-OneBot-v1.1.0.zip vcp-onebot-adapter \
             -x 'vcp-onebot-adapter/.env' 'vcp-onebot-adapter/node_modules/*' 'vcp-onebot-adapter/state/*'
           unzip -l ../dist/QQPersonal-OneBot-v1.1.0.zip | grep 'vcp-onebot-adapter/channelhub-adapter.json'
@@ -52,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ChannelHub-standalone
-          path: dist/ChannelHub-v0.4.0.zip
+          path: dist/ChannelHub-v0.4.1.zip
           if-no-files-found: error
           retention-days: 14
       - name: Publish QQPersonal adapter artifact

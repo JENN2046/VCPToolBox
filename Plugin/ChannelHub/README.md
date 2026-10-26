@@ -1,6 +1,6 @@
 # ChannelHub 独立服务插件
 
-> 版本 0.4.0；基于 `codex/channelhub-native-sync-integration` 的代码收敛。默认关闭，不迁移历史数据、不启动外部渠道进程。
+> 版本 0.4.1；基于 `codex/channelhub-native-sync-integration` 的代码收敛。默认关闭，不迁移历史数据、不启动外部渠道进程。
 
 ## 结构与边界
 
@@ -9,6 +9,7 @@
 - `api/adapter-api.mjs`：公开、稳定的适配器契约（API v1，供外部适配器使用）
 - `adapter-loader.js`：只读取已安装适配器的 `channelhub-adapter.json` 声明，按需创建实例
 - `managed-adapters.js`：按需管理双向 WebSocket 渠道的连接生命周期；不含 QQ 专属代码
+- `admin-config.js`：Agent 名称校验、管理 API 只读脱敏与安全配置更新；不保存 Agent 源文件
 - `core/`：内部实现、独立状态、消息标准化、去重、会话映射、可观测性、媒体与回发结构
 - `routes/`：宿主管理员 API、媒体管理 API、Bearer 保护的兼容路由、独立适配器密钥保护的 B2 事件
 - `ui/`：自包含的轻量管理页，可直接访问 `/admin_api/channelHub/ui`（宿主管理员认证）
@@ -36,6 +37,29 @@ ChannelHubTimeoutMs=120000
 `PORT` 和 `Key` **直接由已有 VCP PluginManager 注入**，插件只向 `127.0.0.1:PORT/v1/chat/completions` 发起请求，不需要在 `server.js` 单独为 ChannelHub 注入密钥。缺少宿主 PORT/Key 时返回明确初始化错误；不允许从渠道事件覆盖目标 URL、模型或 API Key。
 
 发布分支通过 `.github/workflows/channelhub-standalone.yml` 自动执行 ChannelHub、OneBot 和 NativeSync 回归，分别打包 `ChannelHub/` 与 `vcp-onebot-adapter/` 顶层目录。NapCat 不被打包或再分发。ZIP 只是安装候选包，不能替代真实渠道验收。
+
+## 管理面板：编辑、指定和切换 VCP Agent（0.4.1）
+
+管理员访问 `/admin_api/channelHub/ui`，现在能够：
+
+- 从 **VCP AgentManager 的实际 Agent 别名列表**中选择 Agent；列表由 `GET /admin_api/channelHub/agents` 只读提供。Agent 的创建、删除、提示词维护及模型选择仍归 VCP，不复制 Agent 文件或模型设置。
+- 点击适配器的「编辑」，更新名称、已授权用户/群、连接地址及其他适配器配置。编辑内容从 `GET /admin_api/channelHub/adapters/:id` 获取；敏感字段（OneBot Token、Bridge Key、密码等）永远不回显。要更换密钥必须明确重新输入，普通保存将保留原有密钥。
+- **运行中的 QQ** 只能修改 `config.agentId`，新入站消息立即采用新的 Agent；不会断开 NapCat WebSocket、重置登录或重新连接。已有会话绑定中的 Agent 也会更新，旧 Agent 的 Topic 指向清空，不混用 Agent 上下文。
+- QQ 的白名单、WebSocket 地址、名称、Token 等修改必须先停用适配器，再保存并重新启用。这种停用是对 QQ 渠道实例的操作，不停止 VCP 后端本体。
+- 外部 B2 适配器若设置了 `config.agentId`，ChannelHub 会优先采用管理员绑定的 Agent，不再听任外部事件任意选择目标 Agent；未设置时保留既有路由行为。
+
+管理员 API：
+```text
+GET /admin_api/channelHub/agents
+GET /admin_api/channelHub/adapters
+GET /admin_api/channelHub/adapters/:id
+PUT /admin_api/channelHub/adapters/:id
+```
+`PUT` 只允许 `name`、`config` 和可选 `expectedUpdatedAt`（读取时拿到的编辑版本），禁止直接改变 adapterId、channel、status 等身份/生命周期字段。配置按字段合并，防止未在页面显示的密钥被无意清空。冲突返回 409；运行中更换 Agent 无需关闭 QQ 连接。
+
+### 关键边界
+
+这里的 Agent 下拉框是**将渠道绑定到 VCP 已有 Agent**，不是允许 QQ 群成员管理 Agent，也不是在 ChannelHub 中重新创建模型或 Agent。实际模型依旧由原有 `ChannelHubModel` 及 `ChannelHubAgents` 映射确定；VCP 的原生工具授权与审批也不改变。拥有 ChannelHub 管理页面权限的管理员才能修改绑定。
 
 ## 适配器公共接口（API v1）
 
