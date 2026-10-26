@@ -76,6 +76,7 @@ export class OneBotAdapter extends AdapterContract {
     this._stopping = false;
     this._pendingMessages = new Set();
     this._seenMessages = new Map();
+    this._conversationTasks = new Map();
     // Only ChannelHub's trusted runtime hook enables managed QQ mode.
     this._managedInbound = typeof this.options.onInboundEvent === 'function';
 
@@ -182,6 +183,7 @@ export class OneBotAdapter extends AdapterContract {
     // Work already submitted to VCP may have side effects. Never retry on
     // shutdown or after timeout; suppress replies after deactivation.
     await Promise.allSettled([...this._pendingMessages]);
+    this._conversationTasks.clear();
     this._selfId = null;
     this._connectionState = 'disconnected';
     this.options.logger.info('[OneBotAdapter] Shutdown complete');
@@ -208,6 +210,9 @@ export class OneBotAdapter extends AdapterContract {
 
   async _handleManagedMessage(event) {
     if (!this._shouldHandleManagedMessage(event)) return;
+    // Bound the number of accepted-but-unfinished events; do not build an
+    // unbounded task queue when a QQ account receives a burst of messages.
+    if (this._pendingMessages.size >= 64) return;
     const id = String(this.options.expectedQqId) + ':' + String(event.message_id);
     const now = Date.now();
     if (this._seenMessages.has(id) && now - this._seenMessages.get(id) < 86400000) return;
@@ -215,6 +220,22 @@ export class OneBotAdapter extends AdapterContract {
     // a tool when NapCat re-delivers the same OneBot event.
     this._seenMessages.set(id, now);
     while (this._seenMessages.size > 2000) this._seenMessages.delete(this._seenMessages.keys().next().value);
+
+    // Same QQ conversation is FIFO. Different chats may execute concurrently.
+    const chatKey = event.message_type === 'group'
+      ? 'group:' + String(event.group_id)
+      : 'private:' + String(event.user_id);
+    const previous = this._conversationTasks.get(chatKey) || Promise.resolve();
+    const work = previous.catch(() => {}).then(() => this._deliverManagedMessage(event, id));
+    this._conversationTasks.set(chatKey, work);
+    try { await work; }
+    finally {
+      if (this._conversationTasks.get(chatKey) === work) this._conversationTasks.delete(chatKey);
+    }
+  }
+
+  async _deliverManagedMessage(event, id) {
+    if (this._stopping || !this._initialized || !this.client.isConnected) return;
     const envelope = await this.decodeInbound(event);
     envelope.eventId = 'qq:' + id;
     envelope.requestId = envelope.eventId;
