@@ -92,6 +92,7 @@ async function setupHub(t, runtimeGateway, diagnostics = quiet) {
   });
   await service.initialize();
   const resolver = await discoverAdapterFactories({ pluginsDir: path.resolve(__dirname, '../Plugin'), logger: diagnostics });
+  service.adapterResolver = resolver;
   const host = new ManagedAdapterHost({ service, adapterResolver: resolver, logger: diagnostics });
   t.after(async () => {
     host.beginDrain();
