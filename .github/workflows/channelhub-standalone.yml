@@ -5,6 +5,7 @@ on:
     branches:
       - codex/channelhub-standalone-plugin
       - codex/channelhub-qqpersonal-ws
+      - codex/channelhub-admin-agent-management
     paths:
       - 'Plugin/ChannelHub/**'
       - 'Plugin/vcp-*-adapter/channelhub-adapter.json'
