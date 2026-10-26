@@ -417,7 +417,18 @@ class ChannelHubService extends EventEmitter {
       envelope.payload.messages = normalizedMessages;
 
       // 7. 解析/创建会话绑定
-      const sessionBinding = await this.sessionBindingStore.resolveBinding(envelope);
+      let sessionBinding = await this.sessionBindingStore.resolveBinding(envelope);
+      if (boundAgentId && sessionBinding.agentId !== boundAgentId) {
+        // Keep the visible binding in step with the effective VCP Agent.
+        // Never inherit a previous Agent's topic when reassigning a channel.
+        await this.sessionBindingStore.rebindSession(sessionBinding.bindingKey, {
+          agentId: boundAgentId,
+          topicId: null,
+          currentTopicId: null
+        });
+        sessionBinding = this.sessionBindingStore.getBinding(sessionBinding.bindingKey)
+          || { ...sessionBinding, agentId: boundAgentId, topicId: null, currentTopicId: null };
+      }
 
       // 8. 解析/创建身份映射
       const identityMapping = await this.identityMappingStore.findOrCreateIdentity({
