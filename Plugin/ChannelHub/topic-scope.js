@@ -6,7 +6,7 @@ const { createHash } = require('node:crypto');
 // Only a validated managed QQ event may produce an opaque native Topic key.
 const QQ_ID = /^[1-9][0-9]{4,14}$/;
 const ADAPTER_ID = /^[A-Za-z0-9_-]{1,100}$/;
-const NATIVE_ID_FORBIDDEN = /[<>:"/\\|?*\x00-\x1f]/;
+const NATIVE_ID_FORBIDDEN = /[<>:"\/\\|?*\x00-\x1f]/;
 
 function refused(code) {
   return Object.assign(new Error(code), { code });
