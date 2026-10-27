@@ -6,6 +6,7 @@ on:
       - codex/channelhub-standalone-plugin
       - codex/channelhub-qqpersonal-ws
       - codex/channelhub-admin-agent-management
+      - codex/qq-native-topic-scope-c0
     paths:
       - 'Plugin/ChannelHub/**'
       - 'Plugin/vcp-*-adapter/channelhub-adapter.json'
