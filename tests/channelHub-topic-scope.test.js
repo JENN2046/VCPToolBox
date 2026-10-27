@@ -149,3 +149,25 @@ test('C0: scope generation never imports NativeSync runtime or opens persistent 
   const source = fs.readFileSync(path.resolve(__dirname, '../Plugin/ChannelHub/topic-scope.js'), 'utf8');
   assert.doesNotMatch(source, /require\(['"]\.\.\/NativeSync|sqlite|new CentralStore|readFileSync|writeFileSync|fs\.write/i);
 });
+
+test('C0: actual OneBot decodeInbound private and group envelopes pass scope contract', async () => {
+  const { OneBotAdapter } = await import('../Plugin/vcp-onebot-adapter/src/adapter/contract.js');
+  const driver = new OneBotAdapter({
+    metadata: {
+      id: base.adapterId, channel: 'qq', displayName: 'synthetic OneBot',
+      transportMode: 'forward_ws', sessionGrammar: 'qq:{conversationType}:{conversationId}',
+      capabilities: { supportsText: true }
+    },
+    options: { logger: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
+      wsUrl: 'ws://127.0.0.1:3001/' }
+  });
+  const firstRaw = event({ messageId: '6101' }).metadata.platformData.onebotData;
+  const secondRaw = event({ type: 'group', messageId: '6102' }).metadata.platformData.onebotData;
+  for (const raw of [firstRaw, secondRaw]) {
+    const decoded = await driver.decodeInbound(raw);
+    const topic = scope({ envelope: decoded });
+    assert.equal(topic.ownerId, '大肥鱼');
+    assert.equal(topic.conversationType, raw.message_type);
+    assert.match(topic.topicId, /^qqctx1_[a-f0-9]{48}$/);
+  }
+});
