@@ -1,0 +1,24 @@
+name: JSO Agent ToolBox candidate
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jso-agent-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paired:
+    uses: JENN2046/VCPToolBox-JENN-Extensions/.github/workflows/jso-agent-paired.yml@77e89fae03202a3d861d6f3e78c8a06666df304d
+    with:
+      harness_sha: 77e89fae03202a3d861d6f3e78c8a06666df304d
+      mode: candidate
+      candidate_component: vcptoolbox
+      candidate_repository: JENN2046/VCPToolBox
+      candidate_sha: ${{ github.event.pull_request.head.sha || github.sha }}
