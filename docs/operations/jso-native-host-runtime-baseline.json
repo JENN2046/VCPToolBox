@@ -1,0 +1,10 @@
+{
+  "runtimeHead": "afc089973f0c34b6cab2d5d67f0f97f204ba7a56",
+  "files": {
+    "server.js": "3e84bb5b59defb53140c8de3defd57505e18efab97b4e8c5a8d8ef2c2c4d8bea",
+    "Plugin.js": "650dd438bc1ae44eb2b4a2e5a4c5e2c7ca9db1ea69941262665667d5e9382e0f",
+    "WebSocketServer.js": "231217b519254ee4e2a94c3d70b34ab7ab233eb24ccd58345f701d0183f3a1e7",
+    "modules/requestExecutionContext.js": "f8202d450806d8962888c2f7153eea92b0b13dfb4ea8942a4b5f53b30866a7ee",
+    "modules/agentManager.js": "b98feb415946397931263e1ce2e2acce87ec7c8493e50b65fd704dc2ccd2843c"
+  }
+}
