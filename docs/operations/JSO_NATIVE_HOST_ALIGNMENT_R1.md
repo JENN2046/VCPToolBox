@@ -99,3 +99,24 @@ The independent existing-host job runs the 32 upstream regression tests.
 Remaining acceptance: actual client/admission chain, scoped receipt acceptance,
 isolated cross-host rollback with latest writes retained, fixture disposition
 and final issue #89 review. The production acceptance issue stays open.
+
+## PR review corrections
+
+Two P2 findings were reproduced against the initial candidate and corrected:
+
+- Enrollment claim verification now checks the consumed nonce's enrollment ID
+  and key fingerprint against the selected approved record before consuming the
+  proof or modifying enrollment/client state. Regression cases use both distinct
+  keys and the same key for two enrollments; a rejected cross-target attempt
+  leaves both legitimate proofs usable after their own human approval.
+- The WebSocket dispatcher rejects all new native requests with SERVER_DRAINING
+  once drain begins, including requests on already connected/bound sockets.
+  Existing message/result settlement remains active. Real socket regression
+  cases cover every native action and already dispatched success, failure and
+  unknown outcomes without re-dispatch.
+
+All six new regression cases failed before the fixes. After correction, the
+native host profile has 200 passing tests and the existing-host selection has
+32 passing tests (232 total, zero skips) on local Node. CI re-runs the immutable
+four-component paired matrix for the updated candidate. These changes do not
+activate production admission, native writes or any production deployment.

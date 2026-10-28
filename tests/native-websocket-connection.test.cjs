@@ -388,3 +388,33 @@ test('connection liveness: drain cancels both cadences and queued ordinary ticks
  await f.host.beginDrain();assert.equal(f.intervals.size,0);
  for(const tick of late)tick();assert.equal(pings,0);assert.equal(ordinary.ws.readyState,WebSocket.OPEN);
 });
+
+test('drain rejects new native actions on already connected bound and unbound sockets',async t=>{
+ const f=await fixture(t),bound=await f.connect(),unbound=await f.connect(),prepared=frame();
+ assert.equal((await f.send(bound,prepared)).ok,true);
+ await f.host.beginDrain();await f.host.beginDrain();
+ for(const entry of [bound,unbound])for(const action of ['status','prepare','propose','execute','presented','invalidate','recover']){
+  const result=await f.send(entry,frame(prepared.sessionId,action,{sourceId:'source',planId:'plan'}));
+  assert.equal(result.ok,false);assert.equal(result.code,'SERVER_DRAINING');
+ }
+ assert.equal(f.calls.length,1,'drain must not dispatch or fall through to distributed execution');
+ assert.equal(f.distributedCalls(),0);
+});
+for(const outcome of ['success','reject','unknown'])test('drain preserves already dispatched native settlement: '+outcome,async t=>{
+ const f=await fixture(t),a=await f.connect(),b=await f.connect(),prepared=frame();await f.send(a,prepared);
+ const entered=gate(),settled=gate();t.after(()=>settled.resolve({result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}}));
+ f.manager.executePlugin=(_name,args)=>{f.calls.push(JSON.parse(args));entered.resolve();return settled.promise;};
+ const execution=frame(prepared.sessionId,'execute',{sourceId:'source'}),pending=f.send(a,execution);
+ await entered.promise;await f.host.beginDrain();
+ assert.equal((await f.send(b,frame(prepared.sessionId,'prepare',{}))).code,'SERVER_DRAINING');
+ assert.equal(f.calls.filter(x=>x.nativeAction==='execute').length,1);
+ if(outcome==='reject')settled.reject(Error('synthetic plugin rejection'));
+ else settled.resolve({result:outcome==='success'?{ok:true}:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}});
+ const result=await pending;
+ if(outcome==='success')assert.equal(result.ok,true);
+ else {assert.equal(result.ok,false);assert.equal(result.code,'NATIVE_RESULT_UNKNOWN');}
+ await f.requests.get(execution.requestId);
+ assert.equal(f.calls.length,2,'an admitted execution settles once without a new dispatch');
+ assert.equal((await f.send(a,frame(prepared.sessionId,'recover',{}))).code,'SERVER_DRAINING');
+ assert.equal(f.calls.length,2);
+});

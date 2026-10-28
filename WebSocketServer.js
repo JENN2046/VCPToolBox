@@ -417,6 +417,16 @@ function initialize(httpServer, config) {
             try {
                 const parsedMessage = JSON.parse(message);
                 failureCode = 'WS_NATIVE_HANDLER_FAILED';
+                // Drain admission is synchronous: existing executions may settle,
+                // but a connected socket must not start another native request.
+                if (isDraining && parsedMessage?.type === 'native_conversation_request') {
+                    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({
+                        type: 'native_conversation_response',
+                        requestId: parsedMessage.requestId,
+                        result: { ok: false, code: 'SERVER_DRAINING' }
+                    }));
+                    return;
+                }
                 // Exact native execution routing is separate from broader log sensitivity.
                 if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager, Buffer.byteLength(message))) return;
                 failureCode = 'WS_MESSAGE_HANDLER_FAILED';

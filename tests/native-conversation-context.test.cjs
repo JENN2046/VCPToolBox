@@ -223,3 +223,25 @@ test('NativeSync request and tool arguments cannot mint native conversation prov
   await assert.rejects(createStdioContext({name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'}},{}, {requestId:'synthetic-no-owner',human:true,approved:true}),/NATIVE_CONTEXT_REQUIRED/);
  });} finally {unregister();}
 });
+
+for (const sameKey of [false, true]) test('enrollment claim binds the approved target and preserves both proofs; same key='+sameKey, () => {
+ const authority=new ApprovalReceiptAuthority({testOnly:true}), records=new Map();
+ const store={testOnly:true,add(record){assert.equal(records.has(record.clientEnrollmentId),false);records.set(record.clientEnrollmentId,{...record});},get:id=>records.get(id),update:(id,fields)=>Object.assign(records.get(id),fields)};
+ const admission=new HumanClientAdmission({authority,store,trustedHostOrigin:'https://synthetic.example.test',humanIntentVerifier:()=>true});
+ const firstKey=crypto.generateKeyPairSync('ed25519'),secondKey=sameKey?firstKey:crypto.generateKeyPairSync('ed25519');
+ const begin=key=>admission.begin({protocolVersion:1,publicKeySpki:key.publicKey.export({format:'der',type:'spki'}).toString('base64url')});
+ const first=begin(firstKey),second=begin(secondKey);
+ const sign=(enrollment,key)=>({nonceId:enrollment.proof.nonceId,signature:crypto.sign(null,admissionCrypto.transcript(enrollment.proof.boundFields).bytes,key.privateKey).toString('base64url')});
+ const firstProof=sign(first,firstKey),secondProof=sign(second,secondKey);
+ admission.recordEnrollmentDecision(first.enrollmentId,'approve',{});
+ assert.throws(()=>admission.claim(first.enrollmentId,secondProof),{code:'PROOF_INVALID'});
+ assert.equal(records.size,0,'a mismatched proof must not add an enrolled client');
+ assert.throws(()=>admission.claim(second.enrollmentId,secondProof),{code:'PROOF_INVALID'},'pending enrollment still needs human approval');
+ const firstSession=admission.claim(first.enrollmentId,firstProof);
+ assert.equal(firstSession.clientEnrollmentId,first.enrollmentId,'legitimate approved claimant remains usable');
+ assert.throws(()=>admission.claim(first.enrollmentId,firstProof),{code:'PROOF_INVALID'});
+ admission.recordEnrollmentDecision(second.enrollmentId,'approve',{});
+ assert.equal(admission.claim(second.enrollmentId,secondProof).clientEnrollmentId,second.enrollmentId,'rejected cross-target attempt must not consume the other proof');
+ assert.equal(records.size,2);
+ assert.equal(records.get(first.enrollmentId).publicKeyFingerprint,first.publicKeyFingerprint);
+});

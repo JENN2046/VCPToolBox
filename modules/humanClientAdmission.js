@@ -94,14 +94,14 @@ class HumanClientAdmission {
     return proof;
   }
 
-  #consume(purpose, sessionId, proof, leaseCheck) {
+  #consume(purpose, sessionId, proof, validateContext) {
     this.sweep();
     if (!exactKeys(proof, ['nonceId', 'signature'])) C.fail('PROOF_INVALID');
     const record = this.#nonces.get(proof.nonceId);
     if (!record || record.used) C.fail('PROOF_REPLAYED');
     if (record.proof.expiresAt <= this.now()) C.fail('PROOF_EXPIRED');
     if (record.fields.purpose !== purpose || (sessionId && record.fields.sessionId !== sessionId)) C.fail('PROOF_INVALID');
-    leaseCheck?.();
+    validateContext?.(record);
     const transcript = C.transcript(record.fields);
     if (transcript.boundFieldDigest !== record.proof.boundFieldDigest) C.fail('PROOF_INVALID');
     if (!C.verifyHumanClientProof({
@@ -185,7 +185,12 @@ class HumanClientAdmission {
     const record = this.#enrollments.get(enrollmentId);
     if (!record || record.state !== 'APPROVED_WAITING_PROOF' || record.expiresAt <= this.now()) C.fail('PROOF_INVALID');
     if (this.#sessions.size >= LIMITS.sessions) C.fail('CAPACITY_REACHED');
-    this.#consume('enrollment-claim', null, proof);
+    this.#consume('enrollment-claim', null, proof, consumed => {
+      // Bind the verified nonce to the selected approved enrollment before
+      // consuming it or changing either enrollment/client record.
+      if (consumed.fields.clientEnrollmentId !== enrollmentId ||
+          consumed.fields.publicKeyFingerprint !== record.publicKeyFingerprint) C.fail('PROOF_INVALID');
+    });
     const clientEnrollmentId = enrollmentId;
     const implementationProfileId = this.implementationProfile.id;
     this.store.add({
