@@ -120,3 +120,28 @@ native host profile has 200 passing tests and the existing-host selection has
 32 passing tests (232 total, zero skips) on local Node. CI re-runs the immutable
 four-component paired matrix for the updated candidate. These changes do not
 activate production admission, native writes or any production deployment.
+
+## Shutdown settlement correction
+
+The server now tracks native WebSocket handler promises independently of socket
+lifetime. `shutdown()` closes admission first and waits for those promises to
+settle before closing the response sockets or allowing plugin teardown. This
+also covers a client disconnecting while an execution is still running.
+
+The native drain deadline is 30 seconds from the first `beginDrain()`, not a new
+30-second period after the server's HTTP wait. This keeps both waits within the
+existing outer 60-second shutdown guard. A native drain timeout logs
+`NATIVE_EXECUTION_DRAIN_TIMEOUT` with the remaining count; it neither removes
+pending identities nor marks them successful/cancelled or retries them. Late
+settlement still removes its own promise normally. Recovery must use the
+original operation receipt/unknown handling after restart. Socket close
+handshakes get a separate five-second bound before transport termination so an
+unresponsive peer cannot consume the remaining shutdown budget indefinitely.
+
+The first seven new shutdown regressions reproduced premature closure/no wait
+on the previous candidate. Ten new cases now cover connected/disconnected
+success, rejection and unknown settlement, an unresponsive execution with a
+partly spent/expired shared budget, a stuck socket close handshake, and the actual server gracefulShutdown
+function holding plugin teardown/process exit until native settlement. The
+local native/existing-host selection passes 242 tests with zero skips; CI runs
+the updated candidate against the unchanged immutable paired harness.

@@ -14,6 +14,10 @@ let heartbeatInterval = null;
 let ordinaryHeartbeatInterval = null;
 let isDraining = false;
 let shutdownPromise = null;
+const nativeExecutions = new Set();
+let nativeDrainDeadline = null;
+const NATIVE_EXECUTION_DRAIN_TIMEOUT_MS = 30000;
+const WEBSOCKET_CLOSE_TIMEOUT_MS = 5000;
 
 const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 20 * 1000;
 const NATIVE_WEBSOCKET_HEARTBEAT_INTERVAL_MS = 60 * 1000;
@@ -209,6 +213,7 @@ function initialize(httpServer, config) {
     attachedHttpServer = httpServer;
     isDraining = false;
     shutdownPromise = null;
+    nativeDrainDeadline = null;
 
     if (!serverConfig.vcpKey && serverConfig.debugMode) {
         console.warn('[WebSocketServer] VCP_Key not set. WebSocket connections will not be authenticated if default path is used.');
@@ -428,7 +433,14 @@ function initialize(httpServer, config) {
                     return;
                 }
                 // Exact native execution routing is separate from broader log sensitivity.
-                if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager, Buffer.byteLength(message))) return;
+                const nativeWork = require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager, Buffer.byteLength(message));
+                const tracksNativeExecution = parsedMessage?.type === 'native_conversation_request';
+                if (tracksNativeExecution) nativeExecutions.add(nativeWork);
+                try {
+                    if (await nativeWork) return;
+                } finally {
+                    if (tracksNativeExecution) nativeExecutions.delete(nativeWork);
+                }
                 failureCode = 'WS_MESSAGE_HANDLER_FAILED';
                 const sensitive = isSensitiveNativeMessage(parsedMessage);
                 
@@ -746,6 +758,8 @@ async function beginDrain() {
     }
 
     isDraining = true;
+    // Start one budget at admission closure, shared with the server's HTTP drain.
+    nativeDrainDeadline = Date.now() + NATIVE_EXECUTION_DRAIN_TIMEOUT_MS;
 
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
@@ -764,6 +778,23 @@ async function beginDrain() {
     }
 }
 
+async function waitForNativeExecutionsToDrain() {
+    if (!nativeExecutions.size) return true;
+    const remainingMs = Math.max(0, nativeDrainDeadline - Date.now());
+    if (!remainingMs) return false;
+    let timeout;
+    try {
+        // beginDrain rejects new admissions. Keep disconnected handlers tracked
+        // until their actual finally/receipt settlement, not just socket closure.
+        return await Promise.race([
+            Promise.allSettled([...nativeExecutions]).then(() => true),
+            new Promise(resolve => { timeout = setTimeout(() => resolve(false), remainingMs); })
+        ]);
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 function shutdown() {
     if (shutdownPromise) {
         return shutdownPromise;
@@ -775,9 +806,27 @@ function shutdown() {
         }
 
         await beginDrain();
+        const nativeDrained = await waitForNativeExecutionsToDrain();
+        if (!nativeDrained) {
+            // Do not clear the collection, resend, or claim cancellation/success.
+            console.warn('[WebSocketServer]', { code: 'NATIVE_EXECUTION_DRAIN_TIMEOUT', remaining: nativeExecutions.size });
+        }
 
         if (wssInstance) {
             await new Promise((resolve) => {
+                let completed = false;
+                let closeTimeout;
+                const finish = () => {
+                    if (completed) return;
+                    completed = true;
+                    clearTimeout(closeTimeout);
+                    resolve();
+                };
+                closeTimeout = setTimeout(() => {
+                    console.warn('[WebSocketServer]', { code: 'WEBSOCKET_CLOSE_TIMEOUT' });
+                    wssInstance.clients.forEach(client => { try { client.terminate(); } catch {} });
+                    finish();
+                }, WEBSOCKET_CLOSE_TIMEOUT_MS);
                 try {
                     wssInstance.clients.forEach(client => {
                         try {
@@ -791,11 +840,11 @@ function shutdown() {
                         if (serverConfig.debugMode) {
                             console.log('[WebSocketServer] Server closed.');
                         }
-                        resolve();
+                        finish();
                     });
                 } catch (error) {
                     console.error('[WebSocketServer] Error during shutdown:', error);
-                    resolve();
+                    finish();
                 }
             });
         }

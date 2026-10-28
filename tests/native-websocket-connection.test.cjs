@@ -6,11 +6,14 @@ const {createRequire}=require('node:module'),{createServer}=require('node:http')
 const sourcePath=path.join(__dirname,'../WebSocketServer.js'),realRequire=createRequire(sourcePath);
 const frame=(sessionId=randomUUID(),action='prepare',payload={conversationId:'chat'})=>({type:'native_conversation_request',requestId:randomUUID(),sessionId,toolName:'Example',authorization:'Bearer '+'synthetic-owner'.padEnd(40,'x'),body:{action,payload}});
 function gate(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
-async function fixture(t,{heartbeatEnabled=false,debugMode=false,callbackIO=false,musicEnabled=false,listenHost='127.0.0.1',socketFacts}={}){
+async function fixture(t,{heartbeatEnabled=false,debugMode=false,callbackIO=false,musicEnabled=false,listenHost='127.0.0.1',socketFacts,controlShutdownTimers=false,clock}={}){
+ const shutdownTimers=new Map();
  const intervals=new Map(),callbacks=[],calls=[],sockets=[],logs=[],requests=new Map();let approvals=0;const registrations=[];let distributedCalls=0;const callbackWrites=[];
  const manager={plugins:new Map([['Example',{name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'},communication:{protocol:'stdio'}}]]),unregisterAllDistributedTools(){},registerDistributedTools(...args){registrations.push(args);},async handleApprovalResponse(){approvals++;},async executePlugin(_name,args){calls.push(JSON.parse(args));return {result:JSON.parse(args).nativeAction==='prepare'?{ok:true,sourceId:'source',plan:{id:'plan'}}:{ok:true}};}};
  const module={exports:{}};
- const context={module,exports:module.exports,__dirname:path.dirname(sourcePath),Buffer,URL,console:{log:(...a)=>logs.push(a),warn:(...a)=>logs.push(a),error:(...a)=>logs.push(a)},process:{env:{}},setTimeout,clearTimeout,
+ const context={module,exports:module.exports,__dirname:path.dirname(sourcePath),Buffer,URL,Date:clock?class extends Date {static now(){return clock.now;}}:Date,console:{log:(...a)=>logs.push(a),warn:(...a)=>logs.push(a),error:(...a)=>logs.push(a)},process:{env:{}},
+  setTimeout(fn,ms,...args){if(!controlShutdownTimers)return setTimeout(fn,ms,...args);const timer={unref(){}};shutdownTimers.set(timer,{fn:()=>fn(...args),ms});return timer;},
+  clearTimeout(timer){if(!shutdownTimers.delete(timer))clearTimeout(timer);},
   setInterval(fn,ms){const timer={unref(){}};intervals.set(timer,{fn,ms});callbacks.push(fn);return timer;},clearInterval(timer){intervals.delete(timer);},
   require(name){if(name==='fs'&&callbackIO)return {promises:{mkdir:async()=>{},writeFile:async(...args)=>callbackWrites.push(args)}};if(name==='./modules/distributedMusicDiarySync')return musicEnabled?realRequire(name):{};if(name==='./modules/vcpLogReplayManager')return {};if(name==='./modules/nativeConversationWebSocket'){const native=realRequire(name);return {...native,handleNativeConversationMessage(...args){const work=native.handleNativeConversationMessage(...args);requests.set(args[1]?.requestId,work);return work;}};}return realRequire(name);}};
  vm.runInNewContext(fs.readFileSync(sourcePath,'utf8')+'\nmodule.exports.fixtureServer=()=>wssInstance;',context,{filename:sourcePath});
@@ -27,7 +30,7 @@ async function fixture(t,{heartbeatEnabled=false,debugMode=false,callbackIO=fals
  }
  async function send(entry,message){const response=once(entry.client,'message');entry.client.send(typeof message==='string'||Buffer.isBuffer(message)?message:JSON.stringify(message));return JSON.parse((await response)[0].toString()).result;}
  function tick(ms=60000){const timers=Array.from(intervals.values()).filter(timer=>timer.ms===ms);assert.equal(timers.length,1,'one timer per heartbeat cadence');timers[0].fn();}
- return {host,http,manager,callbackWrites,calls,sockets,logs,connect,send,tick,intervals,callbacks,requests,registrations,distributedCalls:()=>distributedCalls,approvals:()=>approvals};
+ return {host,http,manager,shutdownTimers,callbackWrites,calls,sockets,logs,connect,send,tick,intervals,callbacks,requests,registrations,distributedCalls:()=>distributedCalls,approvals:()=>approvals};
 }
 async function pingCycle(f,entry){const pong=once(entry.ws,'pong');f.tick();await pong;}
 async function staleClose(f,entry){const ping=once(entry.client,'ping');f.tick();await ping;const closed=once(entry.ws,'close');f.tick();await closed;}
@@ -417,4 +420,78 @@ for(const outcome of ['success','reject','unknown'])test('drain preserves alread
  assert.equal(f.calls.length,2,'an admitted execution settles once without a new dispatch');
  assert.equal((await f.send(a,frame(prepared.sessionId,'recover',{}))).code,'SERVER_DRAINING');
  assert.equal(f.calls.length,2);
+});
+
+for(const disconnected of [false,true])for(const outcome of ['success','reject','unknown'])test(`shutdown waits for native ${outcome} settlement; disconnected=${disconnected}`,async t=>{
+ const f=await fixture(t),a=await f.connect(),prepared=frame();await f.send(a,prepared);
+ const entered=gate(),settled=gate();t.after(()=>settled.resolve({result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}}));
+ f.manager.executePlugin=(_name,args)=>{f.calls.push(JSON.parse(args));entered.resolve();return settled.promise;};
+ const execution=frame(prepared.sessionId,'execute',{sourceId:'source'});
+ const reply=disconnected?null:f.send(a,execution);if(disconnected)a.client.send(JSON.stringify(execution));
+ await entered.promise;
+ if(disconnected){const closed=once(a.ws,'close');a.client.terminate();await closed;}
+ await f.host.beginDrain();let shutdownCompleted=false;
+ const shutdown=f.host.shutdown();assert.equal(f.host.shutdown(),shutdown);
+ shutdown.then(()=>{shutdownCompleted=true;});
+ await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(shutdownCompleted,false,'socket closure alone must not finish shutdown while a handler is pending');
+ if(!disconnected)assert.equal(a.ws.readyState,WebSocket.OPEN,'retain the response channel while the admitted handler settles');
+ if(outcome==='reject')settled.reject(Error('synthetic native failure'));
+ else settled.resolve({result:outcome==='success'?{ok:true}:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}});
+ if(reply){const value=await reply;assert.equal(value.ok,outcome==='success');if(outcome!=='success')assert.equal(value.code,'NATIVE_RESULT_UNKNOWN');}
+ await f.requests.get(execution.requestId);await shutdown;
+ assert.equal(shutdownCompleted,true);assert.equal(f.calls.length,2);
+ assert.equal(f.logs.some(args=>args.some(x=>x?.code==='NATIVE_EXECUTION_DRAIN_TIMEOUT')),false);
+});
+for(const elapsed of [10000,30000])test('shutdown bounds non-settling native work with one budget from beginDrain; elapsed='+elapsed,async t=>{
+ const clock={now:100000};const f=await fixture(t,{controlShutdownTimers:true,clock}),a=await f.connect(),prepared=frame();await f.send(a,prepared);
+ const entered=gate(),settled=gate();t.after(()=>settled.resolve({result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}}));
+ f.manager.executePlugin=(_name,args)=>{f.calls.push(JSON.parse(args));entered.resolve();return settled.promise;};
+ const execution=frame(prepared.sessionId,'execute',{sourceId:'source'});a.client.send(JSON.stringify(execution));await entered.promise;
+ const closed=once(a.ws,'close');a.client.terminate();await closed;
+ await f.host.beginDrain();clock.now+=elapsed;let handlerSettled=false;f.requests.get(execution.requestId).then(()=>{handlerSettled=true;});
+ const shutdown=f.host.shutdown();await new Promise(resolve=>setImmediate(resolve));
+ if(elapsed<30000){assert.equal(f.shutdownTimers.size,1,'the admitted work has a bounded drain timer even after disconnect');
+ const [{fn,ms}]=f.shutdownTimers.values();assert.equal(ms,30000-elapsed,'HTTP drain must not reset the native deadline');fn();}
+ else assert.equal(f.shutdownTimers.size,0,'an expired shared budget must not start another 30-second wait');
+ await shutdown;
+ assert.equal(handlerSettled,false,'timeout is not a successful settlement or cancellation');
+ assert.equal(f.logs.some(args=>args.some(x=>x?.code==='NATIVE_EXECUTION_DRAIN_TIMEOUT'&&x.remaining===1)),true);
+ assert.equal(f.calls.length,2);assert.equal(f.shutdownTimers.size,0);
+ settled.resolve({result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}});await f.requests.get(execution.requestId);
+ assert.equal(handlerSettled,true);assert.equal(f.calls.length,2);
+});
+
+test('shutdown bounds the socket close handshake after native drain',async t=>{
+ const f=await fixture(t,{controlShutdownTimers:true}),a=await f.connect({ordinary:true});
+ a.ws.close=()=>{};const closed=once(a.ws,'close');
+ const shutdown=f.host.shutdown();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.shutdownTimers.size,1);const [{fn,ms}]=f.shutdownTimers.values();assert.equal(ms,5000);
+ fn();await shutdown;await closed;
+ assert.equal(f.logs.some(args=>args.some(x=>x?.code==='WEBSOCKET_CLOSE_TIMEOUT')),true);
+ assert.equal(f.shutdownTimers.size,0);assert.equal(f.calls.length,0);
+});
+
+test('actual server gracefulShutdown waits before plugin teardown and process exit',async t=>{
+ const f=await fixture(t),a=await f.connect(),prepared=frame();await f.send(a,prepared);
+ const entered=gate(),settled=gate();t.after(()=>settled.resolve({result:{ok:false,code:'NATIVE_RESULT_UNKNOWN'}}));
+ f.manager.executePlugin=()=>{entered.resolve();return settled.promise;};
+ const pending=f.send(a,frame(prepared.sessionId,'execute',{sourceId:'source'}));await entered.promise;
+ const serverSource=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
+ const start=serverSource.indexOf('async function gracefulShutdown('),end=serverSource.indexOf("process.on('SIGINT'",start);
+ assert.ok(start>=0&&end>start);let pluginTeardowns=0,exits=0;
+ // Run the actual production shutdown function with isolated lifecycle services;
+ // no real server startup, process exit, config or state is used.
+ const context={shutdownPromise:null,lastShutdownExitCode:0,shutdownReason:null,shutdownStartedAt:null,
+  serverLifecycleState:'RUNNING',SERVER_LIFECYCLE:{DRAINING:'DRAINING',SHUTTING_DOWN:'SHUTTING_DOWN',EXITING:'EXITING'},
+  activeRequests:new Map(),trackedSockets:new Set(),activeHttpRequests:new Set(),forceShutdownTimer:null,
+  webSocketServer:f.host,pluginManager:{getServiceModule:()=>null,shutdownAllPlugins:async()=>{pluginTeardowns++;}},
+  closeHttpServerGracefully:async()=>{},waitForActiveRequestsToDrain:async()=>true,abortAllActiveRequests:async()=>{},
+  taskScheduler:null,toolCallRecordStore:null,tdbKnowledgeManager:null,knowledgeBaseManager:null,
+  logger:{getLogWriteStream:()=>null},console:{log(){},warn(){},error(){}},Date,setTimeout,clearTimeout,process:{exit(){exits++;}}};
+ const shutdown=vm.runInNewContext('('+serverSource.slice(start,end)+')',context)(0,'synthetic-restart');
+ await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(pluginTeardowns,0);assert.equal(exits,0,'an admitted execution must hold up the actual server exit path');
+ settled.resolve({result:{ok:true}});assert.equal((await pending).ok,true);await shutdown;
+ assert.equal(pluginTeardowns,1);assert.equal(exits,1);
 });
