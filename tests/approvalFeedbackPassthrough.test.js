@@ -360,6 +360,8 @@ test('真实工具审核链：普通、富内容、裸数组、短路、异常�
             `(async function processToolCall(toolName, toolArgs, requestIp = null, sourceNode = null, executionOptions = {}) {${PROCESS_TOOL_BODY}})`,
             {
                 console, setTimeout, clearTimeout,
+                // Preserve the live NativeSync import in this AST fixture.
+                nativeExecutionContext: require('../modules/requestExecutionContext'),
                 resolveArgsFileUrls: async () => {},
                 buildToolChangePreview: () => null,
                 getFormattedLocalTimestamp: () => 'test-time',

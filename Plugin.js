@@ -1724,9 +1724,15 @@ class PluginManager extends EventEmitter {
 
         // Force Python stdio encoding to UTF-8
         additionalEnv.PYTHONIOENCODING = 'utf-8';
-        const finalEnv = { ...envForProcess, ...additionalEnv };
+        const nativeInvocation = await require('./modules/nativeConversationTransport').createStdioContext(plugin, pluginConfig, executionOptions.nativeConversationContext);
+        if (nativeInvocation) Object.assign(additionalEnv, nativeInvocation.env);
+        // Native children receive only public configuration and an expiring broker
+        // handle. Legacy plugin environment behavior remains unchanged.
+        const finalEnv = nativeInvocation
+            ? require('./modules/pluginRuntimeEnvSandbox').buildExternalPluginRuntimeEnv(process.env, pluginConfig, additionalEnv)
+            : { ...envForProcess, ...additionalEnv };
 
-        if (this.debugMode && plugin.pluginType === 'asynchronous') {
+        if (this.debugMode && plugin.pluginType === 'asynchronous' && !nativeInvocation) {
             console.log(`[PluginManager executePlugin] Final ENV for async plugin ${pluginName}:`, JSON.stringify(finalEnv, null, 2).substring(0, 500) + "...");
         }
 
@@ -1735,13 +1741,22 @@ class PluginManager extends EventEmitter {
             const [command, ...args] = plugin.entryPoint.command.split(' ');
             if (this.debugMode) console.log(`[PluginManager executePlugin Internal] Attempting to spawn command: "${command}" with args: [${args.join(', ')}] in cwd: ${plugin.basePath}`);
 
-            const pluginProcess = spawn(command, args, {
-                cwd: plugin.basePath,
-                shell: true,
-                env: finalEnv,
-                windowsHide: true,
-                detached: process.platform !== 'win32'
-            });
+            let pluginProcess;
+            try {
+                pluginProcess = spawn(command, args, {
+                    cwd: plugin.basePath,
+                    shell: true,
+                    env: finalEnv,
+                    windowsHide: true,
+                    detached: process.platform !== 'win32'
+                });
+            } catch (error) {
+                void nativeInvocation?.close();
+                reject(error);
+                return;
+            }
+            pluginProcess.once('close', () => { void nativeInvocation?.close(); });
+            pluginProcess.once('error', () => { void nativeInvocation?.close(); });
 
 
             let outputBuffer = ''; // Buffer to accumulate data chunks

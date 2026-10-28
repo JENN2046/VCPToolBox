@@ -1253,6 +1253,9 @@ app.post('/v1/chatvcp/completions', async (req, res) => {
 const protocolBridge = require('./routes/protocolBridge');
 app.use(protocolBridge);
 
+// Generic native channel; existing Bearer authentication remains upstream.
+require('./modules/nativeConversationTransport').registerNativeConversationRoute(app, pluginManager);
+
 // 新增：人类直接调用工具的端点
 app.post('/v1/human/tool', async (req, res) => {
     try {
