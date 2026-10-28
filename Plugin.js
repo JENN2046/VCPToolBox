@@ -10,6 +10,7 @@ const express = require('express'); // For plugin API routing
 const chokidar = require('chokidar');
 const { getAuthCode } = require('./modules/captchaDecoder'); // 导入统一的解码函数
 const ToolApprovalManager = require('./modules/toolApprovalManager');
+const nativeExecutionContext = require('./modules/requestExecutionContext');
 const { hasFoldMarkers, buildDynamicFoldObject } = require('./modules/foldProtocol');
 const { sanitizeToolResult } = require('./modules/toolResultPrivacyGuard');
 const toolCallRecordStore = require('./modules/toolCallRecordStore');
@@ -1304,6 +1305,7 @@ class PluginManager extends EventEmitter {
     }
 
     async processToolCall(toolName, toolArgs, requestIp = null, sourceNode = null, executionOptions = {}) {
+        nativeExecutionContext.throwIfCancelled();
         const shouldManageToolCallRecord = !executionOptions?.toolCallRecordHandle;
         const managedToolCallRecord = shouldManageToolCallRecord
             ? toolCallRecordStore.beginRecord({ toolName, args: toolArgs || {}, requestIp, sourceNode })
@@ -1399,7 +1401,7 @@ class PluginManager extends EventEmitter {
             }
 
             try {
-                const approvalResult = await approvalPromise;
+                const approvalResult = await nativeExecutionContext.waitForApproval(approvalPromise, () => this.handleApprovalResponse(requestId, false, 'Native execution cancelled before tool dispatch'));
                 if (approvalResult && approvalResult.silentRejected === true) {
                     const userFeedback = typeof approvalResult.userFeedback === 'string'
                         ? approvalResult.userFeedback.trim()
@@ -1455,6 +1457,7 @@ class PluginManager extends EventEmitter {
 
         // Manifest 驱动的工具生命周期 VCPInfo 由主进程统一发送。
         // 同步插件子进程退出、被杀或超时，都不会影响已发送的 WebSocket 通知。
+        nativeExecutionContext.throwIfCancelled();
         const lifecycleContext = this.toolLifecycleVcpInfo.createContext(
             plugin,
             pluginSpecificArgs,
@@ -1466,7 +1469,13 @@ class PluginManager extends EventEmitter {
         );
         this.toolLifecycleVcpInfo.emit(lifecycleContext, 'start');
 
+        return nativeExecutionContext.runToolInvocation({
+            pluginName: toolName,
+            recordId: executionOptions?.toolCallRecordHandle?.id || managedToolCallRecord?.id || null
+        }, async () => {
         try {
+            nativeExecutionContext.throwIfCancelled();
+            nativeExecutionContext.toolStarted();
             const executionResult = await this.executionBridgeRegistry.execute(
                 plugin,
                 pluginSpecificArgs,
@@ -1616,8 +1625,9 @@ class PluginManager extends EventEmitter {
             if (managedToolCallRecord?.id && sanitizedErrorObject && typeof sanitizedErrorObject === 'object' && !sanitizedErrorObject.tool_call_record_id) {
                 sanitizedErrorObject.tool_call_record_id = managedToolCallRecord.id;
             }
-            throw new Error(JSON.stringify(sanitizedErrorObject));
+            throw Object.assign(new Error(JSON.stringify(sanitizedErrorObject)), { code: e.code });
         }
+        });
     }
 
     async executePlugin(pluginName, inputData, requestIp = null, executionOptions = {}) {

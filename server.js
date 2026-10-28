@@ -553,10 +553,18 @@ else console.log('未加载任何全局上下文转换规则。');
 
 const app = express();
 app.set('trust proxy', true); // 新增：信任代理，以便正确解析 X-Forwarded-For 头，解决本地IP识别为127.0.0.1的问题
+// Mobile requests use scoped sessions; the plugin enforces HTTPS and Origin.
+app.use('/mobile', (req, res) => {
+    const mobile = pluginManager.getServiceModule('NativeSync');
+    if (!mobile?.handleMobile) return res.status(503).json({ error: { code: 'MOBILE_DISABLED' } });
+    return mobile.handleMobile(req, res);
+});
 app.use(cors({ origin: '*' })); // 启用 CORS，允许所有来源的跨域请求，方便本地文件调试
 
 // 在路由决策之前解析请求体，以便 req.body 可用
 app.use(express.json({ limit: '300mb' }));
+// Scoped observation/cancellation only; original model and approval pipelines remain authoritative.
+app.use(require('./modules/requestExecutionContext').middleware);
 app.use(express.urlencoded({ limit: '300mb', extended: true }));
 app.use(express.text({ limit: '300mb', type: 'text/plain' })); // 新增：用于处理纯文本请求体
 
@@ -1565,7 +1573,8 @@ async function startServer() {
     await import('node-fetch');
     console.log('[Server] node-fetch 模块预热完毕，准备处理请求。');
 
-    server = app.listen(port, () => {
+    server = app.listen(port, process.env.HOST || '127.0.0.1', () => {
+        pluginManager.getServiceModule('NativeSync')?.setExecutionEndpoint?.({ url: `http://127.0.0.1:${server.address().port}/v1/chat/completions`, key: serverKey });
         console.log(`中间层服务器正在监听端口 ${port}`);
         console.log(`API 服务器地址: ${apiUrl}`);
 
@@ -1628,6 +1637,7 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
     shutdownReason = reason;
     shutdownStartedAt = Date.now();
     serverLifecycleState = SERVER_LIFECYCLE.DRAINING;
+    pluginManager.getServiceModule('NativeSync')?.beginDrain?.();
 
     console.log(`[Server] Initiating graceful shutdown. reason=${reason}, exitCode=${exitCode}`);
     console.log(`[Server][ShutdownTrace] Phase 0/10 - shutdown requested. activeRequests=${activeRequests.size}`);

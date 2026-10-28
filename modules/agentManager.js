@@ -270,6 +270,8 @@ class AgentManager {
      * @returns {Promise<string>} The agent's prompt content.
      */
     async getAgentPrompt(alias) {
+        const snapshot = require('./requestExecutionContext').agentPrompt(alias);
+        if (snapshot !== undefined) return snapshot;
         if (this.promptCache.has(alias)) {
             return this.promptCache.get(alias);
         }
