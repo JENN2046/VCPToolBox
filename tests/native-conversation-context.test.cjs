@@ -1,6 +1,33 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {createStdioContext}=require('../modules/nativeConversationTransport');const {buildExternalPluginRuntimeEnv}=require('../modules/pluginRuntimeEnvSandbox');
+test('broker scopes full-adoption delegation and receipts; model calls cannot dispatch either write family',async t=>{
+ const {createServer}=require('node:http');const {executeNativeRequest}=require('../modules/nativeConversationTransport');
+ const seen=[];let response={ok:true},responseStatus=200;const upstream=createServer((req,res)=>{seen.push(req.url);req.resume();res.writeHead(responseStatus,{'content-type':'application/json'});res.end(JSON.stringify(response));});
+ await new Promise(r=>upstream.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>upstream.close(r)));
+ const plugin={name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'},communication:{protocol:'stdio'}};
+ const config={JSO_LOCAL_AGENT_ENDPOINT:`http://127.0.0.1:${upstream.address().port}/api/v2/agent/tools`,JSO_LOCAL_AGENT_TOKEN:'x'.repeat(40),JSO_RESOURCE_IDS:'R',JSO_ASSISTANT_SUBJECT_ID:'assistant',JSO_CALL_POLICY:'native-direct-and-confirm'};
+ const invoke=async(context,body)=>{const c=JSON.parse(context.env.VCP_EXECUTION_CONTEXT);return fetch(c.endpoint,{method:'POST',headers:{authorization:'Bearer '+c.capability},body:JSON.stringify(body)}).then(r=>r.json());};
+ const model=await createStdioContext(plugin,config);try{for(const command of ['reschedule','adopt_proposal'])assert.equal((await invoke(model,{kind:'agent',args:{command,payload_json:'{}'}})).code,'TRUSTED_NATIVE_TRANSPORT_REQUIRED');}finally{await model.close();}
+ assert.equal(seen.length,0);
+ const manager={plugins:new Map([['Example',plugin]]),async executePlugin(_name,_args,_address,options){
+  const broker=await createStdioContext(plugin,config,options.nativeConversationContext);
+  try{
+   const delegation={sourceRef:'native-source',assistantSubjectId:'assistant',action:'adopt_proposal',command:{generationCommand:{resourceScope:['R']}}};
+   for(const scope of [[],['OTHER'],null])assert.equal((await invoke(broker,{kind:'owner-delegation',payload:{...delegation,command:{generationCommand:{resourceScope:scope}}}})).code,'FORBIDDEN');
+   assert.equal(seen.length,0);assert.equal((await invoke(broker,{kind:'owner-delegation',payload:delegation})).ok,true);
+   const valid={ok:true,kind:'proposalDecision',resourceScope:['R'],receipt:{decisionId:'ORIGINAL',decisionType:'accept',decisionCommandDigest:'sha256:'+'a'.repeat(64)}};
+   for(const patch of [{},{resourceScope:['OTHER']},{resourceScope:[]},{resourceScope:undefined},{receipt:{...valid.receipt,decisionId:'OTHER'}},{receipt:{...valid.receipt,decisionType:'partiallyAccept'}}]){
+    response={...valid,...patch};const result=await invoke(broker,{kind:'agent',args:{command:'read_receipt',payload_json:'{"operationId":"ORIGINAL"}'}});assert.equal(result.ok,Object.keys(patch).length===0);
+   }
+   responseStatus=503;response={ok:false,code:'SYNTHETIC_SERVER_ERROR'};
+   const c=JSON.parse(broker.env.VCP_EXECUTION_CONTEXT),failed=await fetch(c.endpoint,{method:'POST',headers:{authorization:'Bearer '+c.capability},body:JSON.stringify({kind:'agent',args:{command:'adopt_proposal',payload_json:'{}'}})});
+   assert.equal(failed.status,503);assert.equal((await failed.json()).code,'SYNTHETIC_SERVER_ERROR');
+   return {ok:true};
+  }finally{await broker.close();}
+ }};
+ assert.equal((await executeNativeRequest(manager,'Example','Bearer '+'o'.repeat(40),{action:'status',payload:{}})).ok,true);
+});
 test('JSON cannot mint host provenance and external environment policy remains unchanged',async()=>{
  const plugin={name:'Example',nativeConversation:{protocol:'trusted-conversation-v1'}};
  await assert.rejects(createStdioContext(plugin,{}, {human:true,approved:true,role:'user'}),/NATIVE_CONTEXT_REQUIRED/);

@@ -53,16 +53,18 @@ async function createStdioContext(plugin,config,nativeContext){
   try{let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>270336)return send(413,{ok:false});}const body=JSON.parse(raw);let route,authorization,payload;
    if(body.kind==='agent'){
     payload=body.args;if(!payload||Object.keys(payload).sort().join(',')!=='command,payload_json')return send(400,{ok:false,code:'INVALID_AGENT_ARGUMENTS'});
-    if(!['read_state','read_receipt','preview_shift','preview_calendar','propose_reschedule','reschedule'].includes(payload.command)||((!native||config.JSO_CALL_POLICY!=='native-direct-and-confirm')&&payload.command==='reschedule'))return send(403,{ok:false,code:'TRUSTED_NATIVE_TRANSPORT_REQUIRED'});
+    if(!['read_state','read_receipt','preview_shift','preview_calendar','propose_reschedule','generate_proposal','adopt_proposal','reschedule'].includes(payload.command)||((!native||config.JSO_CALL_POLICY!=='native-direct-and-confirm')&&['reschedule','adopt_proposal'].includes(payload.command)))return send(403,{ok:false,code:'TRUSTED_NATIVE_TRANSPORT_REQUIRED'});
     const p=JSON.parse(payload.payload_json);if(payload.command==='read_state'&&p.resourceScope===undefined){p.resourceScope=resources;payload={...payload,payload_json:JSON.stringify(p)};}if(p.resourceId&&!resources.includes(p.resourceId)||p.resourceScope?.some(id=>!resources.includes(id)))return send(403,{ok:false,code:'FORBIDDEN'});
     route='/api/v2/agent/tools';authorization='Bearer '+assistant;
    }else if(body.kind==='owner-session'||body.kind==='owner-delegation'){
     if(!native)return send(403,{ok:false,code:'APPLICATION_SESSION_REQUIRED'});
     if(body.kind==='owner-delegation'&&config.JSO_CALL_POLICY!=='native-direct-and-confirm')return send(403,{ok:false,code:'READ_ONLY_POLICY'});
     route='/api/v2/agent/'+body.kind;authorization=native.credential;payload=body.kind==='owner-delegation'?body.payload:undefined;
-    if(payload&&(!resources.includes(payload.command?.resourceId)||payload.assistantSubjectId!==config.JSO_ASSISTANT_SUBJECT_ID))return send(403,{ok:false,code:'FORBIDDEN'});
+    const action=payload&&Object.hasOwn(payload,'action')?payload.action:'reschedule';
+    const scope=action==='reschedule'?[payload?.command?.resourceId]:action==='adopt_proposal'?payload?.command?.generationCommand?.resourceScope:null;
+    if(payload&&(!Array.isArray(scope)||!scope.length||scope.some(id=>!resources.includes(id))||payload.assistantSubjectId!==config.JSO_ASSISTANT_SUBJECT_ID))return send(403,{ok:false,code:'FORBIDDEN'});
    }else return send(400,{ok:false,code:'INVALID_INVOCATION_REQUEST'});
-   const result=await fetch(endpoint.origin+route,{method:payload?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(15000),headers:{authorization,'content-type':'application/json'},...(payload?{body:JSON.stringify(payload)}:{})});const value=await result.json();if((payload?.command==='read_receipt'&&value.ok===true&&(value.kind!=='reschedule'||!resources.includes(value.receipt?.resourceId)))||(value.receipt?.resourceId&&!resources.includes(value.receipt.resourceId)))return send(403,{ok:false,code:'FORBIDDEN'});send(200,value);
+   const result=await fetch(endpoint.origin+route,{method:payload?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(15000),headers:{authorization,'content-type':'application/json'},...(payload?{body:JSON.stringify(payload)}:{})});const value=await result.json();if((payload?.command==='read_receipt'&&value.ok===true&&!((value.kind==='reschedule'&&resources.includes(value.receipt?.resourceId))||(value.kind==='proposalDecision'&&Array.isArray(value.resourceScope)&&value.resourceScope.length>0&&new Set(value.resourceScope).size===value.resourceScope.length&&value.resourceScope.every(id=>resources.includes(id))&&value.receipt?.decisionType==='accept'&&value.receipt?.decisionId===JSON.parse(payload.payload_json).operationId&&/^sha256:[a-f0-9]{64}$/.test(value.receipt?.decisionCommandDigest))))||(value.receipt?.resourceId&&!resources.includes(value.receipt.resourceId)))return send(403,{ok:false,code:'FORBIDDEN'});send(result.status,value);
   }catch{send(503,{ok:false,code:'INVOCATION_RESULT_UNKNOWN'});}
  });
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});

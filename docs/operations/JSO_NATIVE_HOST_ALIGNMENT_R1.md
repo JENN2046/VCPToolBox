@@ -2,6 +2,13 @@
 
 Status: review candidate only. This is not a production native-write acceptance.
 
+R2 follow-up adds `generate_proposal` and native-only `adopt_proposal` broker
+dispatch. Owner delegation validates all generation resources; scoped full-adoption
+receipt reads require the original decision ID, explicit resource scope and a
+decision digest. Model/stdin writes remain denied. This follow-up targets the
+merged runtime overlay branch, not the unrelated main/master runtime. It does not
+activate `vcp_chat.c2`, install a native plugin, change credentials or enable writes.
+
 ## Runtime base and review target
 
 The observed 106.52.85.232 service uses upstream
