@@ -249,9 +249,10 @@ class RiverMemoEngine {
                         error.code = 'NATIVE_RIVER_QUERY_EMPTY_DIARY_SCOPE';
                         throw error;
                     }
-                    const queryVector = query?.vector instanceof Float32Array
-                        ? query.vector
-                        : new Float32Array(query?.vector || []);
+                    const annVector = options.nativeAnnVector || query?.vector;
+                    const queryVector = annVector instanceof Float32Array
+                        ? annVector
+                        : new Float32Array(annVector || []);
                     const nativePerIndexK = Math.max(
                         1,
                         Math.floor(Number(options.nativePerIndexK) || 300)
@@ -432,6 +433,11 @@ class RiverMemoEngine {
                 score: clamp01(item.score),
                 originalScore: Number(item.originalScore) || 0,
                 baseScore: clamp01(item.baseScore),
+                fieldScore: clamp01(item.fieldScore),
+                fieldResonanceBonus: clamp01(item.fieldResonanceBonus),
+                pathBonus: clamp01(item.pathBonus),
+                graphBonus: clamp01(item.graphBonus),
+                scoreClipping: Math.max(0, Number(item.scoreClipping) || 0),
                 topologyBonus: clamp01(item.topologyBonus),
                 anchorBonus: clamp01(item.anchorBonus),
                 matchedTags,
@@ -468,7 +474,7 @@ class RiverMemoEngine {
         return Object.freeze({
             schema: RESULT_SCHEMA,
             version: VERSION,
-            algorithmVersion: ALGORITHM_VERSION,
+            algorithmVersion: nativeResult.algorithmVersion || ALGORITHM_VERSION,
             artifactSig: artifact.artifactSig,
             artifactGeneration: artifact.generation,
             queryId: queryState.queryId,
@@ -583,8 +589,8 @@ class RiverMemoEngine {
             throw error;
         }
 
-        // Topology V3 的候选投影、路径几何、相对拓扑、DSTC、Direct Anchor、
-        // 批级条件创新和最终排序全部由 Rust/Rayon 在一个 N-API 调用内完成。
+        // 候选投影、路径几何、一对一拓扑、Direct Anchor、候选自身结构奖励
+        // 和最终排序全部由 Rust/Rayon 在一个 N-API 调用内完成。
         // JS 仅准备查询连续场并消费稳定结果，禁止再进入旧的逐候选计算链。
         return await this._rerankNative(
             query,

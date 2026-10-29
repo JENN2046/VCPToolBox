@@ -1,5 +1,7 @@
 'use strict';
 
+const http = require('http');
+const https = require('https');
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
@@ -27,6 +29,15 @@ function parseNonNegativeInteger(value, fallback, max = Number.MAX_SAFE_INTEGER)
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed < 0) return fallback;
     return Math.min(parsed, max);
+}
+
+function parseBoolean(value, fallback = true) {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    const str = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(str)) return true;
+    if (['false', '0', 'no', 'off'].includes(str)) return false;
+    return fallback;
 }
 
 function sleep(ms) {
@@ -61,6 +72,7 @@ class JevClient {
     constructor(options = {}) {
         this.options = { ...options };
         this.proxyAgents = new Map();
+        this.directAgents = new Map();
         this.apiKeyCursor = 0;
     }
 
@@ -118,6 +130,40 @@ class JevClient {
             || process.env.JEV_PROXY_URL
             || ''
         ).trim();
+        const keepAlive = parseBoolean(
+            overrides.keepAlive
+            ?? this.options.keepAlive
+            ?? process.env.JEV_KEEPALIVE,
+            true
+        );
+        const keepAliveMsecs = parsePositiveInteger(
+            overrides.keepAliveMsecs
+            ?? this.options.keepAliveMsecs
+            ?? process.env.JEV_KEEPALIVE_MSECS,
+            10000,
+            60000
+        );
+        const maxSockets = parsePositiveInteger(
+            overrides.maxSockets
+            ?? this.options.maxSockets
+            ?? process.env.JEV_MAX_SOCKETS,
+            10,
+            100
+        );
+        const maxFreeSockets = parsePositiveInteger(
+            overrides.maxFreeSockets
+            ?? this.options.maxFreeSockets
+            ?? process.env.JEV_MAX_FREE_SOCKETS,
+            5,
+            50
+        );
+        const socketTimeoutMs = parsePositiveInteger(
+            overrides.socketTimeoutMs
+            ?? this.options.socketTimeoutMs
+            ?? process.env.JEV_SOCKET_TIMEOUT_MS,
+            60000,
+            300000
+        );
 
         return {
             provider,
@@ -128,6 +174,11 @@ class JevClient {
             maxRetries,
             retryBaseDelayMs,
             proxyUrl,
+            keepAlive,
+            keepAliveMsecs,
+            maxSockets,
+            maxFreeSockets,
+            socketTimeoutMs,
             referer: String(
                 overrides.referer
                 || this.options.referer
@@ -236,10 +287,36 @@ class JevClient {
         }
     }
 
-    _getProxyAgent(proxyUrl) {
+    _getDirectAgent(protocol, keepAliveOptions = {}) {
+        const isHttps = protocol === 'https:';
+        const keepAlive = keepAliveOptions.keepAlive !== false;
+        const cacheKey = `${isHttps ? 'https' : 'http'}|keepAlive=${keepAlive}`;
+        if (this.directAgents.has(cacheKey)) {
+            return this.directAgents.get(cacheKey);
+        }
+
+        const agentOptions = keepAlive
+            ? {
+                keepAlive: true,
+                keepAliveMsecs: keepAliveOptions.keepAliveMsecs || 10000,
+                maxSockets: keepAliveOptions.maxSockets || 10,
+                maxFreeSockets: keepAliveOptions.maxFreeSockets || 5,
+                timeout: keepAliveOptions.socketTimeoutMs || 60000
+            }
+            : { keepAlive: false };
+
+        const AgentClass = isHttps ? https.Agent : http.Agent;
+        const agent = new AgentClass(agentOptions);
+        this.directAgents.set(cacheKey, agent);
+        return agent;
+    }
+
+    _getProxyAgent(proxyUrl, keepAliveOptions = {}) {
         if (!proxyUrl) return null;
-        if (this.proxyAgents.has(proxyUrl)) {
-            return this.proxyAgents.get(proxyUrl);
+        const keepAlive = keepAliveOptions.keepAlive !== false;
+        const cacheKey = `${proxyUrl}|keepAlive=${keepAlive}`;
+        if (this.proxyAgents.has(cacheKey)) {
+            return this.proxyAgents.get(cacheKey);
         }
 
         let parsedProxyUrl;
@@ -261,8 +338,17 @@ class JevClient {
         }
 
         try {
-            const agent = new HttpsProxyAgent(proxyUrl);
-            this.proxyAgents.set(proxyUrl, agent);
+            const agentOptions = keepAlive
+                ? {
+                    keepAlive: true,
+                    keepAliveMsecs: keepAliveOptions.keepAliveMsecs || 10000,
+                    maxSockets: keepAliveOptions.maxSockets || 10,
+                    maxFreeSockets: keepAliveOptions.maxFreeSockets || 5,
+                    timeout: keepAliveOptions.socketTimeoutMs || 60000
+                }
+                : { keepAlive: false };
+            const agent = new HttpsProxyAgent(proxyUrl, agentOptions);
+            this.proxyAgents.set(cacheKey, agent);
             return agent;
         } catch (error) {
             throw new JevClientError(
@@ -272,6 +358,33 @@ class JevClient {
                 }
             );
         }
+    }
+
+    _contextHeaders(state, questions, config) {
+        // cl100k is a local estimate, not the provider's tokenizer contract.
+        // Lazy loading avoids TextChunker's dotenv side effects.
+        if (!this.contextEncoding) {
+            this.contextEncoding = require('@dqbd/tiktoken').get_encoding('cl100k_base');
+        }
+        const count = value => this.contextEncoding.encode(JSON.stringify(value), [], []).length;
+        const total = count({ state, questions });
+        const largest = Math.max(...Object.entries(questions).map(([key, question]) =>
+            count({ state, questions: { [key]: question } })
+        ));
+        if (total > 240000 || largest > 240000) {
+            throw new JevClientError('Jev 上下文估算超过 240000 tokens，已取消请求。', {
+                code: 'JEV_CONTEXT_TOO_LARGE',
+                provider: config.provider
+            });
+        }
+        if (largest <= 32000 && total <= 64000) return {};
+        if (config.provider !== 'typesafe') {
+            throw new JevClientError('当前 Jev provider 未声明支持 TypeSafe 实验长上下文。', {
+                code: 'JEV_LONG_CONTEXT_UNSUPPORTED',
+                provider: config.provider
+            });
+        }
+        return { 'TypeSafe-Danger-Zone-Long-Context': 'true' };
     }
 
     _buildHeaders(config, extraHeaders = {}) {
@@ -323,8 +436,28 @@ class JevClient {
             apiKeyCount: config.apiKeys.length,
             timeoutMs: config.timeoutMs,
             maxRetries: config.maxRetries,
+            keepAlive: config.keepAlive,
             proxyEnabled: Boolean(config.proxyUrl)
         });
+    }
+
+    destroy() {
+        if (this.contextEncoding) {
+            this.contextEncoding.free();
+            this.contextEncoding = null;
+        }
+        for (const agent of this.directAgents.values()) {
+            if (typeof agent?.destroy === 'function') {
+                agent.destroy();
+            }
+        }
+        this.directAgents.clear();
+        for (const agent of this.proxyAgents.values()) {
+            if (typeof agent?.destroy === 'function') {
+                agent.destroy();
+            }
+        }
+        this.proxyAgents.clear();
     }
 
     async decide(state, questions, options = {}) {
@@ -353,8 +486,29 @@ class JevClient {
             state,
             questions
         };
-        const headers = this._buildHeaders(requestConfig, options.headers);
-        const proxyAgent = this._getProxyAgent(requestConfig.proxyUrl);
+        const headers = this._buildHeaders(requestConfig, {
+            ...options.headers,
+            ...this._contextHeaders(state, questions, requestConfig)
+        });
+        const keepAliveOptions = {
+            keepAlive: requestConfig.keepAlive,
+            keepAliveMsecs: requestConfig.keepAliveMsecs,
+            maxSockets: requestConfig.maxSockets,
+            maxFreeSockets: requestConfig.maxFreeSockets,
+            socketTimeoutMs: requestConfig.socketTimeoutMs
+        };
+        const proxyAgent = this._getProxyAgent(requestConfig.proxyUrl, keepAliveOptions);
+        const agentOptions = proxyAgent
+            ? {
+                httpsAgent: proxyAgent,
+                httpAgent: proxyAgent,
+                // 禁止 Axios 再读取环境代理或执行二次代理解析。
+                proxy: false
+            }
+            : {
+                httpsAgent: this._getDirectAgent('https:', keepAliveOptions),
+                httpAgent: this._getDirectAgent('http:', keepAliveOptions)
+            };
         let lastError = null;
 
         for (let attempt = 0; attempt <= requestConfig.maxRetries; attempt++) {
@@ -364,12 +518,9 @@ class JevClient {
                     timeout: requestConfig.timeoutMs,
                     maxRedirects: 0,
                     signal: options.signal,
-                    // Direct requests must not inherit HTTP(S)_PROXY from the host.
-                    // A configured JEV proxy uses its own agent below.
+                    // Direct and explicit-proxy requests must not inherit host proxies.
                     proxy: false,
-                    ...(proxyAgent ? {
-                        httpsAgent: proxyAgent
-                    } : {})
+                    ...agentOptions
                 });
                 if (
                     !response.data

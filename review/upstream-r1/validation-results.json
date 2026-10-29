@@ -1,0 +1,212 @@
+{
+  "schema": 1,
+  "counts_are_per_invocation_and_overlap": true,
+  "native_evidence": "native-report.md and native-logs.tar.gz",
+  "jenn_runtime_evidence": "jenn-boundary-review.md",
+  "runs": [
+    {
+      "evidence": "protocol-tests-final.txt",
+      "command": "node --test tests/upstreamR1Safety.test.cjs tests/toolResultBatch.test.js tests/toolBatchTimezone.test.js tests/toolBatchUpstreamProjection.test.js tests/roleDividerToolResults.test.js tests/oneRingUntriggeredPassthrough.test.js tests/memoryThinkingTray.test.js tests/approvalFeedbackPassthrough.test.js",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 112,
+        "pass": 112,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "evidence": "approval-tests.txt",
+      "command": "node --test --require ./tests/fixtures/offlineRegressionSetup.cjs tests/approvalFeedbackPassthrough.test.js tests/suveiMutationApprovalResponse.test.js",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 22,
+        "pass": 22,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "evidence": "approval-config-tests.txt",
+      "command": "node --test tests/toolApprovalManager.test.js",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "evidence": "jev-core-tests.txt",
+      "command": "node --test tests/jevClient.test.js tests/jevToolCallExp.test.js",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 52,
+        "pass": 52,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "evidence": "jev-extended-regression.txt",
+      "command": "env -u JEV_API_KEY -u JEV_API_URL -u JEV_PROVIDER -u JEV_MODEL node --test tests/jevThirdPartyPolicy.test.js tests/jevThirdPartyRegistry.test.js tests/jevThirdPartyEcosystem.test.js tests/jevStressAndChaosMatrix.test.js tests/jevRedTeamChaosExams.test.js",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 222,
+        "pass": 159,
+        "fail": 0,
+        "skipped": 63
+      },
+      "note": "Skipped entries are NOT_RUN, never PASS."
+    },
+    {
+      "evidence": "fork-guards-final.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test --require ./tests/fixtures/offlineRegressionSetup.cjs tests/humanAuthorizationKernel.test.cjs tests/toolApprovalPathSafety.test.cjs tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs tests/suveiMutationApprovalResponse.test.js tests/nativeDeliveryProvenance.test.cjs tests/pr280SelfAudit.test.cjs tests/pr282AdminReview.test.cjs tests/upstreamDeliveryReviewFixes.test.cjs tests/rebaselineMigrationMatrix.test.cjs tests/native-http-contract.test.cjs tests/native-conversation-context.test.cjs tests/native-websocket.test.cjs tests/native-websocket-connection.test.cjs tests/native-transport-diagnostics.test.cjs tests/native-ws-paired.test.cjs tests/local-listen-options.test.cjs tests/self-proxy-loopback.test.cjs tests/websocket-message-diagnostics.test.cjs tests/external-native-host-config.test.cjs tests/external-native-host-config-exit.test.cjs",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 297,
+        "pass": 289,
+        "fail": 0,
+        "skipped": 8
+      },
+      "note": "Skipped entries are NOT_RUN, never PASS."
+    },
+    {
+      "evidence": "memory-regressions.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test --test-concurrency=1 --test-timeout=30000 --require ./tests/fixtures/offlineRegressionSetup.cjs tests/abiV2ReviewRegression.test.js tests/adminRagMaintenanceRoutes.test.js tests/agentAssistantFlowlockProtocol.test.js tests/ragGreenLane.test.js tests/ragJevModifiers.test.js tests/ragDiaryCopyOnWrite.test.js tests/ragRefreshSystemBoundary.test.js tests/ragNativeChainAudit.test.js tests/riverThinkingMeta.test.js tests/textChunker.test.js tests/vcpTimelinePlaceholders.test.js tests/oneRingTemporaryContract.test.js tests/jevContextPrune.test.js tests/jevFoldFilter.test.js tests/jevRiverRerank.test.js tests/kbmAuditRegression.test.js tests/kbmConfigurationCompatibility.test.js tests/kbmDeadCodeCleanup.test.js tests/kbmNativeKnnProxy.test.js tests/kbmNativeLifecycle.test.js tests/kbmOfflineWriteSafety.test.js tests/kbmPrecommitSnapshotDiagnostics.test.js tests/kbmTaskDrain.test.js tests/kbmWatcherBackpressure.test.js tests/kbmWatcherReconciliation.test.js tests/timelineRiverMemo.test.js tests/associativeDiscoveryRiverMemo.test.js tests/resultDeduplicator.test.js tests/resultDeduplicatorBounds.test.js tests/diaryIndexAtomicDelta.test.js tests/tagIndexGenerationalBaseline.test.js tests/tagConsistencyIncrementalIndex.test.js tests/chunkIndexGenerationalBaseline.test.cjs tests/nativeRiverDefaultMode.test.js tests/nativeRiverQueryFallback.test.js tests/nativeSemanticDeduplication.test.js",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 194,
+        "pass": 194,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "evidence": "client-compatibility-final.txt",
+      "command": "node --experimental-vm-modules --test tests/upstreamR1ClientCompatibility.test.cjs",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": "Probe PASS reproduces a compatibility matrix with FAIL. DEPLOYMENT_COMPATIBILITY_BLOCKED."
+    },
+    {
+      "evidence": "vtrade-tests.txt",
+      "command": "cd Plugin/VTrade && env -i PATH=\"$PATH\" LANG=C.UTF-8 npm test",
+      "status": "PASS",
+      "node_test_counts": {
+        "tests": 112,
+        "pass": 112,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "evidence": "admin-tests.txt",
+      "command": "cd AdminPanel-Vue && npm test",
+      "status": "PASS",
+      "node_test_counts": {},
+      "note": "",
+      "vitest_counts": {
+        "files": 19,
+        "tests": 80,
+        "failed": 0
+      }
+    },
+    {
+      "evidence": "admin-build.txt",
+      "command": "cd AdminPanel-Vue && npm run build",
+      "status": "PASS",
+      "node_test_counts": {},
+      "note": ""
+    },
+    {
+      "evidence": "npm-ci.txt",
+      "command": "npm ci --ignore-scripts --no-audit --no-fund",
+      "status": "PASS",
+      "node_test_counts": {},
+      "note": ""
+    },
+    {
+      "evidence": "admin-npm-ci.txt",
+      "command": "cd AdminPanel-Vue && npm ci --ignore-scripts --no-audit --no-fund",
+      "status": "PASS",
+      "node_test_counts": {},
+      "note": ""
+    },
+    {
+      "evidence": "sqlite-build.txt",
+      "command": "npm rebuild better-sqlite3",
+      "status": "PASS",
+      "node_test_counts": {},
+      "note": ""
+    }
+  ],
+  "not_run": [
+    {
+      "status": "NOT_RUN",
+      "scope": "Real Electron rendering/disk persistence/restart; actual installed VCPChat and cross-version acceptance"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "NativeSync and ChannelHub cross-repository contract suites; implementations absent from frozen Fork"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "Real providers, credentials, production memory/database/cursors/services, public side effects"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "Inactive LinuxShellExecutor v2 runtime suite; runtime entry intentionally remains protected Fork v1 contract"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "Optional actual Chat #59 paired transport; no JSO_CHAT_SOURCE configured"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "Real bubblewrap smoke; opt-in disabled"
+    },
+    {
+      "status": "BLOCKED",
+      "scope": "Windows merged-source Vexus build/runtime; no Windows build environment"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "macOS, Linux ARM64/musl and other target native binaries"
+    }
+  ],
+  "final_native": {
+    "source": "native-report.md",
+    "logs": "native-logs.tar.gz",
+    "pinned_vexus_sha256": "d114ffd7b0cb6bb51ede252d2a9e7d027b2068b04b12d31eab5f7187e85da26d",
+    "rust_tests": {
+      "PASS": 191,
+      "FAIL": 0
+    },
+    "pinned_native_tests": {
+      "PASS": 44,
+      "FAIL": 0,
+      "NOT_RUN": 0
+    },
+    "synthetic_quality_comparison": "PASS; does not establish actual recall improvement",
+    "daily_native_checks": 11,
+    "proxy_child_scenarios": 4,
+    "glibc": {
+      "observed": "2.34",
+      "unchanged_ceiling": "2.35",
+      "status": "PASS"
+    }
+  }
+}

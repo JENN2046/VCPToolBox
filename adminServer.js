@@ -26,13 +26,103 @@ const LEGACY_ADMIN_PANEL_BACKUP_ROOT = path.join(
 );
 const VUE_ADMIN_PANEL_INDEX = path.join(VUE_ADMIN_PANEL_ROOT, "index.html");
 
+let adminPanelBuildState = {
+  status: existsSync(VUE_ADMIN_PANEL_INDEX) ? 'ready' : 'idle',
+  error: null,
+  startedAt: null
+};
+
+function triggerAdminPanelAutoBuild() {
+  if (adminPanelBuildState.status === 'building') return;
+  adminPanelBuildState.status = 'building';
+  adminPanelBuildState.startedAt = Date.now();
+  adminPanelBuildState.error = null;
+  console.log('[AdminServer] 检测到前端静态资产缺失，正在后台自动执行极速自愈构建...');
+
+  const { spawn } = require('child_process');
+  const ensureScript = path.join(__dirname, 'scripts', 'ensure_admin_panel.js');
+  const child = spawn(process.execPath, [ensureScript], {
+    cwd: __dirname,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true
+  });
+
+  let stderr = '';
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+
+  child.on('close', (code) => {
+    if (code === 0 && existsSync(VUE_ADMIN_PANEL_INDEX)) {
+      adminPanelBuildState.status = 'ready';
+      console.log('[AdminServer] AdminPanel-Vue 前端资源自动构建完成并已就绪！');
+    } else {
+      adminPanelBuildState.status = 'failed';
+      adminPanelBuildState.error = stderr.slice(-1000) || `构建进程退出码: ${code}`;
+      console.error(
+        `[AdminServer] AdminPanel-Vue 前端资源构建失败: ${adminPanelBuildState.error}`
+      );
+    }
+  });
+}
+
+function renderAdminPanelPlaceholder(req, res) {
+  if (existsSync(VUE_ADMIN_PANEL_INDEX)) {
+    adminPanelBuildState.status = 'ready';
+    return res.redirect(req.originalUrl || '/AdminPanel/');
+  }
+
+  triggerAdminPanelAutoBuild();
+
+  const isBuilding = adminPanelBuildState.status === 'building';
+  const errorMsg = adminPanelBuildState.error;
+  const elapsedSec = adminPanelBuildState.startedAt
+    ? Math.floor((Date.now() - adminPanelBuildState.startedAt) / 1000)
+    : 0;
+
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>VCP 管理面板初始化中</title>
+  ${isBuilding ? '<meta http-equiv="refresh" content="3">' : ''}
+  <style>
+    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 32px; max-width: 520px; width: 90%; box-shadow: 0 8px 24px rgba(0,0,0,0.5); text-align: center; }
+    h2 { color: #58a6ff; margin-top: 0; }
+    p { color: #8b949e; line-height: 1.6; }
+    .spinner { display: inline-block; width: 36px; height: 36px; border: 3px solid rgba(88,166,255,0.2); border-top-color: #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 16px 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error-box { background: #211215; border: 1px solid #f85149; color: #ff7b72; padding: 12px; border-radius: 6px; text-align: left; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto; margin-top: 14px; }
+    .cmd { background: #0d1117; border: 1px solid #30363d; color: #7ee787; padding: 6px 10px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px; display: inline-block; margin: 8px 0; }
+    .btn { display: inline-block; background: #238636; color: #fff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 500; margin-top: 16px; cursor: pointer; border: none; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>🛠️ VCP 管理面板正在准备</h2>
+    ${
+      isBuilding
+        ? `<div class="spinner"></div>
+           <p>检测到前端编译资产尚未就绪，后台正在为您自动执行极速自愈构建...<br><small style="color: #6e7681;">已耗时约 ${elapsedSec} 秒 · 页面将每 3 秒自动刷新</small></p>`
+        : `<p style="color: #ff7b72;">前端静态资产未找到或构建遇到了问题。</p>
+           ${errorMsg ? `<div class="error-box">${errorMsg}</div>` : ''}
+           <p>您可以稍后刷新，或在终端手动运行以下命令完成构建：</p>
+           <div class="cmd">node scripts/ensure_admin_panel.js</div><br>
+           <button class="btn" onclick="location.reload()">重新检查</button>`
+    }
+  </div>
+</body>
+</html>`;
+
+  res.status(isBuilding ? 503 : 500).setHeader('Content-Type', 'text/html; charset=utf-8').send(html);
+}
+
 if (!existsSync(VUE_ADMIN_PANEL_INDEX)) {
   console.warn(
     `[AdminServer] Vue AdminPanel build not found: ${VUE_ADMIN_PANEL_INDEX}`
   );
-  console.warn(
-    '[AdminServer] Run "npm run build" inside AdminPanel-Vue before starting the admin server.'
-  );
+  triggerAdminPanelAutoBuild();
 }
 
 // ============================================================
@@ -244,6 +334,9 @@ function serveVueAdminPanelApp(req, res, next) {
   if (path.extname(req.path)) {
     return next();
   }
+  if (!existsSync(VUE_ADMIN_PANEL_INDEX)) {
+    return renderAdminPanelPlaceholder(req, res);
+  }
   return res.sendFile(VUE_ADMIN_PANEL_INDEX);
 }
 
@@ -317,7 +410,8 @@ const localModules = [
   // dailyNotes 必须由主进程处理：主进程持有唯一的 KnowledgeBaseManager，
   // 可将文件变更、SQLite 摄取与 Rust 索引更新纳入同一协调时序。
   // 独立管理进程通过下方 /admin_api 兜底代理透明转发，不改变前端 API。
-  "agentAssistant", // Agent 助手配置（纯文件 I/O）
+  // agentAssistant 同时包含配置 I/O 与依赖插件实例的委托接口，
+  // 必须整体走兜底代理，由主进程处理委托状态及配置热重载。
   "aiChat", // 后台 AI 代理（本地转发主服务 /v1/chat/completions，避免前端暴露 Key）
   "semanticRouter", // 语义模型路由器配置（本地 JSON 读写 + 上游模型拉取）
 ];
@@ -660,6 +754,85 @@ app.post("/admin_api/rag-active-full-training", async (req, res) => {
   trainingReq.write(JSON.stringify(req.body || {}));
   trainingReq.end();
 });
+
+// ============================================================
+// 🧠 语义模型路由器匹配预览必须代理到主服务
+// 本地 semanticRouter 模块仅具备配置读写与上游模型拉取能力，
+// 预览依赖主进程中的 semanticModelRouter / RAG 插件运行态。
+// 若由本地路由处理会直接返回 503，且不会再进入兜底代理。
+// ============================================================
+function proxySemanticRouterPreviewRequest(req, res) {
+  const targetPath = "/admin_api/semantic-router/preview";
+  console.log(
+    "[AdminServer] Semantic router preview request received — forwarding to main process..."
+  );
+
+  const proxyReq = http.request(
+    `http://127.0.0.1:${MAIN_PORT}${targetPath}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: req.headers.authorization || "",
+        Cookie: req.headers.cookie || "",
+      },
+      timeout: 60 * 1000,
+    },
+    (proxyRes) => {
+      let body = "";
+      proxyRes.on("data", (chunk) => {
+        body += chunk;
+      });
+      proxyRes.on("end", () => {
+        if (res.headersSent) return;
+        res.status(proxyRes.statusCode || 200);
+        res.setHeader(
+          "Content-Type",
+          proxyRes.headers["content-type"] || "application/json"
+        );
+        try {
+          res.json(body ? JSON.parse(body) : {});
+        } catch (_) {
+          res.send(body || "");
+        }
+      });
+    }
+  );
+
+  proxyReq.on("error", (error) => {
+    console.error(
+      `[AdminServer] Failed to forward semantic router preview request to main process: ${
+        error.code || error.message
+      }`
+    );
+    if (!res.headersSent) {
+      res.status(502).json({
+        error: "Bad Gateway",
+        message:
+          "无法将语义路由预览请求转发给主服务。主服务可能未启动或正在重启中。",
+        details: error.message,
+      });
+    }
+  });
+
+  proxyReq.on("timeout", () => {
+    proxyReq.destroy();
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: "Gateway Timeout",
+        message: "主服务语义路由预览接口响应超时。",
+      });
+    }
+  });
+
+  proxyReq.write(JSON.stringify(req.body || {}));
+  proxyReq.end();
+}
+
+app.post(
+  "/admin_api/semantic-router/preview",
+  proxySemanticRouterPreviewRequest
+);
 
 // ============================================================
 // 🔑 关键覆盖：重启主服务（必须在本地路由之前挂载）

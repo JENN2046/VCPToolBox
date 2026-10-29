@@ -1787,9 +1787,27 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
         result.tdbTopK = (result.tdbTopK || []).map(normalize);
         result.comparisonPool = (result.comparisonPool || []).map(normalize);
         if (Array.isArray(result.river?.results)) result.river.results = result.river.results.map(normalize);
+        if (options.abMode === true && prepared) {
+            const source = prepared.sourceObservationResult;
+            result.memoObservation = {
+                artifactSig: prepared.artifact.artifactSig,
+                queryId: prepared.observation?.queryId ?? null,
+                queryTags: {
+                    requestedCoreTags: options.coreTags || [],
+                    matchedTags: source.matchedTags,
+                    coreTagsMatched: source.coreTagsMatched,
+                    sourceMode: source.sourceMode
+                },
+                effectiveTagBoost: source.effectiveTagBoost,
+                propagation: source.propagation,
+                epa: source.epa,
+                pyramid: source.pyramid,
+                diagnostics: source.diagnostics?.nativePipeline || null
+            };
+        }
         return result;
         } finally {
-            if (prepared) this.releaseMemoObservation(prepared);
+            if (prepared) this.releaseMemoObservation?.(prepared);
         }
     }
 
@@ -2221,7 +2239,13 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             isCore: tag.isCore
         }));
 
-        const nativeResult = await this._runMemoPipelineShared(
+        const runPipeline = options.nativePlanOnly
+            ? (...args) => ({
+                artifact, pipeline: JSON.parse(args[2]),
+                queryVector: args[3], ghostVectors: args[4]
+            })
+            : this._runMemoPipelineShared.bind(this);
+        const nativeResult = await runPipeline(
             dbPath,
             artifact.artifactSig,
             JSON.stringify({
@@ -2361,6 +2385,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             queryVector,
             ghostVectors
         );
+        if (options.nativePlanOnly) return nativeResult;
         const pipeline = nativeResult?.metadataJson
             ? JSON.parse(nativeResult.metadataJson)
             : null;
@@ -2375,7 +2400,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             || !(enhancedVector instanceof Float32Array)
             || enhancedVector.length !== this.config.dimension
         ) {
-            if (observationHandle) this.releaseMemoObservation({ observationHandle });
+            if (observationHandle) this.releaseMemoObservation?.({ observationHandle });
             const error = new Error(
                 'Unified native Memo pipeline failed artifact/schema validation'
             );
@@ -2421,7 +2446,10 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             queryRiverGraph,
             epa: Object.freeze({ ...(pipeline.epa || {}) }),
             pyramid,
-            propagation: Object.freeze({ native: null }),
+            propagation: Object.freeze({
+                parameters: pipeline.propagationParameters || null,
+                diagnostics: pipeline.diagnostics?.sensing || null
+            }),
             matchedTags: Object.freeze(
                 Array.isArray(pipeline.matchedTags)
                     ? pipeline.matchedTags.slice()
@@ -2587,7 +2615,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             );
         }
         } finally {
-            if (!options.preparedMemoObservation) this.releaseMemoObservation(prepared);
+            if (!options.preparedMemoObservation) this.releaseMemoObservation?.(prepared);
         }
     }
 
@@ -2629,6 +2657,83 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
      * observationHandle 和权限作用域，随后由 NativeKnowledgeRuntime 完成
      * ANN→合并→向量 hydrate→语义去重→Topology V3。
      */
+    async executeExternalRerank(query, options = {}) {
+        const runtime = this.nativeKnowledgeRuntime;
+        if (typeof runtime?.executeExternalRerank !== 'function') {
+            throw new Error('NATIVE_PARALLEL_RERANK_ABI_UNAVAILABLE: rebuild rust-vexus-lite');
+        }
+        if (options.annSearch !== undefined) {
+            const features = typeof runtime.capabilities === 'function'
+                ? runtime.capabilities()?.capabilities : [];
+            if (!Array.isArray(features) || !features.includes('index.query-options.v1')) {
+                throw new Error('NATIVE_ANN_SEARCH_OPTIONS_UNAVAILABLE: rebuild rust-vexus-lite');
+            }
+        }
+        const diaryNames = [...new Set(
+            (Array.isArray(options.diaryNames) ? options.diaryNames : [options.diaryNames])
+                .map(name => String(name || '').trim()).filter(Boolean)
+        )];
+        if (!diaryNames.length) throw new Error('NATIVE_PARALLEL_RERANK_EMPTY_SCOPE');
+        await Promise.all(diaryNames.map(name => this._getOrLoadDiaryIndex(name)));
+        const raw = await runtime.executeExternalRerank(JSON.stringify({
+            externalOnly: true, diaryNames,
+            queryText: String(query.text || ''),
+            topK: options.topK, candidateK: options.candidateK,
+            annSearch: options.annSearch,
+            externalK: options.externalK, useJev: options.useJev,
+            jevPrompt: options.jevPrompt,
+            fileCandidates: options.fileCandidates || [],
+            bm25Weight: options.bm25Weight ?? 0.6,
+            configPath: path.join(__dirname, 'Plugin', 'RAGDiaryPlugin', 'config.env'),
+            excludedPrefixes: [...(options.contextDiaryPrefixes || [])]
+        }), query.vector instanceof Float32Array ? query.vector : new Float32Array(query.vector));
+        const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!Array.isArray(result?.results)) throw new Error('NATIVE_EXTERNAL_RERANK_INVALID_RESULT');
+        return result;
+    }
+
+    async executeParallelRerank(query, options = {}) {
+        const runtime = this.nativeKnowledgeRuntime;
+        if (typeof runtime?.executeParallelRerank !== 'function') {
+            throw new Error('NATIVE_PARALLEL_RERANK_ABI_UNAVAILABLE: rebuild rust-vexus-lite');
+        }
+        if (options.annSearch !== undefined) {
+            const features = typeof runtime.capabilities === 'function'
+                ? runtime.capabilities()?.capabilities : [];
+            if (!Array.isArray(features) || !features.includes('index.query-options.v1')) {
+                throw new Error('NATIVE_ANN_SEARCH_OPTIONS_UNAVAILABLE: rebuild rust-vexus-lite');
+            }
+        }
+        const diaryNames = [...new Set(
+            (Array.isArray(options.diaryNames) ? options.diaryNames : [options.diaryNames])
+                .map(name => String(name || '').trim()).filter(Boolean)
+        )];
+        if (!diaryNames.length) throw new Error('NATIVE_PARALLEL_RERANK_EMPTY_SCOPE');
+        const [prepared] = await Promise.all([
+            this.prepareUnifiedMemoObservation(query, { ...options, nativePlanOnly: true }),
+            Promise.all(diaryNames.map(name => this._getOrLoadDiaryIndex(name)))
+        ]);
+        const raw = await runtime.executeParallelRerank(JSON.stringify({
+            diaryNames, artifactSig: prepared.artifact.artifactSig,
+            pipeline: prepared.pipeline,
+            riverConfig: this.riverMemoEngine._nativeConfig(prepared.artifact, options),
+            queryText: String(query.text || ''), topK: options.topK,
+            candidateK: options.candidateK, externalK: options.externalK,
+            annSearch: options.annSearch,
+            alpha: options.alpha ?? 0.5, useJev: options.useJev,
+            autoRrfAlpha: options.autoRrfAlpha === true,
+            jevPrompt: options.jevPrompt,
+            supplementalQueries: (options.supplementalQueryVectors || []).map(entry => ({
+                vector: Array.from(entry.vector || []), weight: entry.weight ?? 1
+            })),
+            configPath: path.join(__dirname, 'Plugin', 'RAGDiaryPlugin', 'config.env'),
+            excludedPrefixes: [...(options.contextDiaryPrefixes || [])]
+        }), prepared.queryVector, prepared.ghostVectors);
+        const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!Array.isArray(result?.results)) throw new Error('NATIVE_PARALLEL_RERANK_INVALID_RESULT');
+        return result;
+    }
+
     async executeNativeRiverQuery(query, options = {}) {
         const rawVector = query?.vector || options.queryVector;
         const queryVector = rawVector instanceof Float32Array
@@ -2856,6 +2961,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
                             this.nativeKnowledgeRuntime,
                         nativeJointQuery: true,
                         nativeHybridPlan,
+                        nativeAnnVector: options.enhancedAnn ? prepared.enhancedVector : undefined,
                         nativeSupplementalVectors,
                         nativeJointFallbackToLegacy: false,
                         nativePerIndexK:
@@ -2899,7 +3005,7 @@ this.tagMemoV10Engine = new TagMemoV10Engine(
             }
         );
         } finally {
-            if (!options.preparedMemoObservation) this.releaseMemoObservation(prepared);
+            if (!options.preparedMemoObservation) this.releaseMemoObservation?.(prepared);
         }
 
         async function collectCandidates() {

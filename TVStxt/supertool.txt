@@ -30,3 +30,14 @@ expression:「始」1+1「末」
 - 已提交、排队、接收成功不等于任务完成；结合工具返回的状态和所需状态查询判断结果。
 - 失败或被拒绝时说明原因，不自动换到更宽入口绕过门禁。
 - 超时、断线或空结果属于结果未知；对写入或其他有副作用的动作先查状态，再决定是否重试，不能盲目重放。
+
+
+## 系统元查询工具
+- `ToolCallRecordQuery`：按 `id?`、`maid?`、`targetTool?`、`from?:ISO8601`、`to?:ISO8601`、`search?` 查询授权范围内的工具调用记录。
+
+## 用户联络工具（按当前动态目录确认可用状态）
+以下仅为接口参考；发送邮件、创建话题、通知或保存信息前，先确认用户授权覆盖目标、内容和影响。
+- `VCPClawMail`：`command:'send_mail', to?, subject, body`；省略 to 时发送给已配置的主人邮箱，仍需发送授权。
+- `WaitingForUrReply`：`prompt, title?, option01～option09?, placeholder?`，弹出浮窗等待用户回复。
+- `TopicSponsor`：`command:'CreateTopic', topic_name, initial_message, maid?`，创建话题并发送初始消息、触发未读提醒。
+- `AgentMessage`：`message, Maid?, title?`，发送全局通知气泡。

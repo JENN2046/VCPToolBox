@@ -1,5 +1,6 @@
 // modules/vcpLoop/toolCallParser.js
 const toolMarkerFuzzyMatcher = require('./toolMarkerFuzzyMatcher');
+const { createBatchStartScanner, findBatchEnd } = require('../toolResultBatch');
 
 // Known scalar controls retain legacy padding tolerance; payloads keep indentation.
 const STRUCTURAL_ARG_KEY = /^(?:command|action|operation|executionType|encoding|mode|format|type|maid|valet|showbase64|return_base64|watermark)\d*$/i;
@@ -77,12 +78,18 @@ class ToolCallParser {
   static parse(content) {
     if (!content || typeof content !== 'string') return [];
 
+    if (/^\s*<!-- VCP_TOOL_PAYLOAD -->/.test(content)) return [];
     const contentWithoutThink = this.stripReasoningBlocks(content);
     const toolCalls = [];
     let searchOffset = 0;
 
     while (searchOffset < contentWithoutThink.length) {
       const blockInfo = this.extractNextToolBlock(contentWithoutThink, searchOffset);
+      const literal = this.findNextResultLiteral(contentWithoutThink, searchOffset);
+      if (literal && (!blockInfo || literal.startIndex < blockInfo.startIndex)) {
+        searchOffset = literal.nextOffset;
+        continue;
+      }
       if (!blockInfo) break;
 
       const parsed = this.parseBlock(blockInfo.blockContent);
@@ -94,6 +101,45 @@ class ToolCallParser {
     }
 
     return toolCalls;
+  }
+
+  /**
+   * Result delimiters identify literal text, never authority. Even when a model
+   * quotes a saved result in its new response, its embedded requests stay data.
+   * Forged delimiters can only suppress parsing; they cannot authorize a call.
+   * A tool request encountered first is parsed intact, including literal args.
+   * Do not mutate the source message, payload, or saved history.
+   */
+  static findNextResultLiteral(content, fromIndex = 0) {
+    const candidates = [];
+    const scanner = createBatchStartScanner(true);
+    scanner.lastIndex = fromIndex;
+    const batch = scanner.exec(content);
+    if (batch) candidates.push({ startIndex: batch.index, nextOffset: findBatchEnd(content, batch) });
+
+    const legacyStart = '[[VCP调用结果信息汇总:';
+    const legacyEnd = 'VCP调用结果结束]]';
+    const legacy = content.indexOf(legacyStart, fromIndex);
+    if (legacy !== -1) {
+      let depth = 1;
+      let cursor = legacy + legacyStart.length;
+      while (depth > 0) {
+        const start = content.indexOf(legacyStart, cursor);
+        const end = content.indexOf(legacyEnd, cursor);
+        if (end === -1) { cursor = content.length; break; }
+        if (start !== -1 && start < end) {
+          depth++;
+          cursor = start + legacyStart.length;
+        } else {
+          depth--;
+          cursor = end + legacyEnd.length;
+        }
+      }
+      candidates.push({ startIndex: legacy, nextOffset: cursor });
+    }
+    const raw = content.indexOf('<!-- VCP_TOOL_PAYLOAD -->', fromIndex);
+    if (raw !== -1) candidates.push({ startIndex: raw, nextOffset: content.length });
+    return candidates.sort((a, b) => a.startIndex - b.startIndex)[0] || null;
   }
 
   /**

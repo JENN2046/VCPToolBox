@@ -1,0 +1,138 @@
+{
+  "status": "DEPLOYMENT_COMPATIBILITY_BLOCKED",
+  "sourceMode": "frozen copy of verified actual VCPChat source modules; no real config/state loaded",
+  "clientRoot": "/home/jenn/AGENTS_OS_Workspace/runtime/worktrees/upstream-box-r1-20261029/review/upstream-r1/client-source",
+  "clientHead": "1f86d5912c6acb3588577945e19045edc1256731",
+  "clientDirtyPaths": [
+    "AppData/VCPChatTarven.official.json",
+    "VCPDistributedServer/Plugin.js",
+    "VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService.js",
+    "VCPDistributedServer/VCPDistributedServer.js",
+    "audio_engine/audio_server",
+    "docs/contracts/generated/chat-event-graph.json",
+    "main.js",
+    "modules/ipc/windowHandlers.js",
+    "modules/notificationRenderer.js",
+    "modules/services/suveiHumanAuthorizationService.js",
+    "tests/quit-lifecycle.test.cjs"
+  ],
+  "originalSourceRoot": "/home/jenn/AGENTS_OS_Workspace/runtime/VCPChat",
+  "extractionBoundary": "Actual contentPipeline and imported scanners; actual transformSpecialBlocks/escapeHtml AST slices with regex constants. Optional CSS, Mermaid, Flowlock, lazy DOM and frontend custom processors omitted. Actual vcpClient with fetch/fs test doubles.",
+  "sources": {
+    "modules/renderer/toolResultRegions.js": {
+      "sha256": "8a31ed6b6fed9f9f94865e1350eb827cea7699a030b676298866a3c72269389b",
+      "matchesClientHead": true
+    },
+    "modules/renderer/markdownCodeDomainScanner.js": {
+      "sha256": "512b3b8364d7b2e6d53d80e5c86c57a51007cf270a5e43c3987be90aacb1ada7",
+      "matchesClientHead": true
+    },
+    "modules/renderer/toolRequestScanner.js": {
+      "sha256": "b66d22111be2022f57087719fdcdfa3ca415d0d8a722a1e4c4afbf456afb5879",
+      "matchesClientHead": true
+    },
+    "modules/renderer/streamStableBoundary.js": {
+      "sha256": "53e14cfebd05324078bd480055b0531a9e6e692de9d01cb88ebc92420fc9d376",
+      "matchesClientHead": true
+    },
+    "modules/renderer/contentPipeline.js": {
+      "sha256": "86f652837affd9c5dd90b8d01481c6781f66f7f03ca635985823b30dcad686c3",
+      "matchesClientHead": true
+    },
+    "modules/chat/contentModes.js": {
+      "sha256": "42fa13c21517da630dd154bb332cfed6964239f698d4122f45ad640d04da9389",
+      "matchesClientHead": true
+    },
+    "modules/emotion/emotionTags.js": {
+      "sha256": "4cecbef27e49c296b2c3eef9d62db01c7d08fdc131563742acda619c80197cd0",
+      "matchesClientHead": true
+    },
+    "modules/emotion/emotionVocabulary.js": {
+      "sha256": "0b70104bb01ffe60f9c847a2951cfe520c0fdaaabed407d431192b1a53873d30",
+      "matchesClientHead": true
+    },
+    "modules/renderer/jevToolUse.js": {
+      "sha256": "ebf9ff1bf306d1e4de6eb785e885a8f6c12f0149341de527d8a898524e2a4742",
+      "matchesClientHead": true
+    },
+    "modules/renderer/toolRequestMarkers.js": {
+      "sha256": "c4d12f68b5a115914d55ffc48439c334cc159c895e6159046a7204db6a2b8b43",
+      "matchesClientHead": true
+    },
+    "modules/messageRenderer.js": {
+      "sha256": "f368df29153ba02172bc2b6ad7e05d1eed48a06b62481fdfc798bcb3c958092a",
+      "matchesClientHead": true
+    },
+    "modules/renderer/contentProcessor.js": {
+      "sha256": "d9ee9426d8a83e4e3d5fc1daf23eadd624d8c7474b8f021118987492eb3cce31",
+      "matchesClientHead": true
+    },
+    "modules/vcpClient.js": {
+      "sha256": "0363750e21aea1debb1238c455626f943ad675f4a9e5a84036e400c9072f0d46",
+      "matchesClientHead": true
+    },
+    "modules/chat/streamTransientHistory.js": {
+      "sha256": "3b27b6256b4bd388decbd6f0bea876acdc5f9f61cda1174188f9079cbcceba2b",
+      "matchesClientHead": true
+    }
+  },
+  "matrix": [
+    {
+      "scenario": "旧客户端接收新批次/完整渲染",
+      "status": "FAIL",
+      "detail": "旧结果气泡仍识别；新批次边界留在 Markdown 输入，未被解释或安全消隐。未运行真实浏览器最终 Markdown/DOM。"
+    },
+    {
+      "scenario": "新旧格式共存",
+      "status": "PASS",
+      "detail": "实际旧解析器保留两个内层 legacy 结果完整字节；新外壳显示兼容仍 FAIL。"
+    },
+    {
+      "scenario": "流式任意字符分块/稳定边界",
+      "status": "FAIL",
+      "detail": "所有切分不崩溃且旧结果保护存在；仅新批次无 legacy 壳时未闭合内容可成为稳定前缀。"
+    },
+    {
+      "scenario": "SSE 任意字节跨块到达",
+      "status": "PASS",
+      "detail": "实际 vcpClient.sendToVCP、TextDecoder 与逐行 JSON 解析，枚举所有二段字节切分，无真实网络/配置读取。"
+    },
+    {
+      "scenario": "非流式传输",
+      "status": "PASS",
+      "detail": "实际 vcpClient.sendToVCP 保留响应字节。"
+    },
+    {
+      "scenario": "历史保存/恢复",
+      "status": "PASS",
+      "detail": "实际 transient-history finalize + 内存 JSON roundtrip + 旧解析器恢复，字节保持；真实 ChatHistoryPersistence 磁盘提交未运行。"
+    },
+    {
+      "scenario": "用户伪造批次边界",
+      "status": "FAIL",
+      "detail": "旧渲染器未识别新批次数据域，伪造边界内部请求被显示为 ToolUse；仅展示误分类，不证明授予执行权限。"
+    },
+    {
+      "scenario": "工具载荷内嵌 role/tool 标记",
+      "status": "FAIL",
+      "detail": "legacy 壳完整时数据保留在结果 map；仅新批次壳无法隔离 role/tool 展示语义。"
+    },
+    {
+      "scenario": "UNKNOWN 不再次执行 stream=false",
+      "status": "PASS",
+      "detail": "实际候选 handler + 实际 ToolCallParser；模拟 executor 返回 UNKNOWN 及内嵌请求，下轮模型返回 done，总执行一次。无真实插件副作用。"
+    },
+    {
+      "scenario": "UNKNOWN 不再次执行 stream=true",
+      "status": "PASS",
+      "detail": "实际候选 handler + 实际 ToolCallParser；模拟 executor 返回 UNKNOWN 及内嵌请求，下轮模型返回 done，总执行一次。无真实插件副作用。"
+    }
+  ],
+  "notRun": [
+    "真实 Electron/Markdown 最终 DOM 及交互",
+    "真实 ChatHistoryPersistence 写盘/重启恢复",
+    "生产客户端安装与跨仓宿主验收",
+    "真实工具权限与外部副作用执行"
+  ],
+  "note": "Tests assert measured compatibility defects as expected observations. A green test process is not a compatibility approval. New textual markers are not authentication or execution authority."
+}

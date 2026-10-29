@@ -46,7 +46,7 @@ pub(crate) struct SenseSeed {
     pub(crate) source_type: String,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub(crate) struct SenseConfig {
     pub(crate) max_safe_hops: usize,
@@ -180,6 +180,14 @@ pub(crate) struct ObservationEdge {
 pub(crate) struct SenseDiagnostics {
     pub(crate) backend: String,
     pub(crate) seed_nodes: usize,
+    pub(crate) accepted_seed_nodes: usize,
+    pub(crate) missing_seed_nodes: usize,
+    pub(crate) invalid_seed_nodes: usize,
+    pub(crate) duplicate_seed_nodes: usize,
+    pub(crate) observed_seed_nodes: usize,
+    pub(crate) missing_seed_ids: Vec<i64>,
+    pub(crate) missing_explicit_seed_ids: Vec<i64>,
+    pub(crate) missing_seed_ids_truncated: bool,
     pub(crate) reached_nodes: usize,
     pub(crate) active_edges: usize,
     pub(crate) maximum_node_energy: f64,
@@ -227,6 +235,17 @@ pub(crate) struct SenseOutput {
     pub(crate) diagnostics: SenseDiagnostics,
     pub(crate) transitions: Vec<ObservationTransition>,
     pub(crate) transitions_truncated: bool,
+}
+
+type StateKey = (Option<usize>, usize);
+
+/// Propagation states in key order (previous node, node). Energy sums and the
+/// first state to reach a node must not follow HashMap iteration order, which
+/// depends on the randomly seeded hasher.
+fn ordered_states(states: &HashMap<StateKey, SpikeState>) -> Vec<&SpikeState> {
+    let mut ordered: Vec<&SpikeState> = states.values().collect();
+    ordered.sort_unstable_by_key(|state| (state.previous_index, state.node_index));
+    ordered
 }
 
 fn fir_weights(config: &SenseConfig) -> Vec<f64> {
@@ -380,20 +399,33 @@ pub(crate) fn sense_with_context(
         return Err("dynamicWormholeThreshold must be finite and in [0,1]".into());
     }
     let weights = fir_weights(&config);
-    let mut active: HashMap<(Option<usize>, usize), SpikeState> = HashMap::new();
+    let mut active: HashMap<StateKey, SpikeState> = HashMap::new();
     let mut accumulated: HashMap<usize, f64> = HashMap::new();
     let mut provenance: HashMap<usize, Provenance> = HashMap::new();
     let mut edge_flows: HashMap<(usize, usize), EdgeFlow> = HashMap::new();
     let mut parents: HashMap<usize, Parent> = HashMap::new();
 
+    let mut missing_seed_nodes = 0usize;
+    let mut duplicate_seed_nodes = 0usize;
+    let mut missing_seed_ids = Vec::new();
+    let mut missing_explicit_seed_ids = Vec::new();
+    let invalid_seed_nodes = input.seeds.iter().filter(|s|
+        s.id <= 0 || !s.energy.is_finite() || s.energy <= 0.0).count();
     for seed in input
         .seeds
         .iter()
-        .filter(|seed| seed.id > 0 && seed.energy > 0.0)
+        .filter(|seed| seed.id > 0 && seed.energy.is_finite() && seed.energy > 0.0)
     {
         let Some(&node_index) = artifact.node_index.get(&seed.id) else {
+            missing_seed_nodes += 1;
+            if missing_seed_ids.len() < 64 { missing_seed_ids.push(seed.id); }
+            if matches!(seed.source_type.as_str(), "core" | "lexical_seed")
+                && missing_explicit_seed_ids.len() < 64 {
+                missing_explicit_seed_ids.push(seed.id);
+            }
             continue;
         };
+        duplicate_seed_nodes += usize::from(active.contains_key(&(None, node_index)));
         let energy = positive(seed.energy);
         let source_type = if seed.source_type.is_empty() {
             "seed".to_string()
@@ -423,6 +455,8 @@ pub(crate) fn sense_with_context(
         });
     }
 
+    let accepted_seed_nodes = active.len();
+
     // 空种子是合法的请求级观测：JavaScript SOTA 在 Pyramid 未召回 Tag 时
     // 跳过 Spike，但仍允许传播后补入字符串 Core/幽灵节点参与最终融合；
     // 若后续也没有可融合节点，则返回原查询向量而不是把请求升级为异常。
@@ -443,10 +477,10 @@ pub(crate) fn sense_with_context(
 
     for hop in 0..config.max_safe_hops {
         if let Some(ctx) = context.as_deref_mut() { ctx.prepare(artifact, &active, &config)?; }
-        let mut next: HashMap<(Option<usize>, usize), SpikeState> = HashMap::new();
+        let mut next: HashMap<StateKey, SpikeState> = HashMap::new();
         let mut hop_transitions = Vec::new();
 
-        for spike in active.values() {
+        for spike in ordered_states(&active) {
             if spike.energy < config.firing_threshold || spike.momentum < 0.0 {
                 continue;
             }
@@ -600,11 +634,16 @@ pub(crate) fn sense_with_context(
 
         if next.len() > config.max_propagation_states.max(100) {
             let mut retained: Vec<SpikeState> = next.into_values().collect();
+            // Equal energies keep the state with the smaller key, independent of input order.
             retained.sort_by(|left, right| {
                 right
                     .energy
                     .partial_cmp(&left.energy)
                     .unwrap_or(Ordering::Equal)
+                    .then_with(|| {
+                        (left.previous_index, left.node_index)
+                            .cmp(&(right.previous_index, right.node_index))
+                    })
             });
             let limit = config.max_propagation_states.max(100);
             state_truncations += retained.len().saturating_sub(limit);
@@ -641,7 +680,7 @@ pub(crate) fn sense_with_context(
 
         let mut node_energy: HashMap<usize, f64> = HashMap::new();
         let mut in_flight = 0.0;
-        for spike in next.values() {
+        for spike in ordered_states(&next) {
             *node_energy.entry(spike.node_index).or_default() += spike.energy;
             in_flight += spike.energy;
             provenance
@@ -776,6 +815,14 @@ pub(crate) fn sense_with_context(
         diagnostics: SenseDiagnostics {
             backend: "rust-shared-memo-runtime".to_string(),
             seed_nodes: input.seeds.len(),
+            accepted_seed_nodes,
+            missing_seed_nodes,
+            invalid_seed_nodes,
+            duplicate_seed_nodes,
+            observed_seed_nodes: nodes.iter().filter(|n| n.hop == 0).count(),
+            missing_seed_ids_truncated: missing_seed_nodes > missing_seed_ids.len(),
+            missing_seed_ids,
+            missing_explicit_seed_ids,
             reached_nodes: nodes.len(),
             active_edges: edges.len(),
             maximum_node_energy,
@@ -952,5 +999,106 @@ mod dynamic_wormhole_tests {
         assert_eq!(ctx.diagnostics.sql_batches, batches);
         assert_eq!(serde_json::to_value(first.edges).unwrap(),
             serde_json::to_value(second.edges).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod deterministic_order_tests {
+    use super::*;
+
+    /// 400 nodes with 12 out-edges each. Weights come from three values, so many
+    /// propagation states tie in energy when the state cap cuts them.
+    fn graph() -> NativeArtifact {
+        let (nodes, degree) = (400usize, 12usize);
+        let mut state = 20261023u64;
+        let mut draw = move |n: usize| {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) as usize % n
+        };
+        let (mut targets, mut weights) = (Vec::new(), Vec::new());
+        for source in 0..nodes {
+            let mut row = Vec::new();
+            while row.len() < degree {
+                let target = draw(nodes);
+                if target != source && !row.contains(&target) { row.push(target); }
+            }
+            for target in row {
+                targets.push(target);
+                weights.push([0.2, 0.3, 0.45][draw(3)]);
+            }
+        }
+        NativeArtifact {
+            node_ids: (1..=nodes as i64).collect(),
+            node_index: (1..=nodes as i64).enumerate().map(|(i, id)| (id, i)).collect(),
+            row_offsets: (0..=nodes).map(|i| i * degree).collect(),
+            targets,
+            weights,
+            ..NativeArtifact::default()
+        }.prepared()
+    }
+
+    fn run(graph: &NativeArtifact) -> (String, usize) {
+        let output = sense_typed(graph, "test", SenseInput {
+            query_id: None,
+            seeds: [1, 2, 3, 4].map(|id| SenseSeed { id, energy: 1.0, source_type: "seed".into() }).into(),
+            config: SenseConfig {
+                max_safe_hops: 4, base_momentum: 4.0, firing_threshold: 0.0,
+                minimum_injected_current: 0.0, max_neighbors_per_node: 12,
+                max_propagation_states: 100, max_transition_records: 4096,
+                ..SenseConfig::default()
+            },
+        }).unwrap();
+        let truncations = output.diagnostics.state_truncations;
+        let mut value = serde_json::to_value(output).unwrap();
+        value["diagnostics"]["elapsedMs"] = serde_json::Value::Null;
+        // serde_json writes the shortest round-trip form: equal text means equal bits.
+        (value.to_string(), truncations)
+    }
+
+    #[test]
+    fn same_input_is_bit_identical_under_different_hash_seeds() {
+        let graph = graph();
+        // Every thread draws its own random HashMap keys.
+        let runs: Vec<(String, usize)> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8).map(|_| scope.spawn(|| run(&graph))).collect();
+            handles.into_iter().map(|handle| handle.join().unwrap()).collect()
+        });
+        assert!(runs[0].1 > 0, "the state cap must cut tied states");
+        for other in &runs[1..] {
+            assert!(other.0 == runs[0].0, "output depends on the HashMap hash seed");
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod seed_admission_tests {
+    use super::*;
+
+    #[test]
+    fn isolated_seed_survives_missing_seed_is_reported_and_duplicates_merge() {
+        let artifact = NativeArtifact {
+            node_ids: vec![1], node_index: HashMap::from([(1, 0)]),
+            row_offsets: vec![0, 0], ..NativeArtifact::default()
+        }.prepared();
+        let output = sense_typed(&artifact, "admission", SenseInput {
+            query_id: None, config: SenseConfig::default(),
+            seeds: vec![
+                SenseSeed { id: 1, energy: 0.4, source_type: "lexical_seed".into() },
+                SenseSeed { id: 1, energy: 0.1, source_type: "seed".into() },
+                SenseSeed { id: 9, energy: 0.5, source_type: "lexical_seed".into() },
+                SenseSeed { id: 0, energy: 0.5, source_type: "seed".into() },
+            ],
+        }).unwrap();
+        assert_eq!(output.diagnostics.seed_nodes, 4);
+        assert_eq!(output.diagnostics.accepted_seed_nodes, 1);
+        assert_eq!(output.diagnostics.observed_seed_nodes, 1);
+        assert_eq!(output.diagnostics.missing_seed_nodes, 1);
+        assert_eq!(output.diagnostics.invalid_seed_nodes, 1);
+        assert_eq!(output.diagnostics.duplicate_seed_nodes, 1);
+        assert_eq!(output.diagnostics.missing_explicit_seed_ids, vec![9]);
+        assert_eq!(output.nodes[0].source_type, "lexical_seed");
+        assert_eq!(output.nodes[0].hop, 0);
+        assert!(output.edges.is_empty());
     }
 }

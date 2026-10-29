@@ -54,6 +54,7 @@ test('支持英文逗号、中文逗号和竖线，并清理空项及重复 Key'
         apiKeyCount: 3,
         timeoutMs: 30000,
         maxRetries: 2,
+        keepAlive: true,
         proxyEnabled: false
     });
 });
@@ -167,7 +168,9 @@ test('直连 JEV 请求显式禁用 Axios 环境代理', async () => {
         return successfulResponse();
     }, () => client.decide(STATE, QUESTIONS));
     assert.equal(requestOptions.proxy, false);
-    assert.equal(requestOptions.httpsAgent, undefined);
+    assert.equal(requestOptions.httpsAgent?.keepAlive, true);
+    assert.equal(requestOptions.httpAgent?.keepAlive, true);
+    client.destroy();
 });
 
 test('显式 JEV 代理仍使用专用 Agent 且禁用 Axios 环境代理', async () => {
@@ -182,4 +185,131 @@ test('显式 JEV 代理仍使用专用 Agent 且禁用 Axios 环境代理', asyn
     }, () => client.decide(STATE, QUESTIONS));
     assert.equal(requestOptions.proxy, false);
     assert.ok(requestOptions.httpsAgent);
+    client.destroy();
+});
+
+test('直连场景下默认启用 keepAlive 并复用 httpsAgent/httpAgent', async () => {
+    const client = new JevClient({
+        apiKey: 'test-key',
+        provider: 'typesafe',
+        maxRetries: 0
+    });
+    const capturedOptions = [];
+
+    await withMockedPost(
+        async (_url, _body, options) => {
+            capturedOptions.push(options);
+            return successfulResponse();
+        },
+        async () => {
+            await client.decide(STATE, QUESTIONS);
+            await client.decide(STATE, QUESTIONS);
+        }
+    );
+
+    assert.equal(capturedOptions.length, 2);
+    const firstOpt = capturedOptions[0];
+    const secondOpt = capturedOptions[1];
+
+    assert.equal(firstOpt.httpsAgent?.keepAlive, true);
+    assert.equal(firstOpt.httpAgent?.keepAlive, true);
+    // 验证连接池复用了同一个 Agent 实例
+    assert.strictEqual(firstOpt.httpsAgent, secondOpt.httpsAgent);
+    assert.strictEqual(firstOpt.httpAgent, secondOpt.httpAgent);
+    client.destroy();
+});
+
+test('代理场景下注入 HttpsProxyAgent 并开启 keepAlive，设置 proxy 为 false', async () => {
+    const client = new JevClient({
+        apiKey: 'test-key',
+        provider: 'typesafe',
+        proxyUrl: 'http://127.0.0.1:7890',
+        maxRetries: 0
+    });
+    const capturedOptions = [];
+
+    await withMockedPost(
+        async (_url, _body, options) => {
+            capturedOptions.push(options);
+            return successfulResponse();
+        },
+        async () => {
+            await client.decide(STATE, QUESTIONS);
+            await client.decide(STATE, QUESTIONS);
+        }
+    );
+
+    assert.equal(capturedOptions.length, 2);
+    const firstOpt = capturedOptions[0];
+    const secondOpt = capturedOptions[1];
+
+    assert.equal(firstOpt.proxy, false);
+    assert.equal(firstOpt.httpsAgent?.keepAlive, true);
+    // 代理场景复用同一个 ProxyAgent 实例
+    assert.strictEqual(firstOpt.httpsAgent, secondOpt.httpsAgent);
+    client.destroy();
+});
+
+test('支持显式禁用 keepAlive 配置', async () => {
+    const client = new JevClient({
+        apiKey: 'test-key',
+        provider: 'typesafe',
+        keepAlive: false,
+        maxRetries: 0
+    });
+
+    assert.equal(client.getStatus().keepAlive, false);
+
+    let capturedOption = null;
+    await withMockedPost(
+        async (_url, _body, options) => {
+            capturedOption = options;
+            return successfulResponse();
+        },
+        async () => {
+            await client.decide(STATE, QUESTIONS);
+        }
+    );
+
+    assert.equal(capturedOption.httpsAgent?.keepAlive, false);
+    client.destroy();
+});
+
+test('按单题32k和整次64k估算条件添加实验长上下文头', async () => {
+    const client = new JevClient({ apiKey: 'fixture', provider: 'typesafe', maxRetries: 0 });
+    const captured = [];
+    const question = text => ({ type: 'noul', instructions: text });
+    try {
+        await withMockedPost(async (_url, _body, options) => {
+            captured.push(options.headers['TypeSafe-Danger-Zone-Long-Context']);
+            return successfulResponse();
+        }, async () => {
+            await client.decide(STATE, QUESTIONS);
+            await client.decide(STATE, { q: question(' hello'.repeat(33000)) });
+            await client.decide(STATE, Object.fromEntries(['a', 'b', 'c'].map(key =>
+                [key, question(' hello'.repeat(22000))]
+            )));
+        });
+        assert.deepEqual(captured, [undefined, 'true', 'true']);
+    } finally {
+        client.destroy();
+    }
+});
+
+test('超过240k和非TypeSafe长上下文在发请求前拒绝', async () => {
+    const client = new JevClient({ apiKey: 'fixture', provider: 'typesafe', maxRetries: 0 });
+    try {
+        await withMockedPost(async () => {
+            assert.fail('不应发出网络请求');
+        }, async () => {
+            await assert.rejects(client.decide(STATE, {
+                q: { type: 'noul', instructions: ' hello'.repeat(241000) }
+            }), { code: 'JEV_CONTEXT_TOO_LARGE' });
+            await assert.rejects(client.decide(STATE, {
+                q: { type: 'noul', instructions: ' hello'.repeat(33000) }
+            }, { provider: 'openrouter' }), { code: 'JEV_LONG_CONTEXT_UNSUPPORTED' });
+        });
+    } finally {
+        client.destroy();
+    }
 });

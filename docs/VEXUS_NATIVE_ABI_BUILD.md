@@ -33,3 +33,15 @@ independent.
 The `Vexus Linux Native ABI` workflow runs the same wrapper on every relevant
 pull request and additionally checks the Node/runtime contract. It does not
 publish an image, deploy a service, or access production configuration or data.
+
+
+## Upstream Integration R1-B candidate (2026-10-29)
+
+The Linux CI recipe, image digest, Rust 1.89.0 / GCC 12.3.0 / Node 22.23.1 / napi 2.18.4 versions, independent two-build comparison, and GLIBC 2.35 ceiling remain unchanged. The current Linux payload is rebuilt from the merged source; its exact source and binary inventory is recorded separately in `docs/native-delivery-upstream-r1-linux.json`. Historical receipts are preserved.
+
+```sh
+node scripts/check-native-delivery.cjs x86_64-unknown-linux-gnu vexus daily --receipt docs/native-delivery-upstream-r1-linux.json
+node scripts/check-vexus-linux-native-abi.js
+```
+
+The Linux workflow now uses the candidate receipt after an actual isolated pinned-image double build. This is a local validation result; no remote CI was triggered. Windows merged-source output remains unavailable; its upstream payload is quarantined and its historical provenance gate is not declared passed. Other platforms require their own build and acceptance evidence. Full commands, hashes, earlier attempts and platform limits are recorded in `review/upstream-r1/native-report.md`.

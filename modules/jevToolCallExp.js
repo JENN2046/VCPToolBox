@@ -18,6 +18,7 @@ const SEMANTIC_ITEM_MAX_BYTES = 4 * 1024;
 const SEMANTIC_RESOURCE_MAX_ITEMS = 8;
 const SEMANTIC_RESOURCE_MAX_ITEM_BYTES = 2 * 1024;
 const SEMANTIC_RESOURCE_MAX_BYTES = 8 * 1024;
+const CURRENT_MUSIC_REQUEST_RE = /(?:获取|查看|读取|查询)\s*(?:(?:当前播放|正在播放|播放中|当前)(?:的)?\s*)?(?:(?:音乐|歌曲)(?:的)?(?:内容|详细信息|信息|歌词)|歌词)|\bgetCurrentLyrics\b/i;
 
 const THIRD_PARTY_CHOICE_MIN_CONFIDENCE = 0.55;
 const THIRD_PARTY_NOUL_TRUE_THRESHOLD = 0.7;
@@ -159,7 +160,13 @@ class JevToolCallExp {
         const uniqueUrls = uniqueStrings(imageUrls);
         const allowsUrlAsPrimary = (categoryKey === 'web_search' || thirdParty) && uniqueUrls.length > 0;
         const allowsThirdPartyEmptyPrimary = thirdParty && (backtickTools.length > 0 || semanticConstraints.length > 0);
-        if (primary.length === 0 && !allowsUrlAsPrimary && !allowsThirdPartyEmptyPrimary) {
+        const allowsCurrentMusicEmptyPrimary = categoryKey === 'daily_tools'
+            && this._isCurrentMusicRequest(raw)
+            && this._normalizeDailyToolSelection(
+                this._resolveRequestedTools({ raw, quotedTools }, this.config.categories[categoryKey]),
+                { raw, quotedTools }
+            ).every(key => key === 'music_controller');
+        if (primary.length === 0 && !allowsUrlAsPrimary && !allowsThirdPartyEmptyPrimary && !allowsCurrentMusicEmptyPrimary) {
             throw new Error('JEV 表达式缺少主要内容，请使用【主要内容】。打开网页时也可直接把 URL 放入 [URL]。');
         }
 
@@ -189,12 +196,23 @@ class JevToolCallExp {
         }
     }
 
+    _isCurrentMusicRequest(raw) {
+        // 只识别动作与约束，不让歌曲名、通讯正文或回忆内容中的词触发查询。
+        const actionText = raw
+            .replace(/【[\s\S]*?】/g, ' ')
+            .replace(/\{[^{}]*\}/g, ' ')
+            .replace(/`[^`]*`|'[^']*'|"[^"]*"|“[^”]*”/g, ' ');
+        return CURRENT_MUSIC_REQUEST_RE.test(actionText);
+    }
+
     _inferImplicitCategory(raw) {
         // 只允许高置信度日用动作省略目录。联网搜索、网页访问和图片生成
         // 仍要求显式目录，避免一句普通聊天被误执行成外部工具调用。
         const hasMarkedUrl = /\[(?:https?:\/\/|file:\/\/)[^\]]+\]/i.test(raw);
         const hasUrlFetchAction = /打开|读取|查看|访问|看图|截图|快照/i.test(raw);
         if (hasMarkedUrl && hasUrlFetchAction) return '联网搜索';
+
+        if (this._isCurrentMusicRequest(raw)) return '日用工具';
 
         const dailyActionPatterns = [
             /(?:请|帮我|麻烦)?\s*(?:计算|求解|算一下|科学计算)\s*【/i,
@@ -423,6 +441,7 @@ class JevToolCallExp {
         if (parsed.quotedTools.length > 0) return toolKeys;
 
         const raw = parsed.raw;
+        if (this._isCurrentMusicRequest(raw)) return ['music_controller'];
         const routes = [
             { re: /联络|联系|通讯|委托|问问.*(?:女仆|agent)/i, toolKey: 'agent_assistant' },
             { re: /闹钟|提醒我|叫醒我|定时提醒/i, toolKey: 'alarm' },
@@ -735,6 +754,10 @@ class JevToolCallExp {
         }
 
         if (toolKey === 'music_controller') {
+            if (this._isCurrentMusicRequest(parsed.raw)) {
+                args.command = 'getCurrentLyrics';
+                return args;
+            }
             args.songname = main;
             for (const [stageMode, aliases] of Object.entries(tool.stageModes || {})) {
                 if (aliases.some(alias => joined.toLowerCase().includes(String(alias).toLowerCase()))) {
