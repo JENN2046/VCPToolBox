@@ -1,0 +1,8 @@
+tree aa393a0a8bd98c6ebac71a066247f12bc36112fb
+parent 73924de991d344d8fdac6c01266c6a2d8825f894
+author Jenn <jenn515292656@gmail.com> 1793288197 -0900
+committer Jenn <jenn515292656@gmail.com> 1793288197 -0900
+
+Restore silent approval privacy for R1-BR review
+
+Keep silent rejections private regardless of reason or self-claimed consent; do not introduce a trusted opt-in surface on the legacy transport. Filter non-silent rejection feedback, scrub approval diagnostics, and fix zero-suffix privacy masking. Preserve Trusted Action checks, batch protocol, native payloads and deployment blocks. Include scoped regression and original Git object evidence.

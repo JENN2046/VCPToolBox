@@ -1,0 +1,112 @@
+{
+  "counts_overlap": true,
+  "runs": [
+    {
+      "log": "upstream-daily-initial.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test tests/dailyNoteUpdateScope.test.js",
+      "status": "PASS",
+      "counts": {
+        "tests": 24,
+        "pass": 24,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "log": "daily-boundary-before-fix.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test tests/dailyNoteBoundarySafety.test.cjs",
+      "status": "FAIL_FIXED",
+      "counts": {
+        "tests": 12,
+        "pass": 2,
+        "fail": 10,
+        "skipped": 0
+      },
+      "note": "Snapshot of 12 newly added tests before fixes; 10 failures preserved, later expanded to 16 new tests."
+    },
+    {
+      "log": "daily-scope-final.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test tests/dailyNoteUpdateScope.test.js tests/dailyNoteBoundarySafety.test.cjs",
+      "status": "PASS",
+      "counts": {
+        "tests": 40,
+        "pass": 40,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "log": "r1br-protocol-authority-final.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test --require ./tests/fixtures/offlineRegressionSetup.cjs tests/upstreamR1Safety.test.cjs tests/toolResultBatch.test.js tests/toolBatchTimezone.test.js tests/toolBatchUpstreamProjection.test.js tests/roleDividerToolResults.test.js tests/oneRingUntriggeredPassthrough.test.js tests/memoryThinkingTray.test.js tests/approvalFeedbackPassthrough.test.js tests/suveiMutationApprovalResponse.test.js tests/websocket-message-diagnostics.test.cjs tests/humanAuthorizationKernel.test.cjs",
+      "status": "PASS",
+      "counts": {
+        "tests": 135,
+        "pass": 135,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    },
+    {
+      "log": "jenn-boundary-final.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test --require ./tests/fixtures/offlineRegressionSetup.cjs tests/externalPluginAllowPolicy.test.js tests/externalPluginSafetyGate.test.js tests/plugin-external-runtime-registration-gate.test.js tests/plugin-external-runtime-direct-policy.test.js tests/plugin-external-runtime-env-sandbox.test.js tests/fileOperatorDirectoryPolicy.test.cjs tests/fileOperatorConfigCompatibility.test.cjs tests/linuxShellBubblewrap.test.cjs tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs tests/toolApprovalPathSafety.test.cjs tests/native-http-contract.test.cjs tests/native-websocket.test.cjs",
+      "status": "PASS",
+      "counts": {
+        "tests": 260,
+        "pass": 249,
+        "fail": 0,
+        "skipped": 11
+      },
+      "note": ""
+    },
+    {
+      "log": "approval-config-jev-final.txt",
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test tests/toolApprovalManager.test.js tests/jevClient.test.js tests/jevToolCallExp.test.js",
+      "status": "PASS",
+      "counts": {
+        "tests": 72,
+        "pass": 72,
+        "fail": 0,
+        "skipped": 0
+      },
+      "note": ""
+    }
+  ],
+  "nativeCurrentResults": {
+    "source": "windows-native.md",
+    "raw": "native-logs.tar.gz",
+    "linuxNativePass": 44,
+    "provenanceNegativePass": 7,
+    "artifactChecks": 2,
+    "glibcObserved": "2.34",
+    "unchangedCeiling": "2.35"
+  },
+  "blocked": [
+    {
+      "status": "BLOCKED",
+      "scope": "Windows actual build/load/ABI/remaining loader trust-version behavior; no authorized available Windows environment"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "PowerShell native parse/execute; preparation only"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "R1-C Rust rebuild/191 Rust unit tests; source unchanged, historical build evidence only"
+    },
+    {
+      "status": "NOT_ESTABLISHED",
+      "scope": "Trusted Agent/Topic identity and per-resource memory ACL; only textual namespaces are implemented"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "Noncooperative global namespace/rename transaction; no OS-wide CAS claimed"
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "Actual Chat pairing/Electron/latest client, NativeSync, ChannelHub, real providers and production"
+    }
+  ]
+}

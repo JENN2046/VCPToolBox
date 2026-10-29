@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require('fs').promises;
+const fsConstants = require('fs').constants || {};
 const path = require('path');
 const crypto = require('crypto');
 
@@ -1110,13 +1111,75 @@ function generateDiff(oldText, newText, oldLabel, newLabel) {
 }
 
 // --- 'update' Command Logic ---
-async function atomicReplaceIfUnchanged(filePath, content, expectedStats) {
-    const currentStats = await fs.stat(filePath);
-    if (
-        !expectedStats ||
-        currentStats.size !== expectedStats.size ||
-        currentStats.mtimeMs !== expectedStats.mtimeMs
-    ) {
+// Scope names select a namespace; they do not establish a trusted identity.
+function isOwnerUpdateFolderAlias(alias, ownerAlias) {
+    return alias === ownerAlias || alias.startsWith(ownerAlias + '的');
+}
+
+function isInvalidUpdateScopePart(value) {
+    return /[\\/:*?"<>|\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/.test(value) ||
+        /^[._\s]+$/.test(value);
+}
+
+function diaryWriteConflict(message) {
+    const error = new Error(message);
+    error.code = 'DAILY_NOTE_WRITE_CONFLICT';
+    return error;
+}
+
+function sameDiaryVersion(left, right) {
+    return !!left && !!right && left.isFile() && right.isFile() &&
+        left.ino !== 0n && left.nlink === 1n && right.nlink === 1n &&
+        left.dev === right.dev && left.ino === right.ino &&
+        left.size === right.size && left.mtimeNs === right.mtimeNs &&
+        left.ctimeNs === right.ctimeNs;
+}
+
+async function assertDiaryDirectory(dir) {
+    const root = await fs.realpath(dailyNoteRootPath);
+    const currentRoot = await fs.stat(root, { bigint: true });
+    const current = await fs.lstat(dir.path, { bigint: true });
+    if (root !== dir.rootRealPath || currentRoot.dev !== dir.rootIdentity.dev ||
+        currentRoot.ino !== dir.rootIdentity.ino || current.isSymbolicLink() ||
+        !current.isDirectory() || current.dev !== dir.identity.dev ||
+        current.ino !== dir.identity.ino || await fs.realpath(dir.path) !== dir.realPath) {
+        throw diaryWriteConflict('Diary directory changed; no update was committed.');
+    }
+}
+
+async function readDiaryForUpdate(filePath, dir) {
+    await assertDiaryDirectory(dir);
+    const before = await fs.lstat(filePath, { bigint: true });
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || before.ino === 0n) {
+        throw diaryWriteConflict('Diary file must be regular, have one hard link and a stable identity.');
+    }
+    // O_NOFOLLOW closes the open-time symlink race where supported. Descriptor
+    // identity/version checks run before reading even on platforms without it.
+    const handle = await fs.open(filePath, (fsConstants.O_RDONLY || 0) | (fsConstants.O_NOFOLLOW || 0));
+    try {
+        const opened = await handle.stat({ bigint: true });
+        const pathBeforeRead = await fs.lstat(filePath, { bigint: true });
+        await assertDiaryDirectory(dir);
+        if (!sameDiaryVersion(before, opened) || !sameDiaryVersion(opened, pathBeforeRead)) {
+            throw diaryWriteConflict('Diary file changed before reading.');
+        }
+        const content = await handle.readFile('utf8');
+        const after = await handle.stat({ bigint: true });
+        const pathAfterRead = await fs.lstat(filePath, { bigint: true });
+        await assertDiaryDirectory(dir);
+        if (!sameDiaryVersion(opened, after) || !sameDiaryVersion(after, pathAfterRead)) {
+            throw diaryWriteConflict('Diary file changed during reading.');
+        }
+        return { content, readVersion: after };
+    } finally {
+        await handle.close();
+    }
+}
+
+async function atomicReplaceIfUnchanged(filePath, content, expectedStats, dir) {
+    await assertDiaryDirectory(dir);
+    const currentStats = await fs.lstat(filePath, { bigint: true });
+    if (!sameDiaryVersion(currentStats, expectedStats)) {
         const conflict = new Error(
             `Diary file changed concurrently before update commit: ${filePath}. ` +
             'Please read the latest content and retry.'
@@ -1134,11 +1197,9 @@ async function atomicReplaceIfUnchanged(filePath, content, expectedStats) {
         await fs.writeFile(tempPath, content, { encoding: 'utf-8', flag: 'wx' });
 
         // 临时文件写完后再做一次版本校验，缩小外部写入者抢占提交窗口的概率。
-        const beforeCommitStats = await fs.stat(filePath);
-        if (
-            beforeCommitStats.size !== expectedStats.size ||
-            beforeCommitStats.mtimeMs !== expectedStats.mtimeMs
-        ) {
+        await assertDiaryDirectory(dir);
+        const beforeCommitStats = await fs.lstat(filePath, { bigint: true });
+        if (!sameDiaryVersion(beforeCommitStats, expectedStats)) {
             const conflict = new Error(
                 `Diary file changed concurrently during update commit: ${filePath}. ` +
                 'Please read the latest content and retry.'
@@ -1160,6 +1221,43 @@ async function atomicReplaceIfUnchanged(filePath, content, expectedStats) {
     }
 }
 
+// 将宽松匹配区间映射回原文，避免用 target.length 截断不同长度的原文。
+function findDiaryUpdateMatches(content, target) {
+    let normalized = '';
+    const starts = [];
+    const ends = [];
+    let offset = 0;
+    for (const char of content) {
+        if (!shouldRemoveForLooseMatch(char)) {
+            const value = normalizeLooseMatchChar(char);
+            normalized += value;
+            for (let i = 0; i < value.length; i++) {
+                starts.push(offset);
+                ends.push(offset + char.length);
+            }
+        }
+        offset += char.length;
+    }
+    const needle = dehydrate(target);
+    if (!needle) return [];
+    const matches = new Map();
+    for (let index = normalized.indexOf(needle); index !== -1;
+        index = normalized.indexOf(needle, index + 1)) {
+        const start = starts[index];
+        const end = ends[index + needle.length - 1];
+        matches.set(`${start}:${end}`, { start, end });
+    }
+    // 精确匹配保留原文中的前后空白，且与同一处宽松匹配去重。
+    for (let index = content.indexOf(target); index !== -1;
+        index = content.indexOf(target, index + 1)) {
+        for (const [key, match] of matches) {
+            if (match.start >= index && match.end <= index + target.length) matches.delete(key);
+        }
+        matches.set(`exact:${index}`, { start: index, end: index + target.length });
+    }
+    return [...matches.values()];
+}
+
 async function handleUpdateCommand(args) {
     debugLog("Processing 'update' command with args:", args);
 
@@ -1167,7 +1265,14 @@ async function handleUpdateCommand(args) {
     const target = getArgumentValue(args, 'target');
     const replace = getArgumentValue(args, 'replace');
     const maid = getArgumentValue(args, 'maid');
-    const folder = args.folder || args.Folder || args.folderName || args.FolderName || args.fold || args.Fold;
+    const folder = getArgumentValue(args, 'folder', 'folderName', 'fold');
+    const requestedFileName = getArgumentValue(args, 'fileName');
+    if (requestedFileName !== undefined &&
+        (typeof requestedFileName !== 'string' || !requestedFileName.trim() ||
+            /[\\/:*?"<>|\x00-\x1f]/.test(requestedFileName) ||
+            /^[._\s]+$/.test(requestedFileName))) {
+        return { status: 'error', error: 'fileName must be a non-empty filename fragment without a path or wildcard.' };
+    }
 
     if (typeof target !== 'string' || typeof replace !== 'string') {
         return {
@@ -1184,6 +1289,11 @@ async function handleUpdateCommand(args) {
         };
     }
 
+    if (dehydrate(target).length < 15) {
+        return { status: 'error', code: 'DAILY_NOTE_INVALID_TARGET',
+            error: 'Update target must contain at least 15 effective characters after loose-match normalization.' };
+    }
+
     debugLog(
         `Validated input for update. Target length: ${target.length}. Maid: ${maid || 'Not specified'
         }. Folder: ${folder || 'Not specified'}`
@@ -1193,188 +1303,90 @@ async function handleUpdateCommand(args) {
         let modificationDone = false;
         let modifiedFilePath = null;
 
+        let uniqueMatch = null;
+        let matchCount = 0;
+        let scanIncomplete = false;
+
         // Fuzzy diff: 在遍历过程中收集最佳候选（零额外IO）
         const probes = FUZZY_DIFF_ENABLED ? extractSmartProbes(target, 5) : [];
         let bestCandidate = null; // { filePath, segment, hitCount }
         const scannedFiles = []; // For emergency fallback
 
-        // 构建搜索顺序：优先文件夹 + 其他所有文件夹
-        const priorityDirs = []; // 优先搜索的文件夹
-        const otherDirs = []; // 其他文件夹
-
-        // 获取所有子文件夹，过滤掉被忽略的文件夹
-        const allDirEntries = await fs.readdir(dailyNoteRootPath, {
-            withFileTypes: true,
-        });
-        const allDirs = allDirEntries.filter(
-            (d) => d.isDirectory() && !IGNORED_FOLDERS.includes(d.name)
-        );
-        debugLog(
-            `Filtered out ignored folders: ${IGNORED_FOLDERS.join(
-                ', '
-            )}. Remaining directories: ${allDirs.map((d) => d.name).join(', ')}`
-        );
-
-        if (folder && typeof folder === 'string' && folder.trim()) {
-            // 显式 folder 优先级最高：格式如 folder: 小克的知识, maid: 小克
-            const requestedFolderAlias = normalizeDiaryFolderAlias(folder.trim());
-            const maidOwnerAlias = normalizeDiaryFolderAlias(maid);
-            debugLog(
-                `Explicit folder specified for update. Requested: '${folder.trim()}', alias: '${requestedFolderAlias}', maid owner alias: '${maidOwnerAlias}'`
-            );
-
-            let bestFolderMatch = null;
-            for (const dirEntry of allDirs) {
-                const dirPath = path.join(dailyNoteRootPath, dirEntry.name);
-
-                // 安全检查：确保路径在 dailyNoteRootPath 内
-                if (!isPathWithinBase(dirPath, dailyNoteRootPath)) {
-                    debugLog(`Skipping unsafe directory during update: ${dirPath}`);
-                    continue;
-                }
-
-                const existingAlias = normalizeDiaryFolderAlias(dirEntry.name);
-                if (!isFolderMatchAllowedByOwner(requestedFolderAlias, existingAlias, maidOwnerAlias)) {
-                    debugLog(`Owner guard skipped update folder "${dirEntry.name}" for requested "${folder}" and maid "${maid || ''}"`);
-                    otherDirs.push({ name: dirEntry.name, path: dirPath });
-                    continue;
-                }
-
-                const score = calculateFolderMatchScore(requestedFolderAlias, existingAlias);
-                if (
-                    score > 0 &&
-                    (!bestFolderMatch ||
-                        score > bestFolderMatch.score ||
-                        (score === bestFolderMatch.score && dirEntry.name.length < bestFolderMatch.name.length))
-                ) {
-                    bestFolderMatch = {
-                        name: dirEntry.name,
-                        path: dirPath,
-                        score,
-                        alias: existingAlias
-                    };
-                }
-
-                otherDirs.push({ name: dirEntry.name, path: dirPath });
-            }
-
-            if (bestFolderMatch) {
-                priorityDirs.push({ name: bestFolderMatch.name, path: bestFolderMatch.path });
-                const duplicateIndex = otherDirs.findIndex((dir) => dir.name === bestFolderMatch.name);
-                if (duplicateIndex !== -1) {
-                    otherDirs.splice(duplicateIndex, 1);
-                }
-                debugLog(
-                    `Explicit folder '${folder}' resolved to existing folder '${bestFolderMatch.name}' (alias: '${bestFolderMatch.alias}', score: ${bestFolderMatch.score}).`
-                );
-            } else {
-                debugLog(
-                    `Explicit folder '${folder}' did not match existing folders, will search all folders.`
-                );
-            }
-        } else if (maid) {
-            const maidRegex = /^\[(.+?)\]/;
-            const match = maid.match(maidRegex);
-
-            if (match) {
-                // 格式: [小克的知识]小克 -> 优先在 '小克的知识' 文件夹找
-                const requestedFolderAlias = normalizeDiaryFolderAlias(match[1]);
-                const maidOwnerName = maid.replace(/^\[(.+?)\]/, '').trim();
-                const maidOwnerAlias = normalizeDiaryFolderAlias(maidOwnerName);
-                debugLog(
-                    `Maid specifies priority folder. Requested: '${match[1]}', alias: '${requestedFolderAlias}', maid owner alias: '${maidOwnerAlias}'`
-                );
-
-                let bestFolderMatch = null;
-                for (const dirEntry of allDirs) {
-                    const dirPath = path.join(dailyNoteRootPath, dirEntry.name);
-
-                    // 安全检查：确保路径在 dailyNoteRootPath 内
-                    if (!isPathWithinBase(dirPath, dailyNoteRootPath)) {
-                        debugLog(`Skipping unsafe directory during update: ${dirPath}`);
-                        continue;
-                    }
-
-                    const existingAlias = normalizeDiaryFolderAlias(dirEntry.name);
-                    if (!isFolderMatchAllowedByOwner(requestedFolderAlias, existingAlias, maidOwnerAlias)) {
-                        debugLog(`Owner guard skipped maid priority folder "${dirEntry.name}" for requested "${match[1]}" and maid "${maidOwnerName}"`);
-                        otherDirs.push({ name: dirEntry.name, path: dirPath });
-                        continue;
-                    }
-
-                    const score = calculateFolderMatchScore(requestedFolderAlias, existingAlias);
-                    if (
-                        score > 0 &&
-                        (!bestFolderMatch ||
-                            score > bestFolderMatch.score ||
-                            (score === bestFolderMatch.score && dirEntry.name.length < bestFolderMatch.name.length))
-                    ) {
-                        bestFolderMatch = {
-                            name: dirEntry.name,
-                            path: dirPath,
-                            score,
-                            alias: existingAlias
-                        };
-                    }
-
-                    otherDirs.push({ name: dirEntry.name, path: dirPath });
-                }
-
-                if (bestFolderMatch) {
-                    priorityDirs.push({ name: bestFolderMatch.name, path: bestFolderMatch.path });
-                    const duplicateIndex = otherDirs.findIndex((dir) => dir.name === bestFolderMatch.name);
-                    if (duplicateIndex !== -1) {
-                        otherDirs.splice(duplicateIndex, 1);
-                    }
-                    debugLog(
-                        `Maid priority folder '${match[1]}' resolved to existing folder '${bestFolderMatch.name}' (alias: '${bestFolderMatch.alias}', score: ${bestFolderMatch.score}).`
-                    );
-                } else {
-                    debugLog(
-                        `Maid priority folder '${match[1]}' did not match existing folders, will search all folders.`
-                    );
-                }
-            } else {
-                // 格式: 小克 -> 优先在以 '小克' 开头的文件夹找
-                const maidAlias = normalizeDiaryFolderAlias(maid);
-                debugLog(
-                    `Maid specified: '${maid}' (alias: '${maidAlias}'). Prioritizing directories starting with this alias.`
-                );
-
-                for (const dirEntry of allDirs) {
-                    const dirPath = path.join(dailyNoteRootPath, dirEntry.name);
-
-                    // 安全检查：确保路径在 dailyNoteRootPath 内
-                    if (!isPathWithinBase(dirPath, dailyNoteRootPath)) {
-                        debugLog(`Skipping unsafe directory during update: ${dirPath}`);
-                        continue;
-                    }
-
-                    if (normalizeDiaryFolderAlias(dirEntry.name).startsWith(maidAlias)) {
-                        priorityDirs.push({ name: dirEntry.name, path: dirPath });
-                    } else {
-                        otherDirs.push({ name: dirEntry.name, path: dirPath });
-                    }
-                }
-            }
-        } else {
-            // 没有指定 maid，搜索所有文件夹
-            debugLog('No maid specified. Scanning all directories.');
-            for (const dirEntry of allDirs) {
-                const dirPath = path.join(dailyNoteRootPath, dirEntry.name);
-
-                // 安全检查：确保路径在 dailyNoteRootPath 内
-                if (!isPathWithinBase(dirPath, dailyNoteRootPath)) {
-                    debugLog(`Skipping unsafe directory during update: ${dirPath}`);
-                    continue;
-                }
-
-                otherDirs.push({ name: dirEntry.name, path: dirPath });
-            }
+        // 搜索范围是硬边界，失败后不得回退到全库；诊断也复用此范围。
+        if ((folder !== undefined && typeof folder !== 'string') ||
+            (maid !== undefined && typeof maid !== 'string')) {
+            return { status: 'error', error: "Invalid arguments for update: 'folder' and 'maid' must be strings." };
+        }
+        const trimmedMaid = typeof maid === 'string' ? maid.trim() : '';
+        const legacyMatch = trimmedMaid.match(/^\[([^\]]+)\](.*)$/);
+        const ownerName = legacyMatch ? legacyMatch[2].trim() : trimmedMaid;
+        const ownerAlias = normalizeDiaryFolderAlias(ownerName);
+        const requestedFolder = (typeof folder === 'string' ? folder.trim() : '') ||
+            (legacyMatch ? legacyMatch[1].trim() : '');
+        if ((ownerName && isInvalidUpdateScopePart(ownerName)) ||
+            (requestedFolder && isInvalidUpdateScopePart(requestedFolder)) ||
+            (ownerName && !ownerAlias)) {
+            return { status: 'error', code: 'DAILY_NOTE_INVALID_SCOPE',
+                error: 'Update scope must be a valid author or folder name, not a path or invisible alias.' };
+        }
+        const requestedAlias = normalizeDiaryFolderAlias(requestedFolder);
+        if ((!requestedFolder && !ownerAlias) || (requestedFolder && !requestedAlias)) {
+            return {
+                status: 'error',
+                error: 'Update requires a valid maid or folder to limit the search scope. Global search is not allowed.'
+            };
         }
 
-        // 合并搜索顺序：优先文件夹在前
-        const directoriesToScan = [...priorityDirs, ...otherDirs];
+        const allDirEntries = await fs.readdir(dailyNoteRootPath, { withFileTypes: true });
+        const allDirs = allDirEntries.filter(
+            d => d.isDirectory() && !IGNORED_FOLDERS.includes(d.name)
+        );
+        const publicScope = requestedFolder && isPublicFolderAlias(requestedAlias);
+        const ownerScope = !publicScope && ownerAlias &&
+            (!requestedFolder || isOwnerUpdateFolderAlias(requestedAlias, ownerAlias));
+        const inScope = name => {
+            const alias = normalizeDiaryFolderAlias(name);
+            if (publicScope) return isPublicFolderAlias(alias);
+            if (ownerScope) return isOwnerUpdateFolderAlias(alias, ownerAlias);
+            return true; // 其他分类目录随后仅保留唯一的指定目录。
+        };
+        const scopedDirs = allDirs.filter(d => inScope(d.name));
+        let preferredDir = requestedFolder
+            ? scopedDirs.find(d => d.name === requestedFolder)
+            : null;
+        if (requestedFolder && !preferredDir) {
+            const aliasMatches = scopedDirs.filter(
+                d => normalizeDiaryFolderAlias(d.name) === requestedAlias
+            );
+            if (aliasMatches.length > 1) {
+                return { status: 'error', error: `Ambiguous diary folder '${requestedFolder}'. Please specify the exact folder name.` };
+            }
+            preferredDir = aliasMatches[0] || null;
+        }
+        const selectedDirs = publicScope || ownerScope
+            ? [
+                ...(preferredDir ? [preferredDir] : []),
+                ...scopedDirs.filter(d => d !== preferredDir)
+            ]
+            : (preferredDir ? [preferredDir] : []);
+        const realRootPath = await fs.realpath(dailyNoteRootPath);
+        const rootIdentity = await fs.stat(realRootPath, { bigint: true });
+        const directoriesToScan = [];
+        for (const dirEntry of selectedDirs) {
+            const dirPath = path.join(dailyNoteRootPath, dirEntry.name);
+            const realDirPath = await fs.realpath(dirPath);
+            // 拒绝目录联接/符号链接将允许的名字映射到其他目录。
+            if (!isPathWithinBase(dirPath, dailyNoteRootPath) ||
+                !isPathWithinBase(realDirPath, realRootPath) ||
+                path.relative(realRootPath, realDirPath) !== dirEntry.name) {
+                debugLog(`Skipping redirected or unsafe update directory: ${dirPath}`);
+                continue;
+            }
+            const identity = await fs.lstat(dirPath, { bigint: true });
+            if (!identity.isDirectory() || identity.isSymbolicLink()) continue;
+            directoriesToScan.push({ name: dirEntry.name, path: dirPath,
+                realPath: realDirPath, identity, rootRealPath: realRootPath, rootIdentity });
+        }
         debugLog(
             `Search order: ${directoriesToScan.map((d) => d.name).join(' -> ')}`
         );
@@ -1382,90 +1394,47 @@ async function handleUpdateCommand(args) {
         if (directoriesToScan.length === 0) {
             return {
                 status: 'error',
-                error: `No diary folders found in ${dailyNoteRootPath}`,
+                error: `No diary folders found within the allowed scope for folder '${requestedFolder}' and maid '${ownerName}'. ${UPDATE_FAILURE_HINT}`,
             };
         }
 
+        const namespace = publicScope ? '公共*' : ownerScope ? `${ownerAlias}*` : requestedFolder;
         for (const dir of directoriesToScan) {
-            if (modificationDone) break;
             debugLog(`Scanning directory: ${dir.path}`);
             try {
                 const files = await fs.readdir(dir.path);
                 const txtFiles = files
                     .filter(
                         (file) =>
-                            file.toLowerCase().endsWith('.txt') ||
-                            file.toLowerCase().endsWith('.md')
+                            (!requestedFileName || file.toLowerCase().includes(requestedFileName.trim().toLowerCase())) &&
+                            (file.toLowerCase().endsWith('.txt') ||
+                            file.toLowerCase().endsWith('.md'))
                     )
                     .sort();
                 debugLog(`Found ${txtFiles.length} diary files for ${dir.name}`);
 
                 for (const file of txtFiles) {
-                    if (modificationDone) break;
                     const filePath = path.join(dir.path, file);
                     debugLog(`Reading file: ${filePath}`);
                     let content;
                     let readVersion;
                     try {
-                        const statsBeforeRead = await fs.stat(filePath);
-                        content = await fs.readFile(filePath, 'utf-8');
-                        const statsAfterRead = await fs.stat(filePath);
-                        if (
-                            statsBeforeRead.size !== statsAfterRead.size ||
-                            statsBeforeRead.mtimeMs !== statsAfterRead.mtimeMs
-                        ) {
-                            debugLog(`Skipping concurrently changing diary file: ${filePath}`);
-                            continue;
-                        }
-                        readVersion = statsAfterRead;
+                        ({ content, readVersion } = await readDiaryForUpdate(filePath, dir));
                     } catch (readErr) {
                         console.error(
                             `[DailyNote] Error reading diary file ${filePath}:`,
                             readErr.message
                         );
+                        scanIncomplete = true;
                         continue;
                     }
 
-                    let index = content.indexOf(target);
-
-                    // Layer 1: Dehydration Match
-                    if (index === -1) {
-                        const dehydratedContent = dehydrate(content);
-                        const dehydratedTarget = dehydrate(target);
-                        const dIndex = dehydratedContent.indexOf(dehydratedTarget);
-                        if (dIndex !== -1) {
-                            index = mapDehydratedIndexToOriginal(content, dIndex);
-                            debugLog(`Dehydrated match found in file: ${filePath}`);
-                        }
+                    const matches = findDiaryUpdateMatches(content, target);
+                    matchCount += matches.length;
+                    if (matches.length > 0 && !uniqueMatch) {
+                        uniqueMatch = { filePath, content, readVersion, dir, ...matches[0] };
                     }
-
-                    if (index !== -1) {
-                        debugLog(`Found target in file: ${filePath}`);
-                        const newContent =
-                            content.substring(0, index) +
-                            replace +
-                            content.substring(index + target.length);
-                        try {
-                            await atomicReplaceIfUnchanged(filePath, newContent, readVersion);
-                            modificationDone = true;
-                            modifiedFilePath = filePath;
-                            debugLog(`Successfully modified file: ${filePath}`);
-                            break;
-                        } catch (writeErr) {
-                            console.error(
-                                `[DailyNote] Error writing to diary file ${filePath}:`,
-                                writeErr.message
-                            );
-                            if (writeErr.code === 'DAILY_NOTE_WRITE_CONFLICT') {
-                                return {
-                                    status: 'error',
-                                    error: writeErr.message,
-                                    code: writeErr.code
-                                };
-                            }
-                            break;
-                        }
-                    } else if (FUZZY_DIFF_ENABLED && probes.length > 0) {
+                    if (matches.length === 0 && FUZZY_DIFF_ENABLED && probes.length > 0) {
                         // 精确匹配失败，顺手做探针匹配收集候选
                         const { positions, hitCount } = probeMatch(content, probes);
                         if (
@@ -1499,7 +1468,37 @@ async function handleUpdateCommand(args) {
                     `[DailyNote] Error reading character directory ${dir.path}:`,
                     charDirError.message
                 );
+                scanIncomplete = true;
                 continue;
+            }
+        }
+
+        if (matchCount > 1) {
+            return {
+                status: 'error',
+                code: 'DAILY_NOTE_AMBIGUOUS_TARGET',
+                error: `[DailyNote Error] 在命名空间 [${namespace}] 中匹配到 ${matchCount} 处目标，存在歧义，请指定具体文件名或扩展 target 长度。`,
+                result: { matchCount, namespace }
+            };
+        }
+        if (scanIncomplete) {
+            return { status: 'error', code: 'DAILY_NOTE_SCAN_INCOMPLETE',
+                error: '搜索范围内有文件读取失败或正在变化，无法确认目标唯一性；未修改任何文件，请重试。' };
+        }
+        if (uniqueMatch) {
+            const { filePath, content, readVersion, dir, start, end } = uniqueMatch;
+            if (await fs.realpath(dir.path) !== dir.realPath ||
+                await fs.realpath(filePath) !== path.join(dir.realPath, path.basename(filePath)) ||
+                (await fs.lstat(filePath)).isSymbolicLink()) {
+                return { status: 'error', error: 'Diary path changed before update commit. Please retry.' };
+            }
+            try {
+                await atomicReplaceIfUnchanged(filePath,
+                    content.substring(0, start) + replace + content.substring(end), readVersion, dir);
+                modificationDone = true;
+                modifiedFilePath = filePath;
+            } catch (error) {
+                return { status: 'error', error: error.message, code: error.code };
             }
         }
 

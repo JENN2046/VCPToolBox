@@ -1,0 +1,40 @@
+{
+  "baseline": {
+    "commit": "554a02a9bcd14bcd7ce7cbd8896d76b2bed2eb4b",
+    "tree": "aa393a0a8bd98c6ebac71a066247f12bc36112fb",
+    "parents": [
+      "73924de991d344d8fdac6c01266c6a2d8825f894"
+    ]
+  },
+  "frozenUpstream": {
+    "commit": "8c714a06531880e4be1fc24e9c8a4188a0b92691",
+    "tree": "0fadaf1592b59e5cd8da88a6a4d27d6b8b3bb433",
+    "newCommits": [
+      {
+        "commit": "6d7870fb5d108469e0b6d8b03e0a413cbe10e18f",
+        "parents": [
+          "393dc5e408f1dd521b4150946f77781ebabce399"
+        ],
+        "changedFiles": [
+          "Plugin/DailyNote/dailynote.js",
+          "Plugin/DailyNote/plugin-manifest.json",
+          "tests/dailyNoteUpdateScope.test.js"
+        ]
+      },
+      {
+        "commit": "8c714a06531880e4be1fc24e9c8a4188a0b92691",
+        "parents": [
+          "6d7870fb5d108469e0b6d8b03e0a413cbe10e18f"
+        ],
+        "changedFiles": [
+          "README.md"
+        ]
+      }
+    ]
+  },
+  "mergeBase": "393dc5e408f1dd521b4150946f77781ebabce399",
+  "mergeCommand": "git -c merge.conflictStyle=diff3 merge --no-commit --no-ff 8c714a06531880e4be1fc24e9c8a4188a0b92691",
+  "unmergedIndexPaths": 0,
+  "textConflicts": [],
+  "sourceReview": "READY only after final regression/commit evidence; prior source approval does not extend to R1-C"
+}

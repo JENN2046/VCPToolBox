@@ -1,0 +1,389 @@
+{
+  "baseline_commit": "554a02a9bcd14bcd7ce7cbd8896d76b2bed2eb4b",
+  "baseline_tree": "aa393a0a8bd98c6ebac71a066247f12bc36112fb",
+  "checked_upstream_increment": "8c714a06531880e4be1fc24e9c8a4188a0b92691",
+  "rust_source_changed_in_r1c": false,
+  "source_inputs": {
+    "vexus": [
+      {
+        "path": "rust-vexus-lite/Cargo.lock",
+        "sha256_lf": "7b5659f8f42df5a7d4d3194c429043571a8518f539ae89d517aca2e187a9aef9",
+        "git_blob": "27ebfec4c205f8fc17cb2c166e2a53d7bdc3ec5c",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/Cargo.toml",
+        "sha256_lf": "e0adb4748646b8a16429995a91f307b56bef93658fced52311f431edff9476e9",
+        "git_blob": "a39ebaeecbbdafb8d3a6e5d906be728e21c81b97",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/build.rs",
+        "sha256_lf": "aa7d2ac01ee024deb2df8891a498123bb7c15d9303fb767f6085a9aac92f0d4f",
+        "git_blob": "9fc236788932b315126703962085b45ee88c802a",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/Cargo.toml",
+        "sha256_lf": "e78c229e1fd60c9cbdbc03ffd1fef3debb132322625914ae59879e259ecd002e",
+        "git_blob": "d534729c3ed0102debd1e6bbbc8863cf6dfeebf1",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/asset.rs",
+        "sha256_lf": "b2ee434156ec1b1b5e9690435e7004dc7cae7920fa5f57881d93abf3c307f51e",
+        "git_blob": "da4ea22df065b6e6403253f7ad85aff633189dec",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/asset_tests.rs",
+        "sha256_lf": "017c74863db742ad01aa265b8764f48b30eed19f9eddf600f802563afdac72a9",
+        "git_blob": "43dad98952d4791ebc107049078d96032d330f7e",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/engine.rs",
+        "sha256_lf": "21743ddf9aab918a2bef5aa4918a5790472d1dd93c327dcf710104c4eeacfbde",
+        "git_blob": "cd2e6af729b4a923126dc0fdc027cc3f73342c7d",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/engine_tests.rs",
+        "sha256_lf": "0339fcce59835cf6799303c094c89195959b525b872bec3d46b9318ec76b2712",
+        "git_blob": "d281fe83bd17e4f236845c1443029e60dc672e8d",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/bq.rs",
+        "sha256_lf": "1c555db5f3f7ee95a48a5e51af3a7de89997b412d706954d20b0afc377fb3e57",
+        "git_blob": "ced6b25c059cdc7eb5ea63f8d5de910c4f2ccdc0",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/build.rs",
+        "sha256_lf": "e4bd0a4975ed65a64c889582e8e772c75435260bf12e6e628e4ef0b235476161",
+        "git_blob": "6d52319f7a1d3c27ddf70bdb68bca64529e73d58",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/dynamic.rs",
+        "sha256_lf": "f5f875e0b6ade38235873934cfc91f818aabeeca6be665121b7e90a997a0848e",
+        "git_blob": "c0d7f234317ba5b4227d936490efdceccb0e8b84",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/dynamic_search.rs",
+        "sha256_lf": "05ab2b4c51e0cc352154e4dcac3301ebc97204ec7aba59cffdc92aecfdb23b18",
+        "git_blob": "2f277299c6800334d347c77ce0c608b4663b8a75",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/dynamic_tests.rs",
+        "sha256_lf": "fb68e8ff53cf930124b3b7b0f4e6e1dcd6e32d72269da1100ec9d6d44d158f30",
+        "git_blob": "f637c818c4d9555ca588c144ebd7bd344a11cbd8",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/filter_tests.rs",
+        "sha256_lf": "f007283061874a74ff67d031376c6943302896de90b1bae6144fae04d6e45919",
+        "git_blob": "9714e10318410cc1507c6d384ba35d489fbe8e12",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/l2_tests.rs",
+        "sha256_lf": "9edca391ab02fdc8f1a3e1da258e481f482c3726d6efbb5101487bfbc8112b7e",
+        "git_blob": "5d5aedf2e4bd95af11f1da626280f013e1d318e5",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/native_l2_tests.rs",
+        "sha256_lf": "59b5d005a35bc5aabbceb0ef551db978b0496824cb3140326dc96685468db3d9",
+        "git_blob": "2efbddb83db3f0eca70108ff81e56fbb9ab99f25",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/production.rs",
+        "sha256_lf": "7aad4571a16a10b555a4a436db6b36448480fdd2e5a40194949029e70ab1558c",
+        "git_blob": "0ac7c07a058b7206b6092b3f584a8dc01546fa0c",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/production_tests.rs",
+        "sha256_lf": "e1b46d9fb1a7a9942babd39edd7c467d20687cac62e4b178de62b116a468bfa2",
+        "git_blob": "29985b488bf8278921084bf6787a7e5cfa5b6b58",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/routing_snapshot.rs",
+        "sha256_lf": "739bd96db098a0130c5b3a07d2e92f432bd1f2c8e0560142b0cc956b682e9512",
+        "git_blob": "34acf13d3834917501aa818947cfe947acb64308",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm.rs",
+        "sha256_lf": "89227e457a879bdfc0a7fac1dbe75745e97786a8a4c78921df30a80ac8f4cc08",
+        "git_blob": "7c7f41810f251b3240daed54b42a43a1f75719c4",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver.rs",
+        "sha256_lf": "3fb4507befb2ef527da96a7c74d754fec4f2fc87d5d9f747d098e4f47b408dac",
+        "git_blob": "c2fa418484259bd232793196d278a0b036ec42c0",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/lib.rs",
+        "sha256_lf": "c7f9af84956b516b727841231d80eb7e5a56213cdf875b0676ae384464992c9f",
+        "git_blob": "0154b019d882bec6925969df0d533e27a506322a",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/vector.rs",
+        "sha256_lf": "64e6b9b97d72cd9b15cb1937e94c6a3f1f6a9e56d08232e59b409117c7e1e3cc",
+        "git_blob": "b79e14472a78686e24d61bfba2e2e5f5842a647b",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/package.json",
+        "sha256_lf": "c996185f59cc84208077f854077f2f5451368ea9cd05c775ba0b06028fed7f7c",
+        "git_blob": "232a95ef206e6ffab0cdff959826faaa10f6fedb",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/rust-toolchain.toml",
+        "sha256_lf": "5431b3fa486569248f3b82c80cc6a4a3750375a40fe87c68f0340650ac1e0aea",
+        "git_blob": "06a75fc72512f6cfe093ec32c56ebc066b6f7597",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/global_chunks.rs",
+        "sha256_lf": "39541014865262e4f8d96d601f093e8e52c906ad178da257347ebc0aa2638b4d",
+        "git_blob": "3e7530efc0d3707f5c53b4d39e76e3d4478c520c",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/index_handle.rs",
+        "sha256_lf": "cf66cf024cc552c7e5e9af289235bc579cd8a1aa107729e8fd0712fb12107b7e",
+        "git_blob": "d8622cae54653ee3472740d9417a7e430a0376d9",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/index_lifecycle.rs",
+        "sha256_lf": "149c3ee94ef481b08f3140948af4af16303de60a578c4c1e2f1ef922c372ea8e",
+        "git_blob": "39662751682127b65337dee157b30956481c9df5",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/index_maintenance.rs",
+        "sha256_lf": "93baedaecf8a7cf5240f163b08a3e4c55b3e7ba6bd48ab4662b6039128bcd0eb",
+        "git_blob": "33c005f8b89b5cd1d0702ca730f9ae1beb8b8a34",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/index_source.rs",
+        "sha256_lf": "1336ba554618a8963503df3cd065484a984236f02843b3929383e56fff0374e1",
+        "git_blob": "c7b1465719579ebb145e53802fa31e9cc36dcbd0",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/ingestion.rs",
+        "sha256_lf": "021bbb418ef33c8f910cb942b0213caf64a18bb530cbc9030e4b85e392c038bc",
+        "git_blob": "a0d12de7887ca4523bb30ecb506819bf2f9ead49",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/knowledge_runtime.rs",
+        "sha256_lf": "f9405e13d3b377c52d74e0c0256351c9d86acf0d70750d90fc904fee89be9c9f",
+        "git_blob": "b36d88ec7b39fcaea856cef78ac04bf68aa991ae",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/lib.rs",
+        "sha256_lf": "ab3d7ba68e638678a942c5db275ea3a618bc10df70e9084c186355ef9929610f",
+        "git_blob": "dca9b54a1baa388c57484bad4236ca50330be19b",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/light_memo.rs",
+        "sha256_lf": "f56d3ba0dc5ef38c0b9c1c1a51e562ec183a55368b2ab0353b817766acde9a3b",
+        "git_blob": "150f8a35588149c42238f3392354a9b3aa60682e",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_artifact_builder.rs",
+        "sha256_lf": "32b64316a22fa23fd8b9f724a0e72efc8de453b91201ff0ff4e0bdd248132c26",
+        "git_blob": "bb31d895db9112af0dc747c30781de523c996c5c",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_geometry.rs",
+        "sha256_lf": "4395901874292f800f1c9d1a18dfe0c3725f57ba2d6732645e12b02358f1d694",
+        "git_blob": "1516c5d16132d2bb09f6baf8377bd331aacd8d27",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_pipeline.rs",
+        "sha256_lf": "6683cece6a312fcbc52d0aff1e6f44205156b70480e42db9300ec98f975410ed",
+        "git_blob": "d5ea0e877a5c6eff6b588890ef8a2b03d2ea4421",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_projection.rs",
+        "sha256_lf": "717da062fd83c2ae9385fa9573c12a0501b38d33334a4d273cf89f7f6a1f92b7",
+        "git_blob": "ab03eeb991e008409f74e39e64ab15ab3cd0b784",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_sensing.rs",
+        "sha256_lf": "19d6801e6dc4f1e598b4cdd381b6fade1bb3bfe8d68a32256b2aeca95de7906f",
+        "git_blob": "59bff27e62cf723aa2325bfa310adafb77561ce5",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_thinking.rs",
+        "sha256_lf": "bc5571ac318ebd00d84c28fc32ff48020e10ae1d79e808efd8404162ac7c3136",
+        "git_blob": "61be2152530f6fed10c90500e7629fdb7131759b",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_workspace.rs",
+        "sha256_lf": "312ad2f81e98de76cbaf8367a12a25f40ae99fb55a6d9f6e0be345129b073284",
+        "git_blob": "ac2312ba45787f94ff7348594ab42b73d098df6c",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_workspace_build_tests.rs",
+        "sha256_lf": "3d0fba38e2b0ee6ef0332fea7ee43a9596cd5386d751d6566b6774e7fe00e374",
+        "git_blob": "ca5cb89360705bf1e99301dcded10a9967b8b9f5",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/native_rerank.rs",
+        "sha256_lf": "c954d157e18d8afe7874372e66b7a22f53c8f8c3b121eeb763a57f12e51ae9f9",
+        "git_blob": "363896cb3258cec6514239832f2849cf3810940c",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/publication_gate.rs",
+        "sha256_lf": "725a5b6ec7d025b75fa16a17293603ec5eabd19411c1af67b2cd0582903e4cdc",
+        "git_blob": "77913cdb888830406292cde43a43912670cdb34b",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/result_deduplicator.rs",
+        "sha256_lf": "78b6bd0f4ebb3093c3b7629a51eb9743f86c2c0cbb0005ed7335b4cf4cd26b6d",
+        "git_blob": "e677eec31c5243d072037884df5537aa0fb36ef2",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/retrieval_index.rs",
+        "sha256_lf": "a93f5c0de9f35c717ea3bbb8fae9aafc52733e6cda3b2ab18faf4c266d465f6b",
+        "git_blob": "6cfce098f8d9c1861a9a016f4482191c458267d9",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/rivermemo_topology_v3.rs",
+        "sha256_lf": "2c686038a3fc3e7f8a14049b64918368d19aace7a218c4f9b32a5614f1154028",
+        "git_blob": "02435cb572271eafbacaedd9d56c9d002ec82890",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/rivermemo_wormhole.rs",
+        "sha256_lf": "0b2d65e61b0298d2dd84b47bda01e71747c7c7fe9ff6810ff23fb0fae16108df",
+        "git_blob": "e14a896c078956ea054b3ea5c77e97142b6a5dcb",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/schema.rs",
+        "sha256_lf": "1fbcd8aa392cc7656580279f311dc080c59bb79a49187cb3b4f9ef6e453be5aa",
+        "git_blob": "bbcad5a79a1c24533741b9c33cbeac829990d3c8",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/storage.rs",
+        "sha256_lf": "c7e78f8891afc8b85632f0009f14e49803604540acf616670dd5260745b7d6b1",
+        "git_blob": "306f3ab29ec9c16193f8a7f64809033b53e51b78",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/tag_consistency.rs",
+        "sha256_lf": "625f30f7a4e684d92347ab58e7036dee59269a256878de5f737dba9351b89876",
+        "git_blob": "fc863984f7f5356e5f2fa03c0ae157027e40d537",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/task_lifecycle.rs",
+        "sha256_lf": "43ce80ee12d00ba73a377741cdf76c99d65a477bea9171737eb500df65f63605",
+        "git_blob": "eb72cb3e841f81e4f85f1b8183bb26b15523f558",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "rust-vexus-lite/src/text.rs",
+        "sha256_lf": "459f04022bffbc1fe550e1c2b16328c7ea5dddd3989fc641d0afc8372c0f6a61",
+        "git_blob": "e39474f379d6407809f247353b6b876953331f5e",
+        "unchanged_from_r1br": true
+      }
+    ],
+    "daily": [
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.lock",
+        "sha256_lf": "93899ddf0a06ca022a9103e69c489f73ae486cd8e56153af71ce3c02eea1c73d",
+        "git_blob": "30a4f600dcd8635bbdb9e8bb6110f43f3aab7312",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.toml",
+        "sha256_lf": "31db2f8205b4135201c3744e725342c1473d0818107f43b600f7e8137a3a01b8",
+        "git_blob": "afee6995f28752f93aa10bac645052a3cb492666",
+        "unchanged_from_r1br": true
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/src/main.rs",
+        "sha256_lf": "4632d844ea2964b1e73fd289cd69c6c7f2514741601dad9e1b85d632883f7a59",
+        "git_blob": "138bb26f045dce37e576a9867126dfed49c2dae0",
+        "unchanged_from_r1br": true
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-x64-gnu.node",
+      "sha256": "d114ffd7b0cb6bb51ede252d2a9e7d027b2068b04b12d31eab5f7187e85da26d",
+      "git_blob": "0f6edfc901132218202a0b1f2f0b715b7111fc74",
+      "unchanged_from_r1br": true,
+      "actual_r1c_check": "PASS: Linux loader/ABI and existing core native tests"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-unknown-linux-gnu",
+      "sha256": "a4e87a6ad29d3e15eeacaa7914a4e41b30e9b8b6146f8bc8f89094ef82a14a79",
+      "git_blob": "7ffee44dd62a7f9053cce8be351a6cfea0d80215",
+      "unchanged_from_r1br": true,
+      "actual_r1c_check": "PASS: source/artifact receipt hash only; DailyNoteSearcher native execution NOT_RUN in this Vexus regression"
+    }
+  ],
+  "windows_native_verification": "BLOCKED",
+  "windows_environment": "No Windows/WSL interoperability; connected device inventory reported offline by root agent",
+  "windows_preparation_inputs": [
+    {
+      "path": "rust-vexus-lite/index.js",
+      "sha256": "a2862a47b97cd847db2ce8d3fb97643ba55de926346b39794d171e329b6d1802",
+      "unchanged_from_r1br": true
+    },
+    {
+      "path": "rust-vexus-lite/index.d.ts",
+      "sha256": "8926a9b6a9a786e88f1fb09667b66d0de91ac255f8d783b8e5a63ba5f9ff89b2",
+      "unchanged_from_r1br": true
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "5431b3fa486569248f3b82c80cc6a4a3750375a40fe87c68f0340650ac1e0aea",
+      "unchanged_from_r1br": true
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.upstream-393dc5e.node.unverified",
+      "sha256": "f3da3b501504bb77d667e007dc4fb0b7c81e9fb2958df5a535d5f16694e3956e",
+      "unchanged_from_r1br": true
+    }
+  ],
+  "windows_default_payload_exists": false
+}
