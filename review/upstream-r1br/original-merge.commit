@@ -1,0 +1,9 @@
+tree 11d7ad7afe06d49432734b23deba9849ee27a383
+parent fef48db3e0bea997e99d7e7bd9c8551ae2ddb593
+parent 393dc5e408f1dd521b4150946f77781ebabce399
+author Jenn <jenn515292656@gmail.com> 1793286590 -0900
+committer Jenn <jenn515292656@gmail.com> 1793286590 -0900
+
+Merge fixed VCPToolBox upstream into Jenn R1-B candidate
+
+Merge 393dc5e408f1dd521b4150946f77781ebabce399 into frozen fef48db3e0bea997e99d7e7bd9c8551ae2ddb593. Preserve Jenn authority, isolation and host contracts; quarantine unsafe default expansion. Rebuild and verify Linux native payloads, keep client deployment compatibility explicitly blocked. Local review candidate only.

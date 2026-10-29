@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "originalCommit": "73924de991d344d8fdac6c01266c6a2d8825f894",
+  "rawCommitObjectHash": "73924de991d344d8fdac6c01266c6a2d8825f894",
+  "parents": [
+    "fef48db3e0bea997e99d7e7bd9c8551ae2ddb593",
+    "393dc5e408f1dd521b4150946f77781ebabce399"
+  ],
+  "objectTree": "11d7ad7afe06d49432734b23deba9849ee27a383",
+  "replayedFromFork": "fef48db3e0bea997e99d7e7bd9c8551ae2ddb593",
+  "replayedTree": "11d7ad7afe06d49432734b23deba9849ee27a383",
+  "inputPatchSha256": "c6061655e024f2fdd1ed675f617df2945f274617d8ac95e72e5023e550b9fb4e",
+  "method": "Original local commit object + complete original patch freshly applied into disposable index. This is execution-host verification, not a claim that external reviewer repeated it."
+}

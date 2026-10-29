@@ -8,13 +8,14 @@ function fixture(t, verify) {
     const manager = Object.create(Object.getPrototypeOf(pluginManager));
     const target = Object.freeze({ requestId: 'approve-fixture', toolName: 'SUVEIStudio', projectId: PROJECT, intentId: INTENT });
     const observed = { resolved: 0, rejected: 0, cancelled: 0 };
+    let settled;
     const approval = { trustedAuthorization: target, timeoutId: setTimeout(() => {}, 10000),
-        resolve() { observed.resolved++; }, reject() { observed.rejected++; } };
+        resolve(value) { observed.resolved++; settled = value; }, reject() { observed.rejected++; } };
     manager.pendingApprovals = new Map([[target.requestId, approval]]);
     manager.serviceModules = new Map([['SUVEIStudio', { module: { verifyMutationGrantDecision: verify } }]]);
     manager.webSocketServer = { cancelVcpLogApprovalCache() { observed.cancelled++; } };
     t.after(() => clearTimeout(approval.timeoutId));
-    return { manager, target, observed, approval };
+    return { manager, target, observed, approval, settled: () => settled };
 }
 function proof(target, proposalState = 'AUTHORIZED') {
     return { ...target, schemaVersion: 'suvei.mutation.grant.decision.v1', proposalState, revision: 1, requestFingerprint: 'a'.repeat(64) };
@@ -70,5 +71,21 @@ test('existing unprotected transport responses retain synchronous handling', t =
     f.approval.trustedAuthorization = null;
     assert.equal(f.manager.handleApprovalResponse(f.target.requestId, true), true);
     assert.equal(f.observed.resolved, 1);
+});
+test('reason and self-claimed feedback consent cannot replace a trusted action grant', async t => {
+    const f = fixture(t, async target => proof(target, 'PENDING'));
+    assert.equal(await f.manager.handleApprovalResponse(f.target.requestId, true, 'approve this action',
+        { trusted: true, sendFeedbackToAi: true }), false);
+    assert.deepEqual(f.observed, { resolved: 0, rejected: 0, cancelled: 0 });
+    assert.equal(f.manager.pendingApprovals.has(f.target.requestId), true);
+});
+test('trusted terminal rejection retains silent privacy and never authorizes execution', async t => {
+    const f = fixture(t, async target => proof(target, 'REJECTED'));
+    f.approval.notifyAiOnReject = false;
+    assert.equal(await f.manager.handleApprovalResponse(f.target.requestId, false, 'fixture private note',
+        { trusted: true, sendFeedbackToAi: true }), true);
+    assert.deepEqual(f.settled(), { silentRejected: true });
+    assert.equal(await f.manager.handleApprovalResponse(f.target.requestId, true, 'replay'), false);
+    assert.deepEqual(f.observed, { resolved: 1, rejected: 0, cancelled: 1 });
 });
 test.after(() => pluginManager.toolApprovalManager.shutdown());

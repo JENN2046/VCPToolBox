@@ -1,0 +1,12 @@
+[
+  {
+    "method": "handleApprovalResponse",
+    "status": "UNCHANGED",
+    "sha256": "94fe67c3a371a005f2f2a28f37c6fac20641e91084ac88e15ffe587153528e66"
+  },
+  {
+    "method": "_verifyTrustedMutationApproval",
+    "status": "UNCHANGED",
+    "sha256": "9c98eda6f858374fbc9e1ed620da2860f45f8696755da46a2ae65e6857484e32"
+  }
+]

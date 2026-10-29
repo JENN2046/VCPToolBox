@@ -115,6 +115,7 @@ function normalizeDeviceName(value) {
 function isSensitiveNativeMessage(message) {
     return message !== null && typeof message === 'object' && (
         Object.prototype.hasOwnProperty.call(message, 'authorization') ||
+        message.type === 'tool_approval_response' ||
         (typeof message.type === 'string' && /^native/i.test(message.type))
     );
 }
@@ -546,10 +547,8 @@ function initialize(httpServer, config) {
                     if (pluginManager) {
                         const success = await pluginManager.handleApprovalResponse(requestId, approved, reason);
                         if (serverConfig.debugMode && !sensitive) {
-                            const reasonPreview = typeof reason === 'string' && reason.trim()
-                                ? ` Reason: ${reason.trim().substring(0, 200)}`
-                                : '';
-                            console.log(`[WebSocketServer] Approval response for ${requestId}: ${approved ? 'APPROVED' : 'REJECTED'}. Handled: ${success}.${reasonPreview}`);
+                            // Rejection reasons may be private even in DebugMode.
+                            console.log(`[WebSocketServer] Approval response for ${requestId}: ${approved ? 'APPROVED' : 'REJECTED'}. Handled: ${success}.`);
                         }
                     }
                 } else if (ws.clientType === 'AdminPanel') {

@@ -1,5 +1,5 @@
 // tests/approvalFeedbackPassthrough.test.js
-// 覆盖需求：工具审核带 archery 时，用户填写的反馈必须优先回传给 AI；无反馈则保持静默。
+// R1-BR: SilentReject always suppresses reasons; approval/non-silent feedback retains filtering.
 //
 // 说明：Plugin.js 顶层 require 会拉起 express / chokidar watcher，无法在测试进程内自由加载。
 // 因此这里用 acorn AST 从源码中定位方法体，在 vm 沙箱中以独立函数上下文编译执行——
@@ -58,6 +58,12 @@ function extractMethodBody(ast, source, methodName) {
     return source.slice(fn.body.start + 1, fn.body.end - 1);
 }
 
+const { sanitizeToolResult } = require('../modules/toolResultPrivacyGuard');
+const SANITIZE_BODY = extractMethodBody(PLUGIN_AST, PLUGIN_SOURCE, '_sanitizeToolResultForAi');
+const sanitizeForAi = vm.runInNewContext(
+    `(function _sanitizeToolResultForAi(result) {${SANITIZE_BODY}})`,
+    { console, sanitizeToolResult }
+);
 const HANDLE_APPROVAL_BODY = extractMethodBody(PLUGIN_AST, PLUGIN_SOURCE, 'handleApprovalResponse');
 const SETTLE_APPROVAL_BODY = extractMethodBody(PLUGIN_AST, PLUGIN_SOURCE, '_settleApprovalResponse');
 const settleApprovalResponse = vm.runInNewContext(
@@ -73,6 +79,7 @@ function makeContext(pending) {
     return {
         pendingApprovals: pending || new Map(),
         _settleApprovalResponse: settleApprovalResponse,
+        _sanitizeToolResultForAi: sanitizeForAi,
         webSocketServer: null,
         debugMode: false
     };
@@ -92,7 +99,7 @@ function makePendingEntry(notifyAiOnReject) {
     return { entry, promise };
 }
 
-test('静默拒绝：用户填写反馈时，反馈随 resolve 一并带出', async () => {
+test('静默拒绝：填写理由不构成发送给 AI 的授权', async () => {
     const { entry, promise } = makePendingEntry(false);
     const pending = new Map([['req-1', entry]]);
     const ctx = makeContext(pending);
@@ -103,7 +110,8 @@ test('静默拒绝：用户填写反馈时，反馈随 resolve 一并带出', as
 
     const resolved = await promise;
     assert.equal(resolved.silentRejected, true);
-    assert.equal(resolved.userFeedback, '文件名写错了');
+    assert.equal(resolved.userFeedback, undefined);
+    assert.equal(Object.keys(resolved).length, 1);
 });
 
 test('静默拒绝：用户未填写反馈时，不携带 userFeedback', async () => {
@@ -131,6 +139,18 @@ test('非静默规则：拒绝时走 reject 并携带理由', () => {
     assert.equal(captured.error_type, 'approval_rejected');
     assert.equal(captured.rejected_by_user, true);
     assert.match(captured.plugin_error, /用户不同意/);
+});
+
+test('非静默拒绝：空理由只返回通用拒绝且不能变为批准', () => {
+    for (const reason of [undefined, '', '   ']) {
+        const { entry } = makePendingEntry(true);
+        let rejection;
+        entry.reject = error => { rejection = JSON.parse(error.message); };
+        const ctx = makeContext(new Map([['empty', entry]]));
+        assert.equal(handleApprovalResponse.call(ctx, 'empty', false, reason), true);
+        assert.equal(rejection.plugin_error, 'Manual approval was REJECTED by user.');
+        assert.equal(rejection.rejected_by_user, true);
+    }
 });
 
 // toolExecutor.js 顶部 require 了 EmbeddingUtils 等重依赖，同样改为源码抽取编译。
@@ -510,3 +530,73 @@ test('流式/非流式模型请求：多模态回执不损坏，免回执仅传�
         }
     }
 });
+
+
+function approvalToolFixture({ approved, notifyAiOnReject, reason }) {
+    const logs = [], records = [], executedArgs = [];
+    const quiet = { log: (...args) => logs.push(args), warn: (...args) => logs.push(args), error: (...args) => logs.push(args) };
+    const run = vm.runInNewContext(
+        `(async function processToolCall(toolName, toolArgs, requestIp = null, sourceNode = null, executionOptions = {}) {${PROCESS_TOOL_BODY}})`,
+        { console: quiet, setTimeout, clearTimeout, RESIDENT_TOOL_NAME: 'AGENTSOSResident',
+          resolveArgsFileUrls: async () => {}, buildToolChangePreview: () => null,
+          getFormattedLocalTimestamp: () => 'fixture-time', filterFuzzyDiff: () => {},
+          toolCallRecordStore: { beginRecord: () => null, finishRecord: (_id, record) => records.push(record) } }
+    );
+    const settle = vm.runInNewContext(
+        `(function _settleApprovalResponse(requestId, approved, reason, expectedApproval) {${SETTLE_APPROVAL_BODY}})`,
+        { console: quiet, clearTimeout, setTimeout }
+    );
+    const ctx = {
+        plugins: new Map([['DemoTool', {}]]), pendingApprovals: new Map(), debugMode: true,
+        _settleApprovalResponse: settle, _sanitizeToolResultForAi: sanitizeForAi,
+        toolApprovalManager: { getApprovalDecision: () => ({ requiresApproval: true, notifyAiOnReject }),
+            getTimeoutMs: () => 10000, getPrivacyProtectionConfig: () => ({ enabled: true, preservePrefix: 0, preserveSuffix: 0 }) },
+        webSocketServer: { broadcast: payload => handleApprovalResponse.call(ctx, payload.data.requestId, approved, reason,
+            { sendFeedbackToAi: true, trusted: true }) },
+        toolLifecycleVcpInfo: { createContext: () => ({}), emit: () => {} }, _getPluginConfig: () => ({}),
+        executionBridgeRegistry: { execute: async (_plugin, args) => { executedArgs.push(args); return { result: { message: 'done' } }; } }
+    };
+    const executor = makeExecutorStub(); Object.assign(executor, makeErrorStub());
+    return { logs, records, executedArgs, async execute() {
+        try { return executor._processResult('DemoTool', await run.call(ctx, 'DemoTool', { command: 'read' })); }
+        catch (error) { return executor._createErrorResult('DemoTool', '执行错误: ' + error.message); }
+    } };
+}
+
+for (const approved of [true, false]) test(`actual approval chain approved=${approved} filters sensitive reasons before AI`, async () => {
+    const secret = 'sk-' + 'S'.repeat(40);
+    const fixture = approvalToolFixture({ approved, notifyAiOnReject: true, reason: '审核说明 ' + secret });
+    const result = await fixture.execute();
+    assert.equal(result.success, approved);
+    assert.equal(fixture.executedArgs.length, approved ? 1 : 0);
+    assert.equal(JSON.stringify({ result, records: fixture.records, logs: fixture.logs }).includes(secret), false);
+    assert.match(result.content[0].text, /VCP_PRIVACY_REDACTED/);
+    if (approved) assert.equal(fixture.executedArgs[0].__vcpApprovalFeedback, undefined);
+});
+
+for (const stream of [false, true]) for (const archery of [false, true]) {
+    test(`silent rejection stream=${stream} archery=${archery} never forwards a private reason or self-claimed opt-in`, async () => {
+        const { Readable } = require('node:stream');
+        const Handler = require('../modules/handlers/' + (stream ? 'streamHandler' : 'nonStreamHandler'));
+        const reason = 'fixture-private-rejection-reason';
+        const fixture = approvalToolFixture({ approved: false, notifyAiOnReject: false, reason });
+        const requests = [], writes = [];
+        const response = text => stream
+            ? { ok: true, body: Readable.from([`data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`]) }
+            : { ok: true, arrayBuffer: async () => Buffer.from(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] })) };
+        const call = { name: 'DemoTool', args: {} };
+        const context = { originalBody: { model: 'fixture', messages: [] },
+            pluginManager: { messagePreprocessors: new Map() }, abortController: new AbortController(),
+            ToolCallParser: { parse: text => text === 'CALL' ? [call] : [], separate: calls => ({ normal: archery ? [] : calls, archery: archery ? calls : [] }) },
+            toolExecutor: { execute: () => fixture.execute(), executeAll: async () => [await fixture.execute()] },
+            fetchWithRetry: async (_url, options) => { requests.push(JSON.parse(options.body)); return response('done'); } };
+        const res = { writableEnded: false, destroyed: false, write(value, cb) { writes.push(value); cb?.(); },
+            end() { this.writableEnded = true; }, send(value) { writes.push(value.toString()); this.writableEnded = true; } };
+        await new Handler(context).handle({}, res, response('CALL'));
+        assert.equal(fixture.executedArgs.length, 0);
+        assert.equal(JSON.stringify({ requests, writes, records: fixture.records, logs: fixture.logs }).includes(reason), false);
+        assert.equal(requests.length, archery ? 0 : 1, 'normal legacy loop keeps its generic no-result placeholder');
+        assert.equal(fixture.records[0].result.silentRejected, true);
+        assert.equal(fixture.records[0].result.user_feedback, undefined);
+    });
+}

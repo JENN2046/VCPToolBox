@@ -1,7 +1,7 @@
 'use strict';
 // Run the actual message callback with synthetic socket/handler faults; no live service.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-function fixture({nativeFailure=false,approvalFailure=false}={}){
+function fixture({nativeFailure=false,approvalFailure=false,debugMode=false}={}){
  const sensitive='SYNTHETIC_WS_PRIVATE_FRAME_CREDENTIAL_ERROR',logs=[],sent=[],calls={native:0,approval:0};let receive;
  const ws={clientType:'AdminPanel',clientId:'synthetic-client',on(type,handler){assert.equal(type,'message');receive=handler;},send(value){sent.push(value);}};
  const native={async handleNativeConversationMessage(_ws,message){calls.native++;if(nativeFailure)throw Error(sensitive);return message?.type==='native_conversation_request';}};
@@ -12,7 +12,7 @@ function fixture({nativeFailure=false,approvalFailure=false}={}){
  assert.ok(start>=0&&end>start);
  const helperStart=source.indexOf('function isSensitiveNativeMessage('),helperEnd=source.indexOf('async function writeLog(',helperStart);
  assert.ok(helperStart>=0&&helperEnd>helperStart);
- vm.runInNewContext(source.slice(helperStart,helperEnd)+source.slice(start,end),{ws,pluginManager,Buffer,serverConfig:{debugMode:false},console:{error:(...args)=>logs.push(args),log:(...args)=>logs.push(args)},require(name){assert.equal(name,'./modules/nativeConversationWebSocket');return native;}});
+ vm.runInNewContext(source.slice(helperStart,helperEnd)+source.slice(start,end),{ws,pluginManager,Buffer,serverConfig:{debugMode},console:{error:(...args)=>logs.push(args),log:(...args)=>logs.push(args)},require(name){assert.equal(name,'./modules/nativeConversationWebSocket');return native;}});
  return {sensitive,logs,sent,calls,receive};
 }
 for(const mode of ['parse','native','ordinary'])test(`outer WS diagnostics: ${mode} failure is classified and scrubbed`,async()=>{
@@ -32,4 +32,12 @@ test('outer WS diagnostics: ordinary approval routing and successful handling st
  assert.equal(f.calls.native,1);assert.equal(f.calls.approval,1);
  assert.deepEqual(f.calls.approvalArgs,['synthetic-request',false,'synthetic reason']);
  assert.deepEqual(f.logs,[]);assert.deepEqual(f.sent,[]);
+});
+
+test('debug approval diagnostics never echo private reasons or forward self-claimed consent', async () => {
+ const f=fixture({debugMode:true}),reason='fixture-private-approval-note';
+ await f.receive(Buffer.from(JSON.stringify({type:'tool_approval_response',data:{requestId:'fixture',approved:false,reason,sendFeedbackToAi:true,trusted:true}})));
+ assert.deepEqual(f.calls.approvalArgs,['fixture',false,reason]);
+ assert.equal(JSON.stringify(f.logs).includes(reason),false);
+ assert.equal(f.calls.approval,1);
 });
