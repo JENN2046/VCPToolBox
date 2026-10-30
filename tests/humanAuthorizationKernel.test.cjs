@@ -83,7 +83,17 @@ test('P5 production implementation profile remains explicitly disabled', () => {
 
 test('P5 trusted client + explicit intent + exact target binds one execution only', () => {
   let now = 1_800_000_000_000;
-  const authority = new ApprovalReceiptAuthority({ now: () => now, testOnly: true });
+  const hosts = new Map();
+  const pendingFor = (id, payload) => {
+    const identity = Object.freeze({ argsDigest: digest(payload) });
+    hosts.set(id, identity);
+    return { identity, hostApprovalRequestId: id, expiresAt: now + 60000 };
+  };
+  const authority = new ApprovalReceiptAuthority({
+    now: () => now, testOnly: true,
+    hostPendingVerifier: binding => hosts.get(binding.hostApprovalRequestId) === binding.identity
+      && binding.identity.argsDigest === binding.targetDigest && binding.operation === 'authorize'
+  });
   const store = memoryStore(true);
   const admission = new HumanClientAdmission({
     authority,
@@ -136,7 +146,7 @@ test('P5 trusted client + explicit intent + exact target binds one execution onl
     'SafeTool',
     payload,
     { requiresApproval: true, matchedRule: 'SafeTool:write', matchedCommand: 'write' },
-    { enabled: true, approveAll: false }
+    { enabled: true, approveAll: false, hostPending: pendingFor('host-1', payload) }
   );
   assert.equal(pending.argsDigest, digest(payload));
   assert.throws(
@@ -176,7 +186,7 @@ test('P5 trusted client + explicit intent + exact target binds one execution onl
     'SafeTool',
     payload,
     { requiresApproval: true, matchedRule: 'SafeTool:write', matchedCommand: 'write' },
-    { enabled: true, approveAll: false }
+    { enabled: true, approveAll: false, hostPending: pendingFor('host-2', payload) }
   );
   const secondIntent = authority.attestIntent(second, {
     decision: 'approve',
