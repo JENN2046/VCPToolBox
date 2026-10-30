@@ -19,10 +19,18 @@ function nativePayload(id, candidateSources = ['time']) {
         results: [{
             id,
             chunkId: id,
+            hydratedChunk: {
+                text: id === 101 ? 'time final text' : 'bm25 final text',
+                sourceFile: id === 101 ? 'Diary/time.md' : 'Diary/bm25.md',
+                diaryName: 'Diary',
+                fileId: id === 101 ? 1 : 2
+            },
             rank: 1,
             score: 0.8,
             originalScore: 0.7,
             baseScore: 0.75,
+            fieldScore: 0.8,
+            fieldResonanceBonus: 0.03,
             topologyBonus: 0.03,
             anchorBonus: 0.02,
             matchedTags: [],
@@ -80,11 +88,7 @@ function createFixture() {
     const db = {
         name: 'fixture.sqlite',
         prepare() {
-            return {
-                all(...ids) {
-                    return ids.map(id => rows.get(Number(id))).filter(Boolean);
-                }
-            };
+            throw new Error('Frozen native results must not trigger JS secondary hydration');
         }
     };
     const tagIndex = {
@@ -251,6 +255,8 @@ test('hybrid River ABI receives flattened vectors and structured plan', async ()
     assert.equal(result.results[0].source, 'time');
     assert.equal(result.results[0].text, 'time final text');
     assert.equal(result.diagnostics.nativeTopologyV3.hybridPlanUsed, true);
+    assert.equal(result.results[0].fieldScore, 0.8);
+    assert.equal(result.results[0].fieldResonanceBonus, 0.03);
 });
 
 test('BM25 native source remains distinguishable from Time output', async () => {

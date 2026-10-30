@@ -1,0 +1,490 @@
+{
+  "schema": 1,
+  "upstream": "d9f61c0d0faedc62c6b0a6e9fc93151c51b1ad80",
+  "fork_base": "b10d31fb0ac790dbae10bf9842d56903e3114673",
+  "historical_receipt": "docs/native-delivery-30193c89.json",
+  "previous_current_source_receipt": "docs/native-delivery-ea68ab3c.json",
+  "scope": "Current-source Linux and Windows Vexus verified; unchanged searchers retain historical provenance",
+  "source_fingerprint_sha256": "c657b1fa74d439c440fcd29cf65ea669195c9bad43a18464547f4c828f76c0d0",
+  "source_fingerprint_method": "SHA256 of UTF-8 json.dumps(source_inputs,sort_keys=True,separators=(comma,colon)); each source digest normalizes CRLF to LF",
+  "build_environment": {
+    "linux": {
+      "image": "docker.io/library/ubuntu@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02",
+      "rust": "1.89.0",
+      "gcc": "12.3.0",
+      "glibc": "2.35",
+      "node": "22.23.1",
+      "napi": "2.18.4",
+      "maximum_required_glibc": "2.34",
+      "independent_builds": 2,
+      "reproducible": true
+    },
+    "windows": {
+      "runner_image": "win22",
+      "node": "22.23.1",
+      "source": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+      "napi": "2.18.4",
+      "files": [
+        {
+          "name": "DailyNoteSearcher.exe",
+          "sha256": "b0ae46eac57249dc7768f40eeaf645a99f2dbf814bf3bde7ba2417bd68a425d2"
+        },
+        {
+          "name": "vexus-lite.win32-x64-msvc.node",
+          "sha256": "d75d7815cad1845a38094a2916318f7877f6d4865672b5c6cd4862d4a9f9ba95"
+        }
+      ],
+      "runner_image_version": "20261012.333.1",
+      "rust": "1.89.0"
+    }
+  },
+  "source_inputs": {
+    "vexus": [
+      {
+        "path": "rust-vexus-lite/Cargo.lock",
+        "sha256_lf": "8561e3c2234678dfaf34d4d4080ec9e11c5de777705e4875901a03ba9807d2a9"
+      },
+      {
+        "path": "rust-vexus-lite/Cargo.toml",
+        "sha256_lf": "9d180ff5c65d1c2ab9aa1ad481f021ad3537d12075bb6fb49d8a795d30c9fde7"
+      },
+      {
+        "path": "rust-vexus-lite/build.rs",
+        "sha256_lf": "aa7d2ac01ee024deb2df8891a498123bb7c15d9303fb767f6085a9aac92f0d4f"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/Cargo.toml",
+        "sha256_lf": "e78c229e1fd60c9cbdbc03ffd1fef3debb132322625914ae59879e259ecd002e"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/asset.rs",
+        "sha256_lf": "b2ee434156ec1b1b5e9690435e7004dc7cae7920fa5f57881d93abf3c307f51e"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/asset_tests.rs",
+        "sha256_lf": "017c74863db742ad01aa265b8764f48b30eed19f9eddf600f802563afdac72a9"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/engine.rs",
+        "sha256_lf": "099fc4910a5b9c49d5046f1173f02f633a46118863d9c93491fe672a9488b87e"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/engine_tests.rs",
+        "sha256_lf": "0339fcce59835cf6799303c094c89195959b525b872bec3d46b9318ec76b2712"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/bq.rs",
+        "sha256_lf": "1c555db5f3f7ee95a48a5e51af3a7de89997b412d706954d20b0afc377fb3e57"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/build.rs",
+        "sha256_lf": "e4bd0a4975ed65a64c889582e8e772c75435260bf12e6e628e4ef0b235476161"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/dynamic.rs",
+        "sha256_lf": "5249b5b26c0c10137454815db797fd073fdc130b8b24b4e17f813cffb5b4da0a"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/dynamic_search.rs",
+        "sha256_lf": "0f0393b8b86c39f71da8395d672c01a1dcddbfaf5ac7f6a80cd89c4d896f9f5e"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/dynamic_tests.rs",
+        "sha256_lf": "fb68e8ff53cf930124b3b7b0f4e6e1dcd6e32d72269da1100ec9d6d44d158f30"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/l2_tests.rs",
+        "sha256_lf": "9edca391ab02fdc8f1a3e1da258e481f482c3726d6efbb5101487bfbc8112b7e"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/native_l2_tests.rs",
+        "sha256_lf": "59b5d005a35bc5aabbceb0ef551db978b0496824cb3140326dc96685468db3d9"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/production.rs",
+        "sha256_lf": "7aad4571a16a10b555a4a436db6b36448480fdd2e5a40194949029e70ab1558c"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/production_tests.rs",
+        "sha256_lf": "e1b46d9fb1a7a9942babd39edd7c467d20687cac62e4b178de62b116a468bfa2"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm/routing_snapshot.rs",
+        "sha256_lf": "739bd96db098a0130c5b3a07d2e92f432bd1f2c8e0560142b0cc956b682e9512"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver/corrected_sm.rs",
+        "sha256_lf": "c7068956551b905ff3729de85cc3156c8329df129af7e8bf327bf8c0f6cc6456"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/index/quiver.rs",
+        "sha256_lf": "83df1ad1c598dc0a6afe66f99804895cc7dff3f4c80fe0380a7a6fc6ab18f000"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/lib.rs",
+        "sha256_lf": "c7f9af84956b516b727841231d80eb7e5a56213cdf875b0676ae384464992c9f"
+      },
+      {
+        "path": "rust-vexus-lite/crates/vcp-tdb-index/src/vector.rs",
+        "sha256_lf": "64e6b9b97d72cd9b15cb1937e94c6a3f1f6a9e56d08232e59b409117c7e1e3cc"
+      },
+      {
+        "path": "rust-vexus-lite/package.json",
+        "sha256_lf": "c996185f59cc84208077f854077f2f5451368ea9cd05c775ba0b06028fed7f7c"
+      },
+      {
+        "path": "rust-vexus-lite/rust-toolchain.toml",
+        "sha256_lf": "5431b3fa486569248f3b82c80cc6a4a3750375a40fe87c68f0340650ac1e0aea"
+      },
+      {
+        "path": "rust-vexus-lite/src/global_chunks.rs",
+        "sha256_lf": "39541014865262e4f8d96d601f093e8e52c906ad178da257347ebc0aa2638b4d"
+      },
+      {
+        "path": "rust-vexus-lite/src/index_handle.rs",
+        "sha256_lf": "cf66cf024cc552c7e5e9af289235bc579cd8a1aa107729e8fd0712fb12107b7e"
+      },
+      {
+        "path": "rust-vexus-lite/src/index_lifecycle.rs",
+        "sha256_lf": "149c3ee94ef481b08f3140948af4af16303de60a578c4c1e2f1ef922c372ea8e"
+      },
+      {
+        "path": "rust-vexus-lite/src/index_maintenance.rs",
+        "sha256_lf": "93baedaecf8a7cf5240f163b08a3e4c55b3e7ba6bd48ab4662b6039128bcd0eb"
+      },
+      {
+        "path": "rust-vexus-lite/src/index_source.rs",
+        "sha256_lf": "1336ba554618a8963503df3cd065484a984236f02843b3929383e56fff0374e1"
+      },
+      {
+        "path": "rust-vexus-lite/src/ingestion.rs",
+        "sha256_lf": "021bbb418ef33c8f910cb942b0213caf64a18bb530cbc9030e4b85e392c038bc"
+      },
+      {
+        "path": "rust-vexus-lite/src/knowledge_runtime.rs",
+        "sha256_lf": "cc870f826a8b4e9e118962bbac71f4a5302bf4a9eff5cb16ad2d8bde0cd65d06"
+      },
+      {
+        "path": "rust-vexus-lite/src/lib.rs",
+        "sha256_lf": "5717b023bbf381415a24e89b408a6ea13fd4c42174eeba071da2c49d4c495e55"
+      },
+      {
+        "path": "rust-vexus-lite/src/light_memo.rs",
+        "sha256_lf": "0ac542e05a2bb4d47b2cc0c7840e0a169823ea827779a75bbc6e73fd3ab3ec13"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_artifact_builder.rs",
+        "sha256_lf": "4130fe6c31935ad0ac161c67b1f484d1475d5290a0ddf8d8524ec79e210b6749"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_geometry.rs",
+        "sha256_lf": "a96e7047cabbad40d86ee35aa96decc1b4aee1fe0538a1807bb8bc635b5f4aec"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_pipeline.rs",
+        "sha256_lf": "b9cd81becda9db5f32b3fbefb3df225ded427584174300c83f1d1aa939588cf0"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_projection.rs",
+        "sha256_lf": "443bc6343539f7d19d9f4e4c9e1702bba2ee9da0f57d1d63d40d149f0a28ce6b"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_sensing.rs",
+        "sha256_lf": "fed3c8700299f5069c271fc0efa2187be3951a84e2d41c7200ba74035d7c0cbf"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_thinking.rs",
+        "sha256_lf": "bc5571ac318ebd00d84c28fc32ff48020e10ae1d79e808efd8404162ac7c3136"
+      },
+      {
+        "path": "rust-vexus-lite/src/publication_gate.rs",
+        "sha256_lf": "725a5b6ec7d025b75fa16a17293603ec5eabd19411c1af67b2cd0582903e4cdc"
+      },
+      {
+        "path": "rust-vexus-lite/src/result_deduplicator.rs",
+        "sha256_lf": "5882d7bd92f9733d888ed2280e3c53f23e495daac4599507ad5190861c5c7d02"
+      },
+      {
+        "path": "rust-vexus-lite/src/retrieval_index.rs",
+        "sha256_lf": "9944915fd5cb339d165cc064e28db8f77de88414765cca0ef6828ab18f440c8a"
+      },
+      {
+        "path": "rust-vexus-lite/src/rivermemo_topology_v3.rs",
+        "sha256_lf": "fb034f73ce258c23142bc579f24a69f335eb6c83a2c161d87134ff7ebe1da903"
+      },
+      {
+        "path": "rust-vexus-lite/src/schema.rs",
+        "sha256_lf": "9d849f2cc50412d48de79f216058a12f98d84cef169b0b8eff483b586c1f335e"
+      },
+      {
+        "path": "rust-vexus-lite/src/storage.rs",
+        "sha256_lf": "2997e5b551d04d743ae795cec6f9bd00411a7f43ce80104065cfd0d6fec4a7ee"
+      },
+      {
+        "path": "rust-vexus-lite/src/tag_consistency.rs",
+        "sha256_lf": "625f30f7a4e684d92347ab58e7036dee59269a256878de5f737dba9351b89876"
+      },
+      {
+        "path": "rust-vexus-lite/src/task_lifecycle.rs",
+        "sha256_lf": "b9d93f57e5ea6703ba637f4b9e86b8314817898a424871d8d75b80ed57a63efe"
+      },
+      {
+        "path": "rust-vexus-lite/src/text.rs",
+        "sha256_lf": "459f04022bffbc1fe550e1c2b16328c7ea5dddd3989fc641d0afc8372c0f6a61"
+      }
+    ],
+    "codesearcher": [
+      {
+        "path": "Plugin/CodeSearcher/src/Cargo.lock",
+        "git_blob": "adfb07da6812003f35f3fe00d1e048cd5e3e3f1a",
+        "sha256_lf": "ccea9fabf6d7b07da5cc4a423efb1e67ef5ccf12633b3ef7d92a1355efaa9f3e"
+      },
+      {
+        "path": "Plugin/CodeSearcher/src/Cargo.toml",
+        "git_blob": "3aa38b8b418042231b0f862721147f37de047e6c",
+        "sha256_lf": "fafa67f64e5f747c8461b263f0e21146f2b270c27fbe3b95deba67abe0bcdfeb"
+      },
+      {
+        "path": "Plugin/CodeSearcher/src/src/main.rs",
+        "git_blob": "90e3f6e22d0a34429a3ae2deeb94cb11d50d1362",
+        "sha256_lf": "4f8aafae80813517ac91f4d6ee341d26267c9e3ffde5841bfe8716608528d165"
+      }
+    ],
+    "daily": [
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.lock",
+        "git_blob": "30a4f600dcd8635bbdb9e8bb6110f43f3aab7312",
+        "sha256_lf": "93899ddf0a06ca022a9103e69c489f73ae486cd8e56153af71ce3c02eea1c73d"
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.toml",
+        "git_blob": "afee6995f28752f93aa10bac645052a3cb492666",
+        "sha256_lf": "31db2f8205b4135201c3744e725342c1473d0818107f43b600f7e8137a3a01b8"
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/src/main.rs",
+        "git_blob": "8d96f520881d6f32b3b3d2ef2e8f4e988f5f0b1f",
+        "sha256_lf": "d41f8fa877b32b0bc07e5457f6b047e76bee5870bb252fb1992b4d66d00759e0"
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-aarch64-unknown-linux-musl",
+      "group": "codesearcher",
+      "target": "aarch64-unknown-linux-musl",
+      "sha256": "009ff0625894b449c02564614366147c922a14fc06ed31f309ea8000cb7f1c06",
+      "size": 3665072,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035757809,
+      "archive_sha256": "853e00d20df514424ec7445af6d53af3ff3c64f15c107bdd05239151405fe41b"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-linux-arm64",
+      "group": "codesearcher",
+      "target": "aarch64-unknown-linux-musl",
+      "sha256": "009ff0625894b449c02564614366147c922a14fc06ed31f309ea8000cb7f1c06",
+      "size": 3665072,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035757809,
+      "archive_sha256": "853e00d20df514424ec7445af6d53af3ff3c64f15c107bdd05239151405fe41b"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-unknown-linux-gnu",
+      "group": "daily",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "22c2cb9f33a1f428dee429be0afc677494d6d986ed2c38a6f8a93ba1d4d19ea5",
+      "size": 3811280,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035294273,
+      "archive_sha256": "54022be947cdebccd0fb8cb9759d1315b9055efbe1767519cf71e30676b9304f"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-aarch64-unknown-linux-gnu",
+      "group": "codesearcher",
+      "target": "aarch64-unknown-linux-gnu",
+      "sha256": "422575570521646a43017258e42b207c0ec617cca2cca80944926e798ef4db1b",
+      "size": 3744536,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035289091,
+      "archive_sha256": "0dd3a5bca56eea1f532ec1a3bce647449be82377de0d7257f0998c76ede955eb"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-x86_64-unknown-linux-musl",
+      "group": "codesearcher",
+      "target": "x86_64-unknown-linux-musl",
+      "sha256": "b68c617722e35f7d6bc436d4a8e8d9c64a8c08de3a04d0108731ef7a6562f5e3",
+      "size": 3957960,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035094663,
+      "archive_sha256": "26351206f2c58b8379026f19e941ba3c03ca3a8a7dac81a954b84adfaa027d49"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-linux-x64-musl",
+      "group": "codesearcher",
+      "target": "x86_64-unknown-linux-musl",
+      "sha256": "b68c617722e35f7d6bc436d4a8e8d9c64a8c08de3a04d0108731ef7a6562f5e3",
+      "size": 3957960,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035094663,
+      "archive_sha256": "26351206f2c58b8379026f19e941ba3c03ca3a8a7dac81a954b84adfaa027d49"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-x86_64-unknown-linux-gnu",
+      "group": "codesearcher",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "097c09897f63dbaccc3bd9f7ce7f8f5ddfe63738c74e69ad4e6830c81ae3eeff",
+      "size": 3730976,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035079749,
+      "archive_sha256": "122ae763d5922b0b725200e76485e0b36cd844347caacd96de155fd828f530b1"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-x86_64-pc-windows-msvc.exe",
+      "group": "codesearcher",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "f37816bef3d459e28785128a509b3b9659d75bebf6c0fb27ee74609e43722305",
+      "size": 2574848,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155394,
+      "artifact_id": 12035643096,
+      "archive_sha256": "3baee5d832d3b7e802fd04fbadeaec437ecdf8ddec226bed57ea6839fa246168"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher.exe",
+      "group": "codesearcher",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "f37816bef3d459e28785128a509b3b9659d75bebf6c0fb27ee74609e43722305",
+      "size": 2574848,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155394,
+      "artifact_id": 12035643096,
+      "archive_sha256": "3baee5d832d3b7e802fd04fbadeaec437ecdf8ddec226bed57ea6839fa246168"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-pc-windows-msvc.exe",
+      "group": "daily",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "c1cc3a4ab2dd3a3d5b784c764017f265136150f85f929829a603a537b337ff17",
+      "size": 2654720,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155087,
+      "artifact_id": 12036460195,
+      "archive_sha256": "35de3863f2251078268a9e3086933f694221306ed882bb2f05823303a94b5065"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher.exe",
+      "group": "daily",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "c1cc3a4ab2dd3a3d5b784c764017f265136150f85f929829a603a537b337ff17",
+      "size": 2654720,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155087,
+      "artifact_id": 12036460195,
+      "archive_sha256": "35de3863f2251078268a9e3086933f694221306ed882bb2f05823303a94b5065"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-aarch64-unknown-linux-musl",
+      "group": "daily",
+      "target": "aarch64-unknown-linux-musl",
+      "sha256": "d8441bd85aaee9ed4dd269195e8b78fd7ec40a3ce0e37e71af391d553144fbb7",
+      "size": 3764984,
+      "source_commit": "ccf7d522cdca4356dde86bee6286b36e2320b547",
+      "run_id": 38877992760,
+      "artifact_id": 12036735454,
+      "archive_sha256": "e31062a86144eba2ecf13c0dacb0f19b7e552247a19b7a20c5209157e8d55851"
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-x64-gnu.node",
+      "group": "vexus",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "d281fedc22d64e53659d295bb4c2fa3e8fd8de667f0dd0cf3aad100f7c359b5a",
+      "size": 9918216,
+      "source_commit": "6edf19743d087a6cffef07f2c8e2eb91b2ee857d",
+      "source_fingerprint_sha256": "c657b1fa74d439c440fcd29cf65ea669195c9bad43a18464547f4c828f76c0d0",
+      "build_origin": "local_two_independent_digest_pinned_builds",
+      "verification_note": "Both independent builds are byte-identical and require at most GLIBC 2.34. CI and Node24 regression results remain separate evidence.",
+      "additional_ci_verification": {
+        "source_head": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+        "run_id": 39373108578,
+        "run_url": "https://github.com/JENN2046/VCPToolBox/actions/runs/39373108578",
+        "two_independent_builds_match_bundled_payload": true,
+        "glibc_and_runtime_contract": "PASS"
+      }
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.node",
+      "group": "vexus",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "d75d7815cad1845a38094a2916318f7877f6d4865672b5c6cd4862d4a9f9ba95",
+      "size": 10631168,
+      "source_commit": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+      "source_fingerprint_sha256": "c657b1fa74d439c440fcd29cf65ea669195c9bad43a18464547f4c828f76c0d0",
+      "run_id": 39373108595,
+      "run_url": "https://github.com/JENN2046/VCPToolBox/actions/runs/39373108595",
+      "artifact_id": 12241869709,
+      "archive_sha256": "83015814ec80a5c20c15ca7d4a076e450f0d464c159e935ff434d94195faa719",
+      "build_origin": "github_actions_exact_source_build_and_smoke",
+      "build_environment": {
+        "runner_image": "win22",
+        "node": "22.23.1",
+        "source": "8be2d98c3720c0aa9e928311de0c1a50d41fee99",
+        "napi": "2.18.4",
+        "files": [
+          {
+            "name": "DailyNoteSearcher.exe",
+            "sha256": "b0ae46eac57249dc7768f40eeaf645a99f2dbf814bf3bde7ba2417bd68a425d2"
+          },
+          {
+            "name": "vexus-lite.win32-x64-msvc.node",
+            "sha256": "d75d7815cad1845a38094a2916318f7877f6d4865672b5c6cd4862d4a9f9ba95"
+          }
+        ],
+        "runner_image_version": "20261012.333.1",
+        "rust": "1.89.0"
+      },
+      "verification_note": "Source build/smoke, build identity, archive and payload digests verified. Bootstrap bundled gate failed as expected against the unverified incoming artifact; final head must pass unchanged gates."
+    }
+  ],
+  "unverified_vexus_artifacts": [
+    {
+      "path": "rust-vexus-lite/vexus-lite.darwin-arm64.node",
+      "sha256": "0e53b4744fd3c2b9dee0394cb6153b25bfb1e8f49a1187f58c7e3b76d57fc057",
+      "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-arm64-gnu.node",
+      "sha256": "cabb486e5c5addb1842350c77a8f0534f1e498ca2c584cf0e06bec87190d7774",
+      "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-arm64-musl.node",
+      "sha256": "3f8e73750e15676453ee551aa5f3c1949d051a26eca780369d18a3e0aae47a45",
+      "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-x64-musl.node",
+      "sha256": "4633bcfc73cb46e2b8909c86a1492d2c482c2453ee316702a5683c2543d402ae",
+      "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.node",
+      "sha256": "b56b9173e5adcd19d08ae2cb7f8bb0fa44e0ea5cb8d23af596b4e77576f37b82",
+      "reason": "Not yet verified against ea68ab3c candidate Rust source; exact-source rebuild and provenance required."
+    }
+  ],
+  "verification": {
+    "linux_duplicate_builds": "PASS",
+    "windows": "EXACT_SOURCE_BUILD_AND_SMOKE_PASS",
+    "other_platforms": "UNVERIFIED",
+    "linux_github_actions": "PINNED_SOURCE_REBUILD_MATCH_AND_ABI_PASS",
+    "final_head_acceptance": "All applicable CI must pass on the final PR head; observed final results are external deployment evidence, not a self-referential build claim."
+  }
+}

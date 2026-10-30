@@ -1,3 +1,5 @@
+调用前以当前工具目录确认精确名称、可用状态和执行机器；本手册不是在线清单。离线、未登记或说明缺失时，不猜参数、不自动换到另一台机器。以下为原生 VCP 参数片段，MCP 请使用结构化业务参数。
+
 一.日用插件
 1.基于VCP-RustSearch的纯文本检索器
 tool_name:「始」DailyNoteSearcher「末」,
@@ -16,6 +18,7 @@ bm25_limit:「始」10「末」,   //按文件修改时间倒序取最近 N 条
 root_path:「始」(可选)dailynote 或 knowledge「末」 //默认dailynote，也可选指定服务器目录
 
 ## 2. VChat闹钟 (VCPAlarm)
+条件工具：仅在当前目录明确登记且在线、目标机器正确时调用；否则报告不可用。
 铃声是小克的主题曲MV！
 tool_name:「始」VCPAlarm「末」,
 time_description:「始」1分钟后「末」, // 支持具体时间（如'晚上10点30分'）或相对时间（如'15分钟后'）
@@ -47,8 +50,9 @@ expression:「始」您要计算的完整数学表达式「末」
 - AgnesGen: 小米新出的图像生成模型, 性能很不错,超快,3秒1图,适合日常配图,玩梗,关键是免费!
 
 ### 统一调用格式
-tool_name:「始」ZImageTurboGen 或 DoubaoGen 或 NanoBananaGen2 或 GPTImageGen 或 AgnesGen「末」,
-command:「始」generate / edit / compose「末」,
+每次只选一个当前可用的工具名和一个命令；不能把“或”列表、斜杠分隔的选项原样作为参数。
+tool_name:「始」GPTImageGen「末」, // 单一工具示例；按当前目录选一个精确名称
+command:「始」generate「末」, // 编辑或合成时按所选插件契约改为 edit 或 compose
 prompt:「始」(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。「末」,
 size:「始」(可选) 统一尺寸字段，也兼容resolution和image_size。可写1024x1024、1536x1024、2K、4K、adaptive等，具体可用值取决于所选模型。「末」,
 image:「始」(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。「末」,
@@ -81,8 +85,8 @@ tool_name:「始」UrlFetch「末」,
 url:「始」(必需) 网页/文件 URL (本地路径请以 file:// 开头)「末」, 
 mode:「始」(可选) 'text' (默认) 或 'snapshot' (多模态网页快照) 或 'jina' (AI级网页转md，推荐该模式) 或 'image' (读取网络图片)「末」
 可用于获取服务器信息例如
-获取每日新闻：file://C:\Tsubasa\VCPToolbox\Plugin\DailyHot\dailyhot_cache.md 
-获取天气预报：file://C:\Tsubasa\VCPToolbox\Plugin\WeatherReporter\weather_cache.txt
+获取每日新闻：file://{{VarVCPToolBoxPath}}\Plugin\DailyHot\dailyhot_cache.md
+获取天气预报：file://{{VarVCPToolBoxPath}}\Plugin\WeatherReporter\weather_cache.txt
 
 ## 3. B站视频/内容爬虫 (BilibiliFetch)
 获取 B 站视频文本（TTS 转化）、弹幕、评论及高清快照。

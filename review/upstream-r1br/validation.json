@@ -1,0 +1,102 @@
+{
+  "runs": [
+    {
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test --require ./tests/fixtures/offlineRegressionSetup.cjs tests/approvalFeedbackPassthrough.test.js tests/suveiMutationApprovalResponse.test.js tests/websocket-message-diagnostics.test.cjs tests/humanAuthorizationKernel.test.cjs",
+      "rawLog": "approval-trusted-tests-final.txt",
+      "status": "PASS",
+      "nodeCounts": {
+        "tests": 40,
+        "pass": 40,
+        "fail": 0,
+        "skipped": 0
+      },
+      "boundary": ""
+    },
+    {
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test --require ./tests/fixtures/offlineRegressionSetup.cjs tests/upstreamR1Safety.test.cjs tests/toolResultBatch.test.js tests/toolBatchTimezone.test.js tests/toolBatchUpstreamProjection.test.js tests/roleDividerToolResults.test.js tests/oneRingUntriggeredPassthrough.test.js tests/memoryThinkingTray.test.js tests/approvalFeedbackPassthrough.test.js tests/suveiMutationApprovalResponse.test.js tests/websocket-message-diagnostics.test.cjs tests/humanAuthorizationKernel.test.cjs",
+      "rawLog": "protocol-approval-final.txt",
+      "status": "PASS",
+      "nodeCounts": {
+        "tests": 135,
+        "pass": 135,
+        "fail": 0,
+        "skipped": 0
+      },
+      "boundary": ""
+    },
+    {
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test --require ./tests/fixtures/offlineRegressionSetup.cjs tests/toolApprovalPathSafety.test.cjs tests/residentHostContract.test.cjs tests/residentProviderPresenceContract.test.cjs tests/native-http-contract.test.cjs tests/native-websocket.test.cjs tests/native-websocket-connection.test.cjs tests/native-transport-diagnostics.test.cjs tests/rebaselineMigrationMatrix.test.cjs tests/pr280SelfAudit.test.cjs tests/pr282AdminReview.test.cjs",
+      "rawLog": "authority-regression-final.txt",
+      "status": "PASS",
+      "nodeCounts": {
+        "tests": 221,
+        "pass": 217,
+        "fail": 0,
+        "skipped": 4
+      },
+      "boundary": "Skipped tests are NOT_RUN."
+    },
+    {
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --test tests/toolApprovalManager.test.js",
+      "rawLog": "approval-config-final.txt",
+      "status": "PASS",
+      "nodeCounts": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "skipped": 0
+      },
+      "boundary": ""
+    },
+    {
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node --experimental-vm-modules --test tests/upstreamR1ClientCompatibility.test.cjs",
+      "rawLog": "old-client-diagnostic-final.txt",
+      "status": "PASS",
+      "nodeCounts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "skipped": 0
+      },
+      "boundary": "Diagnostic PASS reproduces existing old-client incompatibility FAIL, not compatibility acceptance."
+    },
+    {
+      "command": "env -i PATH=\"$PATH\" LANG=C.UTF-8 node scripts/check-vexus-linux-native-abi.js",
+      "rawLog": "native-unchanged-smoke.txt",
+      "status": "PASS",
+      "nodeCounts": {},
+      "boundary": ""
+    }
+  ],
+  "counts_overlap": true,
+  "previous_failures": [
+    {
+      "log": "approval-trusted-tests.txt",
+      "status": "FAIL_FIXED",
+      "pass": 36,
+      "fail": 3,
+      "causes": [
+        "preserveSuffix=0 retained full value via slice(-0), affecting two sensitive-feedback cases",
+        "generic debug frame preview still exposed the private reason; fixed by sensitive message classification"
+      ]
+    }
+  ],
+  "not_run": [
+    {
+      "status": "NOT_RUN",
+      "scope": "Full Rust 191 tests and pinned double build not rerun in R1-BR: Rust source/native payloads unchanged; prior R1-B evidence is historical, current ABI smoke freshly run."
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "Latest remote Chat ff4c05b12f5675bf713766d05d7340f2a1dc47f9 full protocol/render/history acceptance; only prior local 1f86d591 snapshot freshly probed."
+    },
+    {
+      "status": "BLOCKED",
+      "scope": "Windows merged-source native build/runtime unavailable; no attempt or replacement in R1-BR."
+    },
+    {
+      "status": "NOT_RUN",
+      "scope": "NativeSync/ChannelHub cross-repository tests and all production/real UI/provider/human confirmation acceptance."
+    }
+  ]
+}

@@ -554,7 +554,91 @@ timely_contact:「始」(可选) 设置一个未来时间点定时调用工具�
     ```
 通过在插件内部增加这种兼容性处理，可以大大提高AI调用插件的成功率和用户体验。
 
-### 4.4 分布式文件 URL：插件无需关心跨节点取文件
+### 4.4 同步插件生命周期 VCPInfo 通知
+
+同步插件是按次启动的子进程，退出或超时后不能继续持有 WebSocket。需要向前端即时展示“任务开始、完成、失败、超时”状态时，不应让插件自行连接 WebSocket，而应使用主进程提供的生命周期 VCPInfo 中央总线。
+
+#### 4.4.1 在 manifest 中注册通知
+
+在插件的 `plugin-manifest.json` 根级别声明 `vcpInfoLifecycle`。未声明该字段的插件不会发送任何生命周期 VCPInfo。
+
+```json
+{
+  "configSchema": {
+    "MY_PLUGIN_VCPINFO_ENABLED": {
+      "type": "boolean",
+      "description": "是否发送工具生命周期即时通知。"
+    }
+  },
+  "vcpInfoLifecycle": {
+    "enabledConfigKey": "MY_PLUGIN_VCPINFO_ENABLED",
+    "enabledByDefault": true,
+    "type": "MY_PLUGIN_STATUS",
+    "start": {
+      "message": "{{args.maid}} 开始执行任务。",
+      "data": {
+        "agentName": "{{args.maid}}",
+        "task": "{{args.task|args.command}}"
+      }
+    },
+    "success": {
+      "message": "{{args.maid}} 的任务执行完成。"
+    },
+    "error": {
+      "message": "{{args.maid}} 的任务执行失败。",
+      "includeError": true
+    },
+    "timeout": {
+      "message": "{{args.maid}} 的任务执行超时。",
+      "includeError": true
+    }
+  }
+}
+```
+
+声明职责分为两层：
+
+1. `plugin-manifest.json` 注册插件支持哪些通知阶段以及消息内容。
+2. 插件级 `config.env` 设置 `enabledConfigKey` 指定的布尔配置，供最终用户决定是否发送。
+
+如果配置键不存在，则使用 `enabledByDefault`。如果整个 `vcpInfoLifecycle` 不存在，中央总线不会为该插件发送通知。
+
+#### 4.4.2 支持的阶段
+
+| 阶段 | 触发时机 |
+|------|----------|
+| `start` | 工具通过人工审核、即将开始真实执行时 |
+| `success` | 工具成功返回并完成主进程结果处理时 |
+| `error` | 工具执行、解析或业务处理失败时 |
+| `timeout` | 错误被识别为执行超时时；优先于普通 `error` |
+
+每次调用会生成唯一的 `invocationId`。同一次调用的开始和结束事件使用相同 ID，前端可以据此更新同一张状态卡片。
+
+#### 4.4.3 消息模板
+
+模板使用 `{{...}}`：
+
+- `{{args.maid}}`：读取工具参数，参数名大小写不敏感。
+- `{{plugin.name}}`、`{{plugin.displayName}}`：插件清单字段。
+- `{{elapsedMs}}` / `{{durationMs}}`：从开始执行到当前事件的毫秒数。
+- `{{error.message}}`：错误消息。
+- `{{result.someField}}`：成功结果中的字段。
+- `{{args.task|args.command}}`：候选回退语法，按顺序取第一个非空值。
+
+只有清单中明确写入 `message` 或 `data` 的字段会广播，不会自动把完整工具参数发送给前端，避免意外泄露敏感入参。
+
+#### 4.4.4 生命周期安全性
+
+通知由 VCP 主进程通过 VCPLog/VCPInfo WebSocket 广播，与同步插件子进程生命周期解耦：
+
+- 子进程正常退出后，主进程仍可发送 `success`。
+- 子进程被终止时，主进程仍可发送 `error` 或 `timeout`。
+- 插件无须持有 WebSocket、服务端口或访问密钥。
+- 插件 stdout 仍然只输出最终标准 JSON，不会被进度消息污染。
+
+该机制适合“正在休息”“正在渲染”“正在下载”“正在执行长计算”等用户可感知的长耗时状态。秒级、无交互价值的工具不建议注册，以免产生通知噪音。
+
+### 4.5 分布式文件 URL：插件无需关心跨节点取文件
 
 在当前版本中，分布式文件处理已经由插件管理器透明接管。插件收到参数前，主服务会预先扫描本地插件调用参数中的 `file://` URL，并通过 [`FileFetcherServer.resolveFileUrl()`](FileFetcherServer.js:1) 自动把远程文件拉取并转换为可用的数据形式。对应逻辑位于 [`PluginManager.processToolCall()`](Plugin.js:909)。
 
@@ -572,7 +656,7 @@ timely_contact:「始」(可选) 设置一个未来时间点定时调用工具�
 
 > 注意：分布式工具本身（即 `plugin.isDistributed` 的云端/远端插件）不会由主服务器预拉取其 `file://` 参数，而是透传给分布式端处理；这里的“透明预处理”主要面向由当前主服务直接执行的本地插件。
 
-#### 4.4.1 推荐实践：兼容 Data URI 与纯 Base64
+#### 4.5.1 推荐实践：兼容 Data URI 与纯 Base64
 
 很多上游链路为了保留 MIME 类型，会把图片、音频或文件内容包装为 Data URI：
 
@@ -623,18 +707,18 @@ const imageData = parseBase64Payload(imageInput, 'image/png');
 // imageData.mimeType 可用于构造请求头或多模态消息
 ```
 
-#### 4.4.2 插件开发建议
+#### 4.5.2 插件开发建议
 
 *   **不要再实现旧版 `FILE_NOT_FOUND_LOCALLY` 流程**：这会让插件行为与当前插件管理器的透明预处理重复，甚至造成错误处理路径混乱。
 *   **不要假设收到的一定是本地路径**：你的插件可能收到普通 URL、Data URI、纯 Base64 或经过服务端转换后的可访问地址，应按插件自身能力声明并做清晰校验。
 *   **在 `description` 中明确入参格式**：如果插件支持 Base64，请写清楚是否支持 Data URI、纯 Base64、URL，以及推荐优先级。
 *   **大文件谨慎内联**：Base64 会显著放大体积并消耗上下文/token；如已有可访问 URL，优先返回 URL，把 Base64 作为必要时的兼容选项。
 
-### 4.5 VCP Auth 验证码机制：管理员权限指令
+### 4.6 VCP Auth 验证码机制：管理员权限指令
 
 VCP Auth 验证码机制允许插件开发者为特定的指令添加一层安全验证，确保只有拥有正确验证码的用户才能执行敏感操作。这对于需要管理员权限或高风险操作的插件（如系统命令执行、文件删除等）至关重要。
 
-#### 4.5.1 启用管理员权限 (Manifest 配置)
+#### 4.6.1 启用管理员权限 (Manifest 配置)
 
 要在插件级别启用 VCP Auth 验证码机制，你需要在 `plugin-manifest.json` 的根级别添加 `requiresAdmin` 字段并设置为 `true`。
 
@@ -653,7 +737,7 @@ VCP Auth 验证码机制允许插件开发者为特定的指令添加一层安�
 1.  从安全存储中获取并解密当前的 VCP Auth 验证码。
 2.  将解密后的验证码注入到插件进程的环境变量 `DECRYPTED_AUTH_CODE` 中。
 
-#### 4.5.2 AI 调用规范 (InvocationCommands)
+#### 4.6.2 AI 调用规范 (InvocationCommands)
 
 如果你的插件启用了管理员权限，你必须在 `invocationCommands` 的 `description` 中明确告知 AI 必须提供一个名为 `requireAdmin` 的参数，其值为用户提供的验证码。
 
@@ -668,7 +752,7 @@ VCP Auth 验证码机制允许插件开发者为特定的指令添加一层安�
 ]
 ```
 
-#### 4.5.3 插件内部验证逻辑 (核心实现)
+#### 4.6.3 插件内部验证逻辑 (核心实现)
 
 插件脚本必须从输入参数中读取用户提供的验证码（例如 `args.requireAdmin`），并将其与环境变量 `DECRYPTED_AUTH_CODE` 进行比对。
 
@@ -889,3 +973,193 @@ def validate_admin_auth(args):
     ```
 
 通过遵循这个模式，你可以创建强大的异步插件来处理任何耗时的任务，同时保持主服务的响应性和流畅的用户体验。
+## 附录：JEV 第三方插件声明（实验，同步、异步与混合插件通用）
+
+> 实验功能，默认关闭。服务器需在 `config.env` 设置 `JEV_THIRD_PARTY_EXP=true` 才会让第三方声明参与 JEV 调用；可选 `JEV_THIRD_PARTY_ALLOWLIST=PluginA,PluginB` 进一步限制。开关关闭时官方 JEV 行为完全不变，声明只进入注册表供查看。
+
+### A.1 适用范围
+
+JEV 只面向“自然语言即可表达”的广泛工具类插件，优先考虑：
+
+- 信息获取：天气、新闻、汇率、快递、百科、行情；
+- 便利操作：翻译、换算、日程、待办、提醒；
+- 媒体娱乐：音乐、视频、播客的获取与播放控制；
+- 物联网控制：空调、灯光、窗帘、插座；
+- 生活服务：出行、交通、餐饮、比价。
+
+以下插件**暂不开放** JEV 接入，因为它们需要字符级精准输入，自然语言裁决反而会出错：
+
+- 系统维护、命令行 / Shell 执行；
+- 文件编辑、代码编程、需要 `target` / `replace` 精准块的插件；
+- `requiresAdmin: true` 的插件；
+- 已由官方 `ToolConfigs/jev_tool_call_exp.json` 管理的插件。
+
+系统会在收集阶段自动拦截：参数名命中 `target`、`replace`、`code`、`script`、`path`、`content`、`diff` 等禁用名，或插件在官方拒绝名单中，声明都会被标记为 invalid。完整列表见 `ToolConfigs/jev_third_party_catalog.json`。
+
+### A.2 两条不变量
+
+1. **精确工具名**：第三方插件在 JEV 中必须用反引号写出 manifest `name`，逐字精确、大小写敏感。插件不能注册别名，也不存在模糊匹配。
+2. **官方目录**：`jev.category` 只能从官方第三方目录中选一个。目录由 `ToolConfigs/jev_third_party_catalog.json` 维护，当前为：`信息获取`、`便利操作`、`媒体娱乐`、`物联网控制`、`生活服务`。调用时的 `{目录}` 必须与插件注册的目录一致。
+
+调用格式：
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」Nova「末」,
+JEV:「始」{物联网控制} `SmartAC` 打开空调【把客厅弄凉快些】[制冷][房间:客厅]「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+由此，每一次裁决都被限制在对应插件内部：JEV 只能在该插件声明的命令与参数范围内做选择，最终仍以 `tool_name = manifest.name` 走现有 PluginManager 链路。审核、验证码、工具记录与隐私过滤全部照常生效。
+
+### A.3 Manifest 声明
+
+```json
+{
+  "name": "SmartAC",
+  "displayName": "智能空调",
+  "pluginType": "synchronous",
+  "capabilities": {
+    "invocationCommands": [
+      { "commandIdentifier": "SetAC", "description": "设置空调。" },
+      { "commandIdentifier": "QueryAC", "description": "查询空调状态。" }
+    ]
+  },
+  "jev": {
+    "schemaVersion": 1,
+    "enabled": true,
+    "category": "物联网控制",
+    "jevDescPrompt": "控制家中空调的开关、模式和房间。",
+    "jevPrompt": "想降温选制冷，想取暖选制热，其余选自动。",
+    "agentPrompt": "需要控制空调时使用 {物联网控制} `SmartAC`，房间写成 [房间:xxx]。",
+    "defaultCommand": "SetAC",
+    "commands": [
+      {
+        "commandIdentifier": "SetAC",
+        "description": "设置空调开关与模式",
+        "aliases": ["设置", "打开", "关闭", "调节"],
+        "fixedArgs": {},
+        "parameters": {
+          "mode": {
+            "type": "enum",
+            "description": "空调运行模式",
+            "values": { "cool": "制冷", "heat": "制热", "auto": "自动" },
+            "aliases": { "cool": ["制冷", "冷气"], "heat": ["制热", "暖气"] },
+            "default": "auto"
+          },
+          "power": {
+            "type": "boolean",
+            "description": "是否开机",
+            "trueAliases": ["打开", "开启"],
+            "falseAliases": ["关闭", "关掉"]
+          },
+          "room": {
+            "type": "text",
+            "source": "constraints",
+            "prefixes": ["房间"],
+            "maxLength": 20,
+            "required": false
+          }
+        }
+      },
+      { "commandIdentifier": "QueryAC", "description": "查询空调状态", "aliases": ["查询", "状态"] }
+    ]
+  }
+}
+```
+
+### A.4 字段说明
+
+| 字段 | 必填 | 说明 |
+|---|:-:|---|
+| `schemaVersion` | 是 | 固定为 `1` |
+| `enabled` | 是 | 只有 `true` 才进入注册表 |
+| `category` | 是 | 官方第三方目录中的一个（标签或别名） |
+| `jevDescPrompt` | 是 | 发给 JEV 的插件职责简介，≤300 字 |
+| `jevPrompt` | 是 | 发给 JEV 的插件内部裁决规则，≤1500 字 |
+| `agentPrompt` | 否 | 给 VCP Agent 的使用说明，仅作素材，不自动注入，≤2000 字 |
+| `defaultCommand` | 否 | 多命令无法判定时的回退命令 |
+| `commands[].commandIdentifier` | 是 | 必须与 `capabilities.invocationCommands` 完全一致 |
+| `commands[].aliases` | 否 | 用于识别命令的动作词（**不是工具别名**） |
+| `commands[].injectCommand` | 否 | 默认 `true`，自动传入 `command=commandIdentifier` |
+| `commands[].fixedArgs` | 否 | 固定参数，值为字符串/数字/布尔 |
+| `commands[].parameters` | 否 | 参数 schema，见 A.5 |
+
+`fixedArgs` 除逐值长度限制外，还会在注册时按运行期格式检查固定参数及 enum/boolean 已知默认值构成的完整调用的 UTF-8 JSON 字节数（含键名、转义、命令注入及调用元数据），超过 16 KiB 则声明无效。参数名和固定参数键名最长 64 字符。其他动态参数和继承字段不计入这一基线，仍由运行期最终调用上限检查。
+
+第三方语义决策另有 64 KiB 的 UTF-8 JSON 数据预算（`{state, questions}`，不含供应商模型名和 HTTP 头）。注册时按默认协议、全部候选说明和重复的问题指令检查每个命令的最大已知决策数据；超限声明无效。运行期计入实际用户输入和自定义 `THIRD_PARTY_PROTOCOL`，发送前再次检查，超限直接拒绝，不调用供应商、不截断或静默使用默认值。该字节预算不是任何模型 token 上下文容量的保证。
+
+`jevDescPrompt`、`jevPrompt`、`agentPrompt`、命令与参数的 `description`、枚举 `values` 选项说明共用注入检测规则。若命中指令覆写（如“忽略之前规则”）、秘密读取或代码执行类模式，声明会被判为 invalid，且不提供调用模板或进入 JEV 裁决。此为已知模式筛查，不代表能识别所有提示词注入，第三方声明仍需审阅。
+
+当前轮次的第三方注册表重建异常会清空旧可执行条目并发布空错误快照，成功重建后恢复；过期轮次的成功或失败不能覆盖较新状态。此失败即禁用机制只影响 JEV 第三方声明，不阻断普通插件加载。
+
+### A.5 参数类型
+
+只支持三种类型，均为字符串形式传给插件：
+
+| type | 决策方式 | 关键字段 |
+|---|---|---|
+| `enum` | 先按 `values` 键和 `aliases` 确定性匹配；仍不唯一才交给 JEV 在候选内选择 | `description`（必填）、`values`（2~64 个键值对）、`aliases`、`default`、`prefixes` |
+| `boolean` | 先按 `falseAliases`（优先）/`trueAliases` 匹配；未命中再交给 JEV 判断 | `description`（必填）、`trueAliases`、`falseAliases`、`default` |
+| `text` | **不经过 JEV**，原样搬运用户文本；超长直接报错，不截断不改写 | `source`（`primary`=【】内容 / `constraints`=[] 约束 / `url`=[URL]）、`prefixes`、`maxLength` |
+
+规则要点：
+
+- 命令、enum、boolean 的别名在归一化（去除空白、下划线、连字符并忽略大小写）后必须非空，`---`、`___` 等声明会被拒绝；省略别名或空数组仍允许。此限制不应用于按字面解析的 `prefixes`；
+- enum 的 `values` 键及 `commandIdentifier` 归一化后也必须非空；仅在正则或 capabilities 中合法不足以通过校验。合法标识符匹配后仍按原始拼写传给插件；
+- 必填的 `jevDescPrompt`、`jevPrompt` 去除首尾空白后仍须非空；可选 `agentPrompt` 可以留空；
+- 同一个插件的不同命令，其 `commandIdentifier` 和 `aliases` 在归一化后必须互斥；同一命令内允许等价拼写，跨命令冲突会在声明校验时拒绝，不回退到 `defaultCommand`；
+- 同一个 enum 参数的各选项，其 `values` 键和 `aliases` 在归一化（忽略大小写、空白、下划线、连字符）后不能跨选项重叠；同一选项内的等价拼写允许。冲突声明会在注册校验阶段被拒绝，不交给 JEV 或 `default` 消解；
+- 请求中的显式 enum 标签只能指向同一选项，且必须与已提供的前缀值一致，否则参数裁决前报错。所有精确匹配的枚举控制标签都会从自由文本中消费，同选项重复标签允许；前缀与主要内容的原有匹配优先级保留，普通文本中的别名子串不删除；
+- 上述命令/enum 冲突也包括多字符 token 的子串包含，例如 `on` / `only`、`冷气` / `开冷气`；已有此类声明需修改键或移除歧义别名。同一命令/选项内允许包含；单字别名仅匹配完整语义层，故 `开` / `打开` 不算包含冲突。此校验仅限制 JEV 声明，不影响普通插件加载；
+- 多个模糊的 enum/boolean 参数会合并为**一次** JEV 请求；
+- JEV 答案必须落在候选内，choice 置信度低于 0.55、或 noul 概率介于 0.3~0.7 时，视为未决，回退 `default`；没有 `default` 就不传该参数；
+- `prefixes` 仅支持 enum 和 `source: "constraints"` 的 text 参数，匹配 `[前缀:值]` 形式的约束；enum 前缀值不在选项中会直接报错；
+- 同一参数在一次请求中只能出现一个前缀约束；重复标签即使值相同也会在参数裁决前报错，大小写、半角/全角冒号及该参数的不同前缀均计入。不会把多余的控制标签作为自由文本；单个标签命中多个等价前缀只计算一次；
+- 同一命令内，每个 `prefixes` 前缀忽略大小写后只能属于一个参数，包括 enum/text 之间；同参数等价拼写及不同命令复用允许。前缀不使用普通别名的去标点归一化，`user-name` 与 `user_name` 仍为不同前缀；
+- `prefixes` 本身不能含 `:` 或 `：`，避免 `user` / `user:name` 等声明按参数顺序抢占同一标签；值中的冒号不受此限制；
+- 前缀也不能与其他参数的确定性别名争用同一约束：例如 text 的 `user` 与另一 enum/boolean 的 `user:alice`。交叉校验按别名归一化及两类冒号分隔符匹配，包含大小写、空白、下划线/连字符变体；`user` 与 `username:alice` 等非同一前缀仍可共存，同一参数自身的前缀/别名不受此跨参数规则限制；
+- 同一命令内，不同 enum/boolean 参数的确定性匹配词（enum 键与别名、boolean 真假别名）也必须互斥，拒绝归一化相等或多字符包含。即使 enum 有独立前缀也适用，因为未提供前缀时仍参与共享匹配；请给不同参数使用独立词汇。跨命令复用、同一值内的等价词及单字精确匹配保持兼容；
+- boolean 不支持非空 `prefixes`，声明时会被拒绝；请用 `trueAliases` / `falseAliases` 声明值并直接传入 `[on]` / `[off]` 等约束，而非 `[power:on]`。省略 `prefixes` 或设置为空数组均可；
+- boolean 的 `trueAliases` 与 `falseAliases` 也必须避免归一化相等或多字符子串包含（如 `only` / `on`、`静音` / `不要静音`），否则声明无效；将这类正反别名改成互不包含的词，例如 `静音` / `有声`。同一布尔值内的包含、跨值的单字精确匹配规则仍保留；
+- 同一 boolean 参数的显式 `[]` 标签不能同时表达真和假，否则参数裁决前报错；精确匹配的布尔控制标签都会从自由文本中移除，同侧重复标签允许。`【】` 对单侧标签的原有优先级不变，普通文本中的别名子串不按控制标签删除；
+- 没有 `prefixes` 的 `constraints` 文本参数会接收剩余未被消费的约束；
+- 同一命令最多允许一个 `source: "url"` 文本参数，它接收请求中的首个 URL，不按参数顺序分配多个 URL；不同命令可各自声明一个。缺少 URL 时，必填参数报错，可选参数省略；
+- 同一命令最多允许一个 `source: "primary"` 文本参数，它接收全部 `【】` 内容以换行连接后的完整文本，不按位置分配给多个参数；不同命令可各自声明一个。缺少主要内容时，必填参数报错，可选参数省略（表达式本身仍须满足主要内容或 URL 的要求）；
+- 多命令声明若由 `[]` 层的精确标签唯一选中命令，该命令的匹配标签会先被消费，例如 `[发送][你好]` 的文本为 `你好`。由 `【】`、单命令、语义裁决或默认回退选中命令时，不据此删除文本约束；自由文本中的别名子串也不删除；
+- 多命令请求的精确 `[]` 选择标签若指向不同命令，会在供应商裁决或默认命令回退前直接报错，主要内容命中也不能掩盖冲突。同一命令的标识符、多个别名及重复标签仍视作一个命令；不把自由文本中的命令别名子串当作选择标签；
+- 已消费的命令标签同时从后续 enum/boolean 确定性匹配层和 JEV 参数裁决的 constraints 状态排除，不能再顺带设置同名参数；原始约束索引保留供文本提取，其他显式参数标签仍参与匹配，未决参数按原规则交给 JEV 或默认值处理；
+- 发起 JEV 参数裁决前，按当前已消费的原始索引再次过滤约束，排除已归属参数的前缀值和精确 enum/boolean 控制标签，避免它们影响其他未决参数；未消费的语义文本、主要内容及 URL 保留，文本参数仍按原始索引提取；
+- 多命令声明中，命令标识符/别名不能与本命令的参数前缀争用标签（如选择词 `user:alice` 与参数前缀 `user`），按相同的归一化及冒号边界校验。单命令没有选择标签消费，不受此多命令限制；
+- `required: true` 的参数最终缺失时，调用直接报错，不会执行插件；
+- 参数名不能使用协议保留字段（`command`、`maid`、`tool_password`、`timely_contact`、`river` 等）或字符级精准类禁用名。
+
+### A.6 三类插件
+
+| 插件类型 | 说明 |
+|---|---|
+| `synchronous` | 直接适用 |
+| `asynchronous` | 在 `agentPrompt` 中说明“提交任务”与“查询结果”的区别；异步回调协议保持不变 |
+| `hybridservice` | 可调用的 direct 命令同样适用 |
+
+`static`、`messagePreprocessor`、`service` 不是可调用工具，不支持 JEV 声明。分布式节点上的插件声明会随 `register_tools` 自动上报，规则与本地插件相同。
+
+### A.7 调试
+
+- `GET /admin_api/jev/registry`：查看全部声明、校验状态、错误原因与调用模板；
+- `GET /admin_api/jev/registry/:pluginName`：精确查看单个插件；
+- `GET /admin_api/jev/registry/catalog`：查看官方目录及冲突检查；
+- `POST /admin_api/jev/registry/rebuild`：手动重建注册表；
+- `POST /admin_api/jev/registry/plan-preview`，body `{"expression": "..."}`：只规划、不执行，查看最终会生成的真实调用。
+
+修改 `plugin-manifest.json` 后注册表会随热重载自动重建。
+
+### A.8 开发者检查清单
+
+- 插件属于 A.1 的广泛工具类，不涉及字符级精准输入；
+- `category` 在官方目录中，且调用示例的 `{目录}` 与其一致；
+- 调用示例中工具名用反引号，且与 manifest `name` 逐字相同；
+- `commandIdentifier` 与 `invocationCommands` 一致；
+- enum/boolean 都写了 `description`，enum 的 `values` 为对象而非数组；
+- text 参数写明 `source` 与合理的 `maxLength`；
+- 通过 `/admin_api/jev/registry` 确认 `validation.status` 为 `valid`，再用 `plan-preview` 验证实际调用参数。

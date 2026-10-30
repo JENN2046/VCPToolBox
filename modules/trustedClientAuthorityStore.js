@@ -44,7 +44,7 @@ function read(filePath, testOnly) {
   }
 }
 
-function writeAtomic(filePath, value) {
+function writeAtomic(filePath, value, testOnly) {
   const tempPath = `${filePath}.${crypto.randomBytes(16).toString('hex')}`;
   const fd = fs.openSync(tempPath, 'wx', 0o600);
   try {
@@ -54,6 +54,8 @@ function writeAtomic(filePath, value) {
     fs.closeSync(fd);
   }
   fs.renameSync(tempPath, filePath);
+  // Node cannot open a directory for fsync on Windows; production still fails closed.
+  if (testOnly === true && process.platform === 'win32') return;
   const directoryFd = fs.openSync(path.dirname(filePath), 'r');
   try { fs.fsyncSync(directoryFd); } finally { fs.closeSync(directoryFd); }
 }
@@ -164,8 +166,8 @@ class TrustedClientAuthorityStore {
         authorityHeadCommitment: commitment(registry)
       };
       validatePair(registry, nextAnchor, this.#testOnly);
-      writeAtomic(path.join(this.#root, 'authority.json'), registry);
-      writeAtomic(path.join(this.#anchorRoot, 'anchor.json'), nextAnchor);
+      writeAtomic(path.join(this.#root, 'authority.json'), registry, this.#testOnly);
+      writeAtomic(path.join(this.#anchorRoot, 'anchor.json'), nextAnchor, this.#testOnly);
       this.#lastEpoch = registry.epoch;
       this.#lastHead = nextAnchor.authorityHeadCommitment;
       return result;

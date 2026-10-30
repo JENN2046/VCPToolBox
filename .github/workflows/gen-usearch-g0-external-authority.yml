@@ -1,0 +1,102 @@
+name: Gen-USearch G0 External Authority
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact target commit SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  external-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      G0_AUTHORITY_LOCK_SHA256: ${{ vars.G0_AUTHORITY_LOCK_SHA256 }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout exact target
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+
+      - name: Verify external authority and exact HEAD bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$TARGET_SHA" = "$(git rev-parse HEAD)"
+          test -n "$G0_AUTHORITY_LOCK_SHA256"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+
+          lock_path = pathlib.Path("contracts/gen-usearch/g0/g0-authority-lock.json")
+          lock_bytes = lock_path.read_bytes()
+          actual_lock = hashlib.sha256(lock_bytes).hexdigest()
+          expected_lock = os.environ["G0_AUTHORITY_LOCK_SHA256"]
+          if actual_lock != expected_lock:
+              raise SystemExit(f"authority lock mismatch: expected={expected_lock} actual={actual_lock}")
+
+          lock = json.loads(lock_bytes)
+          sealed = lock.get("sealed_artifact_sha256")
+          sealed_paths = lock.get("sealed_artifact_paths")
+          required_paths = lock.get("required_artifact_paths")
+          if not isinstance(sealed, dict) or not isinstance(sealed_paths, list) or not isinstance(required_paths, list):
+              raise SystemExit("invalid authority lock shape")
+          if set(sealed) != set(sealed_paths):
+              raise SystemExit("sealed artifact key set mismatch")
+          if not set(sealed_paths).issubset(set(required_paths)):
+              raise SystemExit("sealed artifacts not subset of required artifacts")
+
+          for rel in required_paths:
+              path = pathlib.Path(rel)
+              if not path.is_file() or path.is_symlink():
+                  raise SystemExit(f"locked artifact missing/not regular: {rel}")
+              work = path.read_bytes()
+              head = subprocess.check_output(["git", "show", f"HEAD:{rel}"])
+              if work != head:
+                  raise SystemExit(f"worktree differs from HEAD: {rel}")
+
+          for rel, expected in sealed.items():
+              actual = hashlib.sha256(pathlib.Path(rel).read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit(f"sealed digest mismatch: {rel}")
+          PY
+          test -z "$(git status --porcelain=v1 --untracked-files=all -- contracts/gen-usearch/g0 tests/gen-usearch/g0 .github/workflows/gen-usearch-g0-contracts.yml)"
+
+      - name: Install pinned schema validator
+        run: npm ci --prefix tests/gen-usearch/g0 --ignore-scripts --no-audit --no-fund
+
+      - name: Run target contract tests
+        run: node --test tests/gen-usearch/g0/g0-contracts.test.js
+
+      - name: Run canonical target acceptance
+        run: node tests/gen-usearch/g0/g0-runner.js | tee /tmp/g0-acceptance.json
+
+      - name: Publish success status
+        if: success()
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${TARGET_SHA}"             -f state=success             -f context='gen-usearch/g0-external-authority'             -f description='External authority verification PASS'             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Publish failure status
+        if: failure()
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${TARGET_SHA}"             -f state=failure             -f context='gen-usearch/g0-external-authority'             -f description='External authority verification FAIL'             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

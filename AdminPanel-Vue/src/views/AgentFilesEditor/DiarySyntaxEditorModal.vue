@@ -30,6 +30,15 @@
           </header>
 
           <div class="diary-syntax-body">
+            <div v-if="retiredSuffixes.length > 0" class="syntax-card k-card" role="alert">
+              <strong>检测到已退休的 TagMemo 后缀</strong>
+              <p>
+                原语法包含 {{ retiredSuffixes.join("、") }}。不会自动替换或丢弃；
+                确认迁移后将移除旧后缀，并在高级 RAG 中显式使用 RiverMemo。
+                旧权重不直接映射为 RiverMemo 参数，其他有效后缀和 K 倍率保留。
+              </p>
+              <UiButton variant="outline" @click="confirmRetiredMigration">确认迁移旧后缀</UiButton>
+            </div>
             <label class="syntax-field syntax-field--full">
               <span>日记本名称</span>
               <UiInput
@@ -42,7 +51,7 @@
                 支持聚合检索，用 <code>|</code> 分隔多个日记本名。
                 示例：<code>物理|政治|python日记本</code>，最终可生成
                 <code>[[物理|政治|python日记本:1.2]]</code> 或
-                <code>《《物理|政治|python日记本::TagMemo+::Rerank+》》</code>。
+                <code>《《物理|政治|python日记本::RiverMemo::Rerank+》》</code>。
               </small>
             </label>
 
@@ -107,8 +116,8 @@
                   <code>::Group</code> 负责语义组增强，<code>::BM25+</code> 负责日记全文 BM25 匹配，
                   <code>::BM25</code> 负责日记 tag / keyword BM25 匹配，
                   <code>::Rerank</code> 负责普通精排，<code>::Expand</code> 负责父文档展开。
-                  注意：普通 <code>::Rerank</code> 与 <code>::Rerank+</code> 只能二选一；
-                  <code>::RiverMemo</code>、<code>::TagMemo</code> 与 <code>::TagMemo+</code> 只能三选一。
+                  注意：<code>::Rerank</code>、<code>::Rerank+</code> 与显式 <code>::Jev</code> 只能选择一种；
+                  高级日记 RAG 默认使用 RiverMemo，<code>::RiverMemo</code> 可显式标记该读出。
                 </p>
               </div>
 
@@ -216,7 +225,7 @@
                     @update:model-value="setExclusiveSuffix('rerank', $event)"
                   />
                 </div>
-                <p>先超量召回，再用 Reranker 模型重新排序。普通 Rerank 与 Rerank+ 只能二选一。</p>
+                <p>先超量召回再精排。保留原有行为：JevAdvancedRerank 开关决定使用传统模型或 Jev 默认提示词。</p>
               </div>
 
               <div class="syntax-card syntax-option-card">
@@ -266,69 +275,9 @@
                 <p>
                   调用浪潮自主研发的语义统一场方程进行记忆推理。该场方程将信息传递动力学与
                   信息传递场统一为同一个数学结构，以一个方程推演记忆与信息的完整运动过程。
-                  RiverMemo 无需填写参数，并会接管 TagMemo 记忆增强；
-                  它与 TagMemo、TagMemo+ 只能三选一。
+                  RiverMemo 复用共享降噪、信号提取与传播底座，无需填写后缀参数。
+                  高级日记 RAG 默认使用此读出；开关只控制是否在语法中显式写出名称。
                 </p>
-              </div>
-
-              <div class="syntax-card syntax-option-card">
-                <div class="syntax-option-head">
-                  <div>
-                    <strong>TagMemo</strong>
-                    <code>::TagMemo</code>
-                  </div>
-                  <AppSwitch
-                    :model-value="enabledSuffixes.tagMemo"
-                    @update:model-value="setExclusiveSuffix('tagMemo', $event)"
-                  />
-                </div>
-                <p>
-                  启用浪潮 TagMemo 拓扑记忆增强。留空权重时系统会动态估算，通常建议不要手写数字。
-                  TagMemo 与 TagMemo+ 只能二选一。
-                </p>
-                <label class="inline-number">
-                  <span>可选权重</span>
-                  <UiInput
-                    v-model="tagMemoWeight"
-                    :disabled="!enabledSuffixes.tagMemo"
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    placeholder="留空自动"
-                    @keydown.stop
-                  />
-                </label>
-              </div>
-
-              <div class="syntax-card syntax-option-card">
-                <div class="syntax-option-head">
-                  <div>
-                    <strong>TagMemo+</strong>
-                    <code>::TagMemo+</code>
-                  </div>
-                  <AppSwitch
-                    :model-value="enabledSuffixes.tagMemoPlus"
-                    @update:model-value="setExclusiveSuffix('tagMemoPlus', $event)"
-                  />
-                </div>
-                <p>
-                  在 TagMemo 基础上加入测地线重排，适合标签体系完善的大型知识库。留空权重时自动动态计算。
-                  TagMemo+ 与 TagMemo 只能二选一。
-                </p>
-                <label class="inline-number">
-                  <span>可选权重</span>
-                  <UiInput
-                    v-model="tagMemoPlusWeight"
-                    :disabled="!enabledSuffixes.tagMemoPlus"
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    placeholder="留空自动"
-                    @keydown.stop
-                  />
-                </label>
               </div>
 
               <div class="syntax-card syntax-option-card">
@@ -344,7 +293,7 @@
                 </div>
                 <p>
                   双路融合精排。α 越高越信任 Reranker，留空则使用默认 0.5。
-                  Rerank+ 与标准 Rerank 只能二选一。
+                  保留原有 JevAdvancedRerank 开关行为；与标准 Rerank、显式 Jev 互斥。
                 </p>
                 <label class="inline-number">
                   <span>α 权重</span>
@@ -355,6 +304,47 @@
                     min="0"
                     max="1"
                     step="0.05"
+                    placeholder="默认 0.5"
+                    @keydown.stop
+                  />
+                </label>
+              </div>
+
+              <div class="syntax-card syntax-option-card syntax-option-card--wide">
+                <div class="syntax-option-head">
+                  <div>
+                    <strong>Jev 语义精排</strong>
+                    <code>::Jev2+0.6</code>
+                  </div>
+                  <AppSwitch
+                    :model-value="enabledSuffixes.jev"
+                    @update:model-value="setExclusiveSuffix('jev', $event)"
+                  />
+                </div>
+                <p>
+                  强制使用 Jev，不受 JevAdvancedRerank 开关限制。默认使用 JevRerankPrompt，
+                  编号 1～4 对应插件配置中的 JevRerankPrompt1～4；未配置则回退默认提示词。
+                  Jev+ 复用现有双排 RRF 管线，α 表示 Jev 权重，留空为 0.5。当与Rivermemo一起开启时，动态权重由Ω泛函决策。
+                </p>
+                <label class="inline-number">
+                  <span>提示词预设</span>
+                  <UiSelect v-model="jevPreset" :disabled="!enabledSuffixes.jev">
+                    <option value="">默认提示词</option>
+                    <option v-for="number in 4" :key="number" :value="String(number)">
+                      {{ number }} 号提示词
+                    </option>
+                  </UiSelect>
+                </label>
+                <label class="inline-number">
+                  <span>双排融合 +</span>
+                  <AppSwitch v-model="jevPlus" :disabled="!enabledSuffixes.jev" />
+                </label>
+                <label class="inline-number">
+                  <span>Jev α 权重</span>
+                  <UiInput
+                    v-model="jevAlpha"
+                    :disabled="!enabledSuffixes.jev || !jevPlus"
+                    type="number" min="0" max="1" step="0.05"
                     placeholder="默认 0.5"
                     @keydown.stop
                   />
@@ -853,13 +843,13 @@
               <code>{{ generatedSyntax }}</code>
             </div>
             <div class="preview-actions">
-              <UiButton variant="outline" @click="copySyntax">
+              <UiButton variant="outline" :disabled="retiredSuffixes.length > 0" @click="copySyntax">
                 <template #leading>
                   <span class="material-symbols-outlined">content_copy</span>
                 </template>
                 复制文本
               </UiButton>
-              <UiButton variant="primary" @click="insertSyntax">
+              <UiButton variant="primary" :disabled="retiredSuffixes.length > 0" @click="insertSyntax">
                 <template #leading>
                   <span class="material-symbols-outlined">keyboard_return</span>
                 </template>
@@ -937,9 +927,11 @@ const kMultiplier = ref(defaultState.kMultiplier);
 const timeRatio = ref(defaultState.timeRatio);
 const bm25Weight = ref(defaultState.bm25Weight);
 const bm25PlusWeight = ref(defaultState.bm25PlusWeight);
-const tagMemoWeight = ref(defaultState.tagMemoWeight);
-const tagMemoPlusWeight = ref(defaultState.tagMemoPlusWeight);
+const retiredSuffixes = ref<string[]>([]);
 const rerankPlusAlpha = ref(defaultState.rerankPlusAlpha);
+const jevPreset = ref(defaultState.jevPreset);
+const jevPlus = ref(defaultState.jevPlus);
+const jevAlpha = ref(defaultState.jevAlpha);
 const timeDecayHalfLifeDays = ref(defaultState.timeDecayHalfLifeDays);
 const timeDecayMinScore = ref(defaultState.timeDecayMinScore);
 const timeDecayTargetTags = ref(defaultState.timeDecayTargetTags);
@@ -957,6 +949,7 @@ const roleValveDraft = reactive<RoleValveDraft>({
 const enabledSuffixes = reactive<Record<SuffixKey, boolean>>({ ...defaultState.enabledSuffixes });
 
 const generatedSyntax = computed(() => {
+  if (retiredSuffixes.value.length > 0) return "请先确认迁移已退休后缀";
   const rawName = notebookName.value.trim() || "日记本";
 
   if (dslPage.value === "direct") {
@@ -970,10 +963,14 @@ const generatedSyntax = computed(() => {
   if (enabledSuffixes.bm25Plus) suffixes.push(`::BM25+${sanitizeNumber(bm25PlusWeight.value)}`);
   if (enabledSuffixes.bm25) suffixes.push(`::BM25${sanitizeNumber(bm25Weight.value)}`);
   if (enabledSuffixes.riverMemo) suffixes.push("::RiverMemo");
-  if (enabledSuffixes.tagMemo) suffixes.push(`::TagMemo${sanitizeNumber(tagMemoWeight.value)}`);
-  if (enabledSuffixes.tagMemoPlus) suffixes.push(`::TagMemo+${sanitizeNumber(tagMemoPlusWeight.value)}`);
   if (enabledSuffixes.rerank) suffixes.push("::Rerank");
   if (enabledSuffixes.rerankPlus) suffixes.push(`::Rerank+${sanitizeNumber(rerankPlusAlpha.value)}`);
+  if (enabledSuffixes.jev) {
+    const preset = /^[1-4]$/.test(jevPreset.value) ? jevPreset.value : "";
+    const alpha = sanitizeNumber(jevAlpha.value);
+    const plus = jevPlus.value ? `+${alpha ? Math.max(0, Math.min(1, Number(alpha))) : ""}` : "";
+    suffixes.push(`::Jev${preset}${plus}`);
+  }
   if (enabledSuffixes.timeDecay) suffixes.push(buildTimeDecaySuffix());
   if (enabledSuffixes.truncate) suffixes.push(`::Truncate${sanitizeNumber(truncateThreshold.value) || "0.4"}`);
   if (enabledSuffixes.associate) suffixes.push("::Associate");
@@ -1027,31 +1024,11 @@ function setExclusiveSuffix(key: SuffixKey, value: boolean): void {
     return;
   }
 
-  if (key === "riverMemo") {
-    enabledSuffixes.tagMemo = false;
-    enabledSuffixes.tagMemoPlus = false;
-    return;
-  }
-
-  if (key === "tagMemo") {
-    enabledSuffixes.riverMemo = false;
-    enabledSuffixes.tagMemoPlus = false;
-    return;
-  }
-
-  if (key === "tagMemoPlus") {
-    enabledSuffixes.riverMemo = false;
-    enabledSuffixes.tagMemo = false;
-    return;
-  }
-
-  if (key === "rerank") {
-    enabledSuffixes.rerankPlus = false;
-    return;
-  }
-
-  if (key === "rerankPlus") {
-    enabledSuffixes.rerank = false;
+  const rankKeys: SuffixKey[] = ["rerank", "rerankPlus", "jev"];
+  if (rankKeys.includes(key)) {
+    for (const other of rankKeys) {
+      if (other !== key) enabledSuffixes[other] = false;
+    }
   }
 }
 
@@ -1132,7 +1109,14 @@ function removeRoleValveCondition(index: number): void {
   roleValveConditions.value.splice(index, 1);
 }
 
+function confirmRetiredMigration(): void {
+  if (dslPage.value === "advanced") enabledSuffixes.riverMemo = true;
+  retiredSuffixes.value = [];
+  showMessage("已确认迁移旧后缀，请检查预览后替换原语法。", "success");
+}
+
 async function copySyntax(): Promise<void> {
+  if (retiredSuffixes.value.length > 0) return;
   try {
     await navigator.clipboard.writeText(generatedSyntax.value);
     showMessage("日记本语法已复制。", "success");
@@ -1142,6 +1126,7 @@ async function copySyntax(): Promise<void> {
 }
 
 function insertSyntax(): void {
+  if (retiredSuffixes.value.length > 0) return;
   if (props.mode === "replace") {
     emit("replace", generatedSyntax.value);
     showMessage("日记本语法已替换。", "success");
@@ -1166,9 +1151,11 @@ function applyEditorState(state: DiarySyntaxEditorState): void {
   timeRatio.value = state.timeRatio;
   bm25Weight.value = state.bm25Weight;
   bm25PlusWeight.value = state.bm25PlusWeight;
-  tagMemoWeight.value = state.tagMemoWeight;
-  tagMemoPlusWeight.value = state.tagMemoPlusWeight;
+  retiredSuffixes.value = [...state.retiredSuffixes];
   rerankPlusAlpha.value = state.rerankPlusAlpha;
+  jevPreset.value = state.jevPreset ?? "";
+  jevPlus.value = state.jevPlus ?? false;
+  jevAlpha.value = state.jevAlpha ?? "";
   timeDecayHalfLifeDays.value = state.timeDecayHalfLifeDays;
   timeDecayMinScore.value = state.timeDecayMinScore;
   timeDecayTargetTags.value = state.timeDecayTargetTags;
@@ -1178,7 +1165,7 @@ function applyEditorState(state: DiarySyntaxEditorState): void {
   roleValveJoiner.value = state.roleValveJoiner;
   roleValveConditions.value = [...state.roleValveConditions];
 
-  Object.assign(enabledSuffixes, state.enabledSuffixes);
+  Object.assign(enabledSuffixes, defaultState.enabledSuffixes, state.enabledSuffixes);
 }
 
 watch(

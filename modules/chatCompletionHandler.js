@@ -3,6 +3,7 @@ const messageProcessor = require('./messageProcessor.js');
 const vcpInfoHandler = require('../vcpInfoHandler.js');
 const contextManager = require('./contextManager.js');
 const roleDivider = require('./roleDivider.js');
+const { projectToolBatchForUpstream } = require('./toolResultBatch.js');
 const fs = require('fs').promises;
 const path = require('path');
 const { createHash, randomBytes } = require('node:crypto');
@@ -39,6 +40,7 @@ const ToolCallParser = require('./vcpLoop/toolCallParser');
 const ToolExecutor = require('./vcpLoop/toolExecutor');
 const StreamHandler = require('./handlers/streamHandler');
 const NonStreamHandler = require('./handlers/nonStreamHandler');
+const { createInteractionCompletion } = require('./handlers/interactionCompletion');
 
 const VCP_TOOL_USE_FORBIDDEN_PLACEHOLDER = '[[VCPToolUse=Forbidden]]';
 const RESIDENT_PRESENCE_BINDING_PROPERTY = '__agentsOsResidentPresence';
@@ -905,7 +907,7 @@ async function fetchWithRetry(
       });
       cleanup();
 
-      let shouldRetryStatus = response.status === 500 || response.status === 503 || response.status === 429;
+      let shouldRetryStatus = response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504 || response.status === 429;
       let retryMessage = response.statusText;
 
       // Gemini / NewAPI 偶发特殊空回：上游可能以 401 返回包含 token 的错误文本
@@ -926,10 +928,16 @@ async function fetchWithRetry(
       }
 
       if (shouldRetryStatus) {
+        if (i === maxAttempts - 1) {
+          if (debugMode) {
+            console.warn(`[Fetch Retry] Received status ${response.status}. All retries exhausted (${i + 1}/${maxAttempts}). Returning last response.`);
+          }
+          return response;
+        }
         const currentDelay = delay * (i + 1);
         if (debugMode) {
           console.warn(
-            `[Fetch Retry] Received status ${response.status}. Retrying in ${currentDelay}ms... (${i + 1}/${retries})`,
+            `[Fetch Retry] Received status ${response.status}. Retrying in ${currentDelay}ms... (${i + 1}/${maxAttempts})`,
           );
         }
         if (onRetry) {
@@ -1217,6 +1225,8 @@ class ChatCompletionHandler {
     const requestPreprocessorConfig = vcpchatExtensions
       ? { vcpchatExtensions }
       : {};
+    // 请求独享，PluginManager 浅拷贝配置时仍保留此对象引用。
+    requestPreprocessorConfig.tavernInteraction = {};
     const isOriginalRequestStreaming = originalBody.stream === true;
     const responseCacheKey = this.responseReplayCache.buildKey(clientIp, id);
 
@@ -1231,6 +1241,8 @@ class ChatCompletionHandler {
     let clientDisconnectedAbortReason = null;
     let cleanupClientDisconnectListeners = () => {};
     let finalizeResponseCacheRecorder = () => {};
+    let interactionCompletion = null;
+    let interactionOutcomeAccepted = false;
 
     if (responseCacheKey && !residentPresenceRequested) {
       finalizeResponseCacheRecorder = installResponseCacheRecorder(res, {
@@ -1310,7 +1322,7 @@ class ChatCompletionHandler {
       // 3. 执行上下文修剪
       if (originalBody.messages && Array.isArray(originalBody.messages)) {
         const originalCount = originalBody.messages.length;
-        originalBody.messages = contextManager.pruneMessages(
+        originalBody.messages = await contextManager.pruneMessagesSmart(
           originalBody.messages,
           contextTokenLimit,
           DEBUG_MODE
@@ -1476,11 +1488,19 @@ class ChatCompletionHandler {
         superDetectors: this.config.superDetectors,
         DEBUG_MODE,
         messages: tavernProcessedMessages, // 将近期消息列表传递下去，用于支持上下文动态折叠 (Contextual Folding)
+        // 静态/混合/分布式插件上报内容由 preprocessor_order.json 中的
+        // $StaticPlaceholderInjection 虚拟阶段注入，避免动态网页文本在
+        // CapturePreprocessor 之前生成可执行截图占位符。
+        deferStaticPluginPlaceholders: true,
         // 🔒 灵魂级占位符去重：跨消息共享展开状态
         // Agent 类：整个上下文只允许展开一个 agent（第一个遇到的），后续所有 agent 占位符均不展开
         // Toolbox 类：每种 toolbox 各允许展开一次，同名重复出现时不再展开
+        // VCP 工具 / 静态插件 / 全局清单类：每种在整个请求生命周期内只展开一次
         expandedAgentName: null,    // string | null - 已展开的唯一 Agent 别名
-        expandedToolboxes: new Set() // Set<string> - 已展开的 Toolbox 别名集合
+        expandedToolboxes: new Set(), // Set<string> - 已展开的 Toolbox 别名集合
+        expandedVcpTools: new Set(), // Set<string> - 已展开的 VCP 工具别名集合
+        expandedStaticPlaceholders: new Set(), // Set<string> - 已展开的静态插件占位符集合
+        expandedGlobalPlaceholders: new Set() // Set<string> - 已展开的全局清单占位符集合
       };
 
       // 🔒 顺序处理消息（非并发），确保 agent/toolbox 的"首次展开"语义正确
@@ -1521,47 +1541,55 @@ class ChatCompletionHandler {
       );
       if (DEBUG_MODE) await writeDebugLog('LogAfterVariableProcessing', processedMessages);
 
-      // --- 媒体处理器 ---
-      if (shouldProcessMedia) {
-        if (shouldProcessMediaPlus) {
+      // --- 可排序消息处理管线 ---
+      // VCPTavern 已在变量展开前执行；其余真实预处理器与静态占位符注入
+      // 严格遵循 preprocessor_order.json，确保动态插件文本不能污染前置捕获指令。
+      const STATIC_PLACEHOLDER_INJECTION_STAGE = '$StaticPlaceholderInjection';
+      const selectedMediaProcessor = pluginManager.messagePreprocessors.has('MultiModalProcessor')
+        ? 'MultiModalProcessor'
+        : 'ImageProcessor';
+      const orderedPipeline = Array.isArray(pluginManager.preprocessorOrder)
+        ? pluginManager.preprocessorOrder
+        : Array.from(pluginManager.messagePreprocessors.keys());
+
+      for (const name of orderedPipeline) {
+        if (name === 'VCPTavern') continue;
+        if (residentPresenceRequested && name === 'AGENTSOSResident') continue;
+
+        if (name === STATIC_PLACEHOLDER_INJECTION_STAGE) {
+          if (DEBUG_MODE) console.log('[Server] Injecting static/hybrid/distributed plugin placeholders.');
+          const messagesBeforeProcessor = processedMessages;
+          processedMessages = copyArrayMetadata(
+            messagesBeforeProcessor,
+            await messageProcessor.injectStaticPluginPlaceholdersInMessages(
+              processedMessages,
+              {
+                ...processingContext,
+                messages: processedMessages
+              }
+            )
+          );
+          continue;
+        }
+
+        if (name === 'ImageProcessor' || name === 'MultiModalProcessor') {
+          if (!shouldProcessMedia || name !== selectedMediaProcessor) continue;
+        }
+
+        if (!pluginManager.messagePreprocessors.has(name)) continue;
+
+        // Capture may have added media earlier in this ordered pipeline.
+        // Back up at the consuming stage, not before all preprocessors.
+        if (shouldProcessMediaPlus && name === selectedMediaProcessor) {
           for (const msg of processedMessages) {
             if (msg.role === 'user' && Array.isArray(msg.content)) {
-              const mediaParts = msg.content.filter(part => part.type === 'image_url' && part.image_url && typeof part.image_url.url === 'string' && /^data:(image|audio|video)\/[^;]+;base64,/.test(part.image_url.url));
+              const mediaParts = msg.content.filter(part => part.type === 'image_url' && typeof part.image_url?.url === 'string' && /^data:(image|audio|video)\/[^;]+;base64,/.test(part.image_url.url));
               if (mediaParts.length > 0) {
                 msg.__vcp_media_backup__ = JSON.parse(JSON.stringify(mediaParts));
               }
             }
           }
         }
-
-        const processorName = pluginManager.messagePreprocessors.has('MultiModalProcessor')
-          ? 'MultiModalProcessor'
-          : 'ImageProcessor';
-        if (pluginManager.messagePreprocessors.has(processorName)) {
-          if (DEBUG_MODE) console.log(`[Server] Calling message preprocessor: ${processorName}`);
-          try {
-            const messagesBeforeProcessor = processedMessages;
-            processedMessages = copyArrayMetadata(
-              messagesBeforeProcessor,
-              await pluginManager.executeMessagePreprocessor(
-                processorName,
-                processedMessages,
-                requestPreprocessorConfig
-              )
-            );
-          } catch (pluginError) {
-            console.error(`[Server] Error in preprocessor ${processorName}:`, pluginError);
-          }
-        }
-      }
-
-      // --- 其他通用消息预处理器 ---
-      for (const name of pluginManager.messagePreprocessors.keys()) {
-        // 跳过已经特殊处理的插件
-        if (name === 'ImageProcessor'
-          || name === 'MultiModalProcessor'
-          || name === 'VCPTavern'
-          || (residentPresenceRequested && name === 'AGENTSOSResident')) continue;
 
         if (DEBUG_MODE) console.log(`[Server] Calling message preprocessor: ${name}`);
         try {
@@ -1653,9 +1681,10 @@ class ChatCompletionHandler {
                   ...msg.__vcp_media_backup__
                 ];
               } else if (Array.isArray(msg.content)) {
+                const presentMedia = new Set(msg.content.filter(part => part.type === 'image_url').map(part => part.image_url?.url));
                 msg.content = [
                   ...msg.content,
-                  ...msg.__vcp_media_backup__
+                  ...msg.__vcp_media_backup__.filter(part => !presentMedia.has(part.image_url?.url))
                 ];
               }
               delete msg.__vcp_media_backup__;
@@ -1725,6 +1754,16 @@ class ChatCompletionHandler {
         }
       }
 
+      // 前端的展示姓名不是上游参与者标识（中文姓名还可能触发上游 name 格式校验）。
+      // 必须在所有预处理器/原消息恢复完成后清理，避免 OneRing 恢复视图时重新带回；
+      // 此时来源识别与时间戳绑定已完成，正文中的 OneRing 来源通知保持不变。
+      // 不清理 function/tool 消息：旧式 function 协议依赖 name 匹配调用结果。
+      for (const message of processedMessages) {
+        if (message && ['system', 'developer', 'user', 'assistant'].includes(message.role)) {
+          delete message.name;
+        }
+      }
+
       // 经过改造后，processedMessages 已经是最终版本，无需再调用 replaceOtherVariables
       originalBody.messages = processedMessages;
 
@@ -1748,8 +1787,17 @@ class ChatCompletionHandler {
         throw residentProviderAttemptDenied();
       }
 
+      interactionCompletion = createInteractionCompletion({
+        res,
+        signal: abortController.signal,
+        oneRingModule: pluginManager?.messagePreprocessors?.get?.('OneRing'),
+        oneRingMeta: oneRingResponseMeta,
+        messages: processedMessages,
+        tavernInteraction: requestPreprocessorConfig.tavernInteraction
+      });
+
       const willStreamResponse = isOriginalRequestStreaming;
-      const finalUpstreamBody = { ...originalBody, stream: willStreamResponse };
+      const finalUpstreamBody = projectToolBatchForUpstream({ ...originalBody, stream: willStreamResponse });
 
       finalContextStore.setLastFinalContext(finalUpstreamBody, {
         requestId: req.body.requestId || null,
@@ -1944,11 +1992,11 @@ class ChatCompletionHandler {
         requestPreprocessorConfig
       };
 
-      if (isUpstreamStreaming) {
-        await new StreamHandler(context).handle(req, res, firstAiAPIResponse);
-      } else {
-        await new NonStreamHandler(context).handle(req, res, firstAiAPIResponse);
-      }
+      const outcome = isUpstreamStreaming
+        ? await new StreamHandler(context).handle(req, res, firstAiAPIResponse)
+        : await new NonStreamHandler(context).handle(req, res, firstAiAPIResponse);
+      interactionOutcomeAccepted = true;
+      interactionCompletion.accept(outcome);
     } catch (error) {
       if (error.name === 'AbortError') {
         // 显式 /v1/interrupt 或客户端断联都会走到这里。
@@ -2014,15 +2062,28 @@ class ChatCompletionHandler {
               response: { error: true, message: error.message }
             } ]);
         }
-      } else if (!res.writableEnded) {
+      } else if (!res.writableEnded && !res.destroyed) {
         // Headers already sent (error during streaming loop)
         console.error(
-          '[STREAM ERROR] Headers already sent. Cannot send JSON error. Ending stream if not already ended.',
+          '[STREAM ERROR] Headers already sent. Streaming error chunk to client before ending stream:',
+          error.message,
         );
+        const errorContent = `\n\n> [!WARNING]\n> **流式响应中断 (上游连接异常)**: ${error.message}\n`;
+        try {
+          res.write(`data: ${JSON.stringify({
+            id: `chatcmpl-VCP-stream-error-${Date.now()}`,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: originalBody?.model || 'unknown',
+            choices: [{ index: 0, delta: { content: errorContent }, finish_reason: 'stop' }],
+          })}\n\n`);
+        } catch (writeErr) {
+          console.error('[Stream Error Chunk Failed]:', writeErr.message);
+        }
         // Send [DONE] marker before ending the stream for graceful termination
         try {
           res.write('data: [DONE]\n\n', () => {
-            res.end();
+            try { res.end(); } catch (e) { }
           });
         } catch (writeError) {
           console.error('[Error Handler Stream Cleanup] Failed to write [DONE]:', writeError.message);
@@ -2036,6 +2097,7 @@ class ChatCompletionHandler {
         }
       }
     } finally {
+      if (!interactionOutcomeAccepted) interactionCompletion?.fail();
       cleanupClientDisconnectListeners();
 
       if (!res.writableEnded && !res.destroyed) {

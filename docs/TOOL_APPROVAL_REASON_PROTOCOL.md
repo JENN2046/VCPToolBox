@@ -1,30 +1,10 @@
-# 工具调用审核反馈字段适配说明
+# 工具审核留言协议：R1-BR 隐私语义
 
-本文档用于前端应用、管理面板、VCPChat、VCPLog 客户端等适配工具调用人工审核的文本反馈能力。
+本次限域修补恢复 Jenn 的静默拒绝规则。填写理由只表示录入文本，**不等于同意把静默拒绝理由发送给 AI**。
 
-## 背景
+## 协议与授权
 
-后端工具审核 WebSocket 协议已在原有确认/拒绝基础上，新增可选字段 `reason`。
-
-该字段允许用户在点击通过或拒绝时，额外输入一段文本，说明本次审核决策的原因。
-
-## 协议兼容性
-
-这是一个向后兼容改动。
-
-旧客户端仍然可以只发送：
-
-```json
-{
-  "type": "tool_approval_response",
-  "data": {
-    "requestId": "approve-xxx",
-    "approved": false
-  }
-}
-```
-
-新客户端可以额外发送：
+现有 WebSocket 字段不变：
 
 ```json
 {
@@ -32,125 +12,42 @@
   "data": {
     "requestId": "approve-xxx",
     "approved": false,
-    "reason": "这个命令风险太高，请先列出影响范围"
+    "reason": "仅给审核人自己的说明"
   }
 }
 ```
 
-## 字段说明
+| 字段 | 含义 |
+|---|---|
+| `requestId` | 已存在且尚未结算的审核请求 |
+| `approved` | 审核决定；受保护调用仍要求对应的已提交、逐目标 Trusted Action / Core 决策 |
+| `reason` | 可选文本，不赋予执行权限或静默覆盖权限 |
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `type` | string | 是 | 固定为 `tool_approval_response` |
-| `data.requestId` | string | 是 | 后端下发的审核请求 ID |
-| `data.approved` | boolean | 是 | 是否批准本次工具调用 |
-| `data.reason` | string | 否 | 用户输入的审核说明文本 |
+R1-BR 没有增加“发送给 AI”的新授权入口。当前界面/通道没有受信、逐请求绑定的该选择，因而**不支持覆盖静默规则**。`sendFeedbackToAi`、`trusted` 等客户端自报字段不会被当作授权；不能用新参数或正文标记替代可信确认。
 
-## 后端行为
+未来如接入覆盖功能，必须由受信界面的明确选择授权，并绑定相同待决请求与留言内容；那是另一次明确施工，不能把本协议文档当作已实现证明。
 
-### 拒绝并通知 AI
+## 当前行为
 
-当 `approved` 为 `false`，且该工具规则允许把拒绝结果通知 AI 时：
+| 决定 | 规则 | 理由 | AI 可见结果 |
+|---|---|---|---|
+| 拒绝 | `notifyAiOnReject === false` | 无/空白/非空 | 始终不发送理由或拒绝反馈；不执行工具 |
+| 拒绝 | 通知 AI | 无/空白 | 通用拒绝消息；不执行工具 |
+| 拒绝 | 通知 AI | 非空 | 经现有隐私配置过滤的拒绝理由；不执行工具 |
+| 批准 | 任意 | 无/空白 | 原有工具结果 |
+| 批准 | 任意 | 非空 | 工具结果与经现有隐私配置过滤的审核留言；留言不进入工具参数 |
 
-```json
-{
-  "plugin_error": "Manual approval was REJECTED by user. User reason: 这个命令风险太高，请先列出影响范围"
-}
-```
+静默拒绝在宿主只留下无理由的通用拒绝记录。普通同步循环可沿既有路径传递“无返回内容”的占位；archery 静默拒绝不因理由新增模型续轮。两者均不得携带该理由。
 
-AI 可以根据该原因调整下一次工具调用。
+批准留言保留 R1-B 的富内容适配：只追加最后一个文本块或新增文本块，图片及其他非文本字段不改写；工具失败也保留过滤后的批准留言。archery/no_reply 仅把批准留言回灌，不回灌成功业务输出。输入留言自身不会批准工具、更换目标或生成 Trusted Action 凭据。
 
-### 拒绝但静默处理
+隐私过滤继续遵从现有配置，未自动启用或更改全局配置。启用时批准/非静默拒绝留言必须经过过滤；`preserveSuffix=0` 确实不保留后缀。审核响应的调试帧及结算日志不输出理由正文，静默理由也不进入工具记录。
 
-当工具审核规则配置为静默拒绝时，即使前端传入 `reason`，后端也不会把该文本返回给 AI。
+## 前端说明
 
-该模式适合不希望模型感知人工干预的场景。
+- 不需要为了兼容 R1-BR 增加新字段。
+- 允许留言输入时，明确告知：批准留言与非静默拒绝理由可进入 AI；静默拒绝的理由不会进入 AI。
+- 不要将“填写理由”解释为“同意覆盖静默”，也不要自动附加自报同意字段。
+- 真实可信界面的明确选择/人类确认没有在本轮进行运行验收。
 
-### 批准并附带说明
-
-当 `approved` 为 `true` 且传入 `reason` 时，后端不会把该说明注入工具结果，避免污染正常工具输出。
-
-当前仅在后端调试模式下记录该说明。
-
-## 前端建议
-
-建议在审核弹窗中增加一个可选文本框：
-
-- placeholder 可使用：`可选：告诉 AI 为什么通过或拒绝`
-- 拒绝时建议鼓励用户填写原因
-- 通过时原因可选，不建议强制填写
-- 文本建议限制在 500 到 1000 字以内
-- 发送前建议执行 `trim`
-- 空字符串可以不发送 `reason` 字段
-
-## 推荐交互
-
-### 用户点击拒绝
-
-```js
-ws.send(JSON.stringify({
-  type: 'tool_approval_response',
-  data: {
-    requestId,
-    approved: false,
-    reason: reasonInput.trim()
-  }
-}));
-```
-
-### 用户点击通过
-
-```js
-ws.send(JSON.stringify({
-  type: 'tool_approval_response',
-  data: {
-    requestId,
-    approved: true,
-    reason: reasonInput.trim()
-  }
-}));
-```
-
-如果 `reasonInput.trim()` 为空，也可以省略 `reason`：
-
-```js
-const data = {
-  requestId,
-  approved
-};
-
-const reason = reasonInput.trim();
-if (reason) {
-  data.reason = reason;
-}
-
-ws.send(JSON.stringify({
-  type: 'tool_approval_response',
-  data
-}));
-```
-
-## 安全与产品建议
-
-- 不要在前端把 `reason` 当成必须字段。
-- 不要在通过工具调用时把 `reason` 显示为工具输出。
-- 拒绝理由会进入 AI 上下文，前端应避免自动填入敏感信息。
-- 对危险工具，例如 Shell、文件删除、批量修改、远程分布式执行，建议在拒绝时提示用户填写可执行的修正建议。
-- 对静默拒绝场景，前端仍可允许填写原因，但应理解该原因不会返回给 AI。
-
-## 当前后端实现位置
-
-- WebSocket 审核响应解析：`WebSocketServer.js`
-- 审核决策处理：`Plugin.js`
-
-## 最小适配结论
-
-前端只需要在原有审核响应包的 `data` 内可选增加：
-
-```json
-{
-  "reason": "用户输入的审核说明"
-}
-```
-
-不传该字段时，行为与旧版本完全一致。
+实现位置：`Plugin.js`、`WebSocketServer.js`、`modules/toolResultPrivacyGuard.js`；回归在 `tests/approvalFeedbackPassthrough.test.js`、`tests/suveiMutationApprovalResponse.test.js`、`tests/websocket-message-diagnostics.test.cjs`。Trusted Action 权威实现与生产禁用状态保持不变。

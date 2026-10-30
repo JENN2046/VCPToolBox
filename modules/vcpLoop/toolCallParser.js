@@ -1,5 +1,9 @@
 // modules/vcpLoop/toolCallParser.js
 const toolMarkerFuzzyMatcher = require('./toolMarkerFuzzyMatcher');
+const { createBatchStartScanner, findBatchEnd } = require('../toolResultBatch');
+
+// Known scalar controls retain legacy padding tolerance; payloads keep indentation.
+const STRUCTURAL_ARG_KEY = /^(?:command|action|operation|executionType|encoding|mode|format|type|maid|valet|showbase64|return_base64|watermark)\d*$/i;
 
 class ToolCallParser {
   static MARKERS = {
@@ -74,12 +78,18 @@ class ToolCallParser {
   static parse(content) {
     if (!content || typeof content !== 'string') return [];
 
+    if (/^\s*<!-- VCP_TOOL_PAYLOAD -->/.test(content)) return [];
     const contentWithoutThink = this.stripReasoningBlocks(content);
     const toolCalls = [];
     let searchOffset = 0;
 
     while (searchOffset < contentWithoutThink.length) {
       const blockInfo = this.extractNextToolBlock(contentWithoutThink, searchOffset);
+      const literal = this.findNextResultLiteral(contentWithoutThink, searchOffset);
+      if (literal && (!blockInfo || literal.startIndex < blockInfo.startIndex)) {
+        searchOffset = literal.nextOffset;
+        continue;
+      }
       if (!blockInfo) break;
 
       const parsed = this.parseBlock(blockInfo.blockContent);
@@ -91,6 +101,45 @@ class ToolCallParser {
     }
 
     return toolCalls;
+  }
+
+  /**
+   * Result delimiters identify literal text, never authority. Even when a model
+   * quotes a saved result in its new response, its embedded requests stay data.
+   * Forged delimiters can only suppress parsing; they cannot authorize a call.
+   * A tool request encountered first is parsed intact, including literal args.
+   * Do not mutate the source message, payload, or saved history.
+   */
+  static findNextResultLiteral(content, fromIndex = 0) {
+    const candidates = [];
+    const scanner = createBatchStartScanner(true);
+    scanner.lastIndex = fromIndex;
+    const batch = scanner.exec(content);
+    if (batch) candidates.push({ startIndex: batch.index, nextOffset: findBatchEnd(content, batch) });
+
+    const legacyStart = '[[VCP调用结果信息汇总:';
+    const legacyEnd = 'VCP调用结果结束]]';
+    const legacy = content.indexOf(legacyStart, fromIndex);
+    if (legacy !== -1) {
+      let depth = 1;
+      let cursor = legacy + legacyStart.length;
+      while (depth > 0) {
+        const start = content.indexOf(legacyStart, cursor);
+        const end = content.indexOf(legacyEnd, cursor);
+        if (end === -1) { cursor = content.length; break; }
+        if (start !== -1 && start < end) {
+          depth++;
+          cursor = start + legacyStart.length;
+        } else {
+          depth--;
+          cursor = end + legacyEnd.length;
+        }
+      }
+      candidates.push({ startIndex: legacy, nextOffset: cursor });
+    }
+    const raw = content.indexOf('<!-- VCP_TOOL_PAYLOAD -->', fromIndex);
+    if (raw !== -1) candidates.push({ startIndex: raw, nextOffset: content.length });
+    return candidates.sort((a, b) => a.startIndex - b.startIndex)[0] || null;
   }
 
   /**
@@ -130,6 +179,7 @@ class ToolCallParser {
 
     const args = {};
     let toolName = null;
+    let jevVirtualField = null;
     let isArchery = false;
     let archeryNoReply = false;
     let markHistory = false;
@@ -141,6 +191,10 @@ class ToolCallParser {
 
       if (field.key === 'tool_name') {
         toolName = trimmedValue;
+      } else if (field.key.toLowerCase() === 'jev') {
+        // JEV 可能是顶层实验性虚拟工具，也可能是真实工具（如 LightMemo、LexibankOperator）的合法参数。
+        // 暂存该字段，留待全部字段扫描完毕后依据 tool_name 是否显式声明进行延迟裁决，消解顺序敏感与身份抢占歧义。
+        jevVirtualField = field;
       } else if (field.key === 'archery') {
         isArchery = trimmedValue === 'true' || trimmedValue === 'no_reply';
         archeryNoReply = trimmedValue === 'no_reply';
@@ -151,7 +205,24 @@ class ToolCallParser {
       } else if (field.key === 'vref') {
         vref = trimmedValue;
       } else {
-        args[field.key] = trimmedValue;
+        // 控制字段容忍标记内的空白；正文/代码等负载继续保留前导缩进。
+        args[field.key] = STRUCTURAL_ARG_KEY.test(field.key)
+          ? trimmedValue
+          : this._normalizeFieldValue(field.value);
+      }
+    }
+
+    // 字段扫描完成后的延迟裁决：
+    if (jevVirtualField) {
+      if (!toolName) {
+        // 未显式声明 tool_name 时，作为顶层实验性虚拟工具触发：
+        // 它没有真实 plugin manifest，由 ToolExecutor 在插件查找前展开为一个或多个白名单真实工具调用。
+        toolName = 'JEV';
+        args.expression = jevVirtualField.value.trim();
+      } else {
+        // 已显式声明 tool_name（如 LightMemo、LexibankOperator 等）：
+        // jev 作为该实体工具的普通参数处理，保留规范化后的参数值。
+        args[jevVirtualField.key] = this._normalizeFieldValue(jevVirtualField.value);
       }
     }
 
@@ -274,6 +345,19 @@ class ToolCallParser {
     }
 
     return fields;
+  }
+
+  /**
+   * 规范化参数字段值：
+   * 保护首行与各行的代码/文本前导缩进（禁止直接使用全量 trim()）。
+   * 1. 若首字符紧跟换行（\r\n 或 \n），剥离该换行符，但保留第一行代码的缩进空格。
+   * 2. 剥离末尾的换行及尾随空白。
+   * @param {string} value
+   * @returns {string}
+   */
+  static _normalizeFieldValue(value) {
+    if (typeof value !== 'string') return '';
+    return value.replace(/^(?:\r?\n)/, '').replace(/(?:\r?\n)?[ \t]*$/, '');
   }
 
   static _restoreEscapedLiterals(content) {

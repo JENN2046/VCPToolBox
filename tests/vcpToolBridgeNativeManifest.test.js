@@ -636,7 +636,8 @@ test('PluginManager direct runtime-change refresh exposes hybrid effective seman
         entryPoint: { script: 'resident-runtime.js' },
         parameterSchema: { contractVersion: 'A' },
         configSchema: { mode: { const: 'A' } },
-        'x-future-extension': { effectiveRuntimeContract: 'A' }
+        'x-future-extension': { effectiveRuntimeContract: 'A' },
+        jev: { schemaVersion: 1, enabled: false }
     });
     const currentEntry = pluginManager._createRuntimePluginEntryFromNativeManifest(oldNative);
     currentEntry.basePath = tempDir;
@@ -658,7 +659,8 @@ test('PluginManager direct runtime-change refresh exposes hybrid effective seman
             ],
             arbitraryCapability: { enabled: false }
         },
-        'x-future-extension': { effectiveRuntimeContract: 'B' }
+        'x-future-extension': { effectiveRuntimeContract: 'B' },
+        jev: { schemaVersion: 1, enabled: true }
     });
     const manifestPath = path.join(tempDir, 'plugin-manifest.json');
     await fs.writeFile(manifestPath, JSON.stringify(freshNative), 'utf8');
@@ -679,6 +681,8 @@ test('PluginManager direct runtime-change refresh exposes hybrid effective seman
     assert.deepEqual(authority.entryPoint, oldNative.entryPoint);
     assert.deepEqual(authority.parameterSchema, oldNative.parameterSchema);
     assert.deepEqual(authority.configSchema, oldNative.configSchema);
+    assert.deepEqual(authority.jev, oldNative.jev);
+    assert.deepEqual(refreshedEntry.jev, oldNative.jev);
     assert.deepEqual(authority['x-future-extension'], oldNative['x-future-extension']);
     assert.equal(authority.displayName, freshNative.displayName);
     assert.equal(authority.description, freshNative.description);

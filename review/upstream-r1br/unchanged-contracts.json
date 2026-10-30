@@ -1,0 +1,67 @@
+[
+  {
+    "path": "modules/approvalReceiptAuthority.js",
+    "status": "UNCHANGED",
+    "sha256": "e8da0d28bd1cc8826148ec1c4bde1a2d77e1abf00a2bbf136c60f86b5d7ff06e"
+  },
+  {
+    "path": "modules/humanClientAdmission.js",
+    "status": "UNCHANGED",
+    "sha256": "918b2f16dc2b4734378a93f1916d54f90cb29770294d68eac9b6fb40c1c0e9ec"
+  },
+  {
+    "path": "modules/humanClientAdmissionCrypto.js",
+    "status": "UNCHANGED",
+    "sha256": "b0bc6d5051a6c2184ceba1ec79b2df89aff3362ba2350d5202485d7fcfbfe2d4"
+  },
+  {
+    "path": "modules/trustedClientImplementationProfile.js",
+    "status": "UNCHANGED",
+    "sha256": "0c4fcc660a8e5ca44e482dea9e44714f7545d19630342865b72b9dee8b797fb9"
+  },
+  {
+    "path": "modules/nativeConversationTransport.js",
+    "status": "UNCHANGED",
+    "sha256": "39add96d9dfd6c7fece63ee953aeb2add6575060df003a4adb4abf840a98677d"
+  },
+  {
+    "path": "modules/nativeConversationWebSocket.js",
+    "status": "UNCHANGED",
+    "sha256": "17b4ee144adc793148fd4dd3eb33628c006616aded16202afa45e6e8e228972b"
+  },
+  {
+    "path": "modules/toolResultBatch.js",
+    "status": "UNCHANGED",
+    "sha256": "70fb62ee19d21e072ce4329e7970d695c27ec750e99c896b1199ee2f2534e35f"
+  },
+  {
+    "path": "modules/vcpLoop/toolCallParser.js",
+    "status": "UNCHANGED",
+    "sha256": "f2e827b2ca753355b8d1bb31ab81bd32016b06628a33c54b040086cdb4f4c945"
+  },
+  {
+    "path": "modules/handlers/streamHandler.js",
+    "status": "UNCHANGED",
+    "sha256": "0b5eb274df72e72bfc64c94ddd847f5bddfa78bc5d4bb9ca30b39f8231553f39"
+  },
+  {
+    "path": "modules/handlers/nonStreamHandler.js",
+    "status": "UNCHANGED",
+    "sha256": "ff551d005c8adb9b4bae890d1e43f69729dcb929ed8c0de2455032b832f45f60"
+  },
+  {
+    "path": "rust-vexus-lite/src/native_rerank.rs",
+    "status": "UNCHANGED",
+    "sha256": "c954d157e18d8afe7874372e66b7a22f53c8f8c3b121eeb763a57f12e51ae9f9"
+  },
+  {
+    "path": "rust-vexus-lite/vexus-lite.linux-x64-gnu.node",
+    "status": "UNCHANGED",
+    "sha256": "d114ffd7b0cb6bb51ede252d2a9e7d027b2068b04b12d31eab5f7187e85da26d"
+  },
+  {
+    "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-unknown-linux-gnu",
+    "status": "UNCHANGED",
+    "sha256": "a4e87a6ad29d3e15eeacaa7914a4e41b30e9b8b6146f8bc8f89094ef82a14a79"
+  }
+]

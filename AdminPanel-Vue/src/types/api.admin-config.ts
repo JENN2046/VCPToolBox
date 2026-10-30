@@ -11,7 +11,9 @@ export interface ToolApprovalConfig {
   approveAll?: boolean;
   timeoutMinutes?: number;
   approvalList?: string[];
+  whitelist?: string[];
   fuzzyToolMatching?: boolean;
+  allowChainedCommandWhitelist?: boolean;
   privacyProtection?: ToolApprovalPrivacyProtectionConfig;
   timeout?: number;
   toolList?: string[];
@@ -19,6 +21,7 @@ export interface ToolApprovalConfig {
 
 export interface Preprocessor {
   name: string;
+  kind?: "preprocessor" | "stage";
   displayName?: string;
   description?: string;
 }

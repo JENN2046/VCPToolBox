@@ -2,7 +2,9 @@ importScripts(
     'webcore/web-agent-protocol.js',
     'webcore/adapter-contract.js',
     'webcore/web-agent-runtime-core.js',
-    'webcore/chrome-adapter.js'
+    'webcore/chrome-adapter.js',
+    'webcore/web-agent-entity-arbiter.js',
+    'jev-ws-proxy.js'
 );
 
 if (
@@ -63,7 +65,11 @@ let connectionEnabled = true;
 const chromeWebAgentAdapter = globalThis.VCPChromeWebAgentAdapter.createChromeWebAgentAdapter(chrome, {
     currentActiveTabId
 });
+const jevWsProxy = globalThis.VCPChromeJevWsProxy.createJevWsProxy(() => ws);
 const webAgentRuntime = globalThis.VCPWebAgentRuntimeCore.createWebAgentRuntime(chromeWebAgentAdapter, {
+    arbiter: globalThis.VCPWebAgentEntityArbiter.createEntityArbiter({
+        decide: (state, questions, options) => jevWsProxy.decide(state, questions, options)
+    }),
     audit(event) {
         if (event.phase === 'error') {
             console.warn('[VCP Background] Web Agent Core audit:', event);
@@ -346,6 +352,8 @@ function connect(options = {}) {
             console.log('Message from server:', event.data);
             const message = JSON.parse(event.data);
             
+            if (jevWsProxy.handleMessage(socket, message)) return;
+
             // 处理来自服务器的指令
             if (message.type === 'heartbeat_ack') {
                 console.log('Received heartbeat acknowledgment.');
@@ -475,6 +483,7 @@ function connect(options = {}) {
 
         socket.onclose = () => {
             console.log('WebSocket connection closed.');
+            jevWsProxy.clear(socket);
             if (socketHeartbeatIntervalId) {
                 clearInterval(socketHeartbeatIntervalId);
                 socketHeartbeatIntervalId = null;
@@ -788,6 +797,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.error("[VCP Background] ❌ 广播失败:", error);
             }
         });
+
+        // content script 的 FORCE_PAGE_UPDATE 会等待 PAGE_INFO_UPDATE 完成后
+        // 才响应 Popup。必须显式确认，否则消息通道因监听器返回 true 而永久悬挂。
+        sendResponse({
+            success: true,
+            accepted: true,
+            snapshotId: request.data.snapshotId
+        });
+        return false;
     } else if (request.type === 'MANUAL_REFRESH') {
         // 手动刷新不受监控开关限制
         console.log('[VCP Background] 🔄 收到手动刷新请求');
@@ -812,36 +830,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }, (response) => {
                 if (chrome.runtime.lastError) {
                     console.log('[VCP Background] ⚠️ Content script未就绪，尝试重新注入');
-                    // Content script未注入，先注入再发送
+                    // ComfyUI 状态桥必须运行在 MAIN world；通用 Core 与 content script
+                    // 仍运行在 ISOLATED world。两组脚本不能混在同一次注入中。
                     chrome.scripting.executeScript({
                         target: { tabId: targetTab.id },
+                        world: 'MAIN',
+                        files: ['webcore/comfyui-main-world-bridge.js']
+                    }).then(() => chrome.scripting.executeScript({
+                        target: { tabId: targetTab.id },
+                        world: 'ISOLATED',
                         files: [
                             'webcore/web-agent-protocol.js',
                             'webcore/web-agent-page-core.js',
+                            'webcore/comfyui-page-adapter.js',
                             'webcore/web-agent-page-runtime-core.js',
                             'content_script.js'
                         ]
-                    }, () => {
-                        if (chrome.runtime.lastError) {
-                            console.log('[VCP Background] ❌ 注入失败:', chrome.runtime.lastError.message);
-                            sendResponse({ success: false, error: '无法注入脚本: ' + chrome.runtime.lastError.message });
-                        } else {
-                            console.log('[VCP Background] ✅ 脚本注入成功，重新发送请求');
-                            // 等待一小段时间确保脚本完全加载
-                            setTimeout(() => {
-                                chrome.tabs.sendMessage(targetTab.id, {
-                                    type: 'FORCE_PAGE_UPDATE'
-                                }, (response) => {
-                                    if (chrome.runtime.lastError) {
-                                        console.log('[VCP Background] ❌ 重试发送失败:', chrome.runtime.lastError.message);
-                                        sendResponse({ success: false, error: chrome.runtime.lastError.message });
-                                    } else {
-                                        console.log('[VCP Background] ✅ content script响应:', response);
-                                        sendResponse({ success: true });
-                                    }
-                                });
-                            }, 100);
-                        }
+                    })).then(() => {
+                        console.log('[VCP Background] ✅ 脚本注入成功，重新发送请求');
+                        // 等待一小段时间确保脚本完全加载
+                        setTimeout(() => {
+                            chrome.tabs.sendMessage(targetTab.id, {
+                                type: 'FORCE_PAGE_UPDATE'
+                            }, (response) => {
+                                if (chrome.runtime.lastError) {
+                                    console.log('[VCP Background] ❌ 重试发送失败:', chrome.runtime.lastError.message);
+                                    sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                                } else {
+                                    console.log('[VCP Background] ✅ content script响应:', response);
+                                    sendResponse({ success: true });
+                                }
+                            });
+                        }, 100);
+                    }).catch(error => {
+                        console.log('[VCP Background] ❌ 注入失败:', error.message);
+                        sendResponse({ success: false, error: '无法注入脚本: ' + error.message });
                     });
                 } else {
                     console.log('[VCP Background] ✅ content script响应:', response);
@@ -1582,6 +1605,37 @@ async function handleIncomingCommand(commandData) {
                     details: error.details || null
                 }
             });
+        }
+        return;
+    }
+
+    // All targeted actions enter the shared orchestration layer, including ambiguity arbitration.
+    const coreActions = new Set(['click', 'type', 'set_value', 'send_keys', 'select_option', 'hover', 'check']);
+    const canonicalAction = String(command || '').replace(/^page_/, '');
+    if (coreActions.has(canonicalAction)) {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = commandData.targetId ?? tabs[0]?.id;
+        try {
+            if (!tabId) throw Object.assign(new Error('没有活动的标签页'), { code: 'NO_ACTIVE_TAB' });
+            const privileged = runtimeIdentity.managedRuntime || runtimeIdentity.clientKind === 'agent';
+            const actionBackend = privileged ? (commandData.actionBackend || 'content-script') : 'content-script';
+            const result = await executeLegacyCommandThroughCore({ ...commandData, targetId: tabId, actionBackend });
+            sendResponseToWs({ type: 'command_result', data: { requestId, sourceClientId, ...result } });
+            setTimeout(() => requestPageInfoWithRetry(tabId), 350);
+        } catch (error) {
+            // No action replay after dispatch, including navigation-related channel closure.
+            const navigated = shouldTreatChannelCloseAsNavigation({ command: canonicalAction }, error);
+            sendResponseToWs({
+                type: 'command_result',
+                data: {
+                    requestId, sourceClientId, status: navigated ? 'success' : 'error',
+                    code: navigated ? 'ACTION_DISPATCHED_UNCONFIRMED' : (error.code || 'BACKGROUND_COMMAND_ERROR'),
+                    message: navigated ? '动作后页面通道关闭；不重放动作，请通过新快照确认页面状态' : undefined,
+                    error: navigated ? undefined : error.message,
+                    details: error.details || null
+                }
+            });
+            if (navigated) setTimeout(() => requestPageInfoWithRetry(tabId), 350);
         }
         return;
     }

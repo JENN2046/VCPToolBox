@@ -33,8 +33,8 @@
         <small>最大等待</small>
       </span>
       <span class="summary-item">
-        <strong>{{ approvalRuleCount }}</strong>
-        <small>规则数量</small>
+        <strong>{{ approvalRuleCount }} / {{ whitelistRuleCount }}</strong>
+        <small>审核规则 / 白名单</small>
       </span>
     </section>
 
@@ -88,6 +88,12 @@
             description="工具参数值边界除标准「始」「末」外，还会兼容异常标记。"
           />
           <UiSettingsSwitchRow
+            v-model="config.allowChainedCommandWhitelist"
+            :disabled="saving"
+            label="允许命令白名单放行复合命令（高风险）"
+            description="默认关闭。开启后，前缀命中即可让整条命令免审核，包括后续串联、环境赋值、管道和重定向操作；不会逐段检查后续操作。适用于信任的 Agent。"
+          />
+          <UiSettingsSwitchRow
             v-model="config.privacyProtectionEnabled"
             :disabled="saving"
             label="启用工具调用隐私保护"
@@ -99,12 +105,12 @@
       <UiSettingsCard
         class="tool-approval-surface approval-rules-card"
         title="被审核规则名单"
-        description="支持 ToolName、ToolName:Command、ToolName::SilentReject、ToolName:Command::SilentReject。"
+        description="支持 ToolName、ToolName:Command、ToolName:参数名:[匹配值]，均可追加 ::SilentReject。"
         variant="subtle"
       >
         <UiField
           label="规则列表"
-          description="每行一条规则。带 ::SilentReject 的规则在用户拒绝时不会向 AI 返回拒绝提示。"
+          description="每行一条规则。参数级规则 [值] 默认前缀匹配（不区分大小写），[=值] 精确匹配，含 * 为通配。参数名 Path 匹配所有路径类参数（filePath、sourcePath 等），* 匹配所有参数。带 ::SilentReject 的规则在用户拒绝时不会向 AI 返回拒绝提示。"
           for-id="tool-approval-list"
         >
           <UiTextarea
@@ -113,7 +119,29 @@
             class="approval-list-textarea"
             rows="8"
             :disabled="saving"
-            placeholder="例如：&#10;SciCalculator&#10;PowerShellExecutor:Get-ChildItem&#10;PowerShellExecutor::SilentReject&#10;PowerShellExecutor:Remove-Item::SilentReject"
+            placeholder="例如：&#10;SciCalculator&#10;FileOperator:DeleteFile&#10;FileOperator:Path:[C:]&#10;FileOperator:filePath:[*.env]&#10;PowerShellExecutor&#10;PowerShellExecutor:Remove-Item::SilentReject"
+          />
+        </UiField>
+      </UiSettingsCard>
+
+      <UiSettingsCard
+        class="tool-approval-surface approval-rules-card"
+        title="免审核白名单"
+        description="命中白名单的调用跳过审核。语法与审核规则相同（不支持 ::SilentReject）。"
+        variant="subtle"
+      >
+        <UiField
+          label="白名单列表"
+          description="白名单仅在其具体程度不低于命中的审核规则时生效（参数级 > 命令级 > 工具级，同级时白名单优先）。调用中该参数的所有值（含 command1、command2…）都必须命中白名单；默认遇到串联/重定向等特殊字符时失效。开启高风险复合命令兼容后，按规则放行整条命令，不检查后续操作。"
+          for-id="tool-approval-whitelist"
+        >
+          <UiTextarea
+            id="tool-approval-whitelist"
+            v-model="config.whitelistText"
+            class="approval-list-textarea"
+            rows="6"
+            :disabled="saving"
+            placeholder="例如：&#10;PowerShellExecutor:command:[node]&#10;PowerShellExecutor:command:[git status]&#10;FileOperator:Path:[H:\VCP\workspace]"
           />
         </UiField>
       </UiSettingsCard>
@@ -144,8 +172,10 @@ interface ToolApprovalFormState {
   approveAll: boolean
   timeoutMinutes: number
   fuzzyToolMatching: boolean
+  allowChainedCommandWhitelist: boolean
   privacyProtectionEnabled: boolean
   approvalListText: string
+  whitelistText: string
 }
 
 function createDefaultConfig(): ToolApprovalFormState {
@@ -154,9 +184,18 @@ function createDefaultConfig(): ToolApprovalFormState {
     approveAll: false,
     timeoutMinutes: 5,
     fuzzyToolMatching: false,
+    allowChainedCommandWhitelist: false,
     privacyProtectionEnabled: false,
-    approvalListText: ''
+    approvalListText: '',
+    whitelistText: ''
   }
+}
+
+function splitRuleLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
 }
 
 function normalizeToolApprovalConfig(data: ToolApprovalConfig): ToolApprovalFormState {
@@ -171,8 +210,10 @@ function normalizeToolApprovalConfig(data: ToolApprovalConfig): ToolApprovalForm
     approveAll: Boolean(data.approveAll),
     timeoutMinutes: data.timeoutMinutes ?? data.timeout ?? 5,
     fuzzyToolMatching: Boolean(data.fuzzyToolMatching),
+    allowChainedCommandWhitelist: data.allowChainedCommandWhitelist === true,
     privacyProtectionEnabled: data.privacyProtection?.enabled === true,
-    approvalListText: approvalList.join('\n')
+    approvalListText: approvalList.join('\n'),
+    whitelistText: Array.isArray(data.whitelist) ? data.whitelist.join('\n') : ''
   }
 }
 
@@ -188,13 +229,12 @@ function buildPayload(state: ToolApprovalFormState) {
     approveAll: state.approveAll,
     timeoutMinutes: state.timeoutMinutes,
     fuzzyToolMatching: state.fuzzyToolMatching,
+    allowChainedCommandWhitelist: state.allowChainedCommandWhitelist,
     privacyProtection: {
       enabled: state.privacyProtectionEnabled
     },
-    approvalList: state.approvalListText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean),
+    approvalList: splitRuleLines(state.approvalListText),
+    whitelist: splitRuleLines(state.whitelistText),
   }
 }
 
@@ -208,6 +248,10 @@ const isDirty = computed(() => {
 
 const approvalRuleCount = computed(() => {
   return buildPayload(config.value).approvalList.length
+})
+
+const whitelistRuleCount = computed(() => {
+  return buildPayload(config.value).whitelist.length
 })
 
 const statusBadgeVariant = computed(() => {

@@ -74,13 +74,17 @@ assertFunctionSurface(
 assertFunctionSurface(nativeModule.VexusIndex, ['load'], 'VexusIndex static');
 assertFunctionSurface(
   nativeModule.VexusIndex.prototype,
-  ['add', 'remove', 'save', 'search', 'stats'],
+  ['add', 'remove', 'save', 'search', 'stats', 'releaseMemoObservation', 'memoObservationMemoryStats'],
   'VexusIndex'
 );
 
 const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vexus-native-abi-'));
 try {
   const index = new nativeModule.VexusIndex(4, 16);
+  const observationMemory = JSON.parse(index.memoObservationMemoryStats());
+  if (observationMemory.entries !== 0 || index.releaseMemoObservation('synthetic-missing') !== false) {
+    throw new Error('Memo observation lifetime ABI smoke failed');
+  }
   index.add(1, new Float32Array([1, 0, 0, 0]));
   index.add(2, new Float32Array([0, 1, 0, 0]));
 

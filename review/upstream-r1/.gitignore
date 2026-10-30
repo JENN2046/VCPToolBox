@@ -1,0 +1,5 @@
+delivery/
+logs/
+*.txt
+*.log
+*.diff

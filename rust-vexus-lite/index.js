@@ -69,7 +69,9 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./vexus-lite.win32-x64-msvc.node')
           } else {
-            nativeBinding = require('vexus-lite-win32-x64-msvc')
+            // The upstream Windows payload is quarantined: it was not built
+            // from this merged source and lacks Jenn's host contract proof.
+            throw new Error('VEXUS_CANDIDATE_BUILD_REQUIRED: build the merged rust-vexus-lite source for Windows x64; the upstream .unverified artifact is not loadable')
           }
         } catch (e) {
           loadError = e

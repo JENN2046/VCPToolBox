@@ -1,0 +1,268 @@
+{
+  "schema": 1,
+  "upstream": "30193c89249345479e03be6d4913c35d583df84e",
+  "source_equivalence_checked_against": "ccf7d522cdca4356dde86bee6286b36e2320b547",
+  "scope": "Traceable CI artifacts plus payload/source-input checks and isolated functionality; no claim of cross-machine bit equality.",
+  "rust": "1.89.0",
+  "source_inputs": {
+    "vexus": [
+      {
+        "path": "rust-vexus-lite/Cargo.lock",
+        "git_blob": "aa595ff17b3bd2e56c960a23cfdc9b84446c0a90",
+        "sha256_lf": "cca8c8a77ecec47564f357fe01e4098b7ca445453029a09a61eb3d30530a3554"
+      },
+      {
+        "path": "rust-vexus-lite/Cargo.toml",
+        "git_blob": "738bede12e34d19e96bfb86c094a1d46ce8ce3a2",
+        "sha256_lf": "d76e087375fd20fd188ecd49d149f2220805f0b25ecb9bfa69b57cfb09566e8b"
+      },
+      {
+        "path": "rust-vexus-lite/build.rs",
+        "git_blob": "9fc236788932b315126703962085b45ee88c802a",
+        "sha256_lf": "aa7d2ac01ee024deb2df8891a498123bb7c15d9303fb767f6085a9aac92f0d4f"
+      },
+      {
+        "path": "rust-vexus-lite/package.json",
+        "git_blob": "232a95ef206e6ffab0cdff959826faaa10f6fedb",
+        "sha256_lf": "c996185f59cc84208077f854077f2f5451368ea9cd05c775ba0b06028fed7f7c"
+      },
+      {
+        "path": "rust-vexus-lite/src/knowledge_runtime.rs",
+        "git_blob": "3a0e5d9f8c50b76fd6d00d1db7b6167ffd8edbdc",
+        "sha256_lf": "5bd383928083ce6ad6bbefbfb7ade5b18c44d77e70ca7976e6f56dbb224f6fbf"
+      },
+      {
+        "path": "rust-vexus-lite/src/lib.rs",
+        "git_blob": "968f428e36c8bdebeeb76a4236a00dfeeb130ca7",
+        "sha256_lf": "2fac3ad2c948507c281ca391b382966f35d48211c09ee064e4a838fffb360de2"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_artifact_builder.rs",
+        "git_blob": "76f59830ddd9eefac862484526fd11ed4fcedbde",
+        "sha256_lf": "941de0749fd625759e0c6a19d05a3cd36b4dcecaf951ff49f096d9eeb8397b7d"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_pipeline.rs",
+        "git_blob": "7d6dfbfe6ddd324d94e83be41f857c709b599fc3",
+        "sha256_lf": "0df8b6876e5077ade3e42424ea4e64ab63009f85d0b64ac213dbd78d5684c43a"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_sensing.rs",
+        "git_blob": "8d9410917b8b9e00ff9d91ec4e42b6cf0a1cc91c",
+        "sha256_lf": "87fbc456dbe71bfce4f6e4c26cbe1061bdb226ca305b5955addf8fbf96216e2b"
+      },
+      {
+        "path": "rust-vexus-lite/src/memo_thinking.rs",
+        "git_blob": "e0d8cea824cd7794b95a7eaf97e6a74700620363",
+        "sha256_lf": "406042987420b2978c3d4ea0445a3e6a6e602fec31fa3c6abb83bd58b1a8a542"
+      },
+      {
+        "path": "rust-vexus-lite/src/result_deduplicator.rs",
+        "git_blob": "5222d180b480d7bdc23d870a3fe016c67b9ab65e",
+        "sha256_lf": "3ac1503defd87e1b2f02ecd705018ac83c38a914be51b93560f575ae0f67a97b"
+      },
+      {
+        "path": "rust-vexus-lite/src/rivermemo_topology_v3.rs",
+        "git_blob": "f994f13b9354a95a4d394f6efaa276adf6b99924",
+        "sha256_lf": "b3267c82c716d55b2a856427ab45f227e18f01066438f2162206f22aa6fc0181"
+      }
+    ],
+    "codesearcher": [
+      {
+        "path": "Plugin/CodeSearcher/src/Cargo.lock",
+        "git_blob": "adfb07da6812003f35f3fe00d1e048cd5e3e3f1a",
+        "sha256_lf": "ccea9fabf6d7b07da5cc4a423efb1e67ef5ccf12633b3ef7d92a1355efaa9f3e"
+      },
+      {
+        "path": "Plugin/CodeSearcher/src/Cargo.toml",
+        "git_blob": "3aa38b8b418042231b0f862721147f37de047e6c",
+        "sha256_lf": "fafa67f64e5f747c8461b263f0e21146f2b270c27fbe3b95deba67abe0bcdfeb"
+      },
+      {
+        "path": "Plugin/CodeSearcher/src/src/main.rs",
+        "git_blob": "90e3f6e22d0a34429a3ae2deeb94cb11d50d1362",
+        "sha256_lf": "4f8aafae80813517ac91f4d6ee341d26267c9e3ffde5841bfe8716608528d165"
+      }
+    ],
+    "daily": [
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.lock",
+        "git_blob": "30a4f600dcd8635bbdb9e8bb6110f43f3aab7312",
+        "sha256_lf": "93899ddf0a06ca022a9103e69c489f73ae486cd8e56153af71ce3c02eea1c73d"
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.toml",
+        "git_blob": "afee6995f28752f93aa10bac645052a3cb492666",
+        "sha256_lf": "31db2f8205b4135201c3744e725342c1473d0818107f43b600f7e8137a3a01b8"
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/src/main.rs",
+        "git_blob": "8d96f520881d6f32b3b3d2ef2e8f4e988f5f0b1f",
+        "sha256_lf": "d41f8fa877b32b0bc07e5457f6b047e76bee5870bb252fb1992b4d66d00759e0"
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-aarch64-unknown-linux-musl",
+      "group": "codesearcher",
+      "target": "aarch64-unknown-linux-musl",
+      "sha256": "009ff0625894b449c02564614366147c922a14fc06ed31f309ea8000cb7f1c06",
+      "size": 3665072,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035757809,
+      "archive_sha256": "853e00d20df514424ec7445af6d53af3ff3c64f15c107bdd05239151405fe41b"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-linux-arm64",
+      "group": "codesearcher",
+      "target": "aarch64-unknown-linux-musl",
+      "sha256": "009ff0625894b449c02564614366147c922a14fc06ed31f309ea8000cb7f1c06",
+      "size": 3665072,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035757809,
+      "archive_sha256": "853e00d20df514424ec7445af6d53af3ff3c64f15c107bdd05239151405fe41b"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-unknown-linux-gnu",
+      "group": "daily",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "22c2cb9f33a1f428dee429be0afc677494d6d986ed2c38a6f8a93ba1d4d19ea5",
+      "size": 3811280,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035294273,
+      "archive_sha256": "54022be947cdebccd0fb8cb9759d1315b9055efbe1767519cf71e30676b9304f"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-aarch64-unknown-linux-gnu",
+      "group": "codesearcher",
+      "target": "aarch64-unknown-linux-gnu",
+      "sha256": "422575570521646a43017258e42b207c0ec617cca2cca80944926e798ef4db1b",
+      "size": 3744536,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035289091,
+      "archive_sha256": "0dd3a5bca56eea1f532ec1a3bce647449be82377de0d7257f0998c76ede955eb"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-x86_64-unknown-linux-musl",
+      "group": "codesearcher",
+      "target": "x86_64-unknown-linux-musl",
+      "sha256": "b68c617722e35f7d6bc436d4a8e8d9c64a8c08de3a04d0108731ef7a6562f5e3",
+      "size": 3957960,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035094663,
+      "archive_sha256": "26351206f2c58b8379026f19e941ba3c03ca3a8a7dac81a954b84adfaa027d49"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-linux-x64-musl",
+      "group": "codesearcher",
+      "target": "x86_64-unknown-linux-musl",
+      "sha256": "b68c617722e35f7d6bc436d4a8e8d9c64a8c08de3a04d0108731ef7a6562f5e3",
+      "size": 3957960,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035094663,
+      "archive_sha256": "26351206f2c58b8379026f19e941ba3c03ca3a8a7dac81a954b84adfaa027d49"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-x86_64-unknown-linux-gnu",
+      "group": "codesearcher",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "097c09897f63dbaccc3bd9f7ce7f8f5ddfe63738c74e69ad4e6830c81ae3eeff",
+      "size": 3730976,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155573,
+      "artifact_id": 12035079749,
+      "archive_sha256": "122ae763d5922b0b725200e76485e0b36cd844347caacd96de155fd828f530b1"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher-x86_64-pc-windows-msvc.exe",
+      "group": "codesearcher",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "f37816bef3d459e28785128a509b3b9659d75bebf6c0fb27ee74609e43722305",
+      "size": 2574848,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155394,
+      "artifact_id": 12035643096,
+      "archive_sha256": "3baee5d832d3b7e802fd04fbadeaec437ecdf8ddec226bed57ea6839fa246168"
+    },
+    {
+      "path": "Plugin/CodeSearcher/CodeSearcher.exe",
+      "group": "codesearcher",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "f37816bef3d459e28785128a509b3b9659d75bebf6c0fb27ee74609e43722305",
+      "size": 2574848,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155394,
+      "artifact_id": 12035643096,
+      "archive_sha256": "3baee5d832d3b7e802fd04fbadeaec437ecdf8ddec226bed57ea6839fa246168"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-pc-windows-msvc.exe",
+      "group": "daily",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "c1cc3a4ab2dd3a3d5b784c764017f265136150f85f929829a603a537b337ff17",
+      "size": 2654720,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155087,
+      "artifact_id": 12036460195,
+      "archive_sha256": "35de3863f2251078268a9e3086933f694221306ed882bb2f05823303a94b5065"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher.exe",
+      "group": "daily",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "c1cc3a4ab2dd3a3d5b784c764017f265136150f85f929829a603a537b337ff17",
+      "size": 2654720,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155087,
+      "artifact_id": 12036460195,
+      "archive_sha256": "35de3863f2251078268a9e3086933f694221306ed882bb2f05823303a94b5065"
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.node",
+      "group": "vexus",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "34c7825056e70914d29057604ce137a6378771e413a366459693938dc301ffcc",
+      "size": 4443136,
+      "source_commit": "abd979213216de8f3a792c764a8e8bc2f8d4d230",
+      "run_id": 38877155087,
+      "artifact_id": 12036460195,
+      "archive_sha256": "35de3863f2251078268a9e3086933f694221306ed882bb2f05823303a94b5065"
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-aarch64-unknown-linux-musl",
+      "group": "daily",
+      "target": "aarch64-unknown-linux-musl",
+      "sha256": "d8441bd85aaee9ed4dd269195e8b78fd7ec40a3ce0e37e71af391d553144fbb7",
+      "size": 3764984,
+      "source_commit": "ccf7d522cdca4356dde86bee6286b36e2320b547",
+      "run_id": 38877992760,
+      "artifact_id": 12036735454,
+      "archive_sha256": "e31062a86144eba2ecf13c0dacb0f19b7e552247a19b7a20c5209157e8d55851"
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-x64-gnu.node",
+      "group": "vexus",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "5af383730fff77eb2c6a47012cce2059b85b9dd26c6f5564a131b51bcf60b6b3",
+      "size": 4445776,
+      "source_commit": "ccf7d522cdca4356dde86bee6286b36e2320b547",
+      "run_id": 38877993171,
+      "artifact_id": 12036038370,
+      "archive_sha256": "f17ad79c1fbd0a6c5b8afa5347b6564c32e280ca6cfa89cc6c1390ff9f8aca17"
+    }
+  ],
+  "unchanged_vexus_platforms_not_rebuilt": [
+    "darwin-arm64",
+    "linux-arm64-gnu",
+    "linux-arm64-musl",
+    "linux-x64-musl",
+    "generic legacy"
+  ]
+}

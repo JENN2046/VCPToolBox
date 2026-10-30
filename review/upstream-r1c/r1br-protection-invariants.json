@@ -1,0 +1,92 @@
+[
+  {
+    "path": "Plugin.js",
+    "status": "UNCHANGED",
+    "sha256": "3eae0eb69510d82be4e6bf6d24070026cdb671992f0866883f3b18556067c4a7"
+  },
+  {
+    "path": "WebSocketServer.js",
+    "status": "UNCHANGED",
+    "sha256": "40e3a27b7abf0804c017465b3a2c64682824911aa6656689a06eb360904154d4"
+  },
+  {
+    "path": "modules/toolResultPrivacyGuard.js",
+    "status": "UNCHANGED",
+    "sha256": "0929a4b3c59176a2745efc16ca1bc408ed62bb1cf563dd242b086efcfeacd53a"
+  },
+  {
+    "path": "modules/approvalReceiptAuthority.js",
+    "status": "UNCHANGED",
+    "sha256": "e8da0d28bd1cc8826148ec1c4bde1a2d77e1abf00a2bbf136c60f86b5d7ff06e"
+  },
+  {
+    "path": "modules/humanClientAdmission.js",
+    "status": "UNCHANGED",
+    "sha256": "918b2f16dc2b4734378a93f1916d54f90cb29770294d68eac9b6fb40c1c0e9ec"
+  },
+  {
+    "path": "modules/trustedClientImplementationProfile.js",
+    "status": "UNCHANGED",
+    "sha256": "0c4fcc660a8e5ca44e482dea9e44714f7545d19630342865b72b9dee8b797fb9"
+  },
+  {
+    "path": "modules/externalPluginAllowPolicy.js",
+    "status": "UNCHANGED",
+    "sha256": "e8d7dcef3387acb660c8a9401d17092c5cc6d2c1cd14dc3e71f51e9441e2d5d9"
+  },
+  {
+    "path": "modules/externalPluginSafetyGate.js",
+    "status": "UNCHANGED",
+    "sha256": "1bf281b1bbe5c53a17693a88a626aace053145e5aedbe013d02cc4b6ec79ac85"
+  },
+  {
+    "path": "modules/pluginBridgeRegistry.js",
+    "status": "UNCHANGED",
+    "sha256": "122daecdc68113bab9ceaf0fbedbe54ef59120b5319df9805d21a7127db0398a"
+  },
+  {
+    "path": "modules/vcpLoop/toolExecutor.js",
+    "status": "UNCHANGED",
+    "sha256": "b09d2cd52f6ad092dbc1716346ac58dc756e925614df04b166e622cf62ef4a94"
+  },
+  {
+    "path": "modules/vcpLoop/toolCallParser.js",
+    "status": "UNCHANGED",
+    "sha256": "f2e827b2ca753355b8d1bb31ab81bd32016b06628a33c54b040086cdb4f4c945"
+  },
+  {
+    "path": "modules/toolResultBatch.js",
+    "status": "UNCHANGED",
+    "sha256": "70fb62ee19d21e072ce4329e7970d695c27ec750e99c896b1199ee2f2534e35f"
+  },
+  {
+    "path": "modules/handlers/streamHandler.js",
+    "status": "UNCHANGED",
+    "sha256": "0b5eb274df72e72bfc64c94ddd847f5bddfa78bc5d4bb9ca30b39f8231553f39"
+  },
+  {
+    "path": "modules/handlers/nonStreamHandler.js",
+    "status": "UNCHANGED",
+    "sha256": "ff551d005c8adb9b4bae890d1e43f69729dcb929ed8c0de2455032b832f45f60"
+  },
+  {
+    "path": "modules/jevClient.js",
+    "status": "UNCHANGED",
+    "sha256": "95f957468c976bc305ba45488a93388655e822deb68c9c28a7f62803537133c9"
+  },
+  {
+    "path": "Plugin/OneRing/OneRing.js",
+    "status": "UNCHANGED",
+    "sha256": "1bd90baaa85bf73641a92fffc7e98cea70ac69eca97c886e2a3cce1c1c336815"
+  },
+  {
+    "path": "Plugin/LinuxShellExecutor/LinuxShellExecutor.js",
+    "status": "UNCHANGED",
+    "sha256": "5bfd7d0df92acbd547d32635956593ca75260a9889eb48302338c7a47edc48de"
+  },
+  {
+    "path": "Plugin/FileOperator/FileOperator.js",
+    "status": "UNCHANGED",
+    "sha256": "ffbef314b6204dc0431a68f036cedc2381965ff30ffe6b698cde04a271c4eff0"
+  }
+]

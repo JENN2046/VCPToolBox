@@ -11,10 +11,12 @@ let pluginManager = null; // 为 PluginManager 实例占位
 let attachedHttpServer = null;
 let upgradeHandler = null;
 let heartbeatInterval = null;
+let ordinaryHeartbeatInterval = null;
 let isDraining = false;
 let shutdownPromise = null;
 
-const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 20 * 1000;
+const NATIVE_WEBSOCKET_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 
 let serverConfig = {
     debugMode: false,
@@ -109,6 +111,15 @@ function normalizeDeviceName(value) {
     return normalized || null;
 }
 
+// Log sensitivity is broader than the exact native execution type.
+function isSensitiveNativeMessage(message) {
+    return message !== null && typeof message === 'object' && (
+        Object.prototype.hasOwnProperty.call(message, 'authorization') ||
+        message.type === 'tool_approval_response' ||
+        (typeof message.type === 'string' && /^native/i.test(message.type))
+    );
+}
+
 async function writeLog(message) {
     // 实际项目中，这里可以对接更完善的日志系统
     // 为了简化，暂时只在 debugMode 开启时打印到控制台
@@ -117,18 +128,20 @@ async function writeLog(message) {
     }
 }
 
-async function ensureAsyncResultsDir() {
+async function ensureAsyncResultsDir(sensitive = false) {
     try {
         await fs.mkdir(VCP_ASYNC_RESULTS_DIR, { recursive: true });
     } catch (error) {
-        console.error(`[WebSocketServer] Failed to create VCPAsyncResults directory: ${VCP_ASYNC_RESULTS_DIR}`, error);
+        if (sensitive) console.error('[WebSocketServer]', { code: 'WS_MESSAGE_HANDLER_FAILED' });
+        else console.error(`[WebSocketServer] Failed to create VCPAsyncResults directory: ${VCP_ASYNC_RESULTS_DIR}`, error);
     }
 }
 
 async function handleDistributedPluginCallback(serverId, message) {
+    const sensitive = isSensitiveNativeMessage(message);
     const callbackData = message?.data?.callbackData;
     if (!callbackData || typeof callbackData !== 'object') {
-        writeLog(`Invalid plugin_callback_forward payload from server ${serverId}.`);
+        writeLog(sensitive ? 'WS_SENSITIVE_MESSAGE' : `Invalid plugin_callback_forward payload from server ${serverId}.`);
         return;
     }
 
@@ -136,28 +149,30 @@ async function handleDistributedPluginCallback(serverId, message) {
     const taskId = callbackData.taskId || callbackData.task_id || callbackData.TaskId;
 
     if (!pluginName || !taskId) {
-        writeLog(`Distributed plugin callback missing pluginName or taskId from server ${serverId}.`);
+        writeLog(sensitive ? 'WS_SENSITIVE_MESSAGE' : `Distributed plugin callback missing pluginName or taskId from server ${serverId}.`);
         return;
     }
 
-    if (serverConfig.debugMode) {
+    if (serverConfig.debugMode && !sensitive) {
         console.log(`[WebSocketServer] Received distributed callback for plugin: ${pluginName}, taskId: ${taskId}, serverId: ${serverId}`);
     }
 
-    await ensureAsyncResultsDir();
+    await ensureAsyncResultsDir(sensitive);
     const resultFilePath = path.join(VCP_ASYNC_RESULTS_DIR, `${pluginName}-${taskId}.json`);
     try {
         await fs.writeFile(resultFilePath, JSON.stringify(callbackData, null, 2), 'utf-8');
-        if (serverConfig.debugMode) {
+        if (serverConfig.debugMode && !sensitive) {
             console.log(`[WebSocketServer] Saved distributed async result for ${pluginName}-${taskId} to ${resultFilePath}`);
         }
     } catch (fileError) {
-        console.error(`[WebSocketServer] Error saving distributed async result file for ${pluginName}-${taskId}:`, fileError);
+        if (sensitive) console.error('[WebSocketServer]', { code: 'WS_MESSAGE_HANDLER_FAILED' });
+        else console.error(`[WebSocketServer] Error saving distributed async result file for ${pluginName}-${taskId}:`, fileError);
     }
 
     const pluginManifest = pluginManager.getPlugin(pluginName);
     if (!pluginManifest) {
-        console.error(`[WebSocketServer] Plugin manifest not found for distributed callback: ${pluginName}`);
+        if (sensitive) console.error('[WebSocketServer]', { code: 'WS_MESSAGE_HANDLER_FAILED' });
+        else console.error(`[WebSocketServer] Plugin manifest not found for distributed callback: ${pluginName}`);
         return;
     }
 
@@ -167,11 +182,11 @@ async function handleDistributedPluginCallback(serverId, message) {
             type: pluginManifest.webSocketPush.messageType || 'plugin_callback_notification',
             data: callbackData
         };
-        broadcast(wsMessage, targetClientType);
-        if (serverConfig.debugMode) {
+        broadcast(wsMessage, targetClientType, null, sensitive);
+        if (serverConfig.debugMode && !sensitive) {
             console.log(`[WebSocketServer] Distributed callback WebSocket push for ${pluginName} (taskId: ${taskId}) processed.`);
         }
-    } else if (serverConfig.debugMode) {
+    } else if (serverConfig.debugMode && !sensitive) {
         console.log(`[WebSocketServer] WebSocket push not configured or disabled for distributed callback plugin: ${pluginName}`);
     }
 }
@@ -185,6 +200,10 @@ function initialize(httpServer, config) {
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
+    }
+    if (ordinaryHeartbeatInterval) {
+        clearInterval(ordinaryHeartbeatInterval);
+        ordinaryHeartbeatInterval = null;
     }
 
     serverConfig = { ...serverConfig, ...config };
@@ -200,7 +219,7 @@ function initialize(httpServer, config) {
 
     upgradeHandler = (request, socket, head) => {
         if (isDraining) {
-            writeLog(`Rejecting WebSocket upgrade during draining: ${request.url}`);
+            writeLog('WS_UPGRADE_DRAINING');
             try {
                 socket.destroy();
             } catch (e) {
@@ -255,7 +274,7 @@ function initialize(httpServer, config) {
             connectionKey = adminPanelMatch[1];
             writeLog(`Admin Panel client attempting to connect.`);
         } else {
-            writeLog(`WebSocket upgrade request for unhandled path: ${pathname}. Ignoring.`);
+            writeLog('WS_UPGRADE_PATH_REJECTED');
             socket.destroy();
             return;
         }
@@ -287,6 +306,7 @@ function initialize(httpServer, config) {
 
         if (isAuthenticated) {
             wssInstance.handleUpgrade(request, socket, head, (ws) => {
+                require('./modules/nativeConversationWebSocket').recordNativeTransport(ws, socket);
                 const clientId = generateClientId();
                 ws.clientId = clientId;
                 ws.clientType = clientType;
@@ -391,22 +411,29 @@ function initialize(httpServer, config) {
         }
         // 可以根据 ws.clientType 或其他标识符发送不同的欢迎消息
 
-        ws.on('message', (message) => {
+        ws.on('message', async (message) => {
             const messageString = message.toString();
+            let failureCode = 'WS_JSON_PARSE_FAILED';
             
             try {
                 const parsedMessage = JSON.parse(message);
+                failureCode = 'WS_NATIVE_HANDLER_FAILED';
+                // Exact native execution routing is separate from broader log sensitivity.
+                if (await require('./modules/nativeConversationWebSocket').handleNativeConversationMessage(ws, parsedMessage, pluginManager, Buffer.byteLength(message))) return;
+                failureCode = 'WS_MESSAGE_HANDLER_FAILED';
+                const sensitive = isSensitiveNativeMessage(parsedMessage);
                 
                 // ChromeObserver 的消息日志降级到 debugMode
-                if (ws.clientType === 'ChromeObserver' && serverConfig.debugMode) {
+                if (ws.clientType === 'ChromeObserver' && serverConfig.debugMode && !sensitive) {
                     console.log(`[WebSocketServer] 📨 收到 ChromeObserver 消息，类型: ${parsedMessage.type}`);
                 }
                 
                 if (serverConfig.debugMode) {
-                    console.log(`[WebSocketServer] Received message from ${ws.clientId} (${ws.clientType}): ${messageString.substring(0, 300)}...`);
+                    if (sensitive) console.log('[WebSocketServer]', { code: 'WS_SENSITIVE_MESSAGE' });
+                    else console.log(`[WebSocketServer] Received message from ${ws.clientId} (${ws.clientType}): ${messageString.substring(0, 300)}...`);
                 }
                 if (ws.clientType === 'DistributedServer') {
-                    module.exports.handleDistributedServerMessage(ws.serverId, parsedMessage);
+                    await module.exports.handleDistributedServerMessage(ws.serverId, parsedMessage);
                 } else if (ws.clientType === 'ChromeObserver') {
                     if (parsedMessage.type === 'heartbeat') {
                         // 收到心跳包，发送确认
@@ -518,12 +545,10 @@ function initialize(httpServer, config) {
                 } else if (parsedMessage.type === 'tool_approval_response') {
                     const { requestId, approved, reason } = parsedMessage.data || {};
                     if (pluginManager) {
-                        const success = pluginManager.handleApprovalResponse(requestId, approved, reason);
-                        if (serverConfig.debugMode) {
-                            const reasonPreview = typeof reason === 'string' && reason.trim()
-                                ? ` Reason: ${reason.trim().substring(0, 200)}`
-                                : '';
-                            console.log(`[WebSocketServer] Approval response for ${requestId}: ${approved ? 'APPROVED' : 'REJECTED'}. Handled: ${success}.${reasonPreview}`);
+                        const success = await pluginManager.handleApprovalResponse(requestId, approved, reason);
+                        if (serverConfig.debugMode && !sensitive) {
+                            // Rejection reasons may be private even in DebugMode.
+                            console.log(`[WebSocketServer] Approval response for ${requestId}: ${approved ? 'APPROVED' : 'REJECTED'}. Handled: ${success}.`);
                         }
                     }
                 } else if (ws.clientType === 'AdminPanel') {
@@ -532,7 +557,7 @@ function initialize(httpServer, config) {
                     // 未来处理其他客户端类型的消息
                 }
             } catch (e) {
-                console.error(`[WebSocketServer] Failed to parse message from client ${ws.clientId}:`, message.toString(), e);
+                console.error('[WebSocketServer]', { code: failureCode });
             }
         });
 
@@ -575,21 +600,31 @@ function initialize(httpServer, config) {
         });
 
         ws.on('error', (error) => {
-            console.error(`[WebSocketServer] Error with client ${ws.clientId}:`, error);
-            writeLog(`WebSocket error for client ${ws.clientId}: ${error.message}`);
+            console.error('[WebSocketServer]', { code: 'WS_SOCKET_ERROR' });
             // 确保在出错时也从 clients Map 中移除
             if(ws.clientId) clients.delete(ws.clientId);
         });
     });
 
-    if (serverConfig.heartbeatEnabled) {
-        heartbeatInterval = setInterval(() => {
-            if (!wssInstance || isDraining) return;
+    // Native session liveness retains its existing single 60s timer.
+    heartbeatInterval = setInterval(() => {
+        if (!wssInstance || isDraining) return;
+        wssInstance.clients.forEach(client => {
+            if (client.readyState !== WebSocket.OPEN) return;
+            require('./modules/nativeConversationWebSocket').heartbeatNativeConversation(client);
+        });
+    }, NATIVE_WEBSOCKET_HEARTBEAT_INTERVAL_MS);
+    heartbeatInterval.unref();
 
+    // Ordinary clients need traffic comfortably before a possible 60s idle limit.
+    // Never ping an admitted native session here: its pong deadline belongs above.
+    if (serverConfig.heartbeatEnabled) {
+        ordinaryHeartbeatInterval = setInterval(() => {
+            if (!wssInstance || isDraining) return;
             let pingedClientCount = 0;
             wssInstance.clients.forEach(client => {
                 if (client.readyState !== WebSocket.OPEN) return;
-
+                if (require('./modules/nativeConversationWebSocket').isNativeConversationConnection(client)) return;
                 try {
                     client.ping();
                     pingedClientCount++;
@@ -597,14 +632,12 @@ function initialize(httpServer, config) {
                     console.warn(`[WebSocketServer] Heartbeat ping failed for client ${client.clientId || 'unknown'}: ${error.message}`);
                 }
             });
-
             if (serverConfig.debugMode && pingedClientCount > 0) {
-                console.log(`[WebSocketServer] Sent heartbeat ping to ${pingedClientCount} connected client(s).`);
+                console.log(`[WebSocketServer] Sent heartbeat ping to ${pingedClientCount} ordinary client(s).`);
             }
         }, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
-        heartbeatInterval.unref();
-
-        console.log(`[WebSocketServer] Protocol heartbeat enabled (interval: ${WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s).`);
+        ordinaryHeartbeatInterval.unref();
+        console.log(`[WebSocketServer] Protocol heartbeat enabled (ordinary: ${WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s; native: ${NATIVE_WEBSOCKET_HEARTBEAT_INTERVAL_MS / 1000}s).`);
     }
 
     if (serverConfig.debugMode) {
@@ -613,7 +646,7 @@ function initialize(httpServer, config) {
 }
 
 // 广播给所有已连接且认证的客户端，或者根据 clientType 筛选
-function broadcast(data, targetClientType = null, abortController = null) {
+function broadcast(data, targetClientType = null, abortController = null, sensitive = false) {
     // 新增：检查中止信号，如果请求已被中止，则跳过广播
     if (abortController && abortController.signal && abortController.signal.aborted) {
         if (serverConfig.debugMode) {
@@ -632,7 +665,8 @@ function broadcast(data, targetClientType = null, abortController = null) {
             const entry = vcpLogReplayManager.enqueue(data);
             cacheEntryId = entry ? entry.id : null;
         } catch (e) {
-            console.error('[WebSocketServer] vcpLogReplayManager.enqueue failed:', e.message);
+            if (sensitive) console.error('[WebSocketServer]', { code: 'WS_BROADCAST_FAILED' });
+            else console.error('[WebSocketServer] vcpLogReplayManager.enqueue failed:', e.message);
         }
     }
 
@@ -655,13 +689,15 @@ function broadcast(data, targetClientType = null, abortController = null) {
                     }
                 } catch (sendErr) {
                     if (serverConfig.debugMode) {
-                        console.warn(`[WebSocketServer] broadcast send failed to ${clientWs.clientId}: ${sendErr.message}`);
+                        if (sensitive) console.warn('[WebSocketServer]', { code: 'WS_BROADCAST_FAILED' });
+                        else console.warn(`[WebSocketServer] broadcast send failed to ${clientWs.clientId}: ${sendErr.message}`);
                     }
                 }
             }
         }
     });
-    writeSerializedFrameLog(
+    if (sensitive) writeLog('WS_SENSITIVE_MESSAGE');
+    else writeSerializedFrameLog(
         serializedFrame,
         frame => `Broadcasted (Target: ${targetClientType || 'All'}): ${frame.substring(0, 200)}...`
     );
@@ -703,6 +739,10 @@ async function beginDrain() {
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
+    }
+    if (ordinaryHeartbeatInterval) {
+        clearInterval(ordinaryHeartbeatInterval);
+        ordinaryHeartbeatInterval = null;
     }
 
     writeLog('WebSocketServer entered draining mode.');
@@ -767,7 +807,8 @@ async function handleDistributedServerMessage(serverId, message) {
         console.error('[WebSocketServer] PluginManager not set, cannot handle distributed server message.');
         return;
     }
-    writeLog(`Received message from Distributed Server ${serverId}: ${JSON.stringify(message).substring(0, 200)}...`);
+    const sensitive = isSensitiveNativeMessage(message);
+    writeLog(sensitive ? 'WS_SENSITIVE_MESSAGE' : `Received message from Distributed Server ${serverId}: ${JSON.stringify(message).substring(0, 200)}...`);
     switch (message.type) {
         case 'register_tools':
             const serverEntry = distributedServers.get(serverId);
@@ -784,7 +825,7 @@ async function handleDistributedServerMessage(serverId, message) {
                     : {};
                 serverEntry.lastSeenAt = formatDateTimeForConfiguredTimezone();
                 distributedServers.set(serverId, serverEntry);
-                writeLog(`Registered ${externalTools.length} external tools from server ${serverId}${serverEntry.serverName ? ` (${serverEntry.serverName})` : ''}.`);
+                if (!sensitive) writeLog(`Registered ${externalTools.length} external tools from server ${serverId}${serverEntry.serverName ? ` (${serverEntry.serverName})` : ''}.`);
             }
             break;
        case 'report_ip':
@@ -807,7 +848,7 @@ async function handleDistributedServerMessage(serverId, message) {
                distributedServers.set(serverId, serverInfo);
 
                // 强制日志记录，无论debug模式如何
-               console.log(`[IP Tracker] Received IP report from Distributed Server '${ipData.serverName}': Local IPs: [${ipData.localIPs.join(', ')}], Public IP: [${ipData.publicIP || 'N/A'}]`);
+               if (!sensitive) console.log(`[IP Tracker] Received IP report from Distributed Server '${ipData.serverName}': Local IPs: [${ipData.localIPs.join(', ')}], Public IP: [${ipData.publicIP || 'N/A'}]`);
            }
            break;
         case 'update_static_placeholders':
@@ -816,7 +857,7 @@ async function handleDistributedServerMessage(serverId, message) {
                 const serverName = message.data.serverName || serverId;
                 const placeholders = message.data.placeholders;
                 
-                if (serverConfig.debugMode) {
+                if (serverConfig.debugMode && !sensitive) {
                     console.log(`[WebSocketServer] Received static placeholder update from ${serverName} with ${Object.keys(placeholders).length} placeholders.`);
                 }
                 
@@ -854,13 +895,16 @@ async function handleDistributedServerMessage(serverId, message) {
                         distributedServers.set(serverId, serverInfo);
                     }
 
-                    if (serverConfig.debugMode) {
+                    if (serverConfig.debugMode && !sensitive) {
                         console.log(`[WebSocketServer] Distributed music playlist sync disabled by config. Received ${Array.isArray(data.tracks) ? data.tracks.length : 0} tracks from ${data.serverName}.`);
                     }
                     break;
                 }
 
-                const result = await syncDistributedMusicDiary(data, { logger: console });
+                const result = await syncDistributedMusicDiary(data, { logger: sensitive ? {
+                    log: () => writeLog('WS_SENSITIVE_MESSAGE'),
+                    warn: () => console.warn('[WebSocketServer]', { code: 'WS_SENSITIVE_MESSAGE' })
+                } : console });
                 if (serverInfo) {
                     serverInfo.serverName = data.serverName;
                     serverInfo.lastSeenAt = formatDateTimeForConfiguredTimezone();
@@ -882,11 +926,12 @@ async function handleDistributedServerMessage(serverId, message) {
                     distributedServers.set(serverId, serverInfo);
                 }
 
-                if (serverConfig.debugMode) {
+                if (serverConfig.debugMode && !sensitive) {
                     console.log(`[WebSocketServer] Music playlist sync from ${data.serverName}:`, result);
                 }
             } catch (error) {
-                console.error(`[WebSocketServer] Failed to sync distributed music playlist from ${serverId}:`, error);
+                if (sensitive) console.error('[WebSocketServer]', { code: 'WS_MESSAGE_HANDLER_FAILED' });
+                else console.error(`[WebSocketServer] Failed to sync distributed music playlist from ${serverId}:`, error);
             }
             break;
         case 'tool_result': {
@@ -896,7 +941,7 @@ async function handleDistributedServerMessage(serverId, message) {
             // requestId 虽然随机生成，仍不能作为跨节点信任边界；只接受目标
             // serverId 返回的结果，其他节点的同 ID 消息不得完成该 Promise。
             if (pending.serverId !== serverId) {
-                console.warn(`[WebSocketServer] Ignoring tool_result for ${message.data.requestId} from non-target server ${serverId}; expected ${pending.serverId}.`);
+                if (!sensitive) console.warn(`[WebSocketServer] Ignoring tool_result for ${message.data.requestId} from non-target server ${serverId}; expected ${pending.serverId}.`);
                 break;
             }
 
@@ -913,7 +958,7 @@ async function handleDistributedServerMessage(serverId, message) {
             await handleDistributedPluginCallback(serverId, message);
             break;
         default:
-            writeLog(`Unknown message type '${message.type}' from server ${serverId}.`);
+            writeLog('WS_UNKNOWN_MESSAGE_TYPE');
     }
 }
 

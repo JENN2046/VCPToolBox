@@ -369,6 +369,8 @@ const ADMIN_PASSWORD = process.env.AdminPassword;
 
 const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
 const CHAT_LOG_ENABLED = (process.env.CHAT_LOG_ENABLED || "false").toLowerCase() === "true";
+// 只控制已通过现有 IP 映射识别的 VChat 节点的常规 POST 追踪日志，不影响鉴权与安全日志。
+const LOG_VCHAT_POST_IP_ENABLED = (process.env.LOG_VCHAT_POST_IP_ENABLED || "true").trim().toLowerCase() !== "false";
 const VCPToolCode = (process.env.VCPToolCode || "false").toLowerCase() === "true"; // 新增：读取VCP工具调用验证码开关
 const SHOW_VCP_OUTPUT = (process.env.ShowVCP || "False").toLowerCase() === "true"; // 读取 ShowVCP 环境变量
 const REASONING_TO_CONTENT_ENABLED = (process.env.ReasoningToContentEnabled || "false").toLowerCase() === "true";
@@ -569,12 +571,15 @@ app.use((req, res, next) => {
             clientIp = clientIp.substr(7);
         }
 
-        // 始终记录收到的POST请求IP
-        console.log(`[IP Tracker] Received POST request from IP: ${clientIp}`);
-
         const serverName = webSocketServer.findServerByIp(clientIp);
-        if (serverName) {
-            console.log(`[IP Tracker] SUCCESS: Post request is from known Distributed Server: '${serverName}' (IP: ${clientIp})`);
+        const suppressVchatPostIpLog = !LOG_VCHAT_POST_IP_ENABLED
+            && serverName === 'VCPChat-Desktop-Client-Distributed-Server';
+
+        if (!suppressVchatPostIpLog) {
+            console.log(`[IP Tracker] Received POST request from IP: ${clientIp}`);
+            if (serverName) {
+                console.log(`[IP Tracker] SUCCESS: Post request is from known Distributed Server: '${serverName}' (IP: ${clientIp})`);
+            }
         }
     }
     next();
@@ -1246,6 +1251,8 @@ const protocolBridge = require('./routes/protocolBridge');
 app.use(protocolBridge);
 
 // 新增：人类直接调用工具的端点
+require('./modules/nativeConversationTransport').registerNativeConversationRoute(app, pluginManager);
+
 app.post('/v1/human/tool', async (req, res) => {
     try {
         const requestBody = req.body;
@@ -1565,7 +1572,8 @@ async function startServer() {
     await import('node-fetch');
     console.log('[Server] node-fetch 模块预热完毕，准备处理请求。');
 
-    server = app.listen(port, () => {
+    const listenArgs = require('./modules/localListenOptions').localListenArguments(port, process.env.VCP_LOCAL_LISTEN_HOST);
+    server = app.listen(...listenArgs, () => {
         console.log(`中间层服务器正在监听端口 ${port}`);
         console.log(`API 服务器地址: ${apiUrl}`);
 

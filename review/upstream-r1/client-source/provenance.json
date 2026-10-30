@@ -1,0 +1,75 @@
+{
+  "clientHead": "1f86d5912c6acb3588577945e19045edc1256731",
+  "originalSourceRoot": "/home/jenn/AGENTS_OS_Workspace/runtime/VCPChat",
+  "clientDirtyPaths": [
+    "AppData/VCPChatTarven.official.json",
+    "VCPDistributedServer/Plugin.js",
+    "VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService.js",
+    "VCPDistributedServer/VCPDistributedServer.js",
+    "audio_engine/audio_server",
+    "docs/contracts/generated/chat-event-graph.json",
+    "main.js",
+    "modules/ipc/windowHandlers.js",
+    "modules/notificationRenderer.js",
+    "modules/services/suveiHumanAuthorizationService.js",
+    "tests/quit-lifecycle.test.cjs"
+  ],
+  "sources": {
+    "modules/renderer/toolResultRegions.js": {
+      "sha256": "8a31ed6b6fed9f9f94865e1350eb827cea7699a030b676298866a3c72269389b",
+      "matchesClientHead": true
+    },
+    "modules/renderer/markdownCodeDomainScanner.js": {
+      "sha256": "512b3b8364d7b2e6d53d80e5c86c57a51007cf270a5e43c3987be90aacb1ada7",
+      "matchesClientHead": true
+    },
+    "modules/renderer/toolRequestScanner.js": {
+      "sha256": "b66d22111be2022f57087719fdcdfa3ca415d0d8a722a1e4c4afbf456afb5879",
+      "matchesClientHead": true
+    },
+    "modules/renderer/streamStableBoundary.js": {
+      "sha256": "53e14cfebd05324078bd480055b0531a9e6e692de9d01cb88ebc92420fc9d376",
+      "matchesClientHead": true
+    },
+    "modules/renderer/contentPipeline.js": {
+      "sha256": "86f652837affd9c5dd90b8d01481c6781f66f7f03ca635985823b30dcad686c3",
+      "matchesClientHead": true
+    },
+    "modules/chat/contentModes.js": {
+      "sha256": "42fa13c21517da630dd154bb332cfed6964239f698d4122f45ad640d04da9389",
+      "matchesClientHead": true
+    },
+    "modules/emotion/emotionTags.js": {
+      "sha256": "4cecbef27e49c296b2c3eef9d62db01c7d08fdc131563742acda619c80197cd0",
+      "matchesClientHead": true
+    },
+    "modules/emotion/emotionVocabulary.js": {
+      "sha256": "0b70104bb01ffe60f9c847a2951cfe520c0fdaaabed407d431192b1a53873d30",
+      "matchesClientHead": true
+    },
+    "modules/renderer/jevToolUse.js": {
+      "sha256": "ebf9ff1bf306d1e4de6eb785e885a8f6c12f0149341de527d8a898524e2a4742",
+      "matchesClientHead": true
+    },
+    "modules/renderer/toolRequestMarkers.js": {
+      "sha256": "c4d12f68b5a115914d55ffc48439c334cc159c895e6159046a7204db6a2b8b43",
+      "matchesClientHead": true
+    },
+    "modules/messageRenderer.js": {
+      "sha256": "f368df29153ba02172bc2b6ad7e05d1eed48a06b62481fdfc798bcb3c958092a",
+      "matchesClientHead": true
+    },
+    "modules/renderer/contentProcessor.js": {
+      "sha256": "d9ee9426d8a83e4e3d5fc1daf23eadd624d8c7474b8f021118987492eb3cce31",
+      "matchesClientHead": true
+    },
+    "modules/vcpClient.js": {
+      "sha256": "0363750e21aea1debb1238c455626f943ad675f4a9e5a84036e400c9072f0d46",
+      "matchesClientHead": true
+    },
+    "modules/chat/streamTransientHistory.js": {
+      "sha256": "3b27b6256b4bd388decbd6f0bea876acdc5f9f61cda1174188f9079cbcceba2b",
+      "matchesClientHead": true
+    }
+  }
+}

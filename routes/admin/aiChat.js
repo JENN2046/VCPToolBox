@@ -1,11 +1,12 @@
 const express = require('express');
+const { localMainOrigin } = require('../../modules/localListenOptions');
 
 const DEFAULT_CHAT_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_MODELS_TIMEOUT_MS = 30 * 1000;
 
 function getMainServerBaseUrl() {
     const port = process.env.PORT || 3000;
-    return `http://127.0.0.1:${port}`;
+    return localMainOrigin(port, process.env.VCP_LOCAL_LISTEN_HOST);
 }
 
 function getServerKey() {

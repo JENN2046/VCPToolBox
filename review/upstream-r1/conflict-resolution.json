@@ -1,0 +1,1415 @@
+{
+  "count": 90,
+  "types": {
+    "delete/modify": 76,
+    "content/binary": 14
+  },
+  "conflicts": [
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/AgentAssistantConfig-BqwOqQnb.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "8df93f3de170d2be953a04981de06d7259396bb9"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "ed02dc77eb51ed6a1f937a8aa05e7b80123c671b"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/BaseConfig-C2at6Ahg.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "094fb9fb063489382e2df33afc93d1c645e248c4"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1f49654363f85c7a8fefe588e6cabc703f265b04"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/DailyNotesManager-EX8mWB0f.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "06102c25da63087b8e15994b33caed03c2943dee"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e34e826a78328d606f065d01e42f0848e9f09d40"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/DragHandle-DdYXgM6a.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "dd7f9bc497d0164132192743c8d3ce16c5fb16e8"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "3efa546e597aa86f4e204ebc5fb5325bdf58e5bd"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/PlaceholderViewer-Cte0XE73.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "bc34ebfb001cbb0e972c03c78398a92ff7d5bddb"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1238d6f669b758eb46c02947ec27c15330df1243"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/PluginsHub-D34rjZ8n.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "ab805f0eea3c16380e09023b3283e4c46bb724ec"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "970baaa88ea259a23827e9ed82b65f23c7747fe7"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/SemanticGroupsEditor-S0T1thoF.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "a9c6b3405e1300e01caebb260fd70f45ba7edb9d"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e033f1aedd6d4f0622edb631722ab9af6dd1db2b"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/UiAlert--zAK4PuA.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "1eb009e6f9ea060d7ddbbae47fccac7b3e587804"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "ca5577f0ec91dbbf18b2cc1331274ee0a241f2cd"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/UiBadge-D-9NbiDv.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "780e87d5e765e9ee06de7821c039836c2a7c6a28"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "cd7b145a84a367f652bfbfbcd1d638967e7c0b9a"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/UiDirtyIndicator-BvZVLPWT.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "e3164d0e3d5efdc628ca8726e763e9df32d33d58"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1cdc2d7ab8eb357f6f1f4c02b382df5b86e26787"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/css/UiPageActions-DUisrhfp.css",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "1b32417dc7393c366885ad1dc064787eb72b0e4b"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1f75252ac37499fbdb281585aa118fe7d89e5490"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/AgentAssistantConfig-3Q8beUUI.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "d16188cbcd9eff2de7701ec6c3bc1370a37b9394"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1b5c3198fa6366f22e01d11dce2ab8790076b8bd"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/AgentEmotionManager-BgQQ7E-d.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "f5f66b1d4f3850d5832b289377f1aba7f560faf1"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e4bfd7f96776c240df12af2032fcb798418874ed"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/AgentFilesEditor-BvEN2aTg.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "8bc277233af38976496d7e90c58f1b04ccdbdfe3"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "5aa0996ba48e3a7fcf45668beec60d6fc6851d70"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/AgentScores-CZIsEQoa.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "12ad84840caff2ea32a00d4c23cec67b30fab0c2"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "b163dfed289fa5fae236df245751026501de0c67"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/AgentTimeLineManager-DNkgMwhk.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "04099b6913e7a8160ff3f37f563f83c0ecada05e"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "fe4acb79ac77f38eb7b9ebf43239bec391908a6d"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/AppCheckbox-B2Q3G0bq.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "2e144c6c055f009abb8bdc1ecb0cd07e452f0a8d"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "873c2bd6a46cd17e98f3af7437089e3a76b82afc"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/AppSwitch-shMgX9TH.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "bdef0e427d731d40008b2989267bc8f9c0784948"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "f0164a745d3d85d13d5bd74978abb9ba938f27d4"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/BridgeHijackConfig-K4dDeJPm.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "9a1187243ffa512ca9b9f2ef4ae5743ced119e03"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "6f0ad1193d50604c832690b19d32e8008c47d7bb"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ClawMailManager-qNv1tPDi.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "f7dd7fa749c5e036fe8f2c2b0104bf2906336fa6"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "f891fe6041772c17be855979bb565bc22d146865"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ConfirmDialog-4ShBpPY_.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "34e117a0169a210a3670c6ccc3c494814f1d0451"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "24fad1cbbfcf2f74ed4045ed8b69b6e8b7e85222"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/DailyNotesManager-76sNeFMi.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "354e898b398c8a3c4354094dfd6995e57267906f"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "8d3a24dbe65b41de72d6165589639f07a1500f73"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/Dashboard-pI7UzsCn.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "2de23f42da939d1e32b8053eb0c7b500e1c9b767"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "3d1028dc3db8d58ff5f5442bb3664323fd1d7825"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/DragHandle-GArrG6m6.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "97ae4a73c7a3a8863d1c3e16841afdc98e31e36a"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "dc39462bd052df594e831dbd62404578dfcaf122"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/DreamManager-C7ZyoNqd.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "4987635342b543a3bf026b9d876572eb73d4ec83"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "fe08d02c0c1279a10a571643273905119ef121d9"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/DynamicToolsManager-BIQUvmZS.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "a1132e2be197f0a1580f25402c662c5b9fe99490"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "4b8038a797683e9507cbb6bf0a3c05092fdf0deb"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/EmojiGallery-CVtjJk21.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "428a28951b0815b2270f6796d3314e07e38217c2"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "3cca33f192ae41025878e921d09aaa1db6578560"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/FinalContextViewer-BZk4uDeN.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "d436f622e084e4638af7cbaf2639b54e5881c2f0"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "78b04fc6b15c3bd4789caf3119ca46d0e454eeec"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ForumAssistantConfig-Civqcv0M.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "e2922e753f9b1d42060f2efe21df1df2c70adb71"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "011fd96aadd0d88ac9267e23e7590ed319e35482"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ImageCacheEditor-CkmVdicA.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "79016b5c9ec96664fa1f4abf828edaee2f4912a3"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "4c69422e363c2bf5f352ab41f3fb0f34c6c20826"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/Login-B2yWfbLJ.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "60a2981893a78ea2abf9ea03c98ececfee2e11a5"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e5dbf070b74df2d69f9cf8d788aa394422979d6d"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/MainLayout-9dpbposY.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "a5f7f5676ebf61463e2ea9bccb03cb0e9af20559"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1e77351a909bd95bd62f41bcda9d568bbc843dff"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/OneRingManager-BL8jgUc8.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "7059f407982ae8f35fdc9b20ae0e33c6b7058488"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "8e5033e0b5ae5504d9dcbead5de68b9ccedd29ee"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/PlaceholderExplorerManager-D_83bcxo.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "0968c527695747c9d6efcc58ddd84cd2f00ff546"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "8088b84974c08b7642242e2bbf8f6c6230966d35"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/PlaceholderViewer-C8ZB6xiH.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "cab2166cc0618ff6bef132b9646b43a8fbfa22dd"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "0b8981b36afc6fcb98d248051e85e1c86cfe6988"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/PluginStore-BWFnZet9.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "5b6053b4d0274b9e0895886ecbcdb4c675814d1c"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "8b1c0834405fb5d5bd7dcce981a6a698eb547165"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/PluginsHub-D-NJHIO-.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "9de33603c97569c832a460e16ae745b87095c6c1"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "bdb74ee6a7c678519f6754d52fdf91ae972fefae"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/PreprocessorOrderManager-C-2jz9gz.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "1ce08817c0feeb2cc74f21db7e575d2ba9c948c3"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "6a54b5e51952b4d373ad5af082b848ccbc441226"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/RagTuning-06IPmrLj.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "643986aa3206627e4b526e4ba9f766926d0269e6"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "6b7b73b53f20240865e5212276e98fcaae67dfc7"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/SarPromptEditor-dbZXlr-o.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "f733032888dbd4ca97f67e81dee6137dbf5aa993"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "9fe1b2283af72453fad85fb8fa44efacce5487f1"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ScheduleManager-BMHpMjHK.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "e32fed059445f405e93210c2a1359bb9f0368a2b"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "f9b21a41403749c5610a3b0d9e6ff4b883246cca"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/SemanticGroupsEditor-BvHAqUtl.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "b4b94f3f8c44e7e87abfffe4ff3d19ee26bee5c2"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "b6906c8d75d26d817172092d45bcfe40561c82f3"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/SemanticModelRouterEditor-C4uSqXT7.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "06692587ae8b16779be85ec0c94fa44094410830"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "2b76f741c1e584d5919ce18aeb453c58028e4811"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ServerLogViewer-ByTRVHB3.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "bc6b9e6d1f868bf0f06bf62957125b262a53fd2e"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "f96f819280f3571e7589e756cb5d20575a2b2f77"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ThemeEditor-CLYOBwLS.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "e08b1b89b9543f0ba4b24528a031e1f999671d61"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "48785e8b678e13366c6a2235ab14e6c651325d5f"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ThinkingChainsEditor-DDNuQqL_.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "01cf7ce3fb6342f476b339c662a8457dbec839f7"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "016369772b87d860155cfb0f6ef3b5eebfca1017"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ToolApprovalManager-ByD5Q6CV.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "eacd05b54e66e61a5b3e68cd947b5711c2889f08"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "2f7361f2c0c7fcde79a4aa77ea2f546a6463c1e2"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ToolCallRecordsManager-CwKadxOs.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "28bc812adcbed7526497651af6f7805a676e30cb"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "14ce6270d981f99485c81326f050ec105e22d3f1"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ToolListEditor-BX5lP1Hw.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "3ccaccb6d3ccd3f9df4ca8a767d07635dfe91610"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "0d88ac5467037fddd5ca31d9d3024620c1beee91"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/ToolboxManager-Dtqd4l6I.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "0885a20c942ef9badf5434e55aa767ac266031ba"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "0610031ab094fe124273aa9a01330571f4fd5e47"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/TvsFilesEditor-BXzqIiIw.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "5a08c977523310bce57ccb5c11a9a53195bdb411"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "3bf6b853c141b85868cb4490f56e1923bc65dad7"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiAlert-DBpYjjyU.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "d0d2006501d54645cb4aabcb4ffc794af3ac6306"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1926b6b449c90f92a392e61b44ec246392530a8d"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiBadge-CmORVhZg.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "d9b83c82f9d6d4adc1c34d76bc638b696045106f"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "f48ba95278c30789d54ed8d1ad8bb21c2eb53bd6"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiButton-BV1rw_WZ.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "066bc681134bc0125dd5da3f2de92d41b27bd6f0"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "8b9031458533335fc5d833cfa680d3148dcc4413"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiCard-JVVQB-o6.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "26d1044ac5b75a8753749ca970d4e866fb4795e3"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "30e974016f4cdfb83116861f9d9f66ff58576cb5"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiDirtyIndicator-MMTFcZ4b.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "73b96b3312e4fa757c8a4ba8dd4a0f7f7e0512ad"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "97e41d3a9222ebfcf05c386e35cc1af9c49264d7"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiEmptyState-BN90bkeO.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "43834b3204909d910c1a0162b8b85a0d0cc48c64"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "ce3c0c72a6bf039fbc0d9d1c03bb99a106e28411"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiField-Bdn5iB6B.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "e3b08cdd47a991ea0f294a327a6f0de59f36459b"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "13b2e93dd29eeba309ea110618216960ac92e60d"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiIconButton-BJHPvfSk.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "4d11ce98fd780366dab942ac5ad38a36282e10e5"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "1ac669d18a8d8e5ca159f190a09ca3e3df79ba4e"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiInput-Ca_TNNiM.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "af6420c98ac4be0aa6d062f084e12cf7d4f27cc8"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "d39141a05bd8ae5b30f2658a3aa0d49e1040639d"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiPageActions-BagrlAC4.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "a45b9cce88f4de4ab8a11bb0edb2723d87a523f9"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "f2937af1f9460e87d66d19d30bb751129dff20df"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiSelect-Ceh0aXVu.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "93e7c0bda1281a54f31263ccf78718e4a0f55fb8"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "ae1a5ae6faf0d9919113f01bc71a1ccb14d25005"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiSettingsCard-Du6-4wn0.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "f72154242b2ddc82dbfe4cda37bd671d7bed2f60"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "c48ed774e63ce2331254e0f3bc0a22b76dd30e83"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiSettingsForm-iNGdwfJq.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "3eff618ddf0beea50a76aceb81433ef8ce1ec3d9"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "8705f3890a276b42ec5cb6c8b1df18c8d515ca3b"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiSettingsSwitchRow-Bu_MMmqg.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "0283875c73771c828b05c444b26de90263ec9841"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "58b055497d9a24a868c5932aef6b2cc9ddc4cc66"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiSideConsoleNav-CbmsfsQc.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "55590e2be8a0a5fc7fb14db15b876be6c4fbd57b"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "22f887d28de301c4a346fd870ffc92dfa0f41471"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiTableFrame-M7bsK59z.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "6386352ff88a562a559db1f7678714a5b47ea23a"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "ea25faff6da3e57b3dcba2cd77d3aab977962d65"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiTextarea-MFQIqcrn.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "e6d5912588977e37cef4eef512c35519fc8c8f3a"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "29b9a9a3279bb668a6dc853480e5f4239d3c83f9"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/UiToolbar-JdhTiPXS.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "7136e4395b2733b9db428acff9dbe9687c3d25eb"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e39abbff4aa210b98efe83f8ae74cfe9ac33edd6"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/VcpForum-B4Ti3DWu.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "d9b90c51b38a2d4f1dad7a1ae7c248cad3a35e11"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "fa28290782baf0914b20e9099f6ae68711fe4918"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/VcptavernEditor-CE6mWuA7.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "48f39ec994acd1914a1792a482ad313e443facd4"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e2bf0f295e4b106bf66285623bb4360b48bb2d5a"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/_sdk-CuLRx5Ht.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "57a55beb91dbe0f0d1d2890e5a517fb83d1e0bdc"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "5265e8fedb1ad625a765abc4de438d96d5bd2193"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/app-BBUM0Ozn.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "89267acd17eb857fc3c66b974fcf2febf8358467"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e45e4ceb174c3874b41adf3c72c312fba9c60a7a"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/index-CY5P_vuq.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "cc9590f2b6586dba8d5aed74ee4ca68a3f6a0ceb"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "62a42a15f6f8ba80407ca38bb2db1412bdb1fbb6"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/assets/js/useMarkdownRenderer-CWvcrNZ4.js",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "1531d5ad4b9808f54aa5254902ac77c918935426"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "171d55dd931b295198aa3acd162ee620162b1a15"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "AdminPanel-Vue/dist/index.html",
+      "type": "delete/modify",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "082a8620dee315b8478615e39e823256da41335e"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "bdc6938c86bf3662c9fe66aac9ddcc5c334cad93"
+        }
+      },
+      "resolution": "Accept upstream removal of tracked generated dist; rebuild from merged AdminPanel-Vue source. Local build PASS; dist remains ignored."
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-pc-windows-msvc.exe",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "baa75464b98dcdae943ad1d25608d34a98c0c082"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "a35edb10feb8b09403bf534c2966cc35e4564e8e"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "cef8eb4d0eea8d9486b13824b496c80ba3166328"
+        }
+      },
+      "resolution": "Use exact upstream Windows EXE bytes; no local Windows build/run proof. Linux separately rebuilt from merged source."
+    },
+    {
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher.exe",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "baa75464b98dcdae943ad1d25608d34a98c0c082"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "a35edb10feb8b09403bf534c2966cc35e4564e8e"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "cef8eb4d0eea8d9486b13824b496c80ba3166328"
+        }
+      },
+      "resolution": "Use exact upstream Windows EXE bytes; no local Windows build/run proof. Linux separately rebuilt from merged source."
+    },
+    {
+      "path": "Plugin/LinuxShellExecutor/LinuxShellExecutor.js",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "d53b51db92ad434bfb563d1d21dd4a152200ad77"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "b8cee3721465f182c44ecaf664acc7e16b62bfb9"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "8dd6df164b5d08d945b58bee4cfad128ec9fc38c"
+        }
+      },
+      "resolution": "Retain frozen protected runtime entry/manifest. Full upstream v2 implementation retained as LinuxShellExecutor.upstream-v2.js.disabled; sandbox/timeout/terminal contract changes NOT ACTIVATED."
+    },
+    {
+      "path": "Plugin/LinuxShellExecutor/config.env",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "a0d3527ad69e5a561c40fee28a16aa9997508393"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "dd9b18684869bbb380d9b006e2ff6c23ae8f0470"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "0d440b32bf98c2833c1ffa499c4e5a35fe7be688"
+        }
+      },
+      "resolution": "Retain opaque frozen Fork configuration; do not read or output values."
+    },
+    {
+      "path": "Plugin/LinuxShellExecutor/plugin-manifest.json",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "dfba57bb26f90ac66b195bbdbbc8a26784401095"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "0383b880f3d13e33920c082629aea67b1bd6d483"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "81d66131af2898110c7efb3c744910eb947a1d14"
+        }
+      },
+      "resolution": "Retain frozen protected runtime entry/manifest. Full upstream v2 implementation retained as LinuxShellExecutor.upstream-v2.js.disabled; sandbox/timeout/terminal contract changes NOT ACTIVATED."
+    },
+    {
+      "path": "TVStxt/JevToolCall.txt",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "f7cb97e05217646d74da01c9be0f96c99394d50e"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "3464a58849759e5292c75e3a61619db84b1c34d2"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "c9217c211c8877a3bcbfcb5f8870b944c81e9e17"
+        }
+      },
+      "resolution": "Combine Fork provider/policy safeguards and upstream Jev keepAlive/long-context/tool docs; update tests for combined contract."
+    },
+    {
+      "path": "TVStxt/supertool.txt",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "3c49744ab1b429fdc430a4b913b9b8a5701829ce"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "4deceda0de19ed83276a88811021fb9c7a3b36db"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "fd3d8f0d979fa5eb644b0d3946243a9b353939c9"
+        }
+      },
+      "resolution": "Combine Fork provider/policy safeguards and upstream Jev keepAlive/long-context/tool docs; update tests for combined contract."
+    },
+    {
+      "path": "modules/chatCompletionHandler.js",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "92a2edae822ee98d9b06df60ca181381dec1834c"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "b5c29edb4075f81bce06ce9fcabbbfd8c489c30a"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "0f1a8806021da5750ce8285b32422609e87976db"
+        }
+      },
+      "resolution": "Keep Fork Resident provider binding validation AND upstream final display-name cleanup/projection/502/504 handling."
+    },
+    {
+      "path": "modules/jevClient.js",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "2614b188453bbe8b89a7edecf82812bfe4852a08"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "90505cd08d9fe777113ce1d940619f47c9bdeb4f"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "7a00fab1d9c0162ef82968a7a97d19689dcad7b5"
+        }
+      },
+      "resolution": "Combine Fork provider/policy safeguards and upstream Jev keepAlive/long-context/tool docs; update tests for combined contract."
+    },
+    {
+      "path": "modules/jevToolCallExp.js",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "ba6fd2dfc91436cb1c17c9842c6833f7f77daacc"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "3f2f9646fbf8652096d6f5324e272bb34d9f3d64"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "4ed582a4ccd286386afae2496e075e1259b225f8"
+        }
+      },
+      "resolution": "Combine Fork provider/policy safeguards and upstream Jev keepAlive/long-context/tool docs; update tests for combined contract."
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.linux-x64-gnu.node",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "b2aba496796e3b458ff5557c0490a1cc3312a327"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "ed4292eeda6bee332196045221bd99d1ff6af06e"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "ce02a2893f2e10383660c97439c24066206a7d85"
+        }
+      },
+      "resolution": "Rebuild merged Rust source in isolated local Linux environment; record exact source inventory/hash and ABI/functional verification."
+    },
+    {
+      "path": "rust-vexus-lite/vexus-lite.win32-x64-msvc.node",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "2a251bdd6f8b6961c62ded4d9c248719d30434d9"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "a593412e423640cdaba0d4acf57861dc01c3d69c"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "7fe440e4abc4adfd2696f306f35d9922629f61dd"
+        }
+      },
+      "resolution": "Quarantine exact upstream binary as .upstream-393dc5e.node.unverified; missing merged Windows build fails closed at loader."
+    },
+    {
+      "path": "tests/jevClient.test.js",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "0fef9f76eda761ed5159a9cb9d1cf7a7c0fbf5b6"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "83e933993b1d2ab851e6bf91951256f77097998a"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "0fb303c23127b9b787c8235662f1669691cba87d"
+        }
+      },
+      "resolution": "Combine Fork provider/policy safeguards and upstream Jev keepAlive/long-context/tool docs; update tests for combined contract."
+    },
+    {
+      "path": "tests/tdbRetrievalQuality.test.js",
+      "type": "content/binary",
+      "stages": {
+        "1": {
+          "mode": "100644",
+          "blob": "438c710cc903bbea4034a1bda7f721f3922592e1"
+        },
+        "2": {
+          "mode": "100644",
+          "blob": "e989c96a33b23146c7592301362f8812efee58cc"
+        },
+        "3": {
+          "mode": "100644",
+          "blob": "d0cb85a401951b90f07f4e118e546e217b4742e3"
+        }
+      },
+      "resolution": "Keep upstream node:test/platform-aware optional artifact handling AND Fork explicit historical baseline SHA verification; real seeded comparison run."
+    }
+  ]
+}

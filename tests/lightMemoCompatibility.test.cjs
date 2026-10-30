@@ -312,6 +312,54 @@ test('P6 River trace is rejected outside the exact Hot River profile', async () 
   );
 });
 
+test('P6 current Memory A/B selector rejects trace and Cold options before original execution', async () => {
+  const currentLightMemo = require('../Plugin/LightMemo/LightMemo.js');
+  const { lightMemo, calls } = makeLightMemo();
+  delete lightMemo._isTagMemoABRequest;
+  lightMemo._isMemoryABRequest = currentLightMemo._isMemoryABRequest;
+  applyLightMemoCompatibility(lightMemo);
+  for (const command of ['memory_ab', 'memory-ab', 'memory_compare', 'memory_address_ab']) {
+    assert.deepEqual(await lightMemo.processToolCall({ command, query: 'synthetic', include_river_trace: true }),
+      { plugin_error: 'RIVER_TRACE_REQUIRES_SEARCH_RIVER_PROFILE' });
+    assert.deepEqual(await lightMemo.processToolCall({ command, query: 'synthetic', cold_text_mode: 'preview' }),
+      { plugin_error: 'COLD_TEXT_MODE_REQUIRES_COLD_SCOPE' });
+    assert.deepEqual(await lightMemo.processToolCall({ command, query: 'synthetic', cold_result_mode: 'structured' }),
+      { plugin_error: 'STRUCTURED_COLD_RESULT_REQUIRES_COLD_SCOPE' });
+  }
+  assert.equal(calls.originalProcess, 0);
+});
+
+test('P6 trace rejects the newly supported Jev refinement before retrieval', async () => {
+  const { lightMemo, calls } = makeLightMemo({ vectorDBManager: { rerankWithRiverMemoAsync() { throw Error('unexpected retrieval'); } } });
+  applyLightMemoCompatibility(lightMemo);
+  assert.deepEqual(await lightMemo.processToolCall({ query: 'synthetic', enginemode: 'rivermemo', include_river_trace: true, jev: true }),
+    { plugin_error: 'RIVER_TRACE_REQUIRES_SEARCH_RIVER_PROFILE' });
+  assert.equal(calls.originalProcess, 0);
+});
+
+test('LightMemo Jev scoring limits retain the unscored tail for the requested K', async () => {
+  const current = require('../Plugin/LightMemo/LightMemo.js');
+  for (const [maxChoices, count, requested] of [[2, 8, 5], [255, 320, 300]]) {
+    for (const rrfOptions of [null, { alpha: 0.5 }]) {
+      const receiver = Object.create(current);
+      receiver.rerankConfig = { jevMaxChoices: maxChoices, jevMaxDocumentChars: 200, jevPrompt: 'synthetic' };
+      let scored;
+      receiver.jevClient = { isConfigured: () => true, async decide(state, questions) {
+        scored = Object.keys(questions.best_memory.criteria);
+        return { answers: { best_memory: { choice: scored[0], confidence: 1,
+          probabilities: Object.fromEntries(scored.map((key, index) => [key, 1 / (index + 1)])) } } };
+      } };
+      const documents = Array.from({ length: count }, (_, id) => ({ id, text: 'synthetic-' + id, retrieval_rank: id + 1 }));
+      const result = await receiver._jevRerankDocuments('synthetic', documents, requested, rrfOptions);
+      assert.equal(scored.length, maxChoices);
+      assert.equal(result.length, requested);
+      assert.deepEqual(result.slice(maxChoices).map(document => document.id),
+        documents.slice(maxChoices, requested).map(document => document.id));
+      assert.equal(new Set(result.map(document => document.id)).size, requested);
+    }
+  }
+});
+
 test('P6 ordinary Hot calls delegate unchanged', async () => {
   const { lightMemo, calls } = makeLightMemo();
   lightMemo._parseEngineMode = () => 'knn';

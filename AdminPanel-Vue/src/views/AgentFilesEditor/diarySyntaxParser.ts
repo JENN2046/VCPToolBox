@@ -15,9 +15,8 @@ export type DiarySuffixKey =
   | "associate"
   | "base64Memo"
   | "riverMemo"
-  | "tagMemo"
-  | "tagMemoPlus"
   | "rerankPlus"
+  | "jev"
   | "truncate"
   | "roleValve";
 
@@ -40,9 +39,11 @@ export interface DiarySyntaxEditorState {
   timeRatio: string;
   bm25Weight: string;
   bm25PlusWeight: string;
-  tagMemoWeight: string;
-  tagMemoPlusWeight: string;
+  retiredSuffixes: string[];
   rerankPlusAlpha: string;
+  jevPreset: string;
+  jevPlus: boolean;
+  jevAlpha: string;
   timeDecayHalfLifeDays: string;
   timeDecayMinScore: string;
   timeDecayTargetTags: string;
@@ -84,9 +85,11 @@ export function createDefaultDiarySyntaxState(): DiarySyntaxEditorState {
     timeRatio: "",
     bm25Weight: "",
     bm25PlusWeight: "",
-    tagMemoWeight: "",
-    tagMemoPlusWeight: "",
+    retiredSuffixes: [],
     rerankPlusAlpha: "",
+    jevPreset: "",
+    jevPlus: false,
+    jevAlpha: "",
     timeDecayHalfLifeDays: "",
     timeDecayMinScore: "",
     timeDecayTargetTags: "",
@@ -106,9 +109,8 @@ export function createDefaultDiarySyntaxState(): DiarySyntaxEditorState {
       associate: false,
       base64Memo: false,
       riverMemo: false,
-      tagMemo: false,
-      tagMemoPlus: false,
       rerankPlus: false,
+      jev: false,
       truncate: false,
       roleValve: false,
     },
@@ -190,6 +192,10 @@ function parseDiarySyntaxInner(
   }
 
   suffixes.forEach((suffix) => {
+    if (/^TagMemo/i.test(suffix)) {
+      state.retiredSuffixes.push(suffix);
+      return;
+    }
     if (state.dslPage === "direct") {
       applyDirectSuffix(state, suffix);
       return;
@@ -301,30 +307,22 @@ function applyAdvancedSuffix(state: DiarySyntaxEditorState, suffix: string): voi
 
   if (/^RiverMemo$/i.test(suffix)) {
     state.enabledSuffixes.riverMemo = true;
-    state.enabledSuffixes.tagMemo = false;
-    state.enabledSuffixes.tagMemoPlus = false;
     return;
   }
 
-  const tagMemoPlus = suffix.match(/^TagMemo\+([0-9.]+)?$/i);
-  if (tagMemoPlus) {
-    if (!state.enabledSuffixes.riverMemo) {
-      state.enabledSuffixes.tagMemoPlus = true;
-      state.enabledSuffixes.tagMemo = false;
-    }
-    state.tagMemoPlusWeight = tagMemoPlus[1] ?? "";
+  const jev = suffix.match(/^Jev([1-4])?(\+(\d*\.?\d+)?)?$/i);
+  if (jev) {
+    state.enabledSuffixes.jev = true;
+    state.enabledSuffixes.rerank = false;
+    state.enabledSuffixes.rerankPlus = false;
+    state.jevPreset = jev[1] ?? "";
+    state.jevPlus = Boolean(jev[2]);
+    state.jevAlpha = jev[3] ?? "";
     return;
   }
 
-  const tagMemo = suffix.match(/^TagMemo([0-9.]+)?$/i);
-  if (tagMemo) {
-    if (!state.enabledSuffixes.riverMemo) {
-      state.enabledSuffixes.tagMemo = true;
-      state.enabledSuffixes.tagMemoPlus = false;
-    }
-    state.tagMemoWeight = tagMemo[1] ?? "";
-    return;
-  }
+  // 与后端一致：显式 Jev 不受 Rerank 后缀书写顺序影响。
+  if (state.enabledSuffixes.jev && /^Rerank(?:\+([0-9.]+)?)?$/i.test(suffix)) return;
 
   const rerankPlus = suffix.match(/^Rerank\+([0-9.]+)?$/i);
   if (rerankPlus) {

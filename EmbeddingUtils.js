@@ -1,8 +1,8 @@
 // EmbeddingUtils.js
 const fs = require('fs').promises;
 const path = require('path');
-const { get_encoding } = require("@dqbd/tiktoken");
-const encoding = get_encoding("cl100k_base");
+const { getTokenCount, encoding: sharedEncoding } = require("./TextChunker.js");
+const encoding = sharedEncoding || require("@dqbd/tiktoken").get_encoding("cl100k_base");
 
 // 配置
 const embeddingMaxToken = parseInt(process.env.WhitelistEmbeddingModelMaxToken, 10) || 8000;
@@ -83,6 +83,14 @@ async function _sendBatch(batchTexts, config, batchNumber) {
         try {
             const requestUrl = `${config.apiUrl}/v1/embeddings`;
             const requestBody = { model, input: batchTexts };
+
+            // 默认发送配置维度；不支持 dimensions 参数的模型可通过环境变量关闭。
+            const sendDimensions = String(process.env.EMBEDDING_SEND_DIMENSIONS || 'true').trim().toLowerCase() !== 'false';
+            const dim = parseInt(process.env.VECTORDB_DIMENSION, 10);
+            if (sendDimensions && !isNaN(dim)) {
+                requestBody.dimensions = dim;
+            }
+
             const requestHeaders = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` };
 
             const response = await fetch(requestUrl, {
@@ -183,7 +191,9 @@ async function getEmbeddingsBatch(texts, config) {
 
     for (let i = 0; i < texts.length; i++) {
         const text = texts[i];
-        const textTokens = encoding.encode(text).length;
+        const textTokens = typeof getTokenCount === 'function'
+            ? getTokenCount(text)
+            : encoding.encode(text).length;
         if (textTokens > safeMaxTokens) {
             console.warn(`[Embedding] ⚠️ Text at index ${i} exceeds token limit (${textTokens} > ${safeMaxTokens}), skipping.`);
             oversizeIndices.add(i);

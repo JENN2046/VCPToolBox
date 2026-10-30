@@ -14,8 +14,15 @@
 const { performance } = require('perf_hooks');
 
 class ResultDeduplicator {
-    constructor(db, config = {}) {
-        this.db = db;
+    constructor(dbOrOptions = null, config = {}) {
+        const options = dbOrOptions
+            && typeof dbOrOptions === 'object'
+            && typeof dbOrOptions.prepare !== 'function'
+            ? dbOrOptions
+            : { ...config, legacyDb: dbOrOptions };
+        this.hydrateChunksByIds = typeof options.hydrateChunksByIds === 'function'
+            ? options.hydrateChunksByIds
+            : null;
         this.config = {
             dimension: 3072,
             semanticThreshold: 0.92,
@@ -95,7 +102,7 @@ class ResultDeduplicator {
         }
 
         try {
-            const hydrated = this._hydrateMissingVectors(hardDeduplicated);
+            const hydrated = await this._hydrateMissingVectors(hardDeduplicated);
             const hydrationFinishedAt = performance.now();
             const semanticThreshold = this._resolveSemanticThreshold(options.semanticThreshold);
             const results = this._semanticDeduplicate(
@@ -206,6 +213,7 @@ class ResultDeduplicator {
 
         const selected = [];
         const selectedDescriptors = [];
+        const boundBudget = { remaining: 8 };
 
         for (const entry of ranked) {
             if (selected.length >= maxResults) break;
@@ -218,12 +226,18 @@ class ResultDeduplicator {
 
             let redundant = false;
             for (const selectedDescriptor of selectedDescriptors) {
-                if (
-                    this._cosineSimilarityPrepared(
+                const isDuplicate = selectedDescriptors.length >= 8 && boundBudget.remaining > 0
+                    ? this._cosineAtLeast(
+                        entry.vectorDescriptor,
+                        selectedDescriptor,
+                        threshold,
+                        boundBudget
+                    )
+                    : this._cosineSimilarityPrepared(
                         entry.vectorDescriptor,
                         selectedDescriptor
-                    ) >= threshold
-                ) {
+                    ) >= threshold;
+                if (isDuplicate) {
                     redundant = true;
                     break;
                 }
@@ -241,8 +255,8 @@ class ResultDeduplicator {
             .map(entry => entry.candidate);
     }
 
-    _hydrateMissingVectors(candidates) {
-        if (!this.db || typeof this.db.prepare !== 'function') return candidates;
+    async _hydrateMissingVectors(candidates) {
+        if (typeof this.hydrateChunksByIds !== 'function') return candidates;
 
         const missingChunkIds = [];
         const seenChunkIds = new Set();
@@ -264,30 +278,23 @@ class ResultDeduplicator {
         try {
             for (let offset = 0; offset < missingChunkIds.length; offset += batchSize) {
                 const batch = missingChunkIds.slice(offset, offset + batchSize);
-                const placeholders = batch.map(() => '?').join(',');
-                const rows = this.db.prepare(
-                    `SELECT id, vector FROM chunks WHERE id IN (${placeholders})`
-                ).all(...batch);
-                for (const row of rows || []) {
-                    const vector = this._decodeStoredVector(row?.vector);
-                    if (vector) vectorByChunkId.set(Number(row.id), vector);
+                const rows = await this.hydrateChunksByIds(batch);
+                for (const row of Array.isArray(rows) ? rows : []) {
+                    const vector = this._decodeStoredVector(
+                        row?.vector || row?._vector
+                    );
+                    const chunkId = this._getChunkId(row);
+                    if (vector && chunkId !== null) {
+                        vectorByChunkId.set(chunkId, vector);
+                    }
                 }
             }
         } catch (error) {
-            // 非 better-sqlite3 的兼容适配器可能只实现单行 get；生产路径始终走上面的批量查询。
-            try {
-                const statement = this.db.prepare(
-                    'SELECT vector FROM chunks WHERE id = ? LIMIT 1'
-                );
-                for (const chunkId of missingChunkIds) {
-                    const vector = this._decodeStoredVector(
-                        statement.get(chunkId)?.vector
-                    );
-                    if (vector) vectorByChunkId.set(chunkId, vector);
-                }
-            } catch (fallbackError) {
-                return candidates;
-            }
+            console.warn(
+                '[ResultDeduplicator] Native vector hydration failed:',
+                error.message || error
+            );
+            return candidates;
         }
 
         return candidates.map(candidate => {
@@ -368,8 +375,8 @@ class ResultDeduplicator {
 
     _getScore(candidate) {
         const score = Number(
-            candidate?.rerank_score ??
             candidate?.rrf_score ??
+            candidate?.rerank_score ??
             candidate?.score ??
             candidate?.original_score ??
             0
@@ -467,6 +474,57 @@ class ResultDeduplicator {
         return Number.isFinite(configured) && configured > 0
             ? Math.floor(configured)
             : Number.MAX_SAFE_INTEGER;
+    }
+
+    _dedupSuffixNorms(descriptor) {
+        if (descriptor.dedupSuffixNorms) return descriptor.dedupSuffixNorms;
+        const vector = descriptor.vector;
+        const suffix = new Float64Array(Math.floor(vector.length / 256) + 1);
+        let sum = 0;
+        for (let i = vector.length - 1; i >= 0; i--) {
+            sum += vector[i] * vector[i];
+            if (i % 256 === 0) suffix[i / 256] = sum;
+        }
+        descriptor.dedupSuffixNorms = suffix;
+        return suffix;
+    }
+
+    // Only the duplicate predicate uses this bound. Ranking keeps the original
+    // exact cosine. Descriptors contain finite Float32Array data and are local
+    // to one request, so their suffix norms cannot outlive a vector change.
+    _cosineAtLeast(left, right, threshold, budget = null) {
+        const x = left?.vector, y = right?.vector;
+        const n = x?.length;
+        if (!x || !y || n !== y.length || n < 512 || n > 1000000) {
+            return this._cosineSimilarityPrepared(left, right) >= threshold;
+        }
+        const leftSuffix = this._dedupSuffixNorms(left);
+        const rightSuffix = this._dedupSuffixNorms(right);
+        const end = n - n % 4;
+        // Conservative FP64 accumulation allowance, not a sampled error margin.
+        const roundoffGuard = 64 * Number.EPSILON * n;
+        let dot = 0, offset = 0;
+        while (offset < end) {
+            const blockEnd = Math.min(offset + 256, end);
+            for (; offset < blockEnd; offset += 4) {
+                dot += x[offset] * y[offset]
+                    + x[offset + 1] * y[offset + 1]
+                    + x[offset + 2] * y[offset + 2]
+                    + x[offset + 3] * y[offset + 3];
+            }
+            if (offset < n && offset % 256 === 0) {
+                const residual = Math.sqrt(leftSuffix[offset / 256] * rightSuffix[offset / 256]);
+                const upper = (dot + residual) * left.inverseMagnitude * right.inverseMagnitude;
+                if (upper + roundoffGuard < threshold) {
+                    if (budget && n - offset < n / 8) budget.remaining--;
+                    return false;
+                }
+            }
+        }
+        for (; offset < n; offset++) dot += x[offset] * y[offset];
+        const duplicate = dot * left.inverseMagnitude * right.inverseMagnitude >= threshold;
+        if (budget && !duplicate) budget.remaining--;
+        return duplicate;
     }
 
     _cosineSimilarity(v1, v2) {

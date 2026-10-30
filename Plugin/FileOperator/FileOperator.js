@@ -9,15 +9,14 @@ const ExcelJS = require('exceljs');
 const axios = require('axios');
 const { validateCode } = require('./CodeValidator.js');
 
-// Load environment variables
-require('dotenv').config({ path: path.join(__dirname, 'config.env') });
+const { loadConfiguration } = require('./configurationLoader');
+const { createDirectoryPolicy, isPathAllowed: checkDirectoryPolicy } = require('./directoryPolicy');
+const configuration = loadConfiguration({ configPath: path.join(__dirname, 'config.env') });
+const directoryPolicy = createDirectoryPolicy(configuration);
 
 // Configuration
 const CANVAS_DIRECTORY = process.env.CANVAS_DIRECTORY || path.join(__dirname, '..', '..', 'AppData', 'Canvas');
-const ALLOWED_DIRECTORIES = (process.env.ALLOWED_DIRECTORIES || '')
-  .split(',')
-  .map(dir => dir.trim())
-  .filter(dir => dir);
+const ALLOWED_DIRECTORIES = directoryPolicy.directories;
 
 // The canvas directory is no longer automatically added to the allowed list.
 // It can be added manually to config.env if needed for a specific setup.
@@ -82,36 +81,8 @@ function getDestinationPathParameter(parameters) {
   return getParameterValue(parameters, 'destination', 'destinationPath');
 }
 
-function isPathAllowed(targetPath, operationType = 'generic') {
-  const resolvedPath = path.resolve(targetPath);
-
-  // 1. 如果在允许的目录内，则授予所有权限。
-  if (ALLOWED_DIRECTORIES.length > 0) {
-    const isInAllowedDir = ALLOWED_DIRECTORIES.some(allowedDir => {
-      const resolvedAllowedDir = path.resolve(allowedDir);
-      // Normalize to lower case for case-insensitive comparison, crucial for Windows
-      return resolvedPath.toLowerCase().startsWith(resolvedAllowedDir.toLowerCase());
-    });
-    if (isInAllowedDir) {
-      debugLog(`Path is within allowed directories. Access granted.`, { targetPath, operationType });
-      return true;
-    }
-  } else {
-    // 如果没有配置允许的目录，则允许所有操作（保持原有灵活性）。
-    debugLog('No ALLOWED_DIRECTORIES configured, allowing access to all paths.');
-    return true;
-  }
-
-  // 2. 如果路径在允许的目录之外，则只对只读操作开绿灯。
-  const readOnlyBypassOperations = ['ReadFile', 'FileInfo'];
-  if (readOnlyBypassOperations.includes(operationType) && path.isAbsolute(targetPath)) {
-    debugLog(`Path is outside allowed directories, but operation is a read-only bypass. Access granted.`, { targetPath, operationType });
-    return true;
-  }
-
-  // 3. 对于所有其他情况（例如，在沙箱外的写/删除操作），一律拒绝。
-  debugLog(`Access denied. Path is outside allowed directories and operation is not a read-only bypass.`, { targetPath, operationType });
-  return false;
+function isPathAllowed(targetPath) {
+  return checkDirectoryPolicy(directoryPolicy, targetPath);
 }
 
 function formatFileSize(bytes) {
@@ -208,7 +179,7 @@ function createLineEndingHelper(content) {
 
 function getUniqueFilePath(filePath) {
 
-  if (!fsSync.existsSync(filePath)) {
+  if (!pathEntryExists(filePath)) {
     return { newPath: filePath, renamed: false };
   }
 
@@ -220,10 +191,18 @@ function getUniqueFilePath(filePath) {
 
   while (true) {
     newPath = path.join(dir, `${baseName}(${counter})${ext}`);
-    if (!fsSync.existsSync(newPath)) {
+    if (!pathEntryExists(newPath)) {
       return { newPath: newPath, renamed: true };
     }
     counter++;
+  }
+}
+
+function pathEntryExists(filePath) {
+  try { fsSync.lstatSync(filePath); return true; }
+  catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
   }
 }
 
@@ -465,12 +444,15 @@ async function runValidationAndAttachResults(result, filePath, fileContent) {
 async function webReadFile(fileUrl, options = {}) {
   try {
     const fileDir = WEB_FILE_DIR;
-    await fs.mkdir(fileDir, { recursive: true }); // Ensure directory exists
 
     // Extract filename from URL, handling potential query strings
     const url = new URL(fileUrl);
     const fileName = path.basename(url.pathname);
     const localFilePath = path.join(fileDir, fileName);
+    if (!isPathAllowed(fileDir, 'CreateDirectory') || !isPathAllowed(localFilePath, 'WriteFile')) {
+      throw new Error('Access denied: WebReadFile cache is not in allowed directories');
+    }
+    await fs.mkdir(fileDir, { recursive: true });
 
     debugLog('Downloading file from web', { fileUrl, localFilePath });
 
@@ -667,6 +649,7 @@ async function writeFile(filePath, content, encoding = 'utf8') {
     }
 
     const { newPath, renamed } = getUniqueFilePath(filePath);
+    if (!isPathAllowed(newPath, 'WriteFile')) throw new Error('Access denied: Generated destination is not in allowed directories');
 
     await fs.writeFile(newPath, content, encoding);
     const stats = await fs.stat(newPath);
@@ -858,6 +841,7 @@ async function listDirectory(dirPath, showHidden = ENABLE_HIDDEN_FILES) {
 
       const itemPath = path.join(dirPath, item);
       try {
+        if (!isPathAllowed(itemPath, 'ListDirectory')) continue;
         const stats = await fs.stat(itemPath);
         result.push({
           name: item,
@@ -985,6 +969,7 @@ async function copyFile(sourcePath, destinationPath) {
     }
 
     const { newPath, renamed } = getUniqueFilePath(destinationPath);
+    if (!isPathAllowed(newPath, 'CopyFile')) throw new Error('Access denied: Generated destination is not in allowed directories');
 
     await fs.copyFile(sourcePath, newPath);
     const destStats = await fs.stat(newPath);
@@ -1025,6 +1010,7 @@ async function moveFile(sourcePath, destinationPath) {
     }
 
     const { newPath, renamed } = getUniqueFilePath(destinationPath);
+    if (!isPathAllowed(newPath, 'MoveFile')) throw new Error('Access denied: Generated destination is not in allowed directories');
 
     await fs.rename(sourcePath, newPath);
     const stats = await fs.stat(newPath);
@@ -1075,7 +1061,7 @@ async function renameFile(sourcePath, destinationPath) {
     }
 
     // Check if destination file already exists
-    if (fsSync.existsSync(destinationPath)) {
+    if (pathEntryExists(destinationPath)) {
       throw new Error(`Destination file already exists: '${destinationPath}'. Please choose a different name.`);
     }
 
@@ -1188,12 +1174,34 @@ async function searchFiles(searchPath, pattern, options = {}) {
       nocase: !caseSensitive,
       maxDepth: ENABLE_RECURSIVE_OPERATIONS ? undefined : 1,
     };
+    if (ALLOWED_DIRECTORIES.length > 0) {
+      // glob 7 accepts an fs adapter. Check traversal as well as returned hits,
+      // including explicitly named symlink directories and ../ patterns.
+      globOptions.follow = false;
+      globOptions.cwd = searchPath;
+      globOptions.absolute = true;
+      globOptions.fs = Object.create(fsSync);
+      for (const method of ['readdirSync', 'lstatSync', 'statSync']) {
+        globOptions.fs[method] = (target, ...args) => {
+          if (!isPathAllowed(target, 'SearchFiles')) {
+            throw Object.assign(new Error('Access denied: Search traversal is outside allowed directories'), { code: 'EACCES' });
+          }
+          const value = fsSync[method](target, ...args);
+          if (method !== 'readdirSync') return value;
+          return value.filter(entry => {
+            try { return isPathAllowed(path.join(target, entry), 'SearchFiles'); }
+            catch (_) { return false; }
+          });
+        };
+      }
+    }
 
-    const files = glob.sync(globPattern, globOptions).slice(0, MAX_SEARCH_RESULTS);
+    const files = glob.sync(ALLOWED_DIRECTORIES.length > 0 ? path.join('**', pattern) : globPattern, globOptions).slice(0, MAX_SEARCH_RESULTS);
     const results = [];
 
     for (const file of files) {
       try {
+        if (!isPathAllowed(file, 'SearchFiles')) continue;
         const stats = await fs.stat(file);
         const isDirectory = stats.isDirectory();
 
@@ -1287,6 +1295,7 @@ async function downloadFile(url, downloadDir, customFileName) {
 
     // Determine the final, non-conflicting path before starting the download
     const { newPath, renamed } = getUniqueFilePath(destinationPath);
+    if (!isPathAllowed(newPath, 'WriteFile')) throw new Error('Access denied: Generated destination is not in allowed directories');
 
     // Fire-and-forget the download process. Do not await.
     axios({
@@ -1294,6 +1303,7 @@ async function downloadFile(url, downloadDir, customFileName) {
       url: url,
       responseType: 'stream'
     }).then(response => {
+      if (!isPathAllowed(newPath, 'WriteFile')) throw new Error('Access denied: Download destination changed');
       const writer = fsSync.createWriteStream(newPath);
       response.data.pipe(writer);
 
@@ -1335,10 +1345,16 @@ async function downloadFile(url, downloadDir, customFileName) {
 
 async function listAllowedDirectories() {
   debugLog('Listing allowed directories content');
+  if (directoryPolicy.error) return { success: false, error: directoryPolicy.error.message };
   if (ALLOWED_DIRECTORIES.length === 0) {
+    const message = '允许目录为空，当前不限制目录范围';
     return {
-      success: false,
-      error: 'No allowed directories configured. Cannot list projects.',
+      success: true,
+      data: {
+        directoryPolicy: 'unrestricted', allowedDirectories: [], allowedRoots: {}, message,
+        configurationParsing: directoryPolicy.parsing,
+        content: [{ type: 'text', text: message + '。这仅表示不应用目录允许列表；操作系统权限、审批和其他安全门禁仍然适用，不代表所有文件均可访问。' }]
+      }
     };
   }
 
@@ -1347,11 +1363,7 @@ async function listAllowedDirectories() {
     try {
       // Resolve relative paths like '.' against the project root
       const resolvedDir = path.resolve(dir);
-      if (!fsSync.existsSync(resolvedDir)) {
-        debugLog(`Allowed directory not found, skipping: ${resolvedDir}`);
-        allProjects[dir] = [{ name: '(Directory not found)', type: 'error' }];
-        continue;
-      }
+      if (!isPathAllowed(resolvedDir, 'ListAllowedDirectories')) throw new Error('Access denied: Unverified allowed directory');
 
       const items = await fs.readdir(resolvedDir);
       if (items.length === 0) {
@@ -1363,6 +1375,7 @@ async function listAllowedDirectories() {
       for (const item of items.slice(0, MAX_DIRECTORY_ITEMS)) {
         try {
           const itemPath = path.join(resolvedDir, item);
+          if (!isPathAllowed(itemPath, 'ListAllowedDirectories')) continue;
           const stats = await fs.stat(itemPath);
           subItems.push({
             name: item,
@@ -1377,11 +1390,7 @@ async function listAllowedDirectories() {
 
     } catch (error) {
       debugLog(`Error processing directory ${dir}`, { error: error.message });
-      if (error.code === 'EPERM' || error.code === 'EACCES') {
-        allProjects[dir] = [{ name: '(Permission Denied)', type: 'error' }];
-      } else {
-        allProjects[dir] = [{ name: `(Error: ${error.message})`, type: 'error' }];
-      }
+      return { success: false, error: 'Allowed directory could not be verified or listed; access denied' };
     }
   }
   let markdownContent = '**配置的允许访问目录及内容总览:**\n\n';
@@ -1405,6 +1414,9 @@ async function listAllowedDirectories() {
     success: true,
     data: {
       allowedRoots: allProjects,
+      directoryPolicy: 'restricted',
+      configurationParsing: directoryPolicy.parsing,
+      allowedDirectories: ALLOWED_DIRECTORIES,
       message: 'Allowed directories listed',
       content: [
         { type: 'text', text: markdownContent }
@@ -1416,11 +1428,13 @@ async function listAllowedDirectories() {
 async function createCanvas(fileName, content, encoding = 'utf8') {
   try {
     debugLog('Creating canvas file', { fileName });
+    const filePath = path.join(CANVAS_DIRECTORY, fileName);
+    if (!isPathAllowed(CANVAS_DIRECTORY, 'CreateDirectory') || !isPathAllowed(filePath, 'WriteFile')) {
+      throw new Error('Access denied: Canvas destination is not in allowed directories');
+    }
 
     // Ensure the canvas directory exists before writing to it.
     await fs.mkdir(CANVAS_DIRECTORY, { recursive: true });
-
-    const filePath = path.join(CANVAS_DIRECTORY, fileName);
 
     // Use the existing writeFile function which handles unique filenames and permissions
     const writeResult = await writeFile(filePath, content, encoding);
@@ -1626,6 +1640,7 @@ async function applyDiff(parameters) {
 
 // Batch processing for legacy format with robust content and action aggregation
 async function processBatchRequest(request) {
+  if (directoryPolicy.error) return { success: false, error: directoryPolicy.error.message };
   debugLog('Processing legacy batch request with robust aggregation', { request });
 
   const aggregatedContent = [];
@@ -1780,6 +1795,7 @@ async function processBatchRequest(request) {
 
 // Main execution function
 async function processRequest(request) {
+  if (directoryPolicy.error) return { success: false, error: directoryPolicy.error.message };
   // Legacy batch request detection
   if (request.command1) {
     return await processBatchRequest(request);

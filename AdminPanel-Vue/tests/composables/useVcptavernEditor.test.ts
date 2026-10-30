@@ -83,7 +83,7 @@ describe("useVcptavernEditor", () => {
 
     const state = useVcptavernEditor();
     await state.fetchPresets();
-    await state.loadPreset("p1");
+    await state.selectPreset("p1");
 
     expect(state.presetNames.value).toEqual(["p1", "p2"]);
     expect(state.editorState.name).toBe("p1");
@@ -93,10 +93,10 @@ describe("useVcptavernEditor", () => {
     expect(state.isNewPreset.value).toBe(false);
   });
 
-  it("supports new preset, rule add/remove and pointer drag reorder", () => {
+  it("supports new preset, rule add/remove and pointer drag reorder", async () => {
     const state = useVcptavernEditor();
 
-    state.createNewPreset();
+    await state.createNewPreset();
     expect(state.isEditorVisible.value).toBe(true);
     expect(state.isNewPreset.value).toBe(true);
 
@@ -122,7 +122,14 @@ describe("useVcptavernEditor", () => {
       "[data-rule-id]",
       draggedRule
     );
-    installPointerDomTestGlobals(() => hoveredRule);
+    const dom = installPointerDomTestGlobals(() => hoveredRule);
+    const dispatchPointer = (name: string, event: PointerEvent) => {
+      const listener = dom.windowMock.addEventListener.mock.calls.find(
+        ([eventName]) => eventName === name
+      )?.[1] as ((event: PointerEvent) => void) | undefined;
+      if (!listener) throw new Error(`Missing ${name} listener`);
+      listener(event);
+    };
 
     state.handleRulePointerDown(
       state.editorState.rules[0].id,
@@ -137,7 +144,7 @@ describe("useVcptavernEditor", () => {
         currentTarget: captureTarget,
       } as unknown as PointerEvent
     );
-    state.handlePointerMove(
+    dispatchPointer("pointermove",
       {
         pointerId: 1,
         clientX: 10,
@@ -145,7 +152,7 @@ describe("useVcptavernEditor", () => {
         preventDefault: vi.fn(),
       } as unknown as PointerEvent
     );
-    state.handlePointerUp(
+    dispatchPointer("pointerup",
       {
         pointerId: 1,
         preventDefault: vi.fn(),
@@ -155,7 +162,7 @@ describe("useVcptavernEditor", () => {
     expect(state.editorState.rules[0].name).toBe("B");
     expect(state.editorState.rules[1].name).toBe("A");
 
-    state.removeRule(1);
+    await state.removeRule(1);
     expect(state.editorState.rules).toHaveLength(1);
   });
 
@@ -224,6 +231,14 @@ describe("useVcptavernEditor", () => {
 
     expect(Object.keys(state).sort()).toEqual(
       [
+        "confirmDiscardChanges",
+        "duplicateRule",
+        "isDirty",
+        "nameValidationError",
+        "nameConflictWarning",
+        "suppressListAnimation",
+        "toggleRuleCollapse",
+        "isRuleCollapsed",
         "addRule",
         "createNewPreset",
         "deletePreset",
@@ -232,14 +247,12 @@ describe("useVcptavernEditor", () => {
         "dragState",
         "editorState",
         "fetchPresets",
-        "handlePointerMove",
-        "handlePointerUp",
         "handleRulePointerDown",
         "isEditorVisible",
         "isLoading",
         "isNewPreset",
         "isSaving",
-        "loadPreset",
+        "selectPreset",
         "orderedRules",
         "presetNames",
         "removeRule",

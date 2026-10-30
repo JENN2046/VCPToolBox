@@ -209,7 +209,6 @@ import {
   serializeEnvAssignment,
   inferEnvValueType,
   isSensitiveConfigKey,
-  buildMergedMainConfigContent,
   type EnvEntry,
 } from '@/utils'
 
@@ -930,11 +929,20 @@ async function loadConfig() {
       loadingKey: 'base-config.load'
     })
 
-    const mergedContent = buildMergedMainConfigContent(result)
-    const entries = parseEnvToList(mergedContent)
-    const documentationSource = result.exampleContent || mergedContent
+    // 保留 config.env 条目顺序；模板只补充缺失键，不覆盖已有值或重排文件。
+    // 空配置仍以完整模板初始化；这里只构建表单，用户提交时才保存。
+    const configContent = result.content?.trim() ? result.content : (result.exampleContent || '')
+    const entries = parseEnvToList(configContent)
+    const existingKeys = new Set(entries.filter(entry => entry.key).map(entry => entry.key))
+    for (const entry of parseEnvToList(result.exampleContent || '')) {
+      if (!entry.key || existingKeys.has(entry.key)) continue
+      // Template line numbers must not inherit unrelated custom-file group markers.
+      entries.push({ ...entry, originalLineNumStart: -1, originalLineNumEnd: -1 })
+      existingKeys.add(entry.key)
+    }
+    const documentationSource = result.exampleContent || configContent
     const documentationMetadata = buildDocumentationMetadata(documentationSource)
-    const fallbackMarkers = extractFallbackGroupMarkers(mergedContent)
+    const fallbackMarkers = extractFallbackGroupMarkers(configContent)
 
     configDocumentation.value = documentationMetadata
 

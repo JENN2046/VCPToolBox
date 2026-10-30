@@ -5,6 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique filenames
 import { fileURLToPath } from 'url'; // Needed for file:// URLs
 import mime from 'mime-types'; // To determine MIME type from file path
+import imageInputSafety from './imageInputSafety.cjs';
 // VolcEngine SDK (if needed for signing or other functionalities - to be determined)
 // import * as VolcEngineSDK from '@volcengine/openapi-sdk'; // Example, actual import may vary
 
@@ -192,6 +193,11 @@ async function signRequest() {
     };
 }
 
+const readHttpImage = imageInputSafety.createHttpImageReader({
+    axios, fs, projectBasePath: PROJECT_BASE_PATH, serverPort: SERVER_PORT,
+    imageOrigins: [VAR_HTTP_URL, VAR_HTTPS_URL], mimeLookup: mime.lookup
+});
+
 // --- Helper function to process the 'image' parameter ---
 async function getImageData(imageUrl, imageBase64) {
     // Priority to imageBase64 if provided (on retry from file fetch)
@@ -210,9 +216,10 @@ async function getImageData(imageUrl, imageBase64) {
         return imageUrl;
     }
 
-    // Handle public https URL
+    // Handle HTTP / HTTPS URL
     if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-        return imageUrl;
+        // Rejections must propagate: never turn an unsafe input back into a URL.
+        return readHttpImage(imageUrl);
     }
 
     // Handle local file URL

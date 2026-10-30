@@ -85,7 +85,7 @@ function maskSecret(value, config) {
     }
 
     const visiblePrefix = core.slice(0, config.preservePrefix);
-    const visibleSuffix = core.slice(-config.preserveSuffix);
+    const visibleSuffix = config.preserveSuffix > 0 ? core.slice(-config.preserveSuffix) : '';
     return `${prefix}${visiblePrefix}${config.mask}${visibleSuffix}${suffix}`;
 }
 
