@@ -12,6 +12,7 @@ on:
       - 'scripts/check-native-delivery.cjs'
       - 'docs/native-delivery-30193c89.json'
       - 'docs/native-delivery-upstream-r1-linux.json'
+      - 'docs/native-delivery-upstream-dev-20261104-daily-linux.json'
       - 'tests/codeSearcherBridge.test.js'
       - '.github/workflows/codesearcher-linux-arm64.yml'
 
@@ -102,11 +103,7 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-musl'
         shell: bash
         run: |
-          receipt=docs/native-delivery-30193c89.json
-          if [ '${{ matrix.target }}' = x86_64-unknown-linux-gnu ]; then
-            receipt=docs/native-delivery-upstream-r1-linux.json
-          fi
-          node scripts/check-native-delivery.cjs '${{ matrix.target }}' daily --receipt "$receipt"
+          node scripts/check-native-delivery.cjs '${{ matrix.target }}' daily --receipt docs/native-delivery-upstream-dev-20261104-daily-linux.json
       - name: Compare bundled executable with locked-source rebuild
         run: |
           cmp 'Plugin/CodeSearcher/CodeSearcher-${{ matrix.target }}' "$RUNNER_TEMP/codesearcher-first/${{ matrix.target }}/release/CodeSearcher"

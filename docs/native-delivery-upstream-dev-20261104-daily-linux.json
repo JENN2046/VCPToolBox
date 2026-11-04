@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "scope": "Current-source Daily Linux artifacts; x86 GNU retains previously verified R1 payload, ARM musl comes from runtime-verified GitHub build. No production or personal diary access.",
+  "source_inputs": {
+    "daily": [
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.lock",
+        "sha256_lf": "93899ddf0a06ca022a9103e69c489f73ae486cd8e56153af71ce3c02eea1c73d"
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/Cargo.toml",
+        "sha256_lf": "31db2f8205b4135201c3744e725342c1473d0818107f43b600f7e8137a3a01b8"
+      },
+      {
+        "path": "Plugin/DailyNoteSearcher/src/src/main.rs",
+        "sha256_lf": "4632d844ea2964b1e73fd289cd69c6c7f2514741601dad9e1b85d632883f7a59"
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "group": "daily",
+      "target": "x86_64-unknown-linux-gnu",
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-unknown-linux-gnu",
+      "sha256": "a4e87a6ad29d3e15eeacaa7914a4e41b30e9b8b6146f8bc8f89094ef82a14a79",
+      "size": 3857232,
+      "build_command": "CARGO_BUILD_JOBS=2 cargo +1.98.0 build --manifest-path Plugin/DailyNoteSearcher/src/Cargo.toml --locked --release --target-dir rust-vexus-lite/target/upstream-r1-daily-build",
+      "toolchain": "rustc 1.98.0 (88d9e12ae 2026-08-18), cargo 1.98.0 (797e8a9bc 2026-08-05), GCC 15.2.0",
+      "verification": "11 isolated native regression checks plus Git-ignored synthetic diary fixture passed"
+    },
+    {
+      "group": "daily",
+      "target": "aarch64-unknown-linux-musl",
+      "path": "Plugin/DailyNoteSearcher/DailyNoteSearcher-aarch64-unknown-linux-musl",
+      "sha256": "67e8157071000cda25c9de0f55d06ab6a67bd50589223af3046c7519b7db0cc7",
+      "size": 3764960,
+      "toolchain": "GitHub ubuntu-24.04-arm, Rust 1.89.0, bundled rust-lld, locked Cargo source",
+      "verification": "native ARM regression and static Alpine runtime passed in source workflow before artifact upload"
+    }
+  ],
+  "provenance": {
+    "arm_run_id": 41868549145,
+    "arm_artifact_id": 13343726388,
+    "compiled_commit": "f8dc0fd34f7af209699866e97c4a4497cfcfd303",
+    "target": "aarch64-unknown-linux-musl",
+    "runtime_checks": "job 126709030087: locked tests, native regression and read-only network-none Alpine verification passed before upload",
+    "archive_sha256": "e4753b238542711a235e4f34b8d71f91e1ab820e2290b785d4bb68c060a28767"
+  }
+}
