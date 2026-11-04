@@ -10,6 +10,7 @@ on:
       - 'scripts/check-native-delivery.cjs'
       - 'docs/native-delivery-30193c89.json'
       - 'docs/native-delivery-d9f61c0.json'
+      - 'docs/native-delivery-upstream-dev-20261104-windows.json'
       - '.github/workflows/upstream-windows-native.yml'
 
 permissions:
@@ -34,6 +35,7 @@ jobs:
             /scripts/check-native-delivery.cjs
             /docs/native-delivery-30193c89.json
             /docs/native-delivery-d9f61c0.json
+            /docs/native-delivery-upstream-dev-20261104-windows.json
             !**/config.env
             !**/.env
             !**/.env.*
@@ -87,7 +89,7 @@ jobs:
       - name: Verify bundled artifacts and recorded source provenance
         shell: pwsh
         run: |
-          node scripts/check-native-delivery.cjs x86_64-pc-windows-msvc vexus daily --receipt docs/native-delivery-d9f61c0.json
+          node scripts/check-native-delivery.cjs x86_64-pc-windows-msvc vexus daily --receipt docs/native-delivery-upstream-dev-20261104-windows.json
           if ($LASTEXITCODE -ne 0) { throw 'Bundled native provenance check failed' }
           node scripts/verify-daily-note-searcher-native.cjs Plugin/DailyNoteSearcher/DailyNoteSearcher-x86_64-pc-windows-msvc.exe
           if ($LASTEXITCODE -ne 0) { throw 'Bundled DailyNoteSearcher regression failed' }
