@@ -1358,7 +1358,10 @@ async function ensureAsyncResultsDir() {
     }
 }
 
-app.post('/plugin-callback/:pluginName/:taskId', async (req, res) => {
+app.post('/plugin-callback/:pluginName/:taskId', async (req, res, next) => {
+    // Match Express's default case-insensitive routing: ChannelHub owns event
+    // admission, including failures, and these requests are not async results.
+    if (/^ChannelHub$/i.test(req.params.pluginName) && /^events$/i.test(req.params.taskId)) return next();
     const { pluginName, taskId } = req.params;
     const callbackData = req.body; // 这是插件回调时发送的 JSON 数据
 
