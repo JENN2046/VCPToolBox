@@ -1,0 +1,13 @@
+# Frozen upstream integration for the local development profile
+
+Fork parent: c249914ef4b4c94e23bcf42f69a133b5f014c94c.
+Author parent: lioensky/VCPToolBox@72e964e27cf775c69f8b7a865a2ed2c44bcb063e.
+Normal candidate merge retains both parents. No production, daily installation, provider, channel or existing user-store change is included.
+
+The upstream route path checks and the fork's case-only rename/rollback handling are combined. ChannelHub callback authentication ownership remains the fork's accepted #301 behavior. The deliberate Agent/Kerr removal and fork JEV declaration prompt are retained; the generic Docker publishing workflow is held at the accepted fork version. Removed direct lint/glob/minimatch dependencies stay removed; other upstream dependency changes, including TriviumDB 0.9, are merged and the lock is regenerated with lifecycle disabled and no user npm credentials.
+
+The current merged Rust source has a fresh Linux native build. Four independent builds under the pinned Ubuntu22.04/Rust1.89/GCC12.3/Node22.23.1/napi2.18.4 recipe produced the same SHA256 dcf09ddd0ac47086e7c8473c4089d19443d2fa4526639228ee2aaa948502b40a. The second pair runs the strict tracked-artifact comparison. GLIBC requirement is 2.34, under the existing 2.35 ceiling. Exact source inventory and artifact identity are in docs/native-delivery-upstream-dev-20261104-linux.json; old receipts remain historical, not rewritten as acceptance for this source. Linux CI selects the new receipt with the same source rebuild, comparison and ABI gates. Windows/other bundled platform provenance is not established by Linux evidence.
+
+Local synthetic checks: 26 route/callback tests; 141 diary, approval, explicit-JEV and parallel pipeline tests; 67 native-memory/lifecycle/compatibility tests; 5 orphan-cleanup/RRF checks; native provenance/ABI pass. The memory A/B test already disagreed with the fork's opt-in policy on the parent: both source and test blobs were unchanged by this merge. Its positive fixture now explicitly opts in and also verifies that the default makes no Jev call. Business/provider defaults are unchanged. Native acceptance uses the actual newly built Linux binding, not the test's absent default Windows binding.
+
+Public committed JEV defaults are materialized read-only only in the task checkout for synthetic tests. They are not active runtime configuration. All database effects are test fixtures. Hosted checks and full Chat/ToolBox integration remain separate acceptance evidence. This note grants no merge, deployment or runtime authority.
