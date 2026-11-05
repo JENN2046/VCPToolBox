@@ -253,13 +253,17 @@ test('Memory A/B restores independent Jev scoring on the complete shared pool', 
         return [{ ...documents[5], jev_score: 0.82, rerank_score: 0.12 }];
     };
     const args = { query: 'test', folder: 'A', k: 1 };
-    let report = await owner.handleMemoryAB(args);
+    const explicitJev = { ...args, compare_jev: 'true' };
+    let report = await owner.handleMemoryAB(explicitJev);
     assert.equal(nativeCalls, 1, 'all four tracks share one native query');
     assert.match(report, /四轨实验室/);
     assert.match(report, /Jev：获得有效外部评分/);
     assert.match(report, /\| 6 \| memory 6 \| — \| — \| #1 \/ 0\.8200 \| — \|/);
     assert.equal(pool[0].jev_score, undefined);
 
+    report = await owner.handleMemoryAB(args);
+    assert.equal(jevCalls, 1, 'the default laboratory path must not call the external Jev track');
+    assert.match(report, /Jev：关闭、未配置或失败/);
     report = await owner.handleMemoryAB({ ...args, compare_jev: 'false' });
     assert.equal(jevCalls, 1);
     assert.match(report, /Jev：关闭、未配置或失败/);
@@ -267,12 +271,12 @@ test('Memory A/B restores independent Jev scoring on the complete shared pool', 
     assert.equal(jevCalls, 1);
 
     owner._jevRerankDocuments = async () => [{ ...pool[0], rerank_score: 0.9 }];
-    report = await owner.handleMemoryAB(args);
+    report = await owner.handleMemoryAB(explicitJev);
     assert.match(report, /Jev：关闭、未配置或失败/);
     owner._jevRerankDocuments = async () => [{
         ...pool[0], jev_score: 0.9, rerank_failed: true
     }];
-    report = await owner.handleMemoryAB(args);
+    report = await owner.handleMemoryAB(explicitJev);
     assert.match(report, /Jev：关闭、未配置或失败/);
 });
 
