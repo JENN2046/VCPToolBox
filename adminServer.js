@@ -1069,7 +1069,7 @@ app.post("/admin_api/config/main/reload-notify", async (req, res) => {
 // ============================================================
 // 启动服务器
 // ============================================================
-app.listen(ADMIN_PORT, () => {
+app.listen(...require('./modules/localListenOptions').localListenArguments(ADMIN_PORT, process.env.VCP_LOCAL_LISTEN_HOST), () => {
   console.log(`[AdminServer] 管理面板独立进程已启动，监听端口 ${ADMIN_PORT}`);
   console.log(
     `[AdminServer] 管理面板地址: http://localhost:${ADMIN_PORT}/AdminPanel/`
