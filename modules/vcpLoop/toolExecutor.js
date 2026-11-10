@@ -10,6 +10,14 @@ const jevToolCallExp = require('../jevToolCallExp');
 
 const VCP_TIMED_CONTACTS_DIR = path.join(__dirname, '..', '..', 'VCPTimedContacts');
 const RESIDENT_TOOL_NAME = 'AGENTSOSResident';
+const RESIDENT_PROPOSAL_FAILURE_BY_CODE = Object.freeze({
+  RESIDENT_PROPOSAL_DISPATCH_FAILED: 'PROPOSAL_DISPATCH_FAILED',
+  RESIDENT_PROPOSAL_EXECUTION_FAILED: 'PROPOSAL_EXECUTION_FAILED',
+  RESIDENT_PROPOSAL_INPUT_REJECTED: 'PROPOSAL_INPUT_REJECTED',
+  RESIDENT_PROPOSAL_PREPARE_FAILED: 'PROPOSAL_PREPARE_FAILED',
+  RESIDENT_PROPOSAL_PRESENTATION_FAILED: 'PROPOSAL_PRESENTATION_FAILED',
+  RESIDENT_PROPOSAL_RESULT_REJECTED: 'PROPOSAL_RESULT_REJECTED'
+});
 
 function isResidentProposalCall(toolCall) {
   return toolCall?.name === RESIDENT_TOOL_NAME
@@ -18,21 +26,15 @@ function isResidentProposalCall(toolCall) {
 }
 
 function residentProposalFailureFor(error) {
-  const map = {
-    RESIDENT_PROPOSAL_DISPATCH_FAILED: 'PROPOSAL_DISPATCH_FAILED',
-    RESIDENT_PROPOSAL_EXECUTION_FAILED: 'PROPOSAL_EXECUTION_FAILED',
-    RESIDENT_PROPOSAL_INPUT_REJECTED: 'PROPOSAL_INPUT_REJECTED',
-    RESIDENT_PROPOSAL_PREPARE_FAILED: 'PROPOSAL_PREPARE_FAILED',
-    RESIDENT_PROPOSAL_PRESENTATION_FAILED: 'PROPOSAL_PRESENTATION_FAILED',
-    RESIDENT_PROPOSAL_RESULT_REJECTED: 'PROPOSAL_RESULT_REJECTED'
-  };
   const candidates = [error?.code];
   try {
     const parsed = JSON.parse(error?.message || '{}');
     candidates.push(parsed?.residentProposalFailure, parsed?.code);
   } catch (_) {}
   for (const candidate of candidates) {
-    if (map[candidate]) return map[candidate];
+    if (Object.hasOwn(RESIDENT_PROPOSAL_FAILURE_BY_CODE, candidate)) {
+      return RESIDENT_PROPOSAL_FAILURE_BY_CODE[candidate];
+    }
   }
   return 'PROPOSAL_EXECUTION_FAILED';
 }
@@ -419,6 +421,9 @@ class ToolExecutor {
     // 到点执行时由 TaskScheduler 注入 __vcp_timed_call 标准元信息；
     // 插件可基于该字段判断原始发起时间、计划触发时间与实际触发时间。
     if (args && Object.prototype.hasOwnProperty.call(args, 'timely_contact')) {
+      if (residentProposalCall) {
+        return this._failResidentProposal('PROPOSAL_INPUT_REJECTED', recordHandle);
+      }
       const scheduledResult = await this._scheduleTimedToolCall(toolCall);
       toolCallRecordStore.finishRecord(recordHandle, {
         success: scheduledResult.success,
@@ -430,8 +435,19 @@ class ToolExecutor {
 
     // 验证码校验
     if (this.vcpToolCode) {
-      const authResult = await this._verifyAuth(args);
+      let authResult;
+      try {
+        authResult = await this._verifyAuth(args);
+      } catch (error) {
+        if (residentProposalCall) {
+          return this._failResidentProposal('PROPOSAL_DISPATCH_FAILED', recordHandle);
+        }
+        throw error;
+      }
       if (!authResult.valid) {
+        if (residentProposalCall) {
+          return this._failResidentProposal('PROPOSAL_DISPATCH_FAILED', recordHandle);
+        }
         const errorResult = this._createErrorResult(name, authResult.message);
         toolCallRecordStore.finishRecord(recordHandle, {
           success: false,
@@ -443,12 +459,21 @@ class ToolExecutor {
     }
 
     // 检查插件是否存在
-    if (!this.pluginManager.getPlugin(name)) {
+    let plugin;
+    try {
+      plugin = this.pluginManager.getPlugin(name);
+    } catch (error) {
+      if (residentProposalCall) {
+        return this._failResidentProposal('PROPOSAL_DISPATCH_FAILED', recordHandle);
+      }
+      throw error;
+    }
+    if (!plugin) {
+      if (residentProposalCall) {
+        return this._failResidentProposal('PROPOSAL_DISPATCH_FAILED', recordHandle);
+      }
       const message = `未找到名为 "${name}" 的插件`;
       const errorResult = this._createErrorResult(name, message);
-      if (residentProposalCall) {
-        errorResult.residentProposalFailureCategory = 'PROPOSAL_DISPATCH_FAILED';
-      }
       toolCallRecordStore.finishRecord(recordHandle, {
         success: false,
         result: errorResult.content,
@@ -487,10 +512,10 @@ class ToolExecutor {
       });
       return this._attachRecordIdToResult(processedResult, recordHandle);
     } catch (error) {
-      const errorResult = this._createErrorResult(name, `执行错误: ${error.message}`);
       if (residentProposalCall) {
-        errorResult.residentProposalFailureCategory = residentProposalFailureFor(error);
+        return this._failResidentProposal(residentProposalFailureFor(error), recordHandle);
       }
+      const errorResult = this._createErrorResult(name, `执行错误: ${error.message}`);
       toolCallRecordStore.finishRecord(recordHandle, {
         success: false,
         result: errorResult.content,
@@ -647,6 +672,40 @@ class ToolExecutor {
       content: [{ type: 'text', text: `[错误] ${displayText}` }],
       ...(parsedPayload ? { raw: parsedPayload } : {})
     };
+  }
+
+  async _failResidentProposal(category, recordHandle) {
+    // Attempt invalidation before broadcasting or recording a fixed result.
+    // Raw dispatch/authentication errors must not enter the general error path.
+    await this._detachResidentProposal();
+    const fixedCategory = Object.values(RESIDENT_PROPOSAL_FAILURE_BY_CODE).includes(category)
+      ? category
+      : 'PROPOSAL_EXECUTION_FAILED';
+    const result = this._createErrorResult(RESIDENT_TOOL_NAME, fixedCategory);
+    Object.defineProperty(result, 'residentProposalFailureCategory', {
+      configurable: false,
+      enumerable: false,
+      value: fixedCategory,
+      writable: false
+    });
+    toolCallRecordStore.finishRecord(recordHandle, {
+      success: false,
+      result: result.content,
+      error: fixedCategory
+    });
+    return this._attachRecordIdToResult(result, recordHandle);
+  }
+
+  async _detachResidentProposal() {
+    try {
+      const residentModule = this.pluginManager?.getServiceModule?.(RESIDENT_TOOL_NAME)
+        || this.pluginManager?.getPlugin?.(RESIDENT_TOOL_NAME);
+      if (typeof residentModule?.shutdown === 'function') {
+        await residentModule.shutdown();
+      }
+    } catch (_) {
+      // A teardown failure never authorizes continuation or exposes its details.
+    }
   }
 
   _broadcast(toolName, status, content) {
